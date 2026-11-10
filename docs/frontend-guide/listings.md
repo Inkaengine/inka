@@ -145,6 +145,8 @@ async function ListingItems({ id, blocks, paging, seen, fetchItems, onPaging }) 
 
 A listing with no `querystring` defaults to showing the current folder's contents in folder order.
 
+A search is sorted by the `sort_on` in `extraCriteria`, else by the listing's own, else by date (newest first). To rank the results by relevance, pass `sort_on: null` with a `SearchableText`: the request then names no sort, which is how Plone ranks a text search. Without a `SearchableText` there is nothing to rank, and `sort_on: null` throws.
+
 `ploneFetchItems` also normalizes Plone's image data — packaging `image_field` + `image_scales` into a self-contained `image` object with `@id` duplicated inside (needed for URL resolution):
 
 ### Json

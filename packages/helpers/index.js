@@ -239,7 +239,9 @@ function combineQueries(...queries) {
  * @param {number} [paging.b_size=10] - Number of items per page
  * @param {Object} [extraCriteria={}] - Additional query criteria (for search blocks)
  * @param {string} [extraCriteria.SearchableText] - Text search term
- * @param {string} [extraCriteria.sort_on] - Override sort field
+ * @param {string|null} [extraCriteria.sort_on] - Override sort field. `null` asks
+ *   for relevance: the body names no sort, so Plone ranks the SearchableText
+ *   matches (it needs a SearchableText; without one this throws).
  * @param {string} [extraCriteria.sort_order] - Override sort order
  * @param {string|string[]} [extraCriteria['facet.*']] - Facet filters (e.g., 'facet.portal_type': ['Document'])
  * @returns {Object} Request body for POST to @querystring-search
@@ -334,15 +336,29 @@ export function buildQuerystringSearchBody(
   // implicit effective-date sort. A listing that names its own sort_on without a
   // sort_order gets Plone's own default, ascending — forcing descending there
   // reversed every folder-order listing on real Plone.
+  //
+  // Relevance is no sort at all: Plone ranks a SearchableText search only when
+  // the request names no sort_on. `sort_on: null` asks for it, as a choice —
+  // unlike a missing sort_on, which takes the listing's own sort.
+  const relevance = extraCriteria.sort_on === null;
+  if (relevance && !extraCriteria.SearchableText) {
+    throw new Error(
+      'buildQuerystringSearchBody: relevance (sort_on: null) ranks SearchableText matches, and no SearchableText was given',
+    );
+  }
   const explicitSortOn = extraCriteria.sort_on || queryConfig?.sort_on;
   const defaultSort = hasQuery ? 'effective' : 'getObjPositionInParent';
   const defaultOrder = hasQuery && !explicitSortOn ? 'descending' : 'ascending';
 
   const body = {
     query,
-    sort_on: explicitSortOn || defaultSort,
-    sort_order:
-      extraCriteria.sort_order || queryConfig?.sort_order || defaultOrder,
+    ...(relevance
+      ? {}
+      : {
+          sort_on: explicitSortOn || defaultSort,
+          sort_order:
+            extraCriteria.sort_order || queryConfig?.sort_order || defaultOrder,
+        }),
     b_start,
     b_size,
     metadata_fields: '_all',

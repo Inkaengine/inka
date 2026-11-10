@@ -767,6 +767,53 @@ function matchTitleIndex(query, title) {
     );
 }
 
+/**
+ * Relevance, as Plone ranks a SearchableText search that names no sort_on.
+ * The index is ZCTextIndex's OkapiIndex (Okapi BM25, K1 = 1.2, B = 0.75): a
+ * page scores higher the more often it has the searched words, for its length,
+ * and a rarer word counts for more. Each word matches as a prefix, as
+ * `contains` munges it (matchSearchableText); a `search` term's operators and
+ * quotes are dropped and its words scored the same way. `items` are the
+ * matches; `textOf(item)` is the page's searchable text (title, description,
+ * id and blocks). Returns them best first; equal scores keep their order.
+ */
+const OKAPI_K1 = 1.2;
+const OKAPI_B = 0.75;
+function rankByRelevance(searchTerm, items, textOf) {
+  const words = String(searchTerm || '')
+    .replace(/["*]/g, ' ')
+    .toLowerCase()
+    .split(/\s+/)
+    .filter((w) => w && w !== 'and' && w !== 'or' && w !== 'not');
+  if (words.length === 0) {
+    throw new Error(`rankByRelevance: no words to rank by in ${JSON.stringify(searchTerm)}`);
+  }
+  const docs = items.map((item) => textOf(item).toLowerCase().split(/\W+/).filter(Boolean));
+  const avgLength = docs.reduce((sum, d) => sum + d.length, 0) / Math.max(docs.length, 1) || 1;
+  const counts = docs.map((tokens) => words.map((w) => tokens.filter((t) => t.startsWith(w)).length));
+  const idf = words.map((_, i) => {
+    const having = counts.filter((c) => c[i] > 0).length;
+    return Math.log(1 + docs.length / Math.max(having, 1));
+  });
+  const score = counts.map((c, d) =>
+    c.reduce((sum, tf, i) => {
+      const norm = OKAPI_K1 * (1 - OKAPI_B + (OKAPI_B * docs[d].length) / avgLength);
+      return sum + (idf[i] * tf * (OKAPI_K1 + 1)) / (tf + norm);
+    }, 0),
+  );
+  return items
+    .map((item, i) => ({ item, i, s: score[i] }))
+    .sort((a, b) => b.s - a.s || a.i - b.i)
+    .map((x) => x.item);
+}
+
+/** A page's searchable text, as the catalog has it: title, description, id and blocks. */
+function searchableTextOf(content) {
+  return [content?.title, content?.description, content?.id, blocksSearchableText(content?.blocks)]
+    .filter(Boolean)
+    .join(' ');
+}
+
 function matchSearchableText(searchTerm, item, blocksText = '') {
   const term = (searchTerm || '').replace(/\*+$/g, '').trim().toLowerCase();
   if (!term) return true;
@@ -5260,6 +5307,9 @@ app.post('*/@querystring-search', (req, res) => {
 
   const { query = [], sort_on, sort_order, b_start = 0, b_size = 10, limit } = req.body;
   console.log('[MOCK-API] @querystring-search query:', JSON.stringify(query));
+  // The SearchableText term, once the criteria are applied: with no sort_on,
+  // the matches are ranked by it (rankByRelevance).
+  let searchedText = null;
 
   // An operation the site does not have is a 400, as in Plone — never a
   // silent match-everything. See searchableTextOperations.
@@ -5434,6 +5484,7 @@ app.post('*/@querystring-search', (req, res) => {
       // searchableTextOperations; stock mode 400s it above) and keeps the raw
       // term's operators (matchRawSearch).
       if (value) {
+        searchedText = value;
         const matches = operation === TEXT_SEARCH ? matchRawSearch : matchSearchableText;
         allItems = allItems.filter((item) =>
           matches(
@@ -5536,6 +5587,11 @@ app.post('*/@querystring-search', (req, res) => {
   if (comparator) {
     allItems.sort(comparator);
     if (sort_order === 'descending') allItems.reverse();
+  } else if (!sort_on && searchedText) {
+    // No sort named: Plone ranks a text search by relevance.
+    allItems = rankByRelevance(searchedText, allItems, (item) =>
+      searchableTextOf(getContent(new URL(item['@id']).pathname, getSessionId(req))),
+    );
   }
 
   // Apply results limit (different from b_size which is for pagination)
@@ -5796,6 +5852,12 @@ app.get('*/@search', (req, res) => {
   // metadata field of that name, and sort_order: descending reverses the
   // whole result, as in the querystring-search handler above.
   const sortOn = req.query.sort_on;
+  if (!sortOn && searchableText) {
+    // No sort named: Plone ranks a text search by relevance.
+    items = rankByRelevance(searchableText, items, (item) =>
+      searchableTextOf(getContent(new URL(item['@id']).pathname, getSessionId(req))),
+    );
+  }
   if (sortOn === 'getObjPositionInParent') {
     const position = (item) => uidPositionMap[item.UID] ?? Number.MAX_SAFE_INTEGER;
     items = [...items].sort((a, b) => position(a) - position(b));

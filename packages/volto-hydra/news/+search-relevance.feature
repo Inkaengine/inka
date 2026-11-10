@@ -1,0 +1,1 @@
+A search can be ranked by relevance: `sort_on: null` in a listing's extra criteria sends no sort with the search words, so Plone ranks the matches, where before every search was sorted by date or the listing's own sort. The mock API ranks a text search with no sort the same way. @djay

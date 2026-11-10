@@ -40,6 +40,20 @@ function distribution() {
     },
     blocks_layout: { items: ['cols'] },
   });
+  // Relevance: "aaa-notes" comes first on disk and mentions zinnias once in a
+  // long note; "zinnias" is about them.
+  item('aaa-notes', {
+    '@id': '/aaa-notes', '@type': 'Document', UID: 'searchtext-notes-0001', id: 'aaa-notes', title: 'Allotment notes',
+    review_state: 'published',
+    blocks: { p: { '@type': 'slate', value: slate('Weeded the beans, staked the tomatoes, watered the onions, sowed a row of zinnias by the shed, and raked the leaves twice.') } },
+    blocks_layout: { items: ['p'] },
+  });
+  item('zinnias', {
+    '@id': '/zinnias', '@type': 'Document', UID: 'searchtext-zinnias-0001', id: 'zinnias', title: 'Zinnias',
+    review_state: 'published',
+    blocks: { p: { '@type': 'slate', value: slate('Growing zinnias from seed.') } },
+    blocks_layout: { items: ['p'] },
+  });
   // What real Plone is tested with (test_search_text.py), through the editor's own function.
   const page = withSearchableText(
     { ...CASES.page, '@id': '/searched', UID: 'searchtext-case-0001', review_state: 'published' },
@@ -203,4 +217,36 @@ describe('Title index', () => {
       assert.deepEqual(await search(token, 'marigolds'), [], 'the body is not the title');
     });
   }
+});
+
+/**
+ * Relevance. Plone ranks a SearchableText search by relevance when the request
+ * names no sort_on: the index is ZCTextIndex's Okapi BM25, so a page that says
+ * the words more often, for its length, comes first. Any sort_on replaces the
+ * ranking. The mock returned matches in the order they are on disk.
+ */
+describe('Relevance', () => {
+  const ranked = async (token, body) => {
+    const res = await fetch(`${baseUrl}/@querystring-search`, { method: 'POST', headers: headers(token), body: JSON.stringify(body) });
+    assert.equal(res.status, 200);
+    return (await res.json()).items.map((i) => new URL(i['@id']).pathname);
+  };
+  const zinnias = [{ i: 'SearchableText', o: 'plone.app.querystring.operation.string.contains', v: 'zinnias' }];
+
+  it('@querystring-search with no sort_on ranks the page about the words first', async () => {
+    assert.deepEqual(await ranked(await login(), { query: zinnias }), ['/zinnias', '/aaa-notes']);
+  });
+
+  it('a sort_on replaces the ranking', async () => {
+    assert.deepEqual(
+      await ranked(await login(), { query: zinnias, sort_on: 'sortable_title', sort_order: 'ascending' }),
+      ['/aaa-notes', '/zinnias'],
+    );
+  });
+
+  it('@search with no sort_on ranks the same way', async () => {
+    const res = await fetch(`${baseUrl}/@search?SearchableText=zinnias`, { headers: headers(await login()) });
+    assert.equal(res.status, 200);
+    assert.deepEqual((await res.json()).items.map((i) => new URL(i['@id']).pathname), ['/zinnias', '/aaa-notes']);
+  });
 });
