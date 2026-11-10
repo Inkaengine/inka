@@ -186,21 +186,29 @@ jobs:
         run: |
           # The outage was a build that failed here. Razzle exits 0 on some
           # partial failures, so assert the lines, not just the exit status.
+          #
+          # Match what the build PRINTED, not what it was told to run:
+          # --progress=plain echoes each instruction as well as its output, and
+          # the install RUN carries `echo "EXTRA_PLUGINS set …"` in its own text,
+          # so a plain grep matches on both branches. Output lines carry a
+          # `#<step> <seconds> ` prefix; the echoed instruction does not.
           for line in 'Compiled client default build successfully' \
                       'Compiled server default build successfully'; do
-            grep -qF "$line" "$RUNNER_TEMP/build.log" \
+            grep -qE "^#[0-9]+ +[0-9]+\.[0-9]+ +$line" "$RUNNER_TEMP/build.log" \
               || { echo "::error::missing from the build: $line"; exit 1; }
           done
 
       - name: Assert the install ran exactly once, on the expected footing
         run: |
+          # Only what the build PRINTED counts -- see the note on the prefix above.
+          said () { grep -qE "^#[0-9]+ +[0-9]+\.[0-9]+ +$1" "$RUNNER_TEMP/build.log"; }
           if [ '${{ matrix.expect_frozen }}' = 'true' ]; then
-            grep -qF 'EXTRA_PLUGINS set' "$RUNNER_TEMP/build.log" \
+            said 'EXTRA_PLUGINS set' \
               && { echo '::error::took the unfrozen path with no EXTRA_PLUGINS'; exit 1; }
           else
-            grep -qF 'EXTRA_PLUGINS set' "$RUNNER_TEMP/build.log" \
+            said 'EXTRA_PLUGINS set' \
               || { echo '::error::EXTRA_PLUGINS given but the unfrozen path never ran'; exit 1; }
-            grep -qF 'add-plugins: +' "$RUNNER_TEMP/build.log" \
+            said 'add-plugins: \+' \
               || { echo '::error::EXTRA_PLUGINS given but add-plugins wrote nothing'; exit 1; }
           fi
           # THE ONE RULE, as the thing that broke it: the copy that took down a
@@ -210,7 +218,7 @@ jobs:
           # install is the supported way; `pnpm add` here never is.
           # Comments must be stripped first: this Dockerfile EXPLAINS the bug,
           # so it mentions both `pnpm add -w` and `pnpm install` in prose.
-          instructions=$(grep -vE '^[[:space:]]*#' hydra/docker/admin.Dockerfile)
+          instructions=$(grep -vE '^[[:space:]]*#' docker/admin.Dockerfile)
           printf '%s\n' "$instructions" | grep -nE 'pnpm +add' \
             && { echo '::error::admin.Dockerfile re-resolves the workspace with pnpm add; inject into package.json before the install instead'; exit 1; }
           installs=$(printf '%s\n' "$instructions" | grep -c 'pnpm install' || true)
