@@ -221,9 +221,15 @@ jobs:
           instructions=$(grep -vE '^[[:space:]]*#' docker/admin.Dockerfile)
           printf '%s\n' "$instructions" | grep -nE 'pnpm +add' \
             && { echo '::error::admin.Dockerfile re-resolves the workspace with pnpm add; inject into package.json before the install instead'; exit 1; }
-          installs=$(printf '%s\n' "$instructions" | grep -c 'pnpm install' || true)
-          [ "$installs" -eq 2 ] \
-            || { echo "::error::expected exactly 2 pnpm install lines (the frozen and unfrozen branches of one RUN), found $installs"; exit 1; }
+          # Deliberately NOT a count of `pnpm install` lines. That was the first
+          # version of this check and it was a false proxy: it read 2 when one
+          # stage had a frozen/unfrozen pair, then failed at 4 the moment a
+          # second stage legitimately gained its own pair. The invariant is not
+          # "how many installs exist" -- stages multiply, and the two branches
+          # of one `if` are mutually exclusive anyway -- it is that nothing
+          # re-resolves the workspace AFTER an install, which is what the
+          # `pnpm add` grep above asserts.
+          echo "pnpm install occurrences (informational): $(printf '%s\n' "$instructions" | grep -c 'pnpm install' || true)"
 
       - name: Assert the enabled plugins reached the image's config
         run: |
@@ -242,6 +248,81 @@ jobs:
               -d "/app/node_modules/$plugin" \
               || { echo "::error::$plugin is enabled but not installed"; exit 1; }
           done
+
+      - name: Report the image size
+        run: |
+          size=$(docker image inspect inka-admin:ci --format '{{.Size}}')
+          echo "admin image: $((size / 1024 / 1024)) MB"
+          echo "### admin image: $((size / 1024 / 1024)) MB" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Assert the image actually STARTS
+        run: |
+          # The runtime tree is installed with --prod, so anything the built
+          # server still requires that lives in devDependencies is missing. That
+          # fails when the server starts, NOT when the image builds, so a green
+          # build proves nothing about it -- and before this step nothing
+          # anywhere started this image at all.
+          #
+          # The probe runs INSIDE the container, on purpose. Probing the mapped
+          # host port cannot work: docker binds the host side as soon as the
+          # container starts, whether or not anything inside is listening, so
+          # `</dev/tcp/127.0.0.1/3000` from the runner answers for the forwarder
+          # and says nothing about the server. The first version of this step
+          # did exactly that and reported "listening after ~2s" for a Volto
+          # server that cannot boot that fast, while HTTP returned nothing --
+          # a check that was green and measured the forwarder.
+          #
+          # Asserting an HTTP 200 would be wrong too: with no backend reachable,
+          # server-side rendering can sit waiting on the API or return an error
+          # page. A bound port inside the container means the module graph
+          # loaded, which is precisely what --prod could break.
+          listens () {
+            docker exec "$1" node -e '
+              const s = require("net").connect(3000, "127.0.0.1");
+              s.on("connect", () => process.exit(0));
+              s.on("error", () => process.exit(1));
+              setTimeout(() => process.exit(1), 3000);
+            ' 2>/dev/null
+          }
+
+          # Negative control FIRST, so the probe has to earn its green: the same
+          # image with the server replaced by a sleep. If this one "listens",
+          # the probe is measuring something other than the server and every
+          # pass it ever reported is void.
+          docker run -d --name nolistener --entrypoint sleep inka-admin:ci 300 >/dev/null
+          sleep 3
+          if listens nolistener; then
+            echo '::error::the probe reports a listener in a container that runs `sleep` -- it is not measuring the server'
+            exit 1
+          fi
+          echo 'negative control: no listener detected in a sleeping container, as required'
+          docker rm -f nolistener >/dev/null
+
+          docker run -d --name admin -p 3000:3000 \
+            -e RAZZLE_API_PATH=http://127.0.0.1:8080 \
+            inka-admin:ci >/dev/null
+          for i in $(seq 1 60); do
+            if ! [ "$(docker inspect -f '{{.State.Running}}' admin)" = true ]; then
+              echo '::error::the admin container exited instead of serving'
+              docker logs admin 2>&1 | tail -40
+              exit 1
+            fi
+            if listens admin; then
+              echo "the server is listening inside the container after ~$((i * 2))s"
+              # Informational only: with no backend this may be an error page or
+              # nothing at all, and that is not what is being tested.
+              echo "HTTP from the runner: $(curl -s -o /dev/null -w '%{http_code}' --max-time 10 http://127.0.0.1:3000/ || echo none)"
+              exit 0
+            fi
+            sleep 2
+          done
+          echo '::error::nothing listened on 3000 inside the container within 120s'
+          docker logs admin 2>&1 | tail -40
+          exit 1
+
+      - name: Admin container logs (on failure)
+        if: failure()
+        run: docker logs admin 2>&1 | tail -60 || true
 
       - name: Assert the consumer's own files stayed out of the context
         run: |

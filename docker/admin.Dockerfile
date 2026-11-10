@@ -81,12 +81,37 @@ RUN node docker/enable-plugins.cjs "$VOLTO_PLUGINS $EXTRA_PLUGINS"
 
 RUN pnpm run build
 
+
+# The dependencies the RUNTIME needs, which are not the ones the build needed.
+# `start:prod` runs the prebuilt build/server.js: razzle leaves some modules
+# external, so the server still resolves from node_modules, but nothing there
+# needs a devDependency. Carrying the build stage's tree instead shipped the
+# whole toolchain -- razzle, webpack, the test runners -- in the served image.
+#
+# THE ONE RULE applies here too, per stage: one install, nothing re-resolving
+# after it. EXTRA_PLUGINS goes into package.json BEFORE this install for the
+# same reason it does in the build stage. Addons themselves are plain
+# `dependencies`, so --prod keeps them.
+FROM base AS prod-deps
+ARG VOLTO_PLUGINS=""
+ARG EXTRA_PLUGINS=""
+RUN apt-get -y update && apt-get -y install git make
+RUN --mount=type=cache,id=pnpm,target=/pnpm/store \
+    pnpm dlx mrs-developer missdev --no-config --fetch-https \
+ && if [ -n "$EXTRA_PLUGINS" ]; then \
+      echo "EXTRA_PLUGINS set -- installing unfrozen (see the note above)"; \
+      node docker/add-plugins.cjs "$EXTRA_PLUGINS" && pnpm install --prod --no-frozen-lockfile; \
+    else \
+      pnpm install --prod --frozen-lockfile; \
+    fi
+
 FROM base
-# Full node_modules (workspace links into core/packages) + the cloned Volto
-# packages + the razzle output. `pnpm start:prod` runs `node build/server.js`,
-# which requires from node_modules at runtime; the @plone/* workspace packages
-# resolve through symlinks into core/packages.
-COPY --from=build /app/node_modules /app/node_modules
+# Runtime deps from prod-deps, the BUILT Volto packages and razzle output from
+# build. The @plone/* workspace packages resolve through symlinks into
+# core/packages, which must be the BUILT copies (dist/) -- prod-deps clones
+# core but never runs build:deps, so taking core/packages from there would
+# leave a server importing packages with no dist.
+COPY --from=prod-deps /app/node_modules /app/node_modules
 COPY --from=build /app/core/packages /app/core/packages
 COPY --from=build /app/build /app/build
 # The config the build was MADE from. `FROM base` re-copies the pristine
