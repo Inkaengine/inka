@@ -59,6 +59,8 @@
   },
   "dependencies": {
     "@adobe/remark-gridtables": "3.0.20",
+    "@plone-collective/volto-authomatic": "2.0.4",
+    "@plone-collective/volto-sentry": "1.0.1",
     "@plone/volto": "workspace:*",
     "hast-util-from-html": "2.0.3",
     "hast-util-to-html": "9.0.5",
