@@ -222,6 +222,58 @@ function combineQueries(...queries) {
 }
 
 ////////////////////////////////////////////////////////////////////////////////
+// How a search block sorts
+////////////////////////////////////////////////////////////////////////////////
+//
+// plone/volto#4000: a keyword is ranked by relevance unless the reader chose a
+// sort; with no keyword the listing's own sort applies (relevance has nothing
+// to rank). A sort the reader chose is dropped when the keyword starts or ends,
+// and kept while one keyword changes to another. A frontend keeps the keyword
+// and the chosen sort however it likes (URL, state); these answer the rules.
+
+/**
+ * Whether a search box's text is a keyword Plone can search for: it has a
+ * letter or a digit. A term without one (a lone `"`, `()`) makes Plone's text
+ * index fail, so a frontend drops it, and text of nothing else is no keyword.
+ *
+ * @param {string|null|undefined} text - The search box's text
+ * @returns {boolean}
+ */
+export function hasSearchKeyword(text) {
+  return /[\p{L}\p{N}]/u.test(text || '');
+}
+
+/**
+ * Whether a sort the reader chose stays when the search text changes: not when
+ * a keyword starts or ends. A new keyword is then ranked by relevance, and with
+ * the keyword gone the listing's own sort is back.
+ *
+ * @param {string|null|undefined} beforeText - The search text before
+ * @param {string|null|undefined} nextText - The search text now
+ * @returns {boolean}
+ */
+export function keepsChosenSort(beforeText, nextText) {
+  return hasSearchKeyword(beforeText) === hasSearchKeyword(nextText);
+}
+
+/**
+ * The sort criteria for buildQuerystringSearchBody's `extraCriteria`: the sort
+ * the reader chose, else relevance (`sort_on: null`) with a keyword, else none
+ * (the listing's own sort applies).
+ *
+ * @param {string|null|undefined} text - The search text
+ * @param {string|null|undefined} sortOn - The sort the reader chose, if any
+ * @param {string|null|undefined} [sortOrder] - Its order, if chosen
+ * @returns {{sort_on?: string|null, sort_order?: string}}
+ */
+export function searchSort(text, sortOn, sortOrder) {
+  if (sortOn) {
+    return sortOrder ? { sort_on: sortOn, sort_order: sortOrder } : { sort_on: sortOn };
+  }
+  return hasSearchKeyword(text) ? { sort_on: null } : {};
+}
+
+////////////////////////////////////////////////////////////////////////////////
 // buildQuerystringSearchBody
 ////////////////////////////////////////////////////////////////////////////////
 
