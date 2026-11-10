@@ -138,6 +138,90 @@ export function contentPath(url, apiUrl) {
 }
 
 ////////////////////////////////////////////////////////////////////////////////
+// combineQueries: the query builder's own step, one criterion per index
+////////////////////////////////////////////////////////////////////////////////
+
+/**
+ * Several querystring queries as ONE valid query.
+ *
+ * plone.app.querystring turns a query into a single catalog query keyed by
+ * index, so a second criterion on an index REPLACES the first: "type is any of
+ * [Document]" then "any of [Image]" returns exactly the Images. Criteria from
+ * different places (a listing's own query, a search block's facets, what a
+ * site always leaves out) therefore have to be combined, not appended:
+ *
+ *   any of + any of   → the values both allow
+ *   none of + none of → every value either leaves out
+ *   any of + none of  → the "any of" values less the "none of" ones
+ *   the same criterion twice → once
+ *   two date bounds on one index, or several paths → kept: Plone merges those
+ *     itself (a "from" and a "to" make a range; paths are searched together)
+ *
+ * Anything else on an index that already has a criterion is an error, naming
+ * it, rather than one criterion silently replacing another. So is an "any of"
+ * left with no values: to the catalog that is no restriction at all.
+ *
+ * @param {...Array<{i: string, o: string, v?: unknown}>} queries
+ * @returns {Array<{i: string, o: string, v?: unknown}>} a new list; the inputs are not changed
+ */
+const ANY = 'plone.app.querystring.operation.selection.any';
+const NONE = 'plone.app.querystring.operation.selection.none';
+const DATE_BOUND = /\.date\.(largerThan|lessThan|largerThanRelativeDate|lessThanRelativeDate)$/;
+
+const same = (a, b) => a.o === b.o && JSON.stringify(a.v) === JSON.stringify(b.v);
+const values = (c) => (Array.isArray(c.v) ? c.v : c.v === undefined ? [] : [c.v]);
+
+function combineTwo(kept, next) {
+  const { i } = next;
+  if (kept.o === NONE && next.o === NONE) {
+    return { ...kept, v: [...new Set([...values(kept), ...values(next)])] };
+  }
+  let any;
+  if (kept.o === ANY && next.o === ANY) {
+    const allowed = new Set(values(next));
+    any = values(kept).filter((x) => allowed.has(x));
+  } else if ((kept.o === ANY && next.o === NONE) || (kept.o === NONE && next.o === ANY)) {
+    const [a, n] = kept.o === ANY ? [kept, next] : [next, kept];
+    const left = new Set(values(n));
+    any = values(a).filter((x) => !left.has(x));
+  } else {
+    throw new Error(
+      `combineQueries: index "${i}" has ${kept.o} ${JSON.stringify(kept.v)} and ${next.o} ${JSON.stringify(next.v)}; ` +
+        'Plone keeps only one criterion per index, and these cannot be combined',
+    );
+  }
+  if (any.length === 0) {
+    throw new Error(
+      `combineQueries: index "${i}" allows no value once combined (${JSON.stringify(kept.v)} with ${JSON.stringify(next.v)}); ` +
+        'an empty "any of" would match everything',
+    );
+  }
+  return { i, o: ANY, v: any };
+}
+
+function combineQueries(...queries) {
+  const out = [];
+  for (const criterion of queries.flat()) {
+    const { i } = criterion;
+    const onIndex = out.filter((c) => c.i === i);
+    if (onIndex.some((c) => same(c, criterion))) continue;
+    if (onIndex.length === 0 || i === 'path') {
+      out.push({ ...criterion });
+      continue;
+    }
+    if (DATE_BOUND.test(criterion.o) && onIndex.every((c) => DATE_BOUND.test(c.o))) {
+      out.push({ ...criterion });
+      continue;
+    }
+    if (onIndex.length > 1) {
+      throw new Error(`combineQueries: index "${i}" already has ${onIndex.length} criteria`);
+    }
+    out[out.indexOf(onIndex[0])] = combineTwo(onIndex[0], criterion);
+  }
+  return out;
+}
+
+////////////////////////////////////////////////////////////////////////////////
 // buildQuerystringSearchBody
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -240,6 +324,10 @@ export function buildQuerystringSearchBody(
       });
     }
   }
+  // One criterion per index: a facet on an index the listing's own query
+  // already restricts is combined with it, not appended, which would make
+  // Plone keep only the facet (combineQueries).
+  query = combineQueries(query);
 
   // Default sort: folder order for unconfigured listings, effective date
   // (newest first) for configured ones. Descending is the default ONLY for that
