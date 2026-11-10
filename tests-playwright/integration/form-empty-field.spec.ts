@@ -103,9 +103,6 @@ test.describe('form empty field — pick a type (typed object_list)', () => {
     const iframe = helper.getIframe();
     const ownButton = iframe.locator('[data-block-uid="empty-1"] [data-block-add="button"]');
     await expect(ownButton).toBeVisible({ timeout: 10000 });
-    // A ghost: no visible text, named for assistive tech.
-    await expect(ownButton).toHaveText('');
-    await expect(ownButton).toHaveAccessibleName('Add a question');
 
     // Selected, the empty shows the frontend's button and no '+' of the admin's
     // own, nor the glyph the bridge draws in an empty block.

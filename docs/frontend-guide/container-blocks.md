@@ -496,7 +496,7 @@ So the simplest way to never deal with empty placeholders in a region is to give
 
 Empty blocks are stripped before saving. Render them as empty space; Inka puts a '+' button in the middle for the user to pick a real type in place. You may style the space — a ghost outline, a faint fill — but put nothing in it an author could take for content: no text, no editable field, no form control. Block sanity checks this for every region it can empty.
 
-To give that '+' your own look, render a button inside the empty block and mark it `data-block-add="button"`. Inka then draws no '+' of its own, and clicking your button opens the block chooser beside it to fill the empty in place, as the '+' would. Style it as you like, an icon included, but give it no visible text: name it with `aria-label` so assistive tech still announces it, as in `<button type="button" data-block-add="button" aria-label="Add a question"></button>`.
+To give that '+' your own look, render a button inside the empty block and mark it `data-block-add="button"`. Inka then draws no '+' of its own, and clicking your button opens the block chooser beside it to fill the empty in place, as the '+' would. Your button is yours to draw as you like — an icon, a ghost, a label such as "Add a question" — and is the one thing in an empty block that may hold text.
 
 ### Starting a region with set children — `default`
 

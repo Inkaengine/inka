@@ -696,8 +696,8 @@ interface EmptyRegionCase {
  * An empty placeholder must also be drawn AS empty — "Render them as empty
  * space" (docs/frontend-guide/container-blocks.md, Empty Blocks). It may be
  * styled (a ghost outline), but nothing in it an author could take for
- * content: no text, no editable field, no form control but the frontend's own
- * add button (data-block-add="button"), itself without text. A renderer that
+ * content: no text, no editable field, no form control. The frontend's own add
+ * button (data-block-add="button") is exempt, drawn as it likes. A renderer that
  * falls through to some ordinary block's drawing (a form drawing the
  * placeholder as a text question) fails here.
  *
@@ -706,24 +706,27 @@ interface EmptyRegionCase {
  */
 /**
  * What an author could take for content inside an empty placeholder: visible
- * text, editable fields, and form controls other than the frontend's own add
- * button (an element marked data-block-add="button"). Style is fine — a ghost
- * outline, a faint fill, an icon — but no words, the button's included: it is
- * named for assistive tech by aria-label, not by visible text. Runs in the page.
+ * text, editable fields and form controls. Style is fine (a ghost outline, a
+ * faint fill). The frontend's own add button — an element marked
+ * data-block-add="button" — is the frontend's to draw as it likes, so nothing
+ * inside it is judged. Runs in the page.
  */
 function contentOfEmptyPlaceholder(root: Element): string[] {
   const found: string[] = [];
+  const outsideOwnButton = (n: Node) =>
+    !(n instanceof Element ? n : n.parentElement)?.closest('[data-block-add="button"]');
   for (const c of root.querySelectorAll('input:not([type="hidden"]), textarea, select, button')) {
-    if (c.getAttribute('data-block-add') !== 'button') found.push(`a <${c.tagName.toLowerCase()}> control`);
+    if (outsideOwnButton(c)) found.push(`a <${c.tagName.toLowerCase()}> control`);
   }
   for (const f of root.querySelectorAll('[data-edit-text], [data-edit-media], [data-edit-link]')) {
+    if (!outsideOwnButton(f)) continue;
     const attr = ['data-edit-text', 'data-edit-media', 'data-edit-link'].find((a) => f.hasAttribute(a))!;
     found.push(`an editable field (${attr}="${f.getAttribute(attr)}")`);
   }
   const walker = root.ownerDocument.createTreeWalker(root, NodeFilter.SHOW_TEXT);
   for (let t = walker.nextNode(); t; t = walker.nextNode()) {
     const text = (t.textContent ?? '').replace(/[\u200B\uFEFF]/g, '').trim();
-    if (text) found.push(`the text "${text.slice(0, 40)}"`);
+    if (text && outsideOwnButton(t)) found.push(`the text "${text.slice(0, 40)}"`);
   }
   return found;
 }
@@ -811,8 +814,8 @@ export function defineEmptyRegionTests(options: SanityOptions): void {
               `${where}: the empty placeholder (${uid}) is drawn as if it were content. ` +
                 `Render @type "empty" as empty space — Inka draws the '+' that picks its type ` +
                 `(docs/frontend-guide/container-blocks.md, Empty Blocks). Style it if you like, but ` +
-                `with no text; for your own '+', a button marked data-block-add="button" ` +
-                `named by aria-label. Found: ${content.join('; ')}`,
+                `with no text; to draw your own '+', put it in an element marked ` +
+                `data-block-add="button". Found: ${content.join('; ')}`,
             ).toEqual([]);
           }
         }
