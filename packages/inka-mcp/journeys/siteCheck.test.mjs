@@ -5,7 +5,10 @@
  * brought counts; the test content has problems of its own.
  */
 import { describe, it, expect } from 'vitest';
-import { siteProblems, broughtProblems } from './siteCheck.mjs';
+import { sharedBlocksConfig } from '../../../tests-playwright/fixtures/shared-block-schemas.js';
+import { siteProblems as problemsWith, broughtProblems } from './siteCheck.mjs';
+
+const siteProblems = (cms) => problemsWith(cms, sharedBlocksConfig);
 
 const doc = (path, blocks) => ({
   '@id': `http://cms${path}`, '@type': 'Document', UID: `${path.slice(1)}-uid`, id: path.slice(1), title: path,

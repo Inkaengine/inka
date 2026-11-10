@@ -7,12 +7,10 @@
  *
  * The whole site is read before the agent starts and after it finishes, and
  * only what the run brought counts: the test content has problems of its own,
- * and a problem a page already had is not the agent's. The schemas are the
- * ones both journey front ends draw with (the test frontend's and the Nuxt
- * starter's shared block schemas).
+ * and a problem a page already had is not the agent's. `schemas` are the
+ * block schemas of the front end the run draws with (run.mjs --schemas).
  */
 import validator from '@inka/content-validator';
-import { sharedBlocksConfig } from '../../../tests-playwright/fixtures/shared-block-schemas.js';
 
 const { checkContent } = validator;
 
@@ -32,9 +30,9 @@ async function sitePages(cms) {
   return pages;
 }
 
-/** Each problem on the site, as `<path>: <what is wrong>`. */
-export async function siteProblems(cms) {
-  const { findings } = checkContent(await sitePages(cms), { schemas: sharedBlocksConfig });
+/** Each problem on the site, as `<path>: <what is wrong>`, judged by `schemas`. */
+export async function siteProblems(cms, schemas) {
+  const { findings } = checkContent(await sitePages(cms), { schemas });
   return new Set(findings.map(({ rel, message }) => (message.startsWith(`${rel}:`) ? message : `${rel}: ${message}`)));
 }
 
