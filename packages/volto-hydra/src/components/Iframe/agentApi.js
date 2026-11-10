@@ -341,6 +341,26 @@ export function registerAgentApi(live) {
       await commit('update', () => live.current.onChangeBlock(id, { ...blockData(id), ...fields }));
     },
 
+    /** A block as the editor holds it (stored shape, its own blocks included). */
+    getBlock(id) {
+      requireBlock('getBlock', id);
+      return blockData(id);
+    },
+
+    /**
+     * Make a block exactly `block`, through the sidebar's own handler: a field
+     * it does not have is gone. The MCP works out the block an agent's change
+     * makes (inka-mcp/patchBlock.mjs) and hands it over whole, since a merge
+     * here could not take a field away.
+     */
+    async replace({ id, block }) {
+      requireBlock('replace', id);
+      if (block?.['@type'] !== blockData(id)?.['@type']) {
+        throw new Error(`replace: "${id}" is a ${blockData(id)?.['@type']}, not a ${block?.['@type']}`);
+      }
+      await commit('replace', () => live.current.onChangeBlock(id, block));
+    },
+
     /** Delete a block, as the editor's delete does. */
     async remove(id) {
       requireBlock('remove', id);

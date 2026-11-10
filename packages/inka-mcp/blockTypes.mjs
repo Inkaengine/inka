@@ -26,13 +26,23 @@ function regionOut(r) {
   };
 }
 
-function fieldsOut(blockSchema, regionFields) {
+/**
+ * A block's fields, each with its facts. A field that is an object of fields
+ * of its own (`styles`: alignment, background, …) gives those as `fields`, as
+ * a block does, not as the raw schema the editor draws its form from: read as
+ * a schema, an agent wrote `styles`' fields at the block's top level, where
+ * nothing reads them.
+ */
+function fieldsOut(blockSchema, regionFields = new Set()) {
   const required = new Set(blockSchema.required);
   const fields = {};
   for (const [name, facts] of Object.entries(blockSchema.properties)) {
     if (regionFields.has(name)) continue;
+    const { schema, ...rest } = facts;
+    const nested = facts.widget === 'object' && schema?.properties;
     fields[name] = {
-      ...facts,
+      ...(nested ? rest : facts),
+      ...(nested && { fields: fieldsOut(schema) }),
       ...(required.has(name) && { required: true }),
       ...(facts.widget === 'slate' && { markdown: true }),
     };

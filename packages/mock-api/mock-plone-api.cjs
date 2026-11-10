@@ -5765,6 +5765,24 @@ app.get('*/@search', (req, res) => {
   // `Language=all` to opt out. A search that says nothing about language is
   // left alone: every single-language spec in this suite is one of those, and
   // filtering them by a default would answer a question they never asked.
+  // A search looks under where it was asked (`/news/@search`), or under the
+  // folder `path.query` names: the path index, at its default depth, takes
+  // that object and everything inside it. Depths 0 and 1 are scoped above.
+  // Without this every other search answered with the whole site, so an MCP
+  // search "only inside this section" was never held to its section here.
+  if (pathDepth !== '0' && pathDepth !== '1') {
+    const asked = pathQuery
+      ? (String(pathQuery).startsWith('http') ? new URL(String(pathQuery)).pathname : String(pathQuery))
+      : searchPath;
+    const scope = asked.replace(/\/$/, '');
+    if (scope) {
+      items = items.filter((item) => {
+        const itemPath = String(item['@id'] || '').replace(baseUrl, '') || '/';
+        return itemPath === scope || itemPath.startsWith(`${scope}/`);
+      });
+    }
+  }
+
   items = items.filter((item) => mayView(item, getSessionId(req)));
 
   const languageQuery = req.query.Language;

@@ -131,6 +131,20 @@ describe('SearchableText', () => {
     assert.deepEqual(await found(token, 'Unreachedword'), []);
   });
 
+  it('looks only under where it is asked, or under the folder path.query names', async () => {
+    // The path index at its default depth: that object and everything inside it.
+    const token = await login();
+    const at = async (query) => {
+      const res = await fetch(`${baseUrl}${query}`, { headers: headers(token) });
+      assert.equal(res.status, 200);
+      return (await res.json()).items.map((i) => new URL(i['@id']).pathname).sort();
+    };
+    assert.deepEqual(await at('/beds/@search?SearchableText=marigolds'), ['/beds']);
+    assert.deepEqual(await at('/searched/@search?SearchableText=marigolds'), []);
+    assert.deepEqual(await at('/@search?SearchableText=marigolds&path.query=/searched'), []);
+    assert.deepEqual(await at('/beds/@search'), ['/beds']);
+  });
+
   it("finds a page by the text in its blocks, nested ones included", async () => {
     assert.deepEqual(await found(await login(), 'marigolds'), ['/beds']);
   });
