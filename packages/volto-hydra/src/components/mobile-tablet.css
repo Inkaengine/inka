@@ -460,6 +460,10 @@
     /* 90vh, not 70vh: at 70 the last menu item (Remove, etc.) gets
      * clipped on common ~6-item menus. Sheet still scrolls if taller. */
     max-height: 90vh !important;
+    /* A sheet is as tall as its list. The desktop chooser holds the height it
+     * opened with (an inline min-height, View.jsx) so filtering can't move it;
+     * a sheet is pinned to the bottom and shrinks as its list does. */
+    min-height: 0 !important;
     width: 100% !important;
     min-width: 0 !important;
     background: #fff !important;

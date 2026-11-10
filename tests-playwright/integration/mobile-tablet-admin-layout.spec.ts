@@ -871,6 +871,44 @@ test.describe('Admin layout — mobile (≤767px)', () => {
     ).toBeGreaterThanOrEqual(sb.width - 12);
   });
 
+  test('the add-block bottom sheet stays a sheet that fits its list as you filter', async ({
+    page,
+  }) => {
+    // On a desktop the chooser holds the height it opened with, so filtering
+    // can't move it. A phone's chooser is a bottom sheet instead: pinned to
+    // the bottom, full width, and as tall as its list, so filtering lowers its
+    // top edge as it always has.
+    await page.setViewportSize({ width: 412, height: 915 });
+    const helper = new AdminUIHelper(page);
+    await helper.login();
+    await helper.navigateToEdit('/test-page');
+    await helper.clickBlockInIframe('block-1-uuid');
+
+    await page.locator('.volto-hydra-add-button').click();
+    const sheet = page.locator('.add-new-block-popup');
+    const chooser = page.locator('.blocks-chooser');
+    await expect(chooser).toBeVisible();
+    // Let the slide-up animation finish before measuring.
+    await expect
+      .poll(async () => {
+        const b = (await sheet.boundingBox())!;
+        return Math.round(b.y + b.height);
+      })
+      .toBe(915);
+    const opened = (await sheet.boundingBox())!;
+    expect({ x: opened.x, width: opened.width }).toEqual({ x: 0, width: 412 });
+
+    const types = chooser.locator('.ui.buttons > button:visible');
+    const before = await types.count();
+    await chooser.locator('.searchbox input').pressSequentially('image');
+    await expect.poll(() => types.count()).toBeLessThan(before);
+
+    const filtered = (await sheet.boundingBox())!;
+    expect({ x: filtered.x, width: filtered.width, bottom: Math.round(filtered.y + filtered.height) })
+      .toEqual({ x: 0, width: 412, bottom: 915 });
+    expect(filtered.height, 'the sheet fits its shorter list').toBeLessThan(opened.height);
+  });
+
   test("the add '+' never leaves the iframe canvas (would sit under the bottom toolbar)", async ({
     page,
   }) => {
