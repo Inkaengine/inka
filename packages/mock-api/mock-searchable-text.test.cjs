@@ -161,3 +161,46 @@ describe('SearchableText', () => {
     assert.deepEqual(await found(token, 'marigolds'), []);
   });
 });
+
+/**
+ * The Title index alone, as a title autocomplete asks it: by `@search?Title=`
+ * or by a `Title` criterion to @querystring-search (which, unlike
+ * SearchableText, plone.app.querystring passes to the catalog un-munged).
+ * The index is ZCTextIndex: every word must be a whole word of the title,
+ * unless it ends in `*`, which makes it a prefix. Checked against a Plone 6.2
+ * site: `Comp` finds nothing, `Comp*` finds "Complaint…", `omplain` finds
+ * nothing, `complaint form` finds the titles with both words. The mock's
+ * @querystring-search matched a substring, `*` included, so a `Head*` asked
+ * for a title containing "head*" and found none.
+ */
+describe('Title index', () => {
+  async function byTitleSearch(token, text) {
+    const res = await fetch(`${baseUrl}/@search?Title=${encodeURIComponent(text)}`, { headers: headers(token) });
+    assert.equal(res.status, 200);
+    return (await res.json()).items.map((i) => new URL(i['@id']).pathname).sort();
+  }
+  async function byTitleQuery(token, text) {
+    const res = await fetch(`${baseUrl}/@querystring-search`, {
+      method: 'POST',
+      headers: headers(token),
+      body: JSON.stringify({
+        query: [{ i: 'Title', o: 'plone.app.querystring.operation.string.contains', v: text }],
+      }),
+    });
+    assert.equal(res.status, 200);
+    return (await res.json()).items.map((i) => new URL(i['@id']).pathname).sort();
+  }
+
+  for (const [route, search] of [['@search', byTitleSearch], ['@querystring-search', byTitleQuery]]) {
+    it(`${route} matches whole title words, and a prefix only where * says so`, async () => {
+      const token = await login();
+      assert.deepEqual(await search(token, 'Garden'), ['/beds']);
+      assert.deepEqual(await search(token, 'gard*'), ['/beds']);
+      assert.deepEqual(await search(token, 'garden bed*'), ['/beds']);
+      assert.deepEqual(await search(token, 'Gard'), [], 'a part of a word, without *');
+      assert.deepEqual(await search(token, 'arden*'), [], 'not the start of a word');
+      assert.deepEqual(await search(token, 'garden roses'), [], 'every word must be there');
+      assert.deepEqual(await search(token, 'marigolds'), [], 'the body is not the title');
+    });
+  }
+});

@@ -747,6 +747,26 @@ function matchRawSearch(searchTerm, item, blocksText = '') {
     .some(matchesAlternative);
 }
 
+/**
+ * The Title index (ZCTextIndex) asked on its own — `@search?Title=`, or a
+ * `Title` criterion, which plone.app.querystring passes to the catalog
+ * un-munged: every word must be a whole word of the title, unless it ends in
+ * `*`, which makes it a prefix. Checked against Plone 6.2: `Comp` finds
+ * nothing, `Comp*` finds "Complaint…", `omplain` finds nothing.
+ */
+function matchTitleIndex(query, title) {
+  const words = String(title || '').toLowerCase().split(/\W+/).filter(Boolean);
+  return String(query)
+    .toLowerCase()
+    .split(/\s+/)
+    .filter(Boolean)
+    .every((term) =>
+      term.endsWith('*')
+        ? words.some((w) => w.startsWith(term.slice(0, -1)))
+        : words.includes(term),
+    );
+}
+
 function matchSearchableText(searchTerm, item, blocksText = '') {
   const term = (searchTerm || '').replace(/\*+$/g, '').trim().toLowerCase();
   if (!term) return true;
@@ -5419,11 +5439,7 @@ app.post('*/@querystring-search', (req, res) => {
       // was dropped, so the endpoint returned the whole collection and any
       // test asserting "the filter found something" passed without filtering.
       if (value) {
-        allItems = allItems.filter((item) =>
-          String(item.title ?? '')
-            .toLowerCase()
-            .includes(String(value).toLowerCase()),
-        );
+        allItems = allItems.filter((item) => matchTitleIndex(value, item.title));
       }
     } else if (
       operation === 'plone.app.querystring.operation.date.largerThan' ||
@@ -5601,17 +5617,7 @@ app.get('*/@search', (req, res) => {
       .filter((content) => !searchableText || matchSearchableText(searchableText, content, blocksSearchableText(content.blocks)))
       .map((content) => formatSearchItem(content, baseUrl));
     if (titleQuery) {
-      const terms = String(titleQuery)
-        .toLowerCase()
-        .split(/\s+/)
-        .filter(Boolean)
-        .map((t) => (t.endsWith('*') ? t.slice(0, -1) : t));
-      items = items.filter((item) => {
-        const words = String(item.title || '')
-          .toLowerCase()
-          .split(/\W+/);
-        return terms.every((t) => words.some((w) => w.startsWith(t)));
-      });
+      items = items.filter((item) => matchTitleIndex(titleQuery, item.title));
     }
     // Filter by portal_type if specified
     if (portalType) {
