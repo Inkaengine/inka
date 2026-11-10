@@ -32,6 +32,21 @@ describe('checkContent', () => {
     assert.ok(!errors.some((e) => /widget:slate|hero\.url/.test(e)), errors.join('\n'));
   });
 
+  it('says which item each error is about, as data', () => {
+    // A stray field is one line per block type and field across all items
+    // ("hero.url … (e.g. /page)"), so its line cannot say whose it is; a caller
+    // checking one page (the MCP's save check) asks the findings instead.
+    const other = page({ url: '/y' }).map(({ data }) => ({ rel: '/other', data: { ...data, '@id': '/other', UID: 'other-uid', id: 'other' } }));
+    const { findings } = checkContent([...page({ description: 'plain text', url: '/x' }), ...other], { schemas: SCHEMAS });
+    const whose = (re) => findings.filter((f) => re.test(f.message)).map((f) => f.rel).sort();
+    assert.deepEqual(whose(/hero\.url/), ['/other', '/page'], JSON.stringify(findings));
+    assert.deepEqual(whose(/widget:slate/), ['/page'], JSON.stringify(findings));
+    assert.deepEqual(
+      findings.filter((f) => f.field).map(({ rel, blockType, field }) => ({ rel, blockType, field })).sort((a, b) => a.rel.localeCompare(b.rel)),
+      [{ rel: '/other', blockType: 'hero', field: 'url' }, { rel: '/page', blockType: 'hero', field: 'url' }],
+    );
+  });
+
   it('passes content that matches its schemas', () => {
     const { errors } = checkContent(page({ heading: 'H', description: [{ type: 'p', children: [{ text: 'x' }] }] }), { schemas: SCHEMAS });
     assert.ok(!errors.some((e) => /hero/.test(e)), errors.join('\n'));

@@ -41,14 +41,15 @@ async function onSite({ kind, value }, site) {
 async function problems(data, { path, blocksConfig, templates, site, held }) {
   const items = [{ rel: path, data: { ...data, '@id': path } }, ...templates];
   const checked = checkContent(items, { schemas: blocksConfig, elsewhere: true, held });
+  // Only the page's own problems: the templates are checked for what the page
+  // needs of them. Each finding names its item as data; how a line begins is
+  // up to the pass that wrote it (a stray field's leads with the field).
+  const own = ({ rel }) => rel === path;
   const missing = [];
-  for (const reference of checked.elsewhere) {
-    if (!(await onSite(reference, site))) missing.push(reference.message);
+  for (const reference of checked.elsewhere.filter(own)) {
+    if (!(await onSite(reference, site))) missing.push(reference.message.trim());
   }
-  return [...checked.errors, ...missing]
-    // Only the page's own problems: the templates are checked for what the page needs of them.
-    .filter((line) => line.trim().startsWith(`${path}:`))
-    .map((line) => line.trim());
+  return [...checked.findings.filter(own).map(({ message }) => message), ...missing];
 }
 
 /**

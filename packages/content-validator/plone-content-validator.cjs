@@ -12,7 +12,9 @@
  *                            (blob files, __metadata__ cross-check) skip for
  *                            the in-memory form.
  *
- * Both return { errors: string[], warnings: string[], stats: object }.
+ * Both return { errors: string[], warnings: string[], stats: object };
+ * checkIntegrity, checkBlockSchemas and checkContent also return each error as
+ * `findings: [{ rel, message }]`, so a caller can ask which are one item's.
  * The same errors surface whether invoked at mock-api startup or from a CI
  * script.
  */
@@ -482,8 +484,16 @@ function checkIntegrity(source, { schemasFor, allowMissingBlobs = false, idField
   const contentDir = onDisk ? source : null;
   const errors = [];
   const warnings = [];
+  // Each error with the item it is about, as data (`findings`): a caller
+  // checking one page among others (the MCP's save check) asks which are that
+  // page's by `rel`, never by how the line happens to begin.
+  const findings = [];
+  const fail = (rel, line) => {
+    errors.push(line);
+    findings.push({ rel, message: line.trim() });
+  };
   // See validate(): a bytes-less generated blob is a warning under this flag.
-  const missingBlob = (msg) => (allowMissingBlobs ? warnings : errors).push(msg);
+  const missingBlob = (rel, msg) => (allowMissingBlobs ? warnings.push(msg) : fail(rel, msg));
   const deferred = [];
   const stats = {
     items: 0,
@@ -520,14 +530,14 @@ function checkIntegrity(source, { schemasFor, allowMissingBlobs = false, idField
     // it only for on-disk export trees, where a missing id aborts the import.
     if (!isRoot && onDisk) {
       if (!data.id) {
-        errors.push(`  ${rel}: missing id (Plone import aborts with KeyError: 'id')`);
+        fail(rel, `  ${rel}: missing id (Plone import aborts with KeyError: 'id')`);
       } else if (/^_/.test(data.id)) {
-        errors.push(`  ${rel}: id "${data.id}" starts with underscore (Plone OFS rejects it at import)`);
+        fail(rel, `  ${rel}: id "${data.id}" starts with underscore (Plone OFS rejects it at import)`);
       }
     }
     if (data.UID) {
       if (uidMap.has(data.UID)) {
-        errors.push(`  ${rel}: duplicate UID ${data.UID} (also in ${uidMap.get(data.UID)})`);
+        fail(rel, `  ${rel}: duplicate UID ${data.UID} (also in ${uidMap.get(data.UID)})`);
       } else {
         uidMap.set(data.UID, rel);
       }
@@ -546,12 +556,12 @@ function checkIntegrity(source, { schemasFor, allowMissingBlobs = false, idField
 
   // Whether a UID or path is known: among the items given, or (`elsewhere`)
   // deferred to the caller with the message to report if the site lacks it.
-  const defer = (kind, value, message) => {
-    deferred.push({ kind, value, message });
+  const defer = (kind, value, message, rel) => {
+    deferred.push({ kind, value, message, rel });
     return true;
   };
-  const knownUid = (uid, message) => uidMap.has(uid) || (elsewhere && defer('uid', uid, message));
-  const knownPath = (p, message) => pathMap.has(p) || (elsewhere && defer('path', p, message));
+  const knownUid = (uid, message, rel) => uidMap.has(uid) || (elsewhere && defer('uid', uid, message, rel));
+  const knownPath = (p, message, rel) => pathMap.has(p) || (elsewhere && defer('path', p, message, rel));
 
   // Pass 2a: resolveuid references
   // The UID alphabet the mock resolves (`[a-z0-9][-a-z0-9]*`): Plone's own are
@@ -564,11 +574,11 @@ function checkIntegrity(source, { schemasFor, allowMissingBlobs = false, idField
     let m;
     while ((m = resolveuidRe.exec(text)) !== null) {
       const uid = m[1];
-      if (knownUid(uid, `  ${rel}: broken resolveuid/${uid}`)) {
+      if (knownUid(uid, `  ${rel}: broken resolveuid/${uid}`, rel)) {
         stats.resolveuidOk += 1;
       } else {
         stats.resolveuidBroken += 1;
-        errors.push(`  ${rel}: broken resolveuid/${uid}`);
+        fail(rel, `  ${rel}: broken resolveuid/${uid}`);
       }
     }
   }
@@ -619,7 +629,7 @@ function imageDimensions(file) {
     const blobPath = img.blob_path || '';
     const download = img.download || '';
     if (download && download.startsWith('http')) {
-      errors.push(`  ${rel}: image has remote URL (not blob_path): ${download.slice(0, 60)}`);
+      fail(rel, `  ${rel}: image has remote URL (not blob_path): ${download.slice(0, 60)}`);
       stats.imagesBroken += 1;
     } else if (blobPath) {
       const blobFile = path.join(contentDir, blobPath);
@@ -639,11 +649,11 @@ function imageDimensions(file) {
           stats.imagesOk += 1;
         }
       } else {
-        missingBlob(`  ${rel}: blob file missing: ${blobPath}`);
+        missingBlob(rel, `  ${rel}: blob file missing: ${blobPath}`);
         stats.imagesBroken += 1;
       }
     } else {
-      errors.push(`  ${rel}: Image has no image data`);
+      fail(rel, `  ${rel}: Image has no image data`);
       stats.imagesBroken += 1;
     }
   }
@@ -687,10 +697,10 @@ function imageDimensions(file) {
   // Classify a reference. Returns null when verified/recognized, or a reason
   // string when it is a failure. NOTHING is silently accepted — an unrecognized
   // form returns a reason so it fails loudly.
-  function refFailure(ref, where) {
+  function refFailure(ref, where, rel) {
     if (held.has(ref)) return null;                        // a file the save uploads first
     const ru = ref.match(/resolveuid\/([a-z0-9][-a-z0-9]*)/);
-    if (ru) return knownUid(ru[1], `${where}: broken resolveuid/${ru[1]}`) ? null : `broken resolveuid/${ru[1]}`;
+    if (ru) return knownUid(ru[1], `${where}: broken resolveuid/${ru[1]}`, rel) ? null : `broken resolveuid/${ru[1]}`;
     if (/^https?:\/\//.test(ref)) return null;             // external — well-formed, unverifiable offline
     if (/^(mailto:|tel:|data:)/.test(ref)) return null;    // known schemes
     if (ref.startsWith('#')) return null;                  // in-page anchor
@@ -713,7 +723,7 @@ function imageDimensions(file) {
       // `/` is the site itself: every site has one, whether or not this content
       // carries a site-root item (a frontend's fixtures mounted alone do not).
       if (base === '/') return null;
-      return knownPath(base, `${where}: path not in content: ${base}`) ? null : `path not in content: ${base}`;
+      return knownPath(base, `${where}: path not in content: ${base}`, rel) ? null : `path not in content: ${base}`;
     }
     // Plone action / browser-view URLs relative to the current context (they
     // don't match the absolute-path branch above). These are UI actions, not
@@ -750,15 +760,15 @@ function imageDimensions(file) {
   // items with no id — or a repeated one — all resolve to one item: a whole
   // table rendering its last cell everywhere. Reading the schema-named idField
   // (not "any id") also catches ids written under the wrong key.
-  function checkItemIds(items, idKey, what, where) {
+  function checkItemIds(rel, items, idKey, what, where) {
     const seen = new Set();
     items.forEach((item, i) => {
       if (!item || typeof item !== 'object') return;
       const id = item[idKey];
       if (id == null || id === '') {
-        errors.push(`${where} ${what} ${i} has no id "${idKey}" — every item needs its own id, or frontends collapse the items onto one`);
+        fail(rel, `${where} ${what} ${i} has no id "${idKey}" — every item needs its own id, or frontends collapse the items onto one`);
       } else if (seen.has(id)) {
-        errors.push(`${where} ${what} ${i} repeats id "${id}" — every item needs its own id, or frontends collapse the items onto one`);
+        fail(rel, `${where} ${what} ${i} repeats id "${id}" — every item needs its own id, or frontends collapse the items onto one`);
       } else {
         seen.add(id);
       }
@@ -771,9 +781,9 @@ function imageDimensions(file) {
     // here by type.
     if (block['@type'] === 'slateTable' && Array.isArray(block.table && block.table.rows)) {
       const where = `  ${rel}: block ${bid} (slateTable)`;
-      checkItemIds(block.table.rows, 'key', 'table row', where);
+      checkItemIds(rel, block.table.rows, 'key', 'table row', where);
       block.table.rows.forEach((row, r) => {
-        if (row && Array.isArray(row.cells)) checkItemIds(row.cells, 'key', `table row ${r} cell`, where);
+        if (row && Array.isArray(row.cells)) checkItemIds(rel, row.cells, 'key', `table row ${r} cell`, where);
       });
     }
     // A block FIELD's value must match its schema widget's shape. This catches a
@@ -796,7 +806,7 @@ function imageDimensions(file) {
           // it over as `resolveuid/<uid>`: store it as an `@id`.
           if (typeof v === 'string' && /(^|\/)resolveuid\//.test(v) && !PLONE_RESOLVES_BY_NAME.has(field)) {
             stats.linksBroken += 1;
-            errors.push(
+            fail(rel, 
               `  ${rel}: block ${bid} (${block['@type']}) field "${field}" holds ${v} as a bare string, ` +
                 `which Plone does not resolve in a field of that name — store it as { "@id": "${v}" }`,
             );
@@ -805,25 +815,25 @@ function imageDimensions(file) {
           // Every reference the field holds, in whichever shape it stores it.
           for (const ref of refStrings(v)) {
             const where = `  ${rel}: block ${bid} (${block['@type']}) ${field}`;
-            const reason = refFailure(ref, where);
+            const reason = refFailure(ref, where, rel);
             if (reason) {
               stats.linksBroken += 1;
-              errors.push(`${where}: ${reason}`);
+              fail(rel, `${where}: ${reason}`);
             } else {
               stats.linksOk += 1;
             }
           }
         } else if (def.widget === 'slate' && !Array.isArray(v)) {
-          errors.push(`  ${rel}: block ${bid} (${block['@type']}) field "${field}" is widget:slate but its value is ${shape(v)} — a slate field must be a bare array of nodes (a {value:[…]} wrapper or richtext value has leaked in)`);
+          fail(rel, `  ${rel}: block ${bid} (${block['@type']}) field "${field}" is widget:slate but its value is ${shape(v)} — a slate field must be a bare array of nodes (a {value:[…]} wrapper or richtext value has leaked in)`);
         } else if (def.widget === 'slate' && v.length > 1) {
           // One top-level node, everywhere. The rule below already said so for
           // slate BLOCKS but was gated on `@type === 'slate'`, so a slate FIELD
           // of any other block went unchecked — and hero_block's `description`
           // held two paragraphs while the page drew one, passing every gate.
           // A slate field is a slate field.
-          errors.push(`  ${rel}: block ${bid} (${block['@type']}) field "${field}" has ${v.length} top-level nodes (expected 1 — put the rest in their own blocks)`);
+          fail(rel, `  ${rel}: block ${bid} (${block['@type']}) field "${field}" has ${v.length} top-level nodes (expected 1 — put the rest in their own blocks)`);
         } else if (def.widget === 'richtext' && (Array.isArray(v) || typeof v !== 'object' || typeof v.data !== 'string')) {
-          errors.push(`  ${rel}: block ${bid} (${block['@type']}) field "${field}" is widget:richtext but its value is ${shape(v)} — a richtext field must be the HTML shape {data, content-type, encoding}`);
+          fail(rel, `  ${rel}: block ${bid} (${block['@type']}) field "${field}" is widget:richtext but its value is ${shape(v)} — a richtext field must be the HTML shape {data, content-type, encoding}`);
         } else if (def.widget === 'object_list' && Array.isArray(v)) {
           // An object_list must declare ONE of three things, and which one it
           // declares is the whole answer:
@@ -839,7 +849,7 @@ function imageDimensions(file) {
           // items are, and nor can this gate.
           const isTyped = !!(def.typeField || def.allowedBlocks);
           if (!def.schema && !isTyped && def.subBlocks !== false) {
-            errors.push(`  ${rel}: block ${bid} (${block['@type']}) object_list field "${field}" declares none of \`schema\`, \`allowedBlocks\`/\`typeField\` or \`subBlocks: false\` — a list is records of one shape, items that vary in kind, or a plain list, and the schema has to say which`);
+            fail(rel, `  ${rel}: block ${bid} (${block['@type']}) object_list field "${field}" declares none of \`schema\`, \`allowedBlocks\`/\`typeField\` or \`subBlocks: false\` — a list is records of one shape, items that vary in kind, or a plain list, and the schema has to say which`);
           }
           // allowedBlocks means the items vary in kind, so the schema has to
           // name the field that says which — the type does not live in a fixed
@@ -847,9 +857,9 @@ function imageDimensions(file) {
           // `@type`; both state it. Defaulting to `@type` here guessed on the
           // schema's behalf and would read the wrong field without a word.
           if (def.allowedBlocks && !def.typeField) {
-            errors.push(`  ${rel}: block ${bid} (${block['@type']}) object_list field "${field}" declares \`allowedBlocks\` but no \`typeField\` — its items vary in kind, so the schema has to name the field their type is read from`);
+            fail(rel, `  ${rel}: block ${bid} (${block['@type']}) object_list field "${field}" declares \`allowedBlocks\` but no \`typeField\` — its items vary in kind, so the schema has to name the field their type is read from`);
           }
-          checkItemIds(v, def.idField || '@id', `object_list field "${field}" item`, `  ${rel}: block ${bid} (${block['@type']})`);
+          checkItemIds(rel, v, def.idField || '@id', `object_list field "${field}" item`, `  ${rel}: block ${bid} (${block['@type']})`);
           if (isTyped) {
             // The schema-named field first, `@type` as the alternative — the
             // way hydra's own reader works: getBlockType is
@@ -862,7 +872,7 @@ function imageDimensions(file) {
             const typeKey = def.typeField || '@type';
             v.forEach((item, i) => {
               if (item && typeof item === 'object' && item[typeKey] == null && item['@type'] == null) {
-                errors.push(`  ${rel}: block ${bid} (${block['@type']}) object_list field "${field}" item ${i} is missing its type field "${typeKey}" — this field declares \`allowedBlocks\`/\`typeField\`, so its items vary in kind and each must say which it is`);
+                fail(rel, `  ${rel}: block ${bid} (${block['@type']}) object_list field "${field}" item ${i} is missing its type field "${typeKey}" — this field declares \`allowedBlocks\`/\`typeField\`, so its items vary in kind and each must say which it is`);
               }
             });
           }
@@ -876,14 +886,14 @@ function imageDimensions(file) {
     // multi-block cell belongs in a `columns` block. (Recurses via the sub-item
     // walk below, so object_list/column children are checked too.)
     if (block['@type'] === 'slate' && Array.isArray(block.value) && block.value.length > 1) {
-      errors.push(`  ${rel}: block ${bid} (slate) value has ${block.value.length} top-level nodes (expected 1; run normalizeSlateValue)`);
+      fail(rel, `  ${rel}: block ${bid} (slate) value has ${block.value.length} top-level nodes (expected 1; run normalizeSlateValue)`);
     }
     for (const url of slateLinkUrls(block.value)) {
       const where = `  ${rel}: block ${bid} (${block['@type']}) slate link`;
-      const reason = refFailure(url, where);
+      const reason = refFailure(url, where, rel);
       if (reason) {
         stats.linksBroken += 1;
-        errors.push(`${where}: ${reason}`);
+        fail(rel, `${where}: ${reason}`);
       } else {
         stats.linksOk += 1;
       }
@@ -904,10 +914,10 @@ function imageDimensions(file) {
         for (const ref of refStrings(v)) {
           if (!looksLikeReference(ref)) continue;
           const where = `  ${rel}: block ${bid} (${block['@type']}) ${field}`;
-          const reason = refFailure(ref, where);
+          const reason = refFailure(ref, where, rel);
           if (reason) {
             stats.linksBroken += 1;
-            errors.push(`${where}: ${reason}`);
+            fail(rel, `${where}: ${reason}`);
           } else {
             stats.linksOk += 1;
           }
@@ -1051,7 +1061,7 @@ function imageDimensions(file) {
       }
       if (missing.length) {
         stats.templateBlocksBroken = (stats.templateBlocksBroken || 0) + 1;
-        errors.push(
+        fail(rel, 
           `  ${rel}: template block ${label} (${block['@type']}) is missing ` +
           `${missing.join(' and ')} — forced-layout expansion skips it silently, ` +
           `so it will never render`,
@@ -1121,7 +1131,7 @@ function imageDimensions(file) {
         if (!groups.has(slotId)) groups.set(slotId, []);
         groups.get(slotId).push(i);
         if (lastSlotId !== null && lastSlotId !== slotId) {
-          errors.push(
+          fail(rel, 
             `${rel}: slot groups "${lastSlotId}" and "${slotId}" sit next to each other in ${where} ` +
             `with no fixed block between them — chrome is what marks where one slot ends, so a block ` +
             `added here could belong to either. Mark the one that is chrome (a heading, usually) ` +
@@ -1134,7 +1144,7 @@ function imageDimensions(file) {
       for (const [slotId, at] of groups) {
         for (let i = 1; i < at.length; i++) {
           if (at[i] !== at[i - 1] + 1) {
-            errors.push(
+            fail(rel, 
               `${rel}: the blocks of slot "${slotId}" are not contiguous in ${where} — ` +
               `a slot's blocks must sit together, or the merge cannot tell which slot a block joins`,
             );
@@ -1258,7 +1268,7 @@ function imageDimensions(file) {
         const slots = [
           ...new Set(childEntries(data, idFieldMap).map(({ block }) => block.slotId).filter(Boolean)),
         ];
-        errors.push(
+        fail(rel, 
           `${rel}: its blocks hold template slots (${slots.map((slot) => `"${slot}"`).join(', ')}) ` +
             `and name no template, so it is read as a template definition — but nothing uses it as a ` +
             `template: no page's blocks name it, and the site offers it as no layout or template ` +
@@ -1298,7 +1308,7 @@ function imageDimensions(file) {
             if (!block.slotId) missing.push('slotId');
             if (missing.length) {
               stats.instanceBlocksBroken = (stats.instanceBlocksBroken || 0) + 1;
-              errors.push(
+              fail(rel, 
                 `  ${rel}: block ${bid} (${block['@type']}) fills template ` +
                 `${block.templateId} but is missing ${missing.join(', ')} — a block ` +
                 `with no slotId is dropped by forced-layout expansion and never ` +
@@ -1308,7 +1318,7 @@ function imageDimensions(file) {
               const shouldBeFixed = chrome.get(block.slotId);
               if (shouldBeFixed && block.fixed !== true) {
                 stats.instanceBlocksBroken = (stats.instanceBlocksBroken || 0) + 1;
-                errors.push(
+                fail(rel, 
                   `  ${rel}: block ${bid} fills slot "${block.slotId}", which its template ` +
                   `marks fixed — the instance must say fixed: true too, or the heading is ` +
                   `read as an open slot and the page cannot be saved`,
@@ -1349,7 +1359,7 @@ function imageDimensions(file) {
         if (seen.has(ref)) {
           stats.layoutBroken += 1;
           const where = bid ? `block ${bid} ` : 'page ';
-          errors.push(`  ${rel}: ${where}blocks_layout.${lkey} lists block ${ref} twice`);
+          fail(rel, `  ${rel}: ${where}blocks_layout.${lkey} lists block ${ref} twice`);
           continue;
         }
         seen.add(ref);
@@ -1358,7 +1368,7 @@ function imageDimensions(file) {
         } else {
           stats.layoutBroken += 1;
           const where = bid ? `block ${bid} ` : 'page ';
-          errors.push(`  ${rel}: ${where}blocks_layout.${lkey} references missing block ${ref}`);
+          fail(rel, `  ${rel}: ${where}blocks_layout.${lkey} references missing block ${ref}`);
         }
       }
     }
@@ -1375,7 +1385,7 @@ function imageDimensions(file) {
       if (!block || typeof block !== 'object') continue;
       const where = parentId ?? parent ?? 'the page';
       if (firstIn.has(bid)) {
-        errors.push(`  ${rel}: block id ${bid} is used twice (in ${firstIn.get(bid)} and ${where}) — a block id must be unique on its page, or the editor can select and edit only one of them`);
+        fail(rel, `  ${rel}: block id ${bid} is used twice (in ${firstIn.get(bid)} and ${where}) — a block id must be unique on its page, or the editor can select and edit only one of them`);
       } else {
         firstIn.set(bid, where);
       }
@@ -1404,7 +1414,7 @@ function imageDimensions(file) {
       const parentAtId = atId.slice(0, atId.lastIndexOf('/'));
       if (!parentAtId) continue;  // top-level: parent is the site root
       if (!pathMap.has(parentAtId)) {
-        errors.push(`  ${entry}: parent container missing (${parentAtId})`);
+        fail(entry, `  ${entry}: parent container missing (${parentAtId})`);
       }
     }
   }
@@ -1416,7 +1426,7 @@ function imageDimensions(file) {
         `references were NOT checked: ${[...unschemad].sort().join(', ')}`,
     );
   }
-  return { errors, warnings, stats, ...(elsewhere && { elsewhere: deferred }) };
+  return { errors, findings, warnings, stats, ...(elsewhere && { elsewhere: deferred }) };
 }
 
 
@@ -1459,6 +1469,10 @@ function checkBlockSchemas(source, fieldMap, { idFieldMap = null } = {}) {
   // One report per (blockType, field): a stray field is a converter bug, and a
   // converter repeats itself across every page it touched.
   const strays = new Map();
+  // And each one per item, with the item it was found in, as data: one page's
+  // stray fields, for a caller checking that page (see checkIntegrity).
+  const findings = [];
+  const found = new Set();
 
   const visit = (block, rel) => {
     if (!block || typeof block !== 'object') return;
@@ -1502,6 +1516,13 @@ function checkBlockSchemas(source, fieldMap, { idFieldMap = null } = {}) {
           if (declared.includes(field)) continue;
           const key = `${type}.${field}`;
           if (!strays.has(key)) strays.set(key, rel);
+          if (!found.has(`${rel}\0${key}`)) {
+            found.add(`${rel}\0${key}`);
+            findings.push({
+              rel, blockType: type, field,
+              message: `${rel}: ${key} is not declared by the block's schema — the field cannot be edited, and whatever reads it renders nothing`,
+            });
+          }
         }
       }
     }
@@ -1526,7 +1547,7 @@ function checkBlockSchemas(source, fieldMap, { idFieldMap = null } = {}) {
         `the field cannot be edited, and whatever reads it renders nothing`,
     );
   }
-  return { errors, warnings, stats };
+  return { errors, findings, warnings, stats };
 }
 
 /**
@@ -1970,6 +1991,8 @@ function idFieldMapFor(schemas) {
  * only. `source` is a directory or `[{ rel, data }]`. With `elsewhere`, references
  * to content outside `source` come back in `elsewhere` instead of as errors.
  * `held`: the files the save that follows uploads first (see checkIntegrity).
+ * `findings` holds each error with the item it is about (`rel`); a stray field,
+ * reported once per block type and field in `errors`, is a finding per item.
  */
 function checkContent(source, { schemas = null, allowMissingBlobs = false, elsewhere = false, held = new Set() } = {}) {
   const idFieldMap = idFieldMapFor(schemas);
@@ -1982,9 +2005,10 @@ function checkContent(source, { schemas = null, allowMissingBlobs = false, elsew
   });
   const declared = schemas
     ? checkBlockSchemas(source, fieldMapFromSchemas(schemas), { idFieldMap })
-    : { errors: [], warnings: [] };
+    : { errors: [], findings: [], warnings: [] };
   return {
     errors: [...integrity.errors, ...declared.errors],
+    findings: [...integrity.findings, ...declared.findings],
     warnings: [...integrity.warnings, ...declared.warnings],
     ...(elsewhere && { elsewhere: integrity.elsewhere }),
   };

@@ -60,6 +60,16 @@ describe('checkDraft', () => {
     await expect(check(SAVED, draft)).rejects.toThrow(/unrecognized reference form: inka-pending:1/);
   });
 
+  it('refuses a field the block does not declare', async () => {
+    // A teaser's alignment is styles.align; stored as `align`, nothing reads it
+    // and the editor cannot show it. The validator reports a stray field once
+    // per block type and field, not led by the page's path.
+    const stray = { ...teaserTo('/events'), align: 'center' };
+    const refused = await check(SAVED, withBlock(SAVED, 't', stray), siteWith({ paths: ['/events'] })).catch((error) => error);
+    expect(refused).toBeInstanceOf(DraftInvalid);
+    expect(refused.message).toMatch(/teaser\.align is not declared by the block's schema/);
+  });
+
   it('does not blame the change for a problem the page already had', async () => {
     const broken = withBlock(SAVED, 't', teaserTo('/gone'));
     const edited = { ...broken, title: 'News, retitled' };
