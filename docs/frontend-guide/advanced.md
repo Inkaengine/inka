@@ -140,6 +140,16 @@ export default function Blog({ params }) {
 }
 ```
 
+## Who your frontend's requests run as
+
+Every request your frontend makes to the CMS runs as someone: nobody (anonymous), the editor, or a visitor who signed in. That decides what it may see, from whole pages to a block's listing, and what it may do, like submitting a form or adding a comment. Which one is your frontend's choice, and there are three cases, needing different work.
+
+1. **Anonymous, on the public site.** The public sees published content, and blocks that call the CMS work for anyone: a search box, or a contact form on a published page. Send no token. Nothing more is needed.
+2. **The editor, inside Inka.** Inka has already signed the editor in and hands your frontend their token (see [Authentication](#authentication)). Send it, and the editor sees the site as they can: pages that aren't published yet, and blocks they can try before publishing, such as a form on a page that is still private, which the CMS refuses to an anonymous caller. Use `getAuthHeaders()` in the browser, or the `access_token` cookie from your server. The token exists only inside Inka's editor, so on the public site the same code stays anonymous.
+3. **A signed-in visitor, on the public site.** Some visitors sign in to see more: content shared only with members or a group, or blocks that act for them, like a members-only form. The editor's token is no help here, because visitors never open your site through Inka. Your frontend needs its own login: a sign-in page that posts to the CMS's `@login`, somewhere to keep the token (an HttpOnly cookie, for server rendering), renewing it with `@login-renew` before it expires, signing out with `@logout`, and sending it with every request. Pages rendered for a signed-in visitor are theirs alone, so don't let a CDN or cache serve them to anyone else (see [Behind a CDN or caching proxy](../deploy-and-secure.md#behind-a-cdn-or-caching-proxy)). Inka doesn't provide this part.
+
+Keep cases 2 and 3 apart. Something that works in the editor works because the editor is signed in. That says nothing about what a visitor can see or do, so test case 3 on the public site, signed in as a visitor, without Inka.
+
 ## Custom Sidebar and CMS UI
 
 If the auto-generated sidebar UI from your block or content schemas isn't suitable, Volto's add-on system lets you override the editor's components — at widget level, block-settings level, or even whole views like Contents or Site Settings. For example, you might want to replace the image picker with a custom map editor.

@@ -47,11 +47,13 @@ A multi-field form with configurable field types, validation, and email submissi
 
 A form is your frontend's: it draws the fields and, when a visitor submits, it posts the answers to the page's `@submit-form` endpoint (collective.volto.formsupport), which stores them and sends the email.
 
-That post is anonymous unless your frontend sends a login with it. Plone refuses an anonymous submission on a page the public can't view yet, and every new page starts private, so an author can't try a form before publishing it. If you want authors to be able to, send the editor's token with the submission. A public visitor has no token, so their submissions stay anonymous.
+Whether that post carries a login is your frontend's choice. There are three cases, explained in [Who your frontend's requests run as](../frontend-guide/advanced.md#who-your-frontends-requests-run-as):
 
-In the browser, `getAuthHeaders()` from the bridge gives the token while the page is open in Inka, and nothing otherwise:
+- **A public form** on a published page is anonymous. Send no token.
+- **Trying a form while editing:** Plone refuses an anonymous submission on a page the public can't view yet, and every new page starts private. To let authors try a form before publishing it, send the editor's token with the submission. It is there only inside Inka's editor.
+- **A form for signed-in visitors** needs your frontend's own login. The editor's token never reaches visitors.
 
-<block type="codeExample">
+For the second case, `getAuthHeaders()` from the bridge gives the editor's token while the page is open in Inka, and nothing otherwise, so the same code serves the public site anonymously:
 
 ### Browser
 
@@ -64,8 +66,6 @@ const response = await fetch(`${apiUrl}${pagePath}/@submit-form`, {
   body: JSON.stringify({ block_id: blockId, data }),
 });
 ```
-
-</block>
 
 If your frontend submits from its server, read the token from the `access_token` cookie the bridge sets instead. Either way, a submission made like this is the editor's, with the editor's permissions: see [How an editor's login reaches the front end](../deploy-and-secure.md#how-an-editors-login-reaches-the-front-end).
 
