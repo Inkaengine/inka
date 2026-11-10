@@ -407,19 +407,27 @@ class Add extends Component {
             type={this.props.type}
             formData={
               this.props.location?.state?.initialFormData || {
-                ...(blocksFieldname && {
-                  [blocksFieldname]:
+                // Only blocks the type itself starts with. With none, the
+                // fields are left out, so the form doesn't seed its empty-page
+                // block into a page that isn't made yet: the page is created
+                // empty, and the editor fills it when it opens, as it does any
+                // empty page or region.
+                ...(blocksFieldname &&
+                  blocksLayoutFieldname &&
+                  !isEmpty(
                     initialBlocks ||
-                    this.props.schema.properties[blocksFieldname]?.default,
-                }),
-                ...(blocksLayoutFieldname && {
-                  [blocksLayoutFieldname]: {
-                    items:
-                      initialBlocksLayout ||
-                      this.props.schema.properties[blocksLayoutFieldname]
-                        ?.default?.items,
-                  },
-                }),
+                      this.props.schema.properties[blocksFieldname]?.default,
+                  ) && {
+                    [blocksFieldname]:
+                      initialBlocks ||
+                      this.props.schema.properties[blocksFieldname]?.default,
+                    [blocksLayoutFieldname]: {
+                      items:
+                        initialBlocksLayout ||
+                        this.props.schema.properties[blocksLayoutFieldname]
+                          ?.default?.items,
+                    },
+                  }),
                 // Copy the Language Independent Fields values from the to-be translated content
                 // into the default values of the translated content Add form.
                 ...lifData(),

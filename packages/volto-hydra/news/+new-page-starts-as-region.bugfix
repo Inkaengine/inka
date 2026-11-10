@@ -1,0 +1,1 @@
+A page added in the editor is created empty, and the editor fills it when it opens the way it fills any empty page or region. Inka gave every new Document a Title block and an empty paragraph, so a frontend whose layout shows the title showed it twice; and the add form seeded its empty-page block before the page was made. #661
