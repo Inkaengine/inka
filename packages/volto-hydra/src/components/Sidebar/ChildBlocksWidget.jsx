@@ -226,7 +226,11 @@ const ContainerFieldSection = ({
           )}
           {canAdd && (
             <button
-              onClick={() => onAddBlock(parentBlockId, containerConfig)}
+              onClick={(e) =>
+                onAddBlock(parentBlockId, containerConfig, {
+                  anchor: e.currentTarget.getBoundingClientRect(),
+                })
+              }
               title={intl.formatMessage(messages.addBlock)}
               aria-label={intl.formatMessage(messages.addBlock)}
             >
@@ -527,13 +531,20 @@ const ChildBlocksWidget = ({
             };
 
             // Wrap onAddBlock to insert after last block in section (or preceding fixed block)
-            const wrappedAddBlock = () => {
+            const wrappedAddBlock = (
+              _parentBlockId,
+              _containerConfig,
+              options,
+            ) => {
               const afterBlockId =
                 section.blocks.length > 0
                   ? section.blocks[section.blocks.length - 1].id
                   : section.precedingFixedId;
               if (afterBlockId) {
-                onAddBlock(null, null, { afterBlockId });
+                onAddBlock(null, null, {
+                  afterBlockId,
+                  anchor: options?.anchor,
+                });
               }
             };
 

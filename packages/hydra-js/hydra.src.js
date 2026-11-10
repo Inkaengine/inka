@@ -11567,6 +11567,11 @@ export class Bridge {
 
         // Always clean up drop indicator on mouseup
         const dropIndicator = document.querySelector('.volto-hydra-drop-indicator');
+        // Where the block was dropped, in the frame's viewport: a chooser the
+        // drop asks for (convert to fit) opens there.
+        const dropRect = dropIndicatorVisible && dropIndicator
+          ? dropIndicator.getBoundingClientRect().toJSON()
+          : null;
         if (dropIndicator) {
           log('Hiding drop indicator on mouseup');
           dropIndicator.style.display = 'none';
@@ -11596,6 +11601,7 @@ export class Bridge {
               // When set, the admin deletes this block after the move so the
               // 'empty' placeholder is replaced rather than dropped beside.
               replaceTargetId: replaceTargetUid || null,
+              dropRect,
             },
             this.adminOrigin,
           );
