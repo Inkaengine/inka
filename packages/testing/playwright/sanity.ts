@@ -686,15 +686,48 @@ interface EmptyRegionCase {
  * ensureEmptyBlockIfEmpty (mockParent.emptyRegion). When the region names no
  * default and allows more than one type, the admin seeds the special
  * `@type:"empty"` placeholder: the editor's only way to add the first block.
- * Assert it is drawn, visible, with a size to click. This catches the class of
- * bug where a container renderer rejects the empty child (e.g. a
- * contextNavigation that only expects navItem/listing) or draws it with no size.
+ * Otherwise it seeds the region's default (or its single allowed type).
  *
- * A region that seeds an ordinary block (its default, or its single allowed
- * type) is skipped: that block renders like any other, which block-sanity
- * covers. The admin's seeding decides which regions those are, so no copy of
- * that rule lives here.
+ * Whatever is seeded must be drawn, with a size to click. This catches a
+ * container renderer that rejects the child (e.g. a contextNavigation that only
+ * expects navItem/listing) or draws it with no size. A seeded block is on no
+ * stored page, so block-sanity never sees it; this is the only test that does.
+ *
+ * An empty placeholder must also be drawn AS empty — "Render them as empty
+ * space" (docs/frontend-guide/container-blocks.md, Empty Blocks). Nothing in it
+ * an author could take for content: no form control, no editable field, no
+ * text. The one exception is an element the frontend marks `data-block-add`,
+ * its own look for the '+'. A renderer that falls through to some ordinary
+ * block's drawing (a form drawing the placeholder as a text question) fails
+ * here.
+ *
+ * The admin's seeding decides which regions seed what, so no copy of that rule
+ * lives here.
  */
+/**
+ * What an author could take for content inside an empty placeholder: form
+ * controls, editable fields and visible text, skipping anything inside a
+ * `data-block-add` element (the frontend's own '+'). Runs in the page.
+ */
+function contentOfEmptyPlaceholder(root: Element): string[] {
+  const found: string[] = [];
+  const own = (n: Node | null) => !(n instanceof Element ? n : n?.parentElement)?.closest('[data-block-add]');
+  for (const c of root.querySelectorAll('input:not([type="hidden"]), textarea, select, button')) {
+    if (own(c)) found.push(`a <${c.tagName.toLowerCase()}> control`);
+  }
+  for (const f of root.querySelectorAll('[data-edit-text], [data-edit-media], [data-edit-link]')) {
+    if (!own(f)) continue;
+    const attr = ['data-edit-text', 'data-edit-media', 'data-edit-link'].find((a) => f.hasAttribute(a))!;
+    found.push(`an editable field (${attr}="${f.getAttribute(attr)}")`);
+  }
+  const walker = root.ownerDocument.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+  for (let t = walker.nextNode(); t; t = walker.nextNode()) {
+    const text = (t.textContent ?? '').replace(/[\u200B\uFEFF]/g, '').trim();
+    if (text && own(t)) found.push(`the text "${text.slice(0, 40)}"`);
+  }
+  return found;
+}
+
 export function defineEmptyRegionTests(options: SanityOptions): void {
   const projects = new Set(options.projects);
   const where = addresses(options);
@@ -756,31 +789,33 @@ export function defineEmptyRegionTests(options: SanityOptions): void {
           }
           const seeded = result.seeded ?? [];
           expect.soft(seeded.length, `${where}: emptying it left nothing to click`).toBeGreaterThan(0);
-          const placeholders = seeded.filter((b) => b.type === 'empty');
-          if (seeded.length && !placeholders.length) {
-            testInfo.annotations.push({
-              type: 'region-skipped',
-              description: `${where}: seeds ${seeded.map((b) => b.type).join(', ')}, not the empty placeholder`,
-            });
-            continue;
-          }
           checked++;
-          for (const { uid, type } of placeholders) {
+          for (const { uid, type } of seeded) {
+            const what = type === 'empty' ? 'empty placeholder' : `${type} block`;
             const el = iframe.locator(`[data-block-uid="${uid}"]`).first();
             // Show it first: it may sit in a collapsed panel or an inactive slide,
             // or in a region a frontend draws only once asked (a search's answer).
             await revealBlock(iframe, uid);
-            await expect.soft(el, `${where}: the frontend did not draw the seeded ${type} placeholder (${uid})`)
+            await expect.soft(el, `${where}: the frontend did not draw the seeded ${what} (${uid})`)
               .toBeAttached({ timeout: 10000 });
             if ((await iframe.locator(`[data-block-uid="${uid}"]`).count()) === 0) continue;
             const box = await el.boundingBox();
             expect.soft(
               !!box && box.width > 0 && box.height > 0,
-              `${where}: the seeded ${type} placeholder (${uid}) has no size to click, got ${JSON.stringify(box)}`,
+              `${where}: the seeded ${what} (${uid}) has no size to click, got ${JSON.stringify(box)}`,
             ).toBe(true);
+            if (type !== 'empty') continue;
+            const content = await el.evaluate(contentOfEmptyPlaceholder);
+            expect.soft(
+              content,
+              `${where}: the empty placeholder (${uid}) is drawn as if it were content. ` +
+                `Render @type "empty" as empty space — Inka draws the '+' that picks its type ` +
+                `(docs/frontend-guide/container-blocks.md, Empty Blocks). To restyle the '+', ` +
+                `put it in an element marked data-block-add. Found: ${content.join('; ')}`,
+            ).toEqual([]);
           }
         }
-        test.skip(checked === 0, `no region of ${c.parentType} [${c.blockId}] seeds the empty placeholder`);
+        test.skip(checked === 0, `no region of ${c.parentType} [${c.blockId}] seeds anything when emptied`);
       });
     }
   });
