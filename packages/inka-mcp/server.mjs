@@ -12,7 +12,7 @@
  */
 import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
-import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import { McpServer } from '@modelcontextprotocol/server';
 import { registerAppTool, registerAppResource, RESOURCE_MIME_TYPE } from '@modelcontextprotocol/ext-apps/server';
 import { adminPool } from './adminPool.mjs';
 import { subjectOf } from './tokenStore.mjs';
@@ -181,10 +181,10 @@ export function createServer(adminFor, { pictures, media, localFiles, userOf }) 
     title: 'Read a page',
     annotations: SAVES_NOTHING,
     description: 'Read a page. The page is itself a block of its content type: "@uid" "_page", "@type" its content type (one of the site\'s; see list_content_types), its own fields (title, description — the summary — and the rest of its content type\'s fields), and its regions as lists of blocks ("blocks", and any others such as a footer). Each block has "@uid" and "@type"; containers hold their child blocks in lists named for the region; rich text is {"md": "..."}. Change the page\'s own fields with edit_blocks, an "update" on "_page". Keep "version" — edit_blocks needs it.',
-    inputSchema: {
+    inputSchema: z.object({
       path: z.string().describe('The page path, e.g. /about'),
       live: z.boolean().optional().describe('If the page has a draft: read what visitors see now, not the draft'),
-    },
+    }),
   }, async ({ path, live }, extra) => {
     const draft = await draftOf(extra, path);
     const read = await adminFor(extra).withEditor(editTarget(path, draft, live), getPage);
@@ -196,11 +196,11 @@ export function createServer(adminFor, { pictures, media, localFiles, userOf }) 
     annotations: SAVES_NOTHING,
     _meta: SHOWS_PICTURES,
     description: 'Render a whole proposed layout for a page as a visitor would see it, without saving anything: the page with "blocks" (in the get_page format; containers hold their child blocks in lists) in place of its own. Returns a screenshot and the rendered text. To change part of the current page, use edit_blocks with dryRun and preview instead.',
-    inputSchema: {
+    inputSchema: z.object({
       path: z.string().describe('The page path, e.g. /about'),
-      blocks: z.array(z.object({ '@type': z.string() }).passthrough()).describe('The proposed blocks, in order'),
+      blocks: z.array(z.object({ '@type': z.string() }).loose()).describe('The proposed blocks, in order'),
       viewport: z.enum(['desktop', 'mobile']).optional().describe('The screen width to render at (default desktop)'),
-    },
+    }),
   }, async ({ path, blocks, viewport = 'desktop' }, extra) => {
     const rendered = await adminFor(extra).withEditor(path, (agent, { site, render }) => previewLayout(agent, {
       blocks, mintId: randomUUID, check: draftCheck(agent, site), heldFile: heldFile(extra), render: (draft) => render(draft, viewport, { maxChars: IMAGE_CHARS }),
@@ -220,11 +220,11 @@ export function createServer(adminFor, { pictures, media, localFiles, userOf }) 
     annotations: SAVES_NOTHING,
     _meta: SHOWS_PICTURES,
     description: 'See a page as a visitor sees it: a screenshot rendered by the site\'s own front end, and the page\'s visible text. get_page gives the blocks, not how they render. To see a change before saving it, use edit_blocks with dryRun and preview.',
-    inputSchema: {
+    inputSchema: z.object({
       path: z.string().describe('The page path, e.g. /about'),
       viewport: z.enum(['desktop', 'mobile']).optional().describe('The screen width to render at (default desktop)'),
       draft: z.boolean().optional().describe('Show the page\'s draft rather than what visitors see now'),
-    },
+    }),
   }, async ({ path, viewport = 'desktop', draft: wantsDraft }, extra) => {
     const draft = wantsDraft && await draftOf(extra, path);
     if (wantsDraft && !draft) throw new Error(`${path} has no draft`);
@@ -250,21 +250,21 @@ export function createServer(adminFor, { pictures, media, localFiles, userOf }) 
     title: 'Search the site',
     annotations: SAVES_NOTHING,
     description: 'Find pages by their text, content type or state (workflow state, or having a draft), narrowed to a section. Returns the total and a page of results: path, title, type, description and workflow state ("reviewState"). A page with a draft says "hasDraft". Use a result\'s path with get_page.',
-    inputSchema: {
+    inputSchema: z.object({
       text: z.string().optional().describe('Words to find (each word matches as a prefix)'),
       types: z.array(z.string()).optional().describe('Content type ids, as list_content_types gives them'),
       reviewState: z.array(z.string()).optional().describe('Workflow states, e.g. ["private", "pending"] to find what visitors can\'t see yet'),
       hasDraft: z.boolean().optional().describe('Find pages with a draft waiting. With "reviewState", pages in either state. Not with "text" or "types"'),
       path: z.string().optional().describe('Only inside this section, e.g. /news'),
       ...paging,
-    },
+    }),
   }, async (args, extra) => asResult(await adminFor(extra).withSite((site) => search(site, args))));
 
   server.registerTool('list_children', {
     title: 'List a section',
     annotations: SAVES_NOTHING,
     description: 'The pages directly inside a section, in their order: path, title, type, description, workflow state and "hasDraft" if it has a draft. "/" lists the top of the site.',
-    inputSchema: { path: z.string().describe('The section, e.g. / or /docs'), ...paging },
+    inputSchema: z.object({ path: z.string().describe('The section, e.g. / or /docs'), ...paging }),
   }, async (args, extra) => asResult(await adminFor(extra).withSite((site) => listChildren(site, args))));
 
   const version = z.string().describe('The version get_page returned; refused if the page has changed since');
@@ -272,54 +272,54 @@ export function createServer(adminFor, { pictures, media, localFiles, userOf }) 
   server.registerTool('move_page', {
     title: 'Move a page',
     description: 'Move a page (and everything inside it) into another section. Returns its new path.',
-    inputSchema: {
+    inputSchema: z.object({
       path: z.string().describe('The page to move, e.g. /news/old-item'),
       target: z.string().describe('The section to move it into, e.g. /archive'),
       expectedVersion: version,
-    },
+    }),
   }, async (args, extra) => asResult(await adminFor(extra).withSite((site) => movePage(site, args))));
 
   server.registerTool('rename_page', {
     title: 'Rename a page',
     description: 'Change a page\'s short name (the last part of its path, so its URL) and/or its title. Returns its path.',
-    inputSchema: {
+    inputSchema: z.object({
       path: z.string().describe('The page, e.g. /about/team'),
       id: z.string().optional().describe('The new short name, e.g. people'),
       title: z.string().optional().describe('The new title'),
       expectedVersion: version,
-    },
+    }),
   }, async (args, extra) => asResult(await adminFor(extra).withSite((site) => renamePage(site, args))));
 
   server.registerTool('delete_page', {
     title: 'Delete a page',
     annotations: { destructiveHint: true },
     description: 'Delete a page and everything inside it. This cannot be undone here.',
-    inputSchema: { path: z.string().describe('The page to delete'), expectedVersion: version },
+    inputSchema: z.object({ path: z.string().describe('The page to delete'), expectedVersion: version }),
   }, async (args, extra) => asResult(await adminFor(extra).withSite((site) => deletePage(site, args))));
 
   server.registerTool('get_transitions', {
     title: 'What can be done to a page',
     annotations: SAVES_NOTHING,
     description: 'A page\'s workflow state ("state"), its "version", and the "transitions" the signed-in user can take now: one not listed can\'t be taken from this state or by this user. Each transition has an "id", a "label" (call it that to the person), "takes" (the settings it can make at the same time, such as a publishing date or an expiry: a field\'s "type" says what value it wants) and "current" (what those settings are now). Making a draft of a published page is a transition, and so are publishing and discarding it; a page with a draft says so ("draft"). "update" is one too: it stays in the same state and changes who has access (a field per role, listing the people and groups who hold it), the address and the menu listing.',
-    inputSchema: { path: z.string().describe('The page, e.g. /about/team') },
+    inputSchema: z.object({ path: z.string().describe('The page, e.g. /about/team') }),
   }, async (args, extra) => asResult(await adminFor(extra).withSite((site) => getTransitions(site, args))));
 
   server.registerTool('transition_page', {
     title: 'Take a transition',
     description: 'Take one of the transitions get_transitions offers, such as publishing the page, with any of the settings it "takes". Publishing makes the page visible to visitors, or at its publishing date. Returns the page\'s "path" (changed only if the transition gave it a new address), its "reviewState", its new "version" and its "draft" if it has one. A transition not on offer, or a setting it does not take, is refused and nothing changes.',
-    inputSchema: {
+    inputSchema: z.object({
       path: z.string().describe('The page, e.g. /about/team'),
       id: z.string().describe('The transition\'s id, as get_transitions gives it, e.g. publish'),
       data: z.record(z.string(), z.unknown()).optional().describe('Settings to make at the same time, named as in its "takes", e.g. {"effective": "2027-01-01T09:00:00"}'),
       expectedVersion: z.string().describe('The version get_transitions or get_page returned; refused if the page has changed since'),
-    },
+    }),
   }, async (args, extra) => asResult(await adminFor(extra).withSite((site) => transitionPage(site, args))));
 
   server.registerTool('list_block_types', {
     title: 'List block types',
     annotations: SAVES_NOTHING,
     description: 'The block types a page can hold: each type\'s fields (required ones marked; "markdown" fields take {"md": "..."}) and its regions — the lists of child blocks, named as in get_page, with the types each allows. "page" lists what the page itself takes; "contentType" names the page\'s own type, listed with the others — its fields are the page\'s own (title, summary, …).',
-    inputSchema: { path: z.string().describe('The page path, e.g. /about') },
+    inputSchema: z.object({ path: z.string().describe('The page path, e.g. /about') }),
   }, async ({ path }, extra) => asResult(await adminFor(extra).withEditor(path, listBlockTypes)));
 
   registerAppTool(server, 'describe_block', {
@@ -327,11 +327,11 @@ export function createServer(adminFor, { pictures, media, localFiles, userOf }) 
     annotations: SAVES_NOTHING,
     _meta: SHOWS_PICTURES,
     description: 'One block type in full, as the page at "path" can use it: what it is, its front end\'s guidance on using it, its variations, every field (required ones marked; "markdown" fields take {"md": "..."}), its regions, where on the page it can go, examples of it filled in from its front end, and a real one from a page on the site, showing the exact value each field takes (links, images, choices). With "preview", each front-end example is also rendered as a visitor sees it: use that to see what a block type looks like before proposing it.',
-    inputSchema: {
+    inputSchema: z.object({
       path: z.string().describe('The page you will add it to, e.g. /about'),
       type: z.string().describe('The block type, as list_block_types names it, e.g. teaser'),
       preview: z.enum(['desktop', 'mobile']).optional().describe('Render each example at this width'),
-    },
+    }),
   }, async ({ path, type, preview }, extra) => {
     const described = await adminFor(extra).withEditor(path, (agent, { site, render }) => describeBlock(agent, site, {
       // The examples share the room for pictures.
@@ -357,19 +357,19 @@ export function createServer(adminFor, { pictures, media, localFiles, userOf }) 
     title: 'List content types',
     annotations: SAVES_NOTHING,
     description: 'The kinds of page (content types) you may add inside a section: each one\'s id, for create_page, and its title, as the editor names it. Which there are, and which go where, is the site\'s.',
-    inputSchema: { path: z.string().describe('The section, e.g. / or /docs') },
+    inputSchema: z.object({ path: z.string().describe('The section, e.g. / or /docs') }),
   }, async (args, extra) => asResult(await adminFor(extra).withSite((site) => contentTypes(site, args))));
 
   server.registerTool('create_page', {
     title: 'Create a page',
     description: 'Add a page inside a section, as an editor does through the admin\'s add form, and save it. Optional "blocks" (in the get_page format, each with your own "@uid" if you will refer to it) are added after the blocks the page starts with. For an item that is a file, such as an Image or a File, "file" is the media id of a file you staged (stage_media), and the item is made of it: the result\'s "media" gives the item, which the id names from then on. Returns the new page\'s path, its version for edit_blocks, its "reviewState" (a new page may be private, so visitors can\'t see it yet) and the ids of your blocks.',
-    inputSchema: {
+    inputSchema: z.object({
       parent: z.string().describe('The section to add it to, e.g. /docs'),
       title: z.string().describe('The page title'),
       type: z.string().describe('The content type id: one list_content_types gives for this section'),
-      blocks: z.array(z.object({ '@type': z.string() }).passthrough()).optional().describe('Blocks to start with'),
+      blocks: z.array(z.object({ '@type': z.string() }).loose()).optional().describe('Blocks to start with'),
       ...(media && { file: z.string().optional().describe('For an Image, a File or another item that is a file: the media id of its file') }),
-    },
+    }),
   }, async ({ parent, title, type, blocks, file }, extra) => {
     if (mediaIn(blocks ?? []).size) {
       throw new MediaRefused('a new page does not take new files yet: create the page first, then add them with edit_blocks');
@@ -397,16 +397,16 @@ export function createServer(adminFor, { pictures, media, localFiles, userOf }) 
     title: 'Edit a page',
     _meta: SHOWS_PICTURES,
     description: `Change a page's blocks, or its own fields (an "update" on "_page"). With dryRun the changes are applied but not saved, and the resulting page is returned; resubmit without dryRun to save. With dryRun, "preview" also renders the result as a visitor would see it — a screenshot and the page's text. A save is refused if the page has changed since expectedVersion — read it again and reapply.\n\n${OPS_HELP}`,
-    inputSchema: {
+    inputSchema: z.object({
       path: z.string().describe('The page path, e.g. /about'),
       expectedVersion: z.string().describe('The version get_page returned'),
-      ops: z.array(z.object({ op: z.enum(['update', 'add', 'move', 'delete']) }).passthrough()),
+      ops: z.array(z.object({ op: z.enum(['update', 'add', 'move', 'delete']) }).loose()),
       live: z.boolean().optional().describe('If the page has a draft: change what visitors see now, not the draft. Only for an emergency, with a version from get_page with "live"'),
       dryRun: z.boolean().optional().describe('Show the result without saving'),
       preview: z.enum(['desktop', 'mobile']).optional().describe('With dryRun: render the result at this width'),
       changeTemplates: z.boolean().optional().describe('Allow changing blocks that belong to a template (marked "templateId"; locked ones are "readOnly"). '
         + 'The template is changed, so the change appears on every page that uses it.'),
-    },
+    }),
   }, async ({ path, live, expectedVersion, ops, dryRun, preview, changeTemplates }, extra) => {
     const draft = await draftOf(extra, path);
     const result = await adminFor(extra).withEditor(editTarget(path, draft, live), (agent, { site, render }) => editPage(agent, {
@@ -450,14 +450,14 @@ export function createServer(adminFor, { pictures, media, localFiles, userOf }) 
       // It keeps the files on this server, for a change; nothing on the site changes.
       annotations: { readOnlyHint: true, openWorldHint: true },
       description: `Stage images, or any other files, for a page change. Nothing is uploaded to the site: each file is kept on this MCP server for two hours, and goes onto the site only when a change that uses it is saved. Each comes from a "url" on the public internet${localFiles ? ', a "path" to a file on the person\'s computer, in a folder they allowed,' : ''} or a "picture" a tool here took (an id from a result's "pictures"), at most 10 MB. Returns a "media" id for each, in the order given: put it in edit_blocks where an image or a file goes, as you would an existing item's URL, or in a page's own file field (factory "Image" or "File", such as a lead image), which keeps the file in the page. A preview (edit_blocks with dryRun and preview, or preview_layout) shows it. When the change is saved, each file it uses is uploaded beside the page, and the save's "media" gives the item it became; the "media" id names that item from then on, for as long as it is kept. If any file can't be had, none are staged. create_page makes an Image or File item of one (its "file"); for a new page\'s blocks, create the page, then add files with edit_blocks.`,
-      inputSchema: {
+      inputSchema: z.object({
         files: z.array(z.object({
           url: z.string().optional().describe('The file\'s URL, http or https'),
           picture: z.string().optional().describe('A picture id from a result\'s "pictures"'),
           ...(localFiles && { path: z.string().optional().describe('A whole path to a file on the person\'s computer, in a folder they allowed') }),
           name: z.string().optional().describe('Its file name, e.g. "team.jpg" (from the URL if not given)'),
         })).min(1).describe(`Each file: a "url"${localFiles ? ', a "path"' : ''} or a "picture", and optionally its "name"`),
-      },
+      }),
     }, async ({ files }, extra) => {
       const user = userOf(extra);
       // Every file first: if one can't be had, none are staged.
@@ -485,7 +485,7 @@ export function createServer(adminFor, { pictures, media, localFiles, userOf }) 
       annotations: SAVES_NOTHING,
       _meta: { ui: { resourceUri: DROP_VIEW } },
       description: 'Ask the person for images or files of their own to add to a page, such as a photo on their computer or one they attached to the conversation (whose bytes this server can\'t reach). The conversation shows them a place to drop the files under this call. Each file they drop is staged as stage_media stages one (kept here for two hours, not on the site), and a message from them then gives each one\'s "media" id: use it in edit_blocks as you would one from stage_media. Wait for that message; this call returns at once.',
-      inputSchema: { what: z.string().describe('What you need, as the person will read it, e.g. "the team photo for the About page"') },
+      inputSchema: z.object({ what: z.string().describe('What you need, as the person will read it, e.g. "the team photo for the About page"') }),
     }, async ({ what }) => asResult({ asked: what, staged: false }));
 
     registerAppTool(server, 'stage_dropped', {
@@ -493,11 +493,11 @@ export function createServer(adminFor, { pictures, media, localFiles, userOf }) 
       annotations: SAVES_NOTHING,
       _meta: { ui: { resourceUri: DROP_VIEW, visibility: ['app'] } },
       description: 'A file the person dropped in the drop view (ask_for_files), staged as stage_media stages one: for the view, which a client hands the drop.',
-      inputSchema: {
+      inputSchema: z.object({
         name: z.string().min(1).describe('The file\'s name'),
         type: z.string().min(1).describe('Its media type, e.g. image/png'),
         data: z.string().describe('Its bytes, base64'),
-      },
+      }),
     }, async ({ name, type, data }, extra) => {
       if (Buffer.byteLength(data, 'base64') > MAX_FILE_BYTES) throw new MediaRefused(`${name} is larger than ${MAX_FILE_BYTES} bytes, the most a file may be`);
       const result = await stageAll(userOf(extra), [{ name, type, data }]);
@@ -515,7 +515,7 @@ export function createServer(adminFor, { pictures, media, localFiles, userOf }) 
       annotations: SAVES_NOTHING,
       _meta: FOR_THE_VIEW,
       description: 'One of the pictures a tool took (its result names them, "pictures"), as data: for the screenshot view, which a client hands the result without them.',
-      inputSchema: { id: z.string().describe('A picture id from a result\'s "pictures"') },
+      inputSchema: z.object({ id: z.string().describe('A picture id from a result\'s "pictures"') }),
     }, async ({ id }, extra) => {
       const held = await pictures.peek(id);
       if (held.user !== userOf(extra)) throw new PictureGone('not a picture this server took');

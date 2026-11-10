@@ -53,6 +53,8 @@ claude mcp add --transport http inka https://mcp.example.org/mcp
 
 The first time the assistant uses it, your browser opens the site's sign-in. Sign in as you always do, then choose **Allow** on the page that asks whether to connect the assistant. From then on the assistant works as you, until you sign out or the sign-in runs out, when it asks you again.
 
+When the site's team updates the MCP server, what the assistant can do may change. The server tells assistants that listen for changes, and they pick them up by themselves. Others only learn of them in a new conversation, and some need the connector disconnected and connected again.
+
 ## Running it on your own computer
 
 A developer can run the MCP server locally instead of using a hosted one. From an Inka checkout with its dependencies installed, add it to the assistant with the address of the site's editor:
