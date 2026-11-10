@@ -515,6 +515,8 @@ results: {
 
 The same works for an `object_list`. Without a `default`, a region starts with, and is refilled with, one child of its `defaultBlockType`, as described above. An author's own children are never replaced: the default only fills a region that is empty.
 
+A page's own blocks fields are regions too, so a page added in the editor starts with exactly what these rules give each field. Inka adds no blocks of its own, such as a title: if your page's layout shows the title, it appears once.
+
 ### Making a region empty by default — `defaultBlockType: "empty"`
 
 The rules above mean a region with a `defaultBlockType`, or a single-entry `allowedBlocks`, is *never* empty — it always seeds a block of that type. To declare a region that should sit **empty until an editor adds something**, while still restricting **what** they can add, set **\`defaultBlockType: "empty"\`** and do **not** list `"empty"` in `allowedBlocks`:

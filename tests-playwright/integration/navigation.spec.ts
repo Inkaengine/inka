@@ -761,6 +761,14 @@ test.describe('Page Creation', () => {
       const iframe = helper.getIframe();
       const anyBlock = iframe.locator('[data-block-uid]').first();
       await expect(anyBlock).toBeVisible({ timeout: 10000 });
+
+      // A new page's blocks fields start as any empty region does (its
+      // `default`, one block of its `defaultBlockType`, or an empty
+      // placeholder), and Inka adds nothing of its own. Here that is one
+      // block of the page region's default type; any other region is an
+      // empty placeholder. Inka's own Title block, added to every new page,
+      // doubled the title of a frontend whose layout holds one (#661).
+      await expect(iframe.locator('[data-block-uid]:not([data-hydra-empty])')).toHaveCount(1);
     }
   });
   }

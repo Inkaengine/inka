@@ -1,0 +1,1 @@
+A page added in the editor starts with what its blocks fields' region settings give (their `default`, one block of their `defaultBlockType`, or empty), and no blocks of Inka's own. Inka gave every new Document a Title block and an empty paragraph, so a frontend whose layout shows the title showed it twice. #661

@@ -893,16 +893,11 @@ config.settings.additionalToolbarComponents = {
   // Initial call to set the blocks based on the initial state
   updateAllowedBlocks();
 
-  // Initial block for Document content type
-  config.blocks.initialBlocks = {
-    Document: [
-      { '@type': 'title' },
-      {
-        '@type': 'slate',
-        value: [{ type: 'p', children: [{ text: '' }] }],
-      },
-    ],
-  };
+  // No initial blocks of Inka's own, for any content type: a new page's
+  // blocks fields start as any empty region does — its `default`, one block
+  // of its `defaultBlockType`, or empty — which the frontend's page schema
+  // decides (docs/frontend-guide/container-blocks.md).
+  config.blocks.initialBlocks = {};
 
   // Generic block actions registry
   // Actions can be referenced by ID in pathMap and rendered in toolbar/dropdown
