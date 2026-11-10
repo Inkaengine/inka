@@ -88,4 +88,47 @@ test.describe('form empty field — pick a type (typed object_list)', () => {
     await expect(iframe.locator('[data-block-uid="empty-1"] input[type="static_text"]')).toBeVisible({ timeout: 5000 });
     await helper.waitForBlockSelectedInAdmin('empty-1');
   });
+
+  test('a frontend\'s own add button in the empty field replaces the + and opens the chooser', async ({ page }) => {
+    // Docs, Empty Blocks: a frontend may draw its own look for the '+' by
+    // marking an element in the empty block data-block-add="button". Declared
+    // by the MOCK test frontend only, on this page.
+    test.skip(
+      test.info().project.name !== 'admin-mock',
+      'the own add button is drawn by the mock frontend',
+    );
+    const helper = new AdminUIHelper(page);
+    await helper.login();
+    await helper.navigateToEdit('/own-add-button-page');
+    const iframe = helper.getIframe();
+    const ownButton = iframe.locator('[data-block-uid="empty-1"] [data-block-add="button"]');
+    await expect(ownButton).toBeVisible({ timeout: 10000 });
+
+    // Selected, the empty shows the frontend's button and no '+' of the admin's
+    // own, nor the glyph the bridge draws in an empty block.
+    await helper.clickBlockInIframe('empty-1');
+    await helper.waitForBlockSelectedInAdmin('empty-1');
+    await expect(page.locator('.volto-hydra-add-button')).toHaveCount(0);
+    const glyph = await iframe.locator('[data-block-uid="empty-1"]').evaluate(
+      (el) => getComputedStyle(el, '::after').content,
+    );
+    expect(glyph, 'no + glyph over the frontend\'s own button').toBe('none');
+
+    // Clicking it opens the chooser beside it, and picking a type fills the
+    // empty in place: it keeps its id.
+    await ownButton.click();
+    const chooser = page.locator('.blocks-chooser');
+    await expect(chooser).toBeVisible({ timeout: 5000 });
+    const buttonBox = (await ownButton.boundingBox())!;
+    const chooserBox = (await chooser.boundingBox())!;
+    // Below the button, or above it when there is no room below.
+    const gap = Math.min(
+      Math.abs(chooserBox.y - (buttonBox.y + buttonBox.height)),
+      Math.abs(chooserBox.y + chooserBox.height - buttonBox.y),
+    );
+    expect(gap, 'the chooser opens at the button').toBeLessThan(40);
+    await helper.selectBlockType('from');
+    await expect(iframe.locator('[data-block-uid="empty-1"] input[type="email"]')).toBeVisible({ timeout: 5000 });
+    await expect(iframe.locator('[data-block-add="button"]')).toHaveCount(0);
+  });
 });
