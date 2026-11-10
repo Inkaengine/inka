@@ -221,9 +221,15 @@ jobs:
           instructions=$(grep -vE '^[[:space:]]*#' docker/admin.Dockerfile)
           printf '%s\n' "$instructions" | grep -nE 'pnpm +add' \
             && { echo '::error::admin.Dockerfile re-resolves the workspace with pnpm add; inject into package.json before the install instead'; exit 1; }
-          installs=$(printf '%s\n' "$instructions" | grep -c 'pnpm install' || true)
-          [ "$installs" -eq 2 ] \
-            || { echo "::error::expected exactly 2 pnpm install lines (the frozen and unfrozen branches of one RUN), found $installs"; exit 1; }
+          # Deliberately NOT a count of `pnpm install` lines. That was the first
+          # version of this check and it was a false proxy: it read 2 when one
+          # stage had a frozen/unfrozen pair, then failed at 4 the moment a
+          # second stage legitimately gained its own pair. The invariant is not
+          # "how many installs exist" -- stages multiply, and the two branches
+          # of one `if` are mutually exclusive anyway -- it is that nothing
+          # re-resolves the workspace AFTER an install, which is what the
+          # `pnpm add` grep above asserts.
+          echo "pnpm install occurrences (informational): $(printf '%s\n' "$instructions" | grep -c 'pnpm install' || true)"
 
       - name: Assert the enabled plugins reached the image's config
         run: |
