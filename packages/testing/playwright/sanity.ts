@@ -756,7 +756,7 @@ export function defineEmptyRegionTests(options: SanityOptions): void {
   test.describe('Empty container region renders (auto-discovered)', () => {
     for (const c of cases) {
       const what = c.field === '*' ? `every ${c.parentType} region` : `${c.parentType}.${c.field}`;
-      test(`${what} renders a placeholder when its region is empty`, async ({ page, helper }, testInfo) => {
+      test(`${what} draws what it is given when its region is emptied`, async ({ page, helper }, testInfo) => {
         const frontendUrl = where.frontend(testInfo.project.name);
         const frontend = frontendUrl ? `&frontend=${encodeURIComponent(frontendUrl)}` : '';
         const apiOrigin = where.api();
