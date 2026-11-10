@@ -694,36 +694,36 @@ interface EmptyRegionCase {
  * stored page, so block-sanity never sees it; this is the only test that does.
  *
  * An empty placeholder must also be drawn AS empty — "Render them as empty
- * space" (docs/frontend-guide/container-blocks.md, Empty Blocks). Nothing in it
- * an author could take for content: no form control, no editable field, no
- * text. The one exception is an element the frontend marks `data-block-add`,
- * its own look for the '+'. A renderer that falls through to some ordinary
- * block's drawing (a form drawing the placeholder as a text question) fails
- * here.
+ * space" (docs/frontend-guide/container-blocks.md, Empty Blocks). It may be
+ * styled (a ghost outline), but nothing in it an author could take for
+ * content: no text, no editable field, no form control but the frontend's own
+ * add button (data-block-add="button"), itself without text. A renderer that
+ * falls through to some ordinary block's drawing (a form drawing the
+ * placeholder as a text question) fails here.
  *
  * The admin's seeding decides which regions seed what, so no copy of that rule
  * lives here.
  */
 /**
- * What an author could take for content inside an empty placeholder: form
- * controls, editable fields and visible text, skipping anything inside a
- * `data-block-add` element (the frontend's own '+'). Runs in the page.
+ * What an author could take for content inside an empty placeholder: visible
+ * text, editable fields, and form controls other than the frontend's own add
+ * button (an element marked data-block-add="button"). Style is fine — a ghost
+ * outline, a faint fill, an icon — but no words, the button's included: it is
+ * named for assistive tech by aria-label, not by visible text. Runs in the page.
  */
 function contentOfEmptyPlaceholder(root: Element): string[] {
   const found: string[] = [];
-  const own = (n: Node | null) => !(n instanceof Element ? n : n?.parentElement)?.closest('[data-block-add]');
   for (const c of root.querySelectorAll('input:not([type="hidden"]), textarea, select, button')) {
-    if (own(c)) found.push(`a <${c.tagName.toLowerCase()}> control`);
+    if (c.getAttribute('data-block-add') !== 'button') found.push(`a <${c.tagName.toLowerCase()}> control`);
   }
   for (const f of root.querySelectorAll('[data-edit-text], [data-edit-media], [data-edit-link]')) {
-    if (!own(f)) continue;
     const attr = ['data-edit-text', 'data-edit-media', 'data-edit-link'].find((a) => f.hasAttribute(a))!;
     found.push(`an editable field (${attr}="${f.getAttribute(attr)}")`);
   }
   const walker = root.ownerDocument.createTreeWalker(root, NodeFilter.SHOW_TEXT);
   for (let t = walker.nextNode(); t; t = walker.nextNode()) {
     const text = (t.textContent ?? '').replace(/[\u200B\uFEFF]/g, '').trim();
-    if (text && own(t)) found.push(`the text "${text.slice(0, 40)}"`);
+    if (text) found.push(`the text "${text.slice(0, 40)}"`);
   }
   return found;
 }
@@ -810,8 +810,9 @@ export function defineEmptyRegionTests(options: SanityOptions): void {
               content,
               `${where}: the empty placeholder (${uid}) is drawn as if it were content. ` +
                 `Render @type "empty" as empty space — Inka draws the '+' that picks its type ` +
-                `(docs/frontend-guide/container-blocks.md, Empty Blocks). To restyle the '+', ` +
-                `put it in an element marked data-block-add. Found: ${content.join('; ')}`,
+                `(docs/frontend-guide/container-blocks.md, Empty Blocks). Style it if you like, but ` +
+                `with no text; for your own '+', a button marked data-block-add="button" ` +
+                `named by aria-label. Found: ${content.join('; ')}`,
             ).toEqual([]);
           }
         }

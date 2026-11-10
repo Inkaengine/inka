@@ -103,6 +103,9 @@ test.describe('form empty field — pick a type (typed object_list)', () => {
     const iframe = helper.getIframe();
     const ownButton = iframe.locator('[data-block-uid="empty-1"] [data-block-add="button"]');
     await expect(ownButton).toBeVisible({ timeout: 10000 });
+    // A ghost: no visible text, named for assistive tech.
+    await expect(ownButton).toHaveText('');
+    await expect(ownButton).toHaveAccessibleName('Add a question');
 
     // Selected, the empty shows the frontend's button and no '+' of the admin's
     // own, nor the glyph the bridge draws in an empty block.
@@ -121,12 +124,13 @@ test.describe('form empty field — pick a type (typed object_list)', () => {
     await expect(chooser).toBeVisible({ timeout: 5000 });
     const buttonBox = (await ownButton.boundingBox())!;
     const chooserBox = (await chooser.boundingBox())!;
-    // Below the button, or above it when there is no room below.
-    const gap = Math.min(
-      Math.abs(chooserBox.y - (buttonBox.y + buttonBox.height)),
-      Math.abs(chooserBox.y + chooserBox.height - buttonBox.y),
-    );
-    expect(gap, 'the chooser opens at the button').toBeLessThan(40);
+    // Anchored at the button: its left edge on the button's. Up or down, it
+    // goes wherever it fits on screen (a tall chooser may slide over the
+    // button rather than leave the viewport).
+    expect(Math.abs(chooserBox.x - buttonBox.x), 'the chooser opens at the button').toBeLessThan(2);
+    const viewport = page.viewportSize()!;
+    expect(chooserBox.y).toBeGreaterThanOrEqual(0);
+    expect(chooserBox.y + chooserBox.height).toBeLessThanOrEqual(viewport.height);
     await helper.selectBlockType('from');
     await expect(iframe.locator('[data-block-uid="empty-1"] input[type="email"]')).toBeVisible({ timeout: 5000 });
     await expect(iframe.locator('[data-block-add="button"]')).toHaveCount(0);

@@ -494,15 +494,9 @@ A container region can never be truly empty. When its last child is deleted, Ink
 
 So the simplest way to never deal with empty placeholders in a region is to give it a `defaultBlockType` (or a single-entry `allowedBlocks`). Otherwise your frontend must render `empty`.
 
-Empty blocks are stripped before saving. Render them as empty space; Inka puts a '+' button in the middle for the user to pick a real type in place. Draw nothing in it an author could take for content: no form control, no editable field, no text. Block sanity checks this for every region it can empty.
+Empty blocks are stripped before saving. Render them as empty space; Inka puts a '+' button in the middle for the user to pick a real type in place. You may style the space — a ghost outline, a faint fill — but put nothing in it an author could take for content: no text, no editable field, no form control. Block sanity checks this for every region it can empty.
 
-To give that '+' your own look, render a button inside the empty block and mark it `data-block-add="button"`. Inka then draws no '+' of its own, and clicking your button opens the block chooser beside it to fill the empty in place, as the '+' would. Your button is the one thing in an empty block that may carry text, such as "Choose a question type".
-
-```html
-<div data-block-uid="…">
-  <button type="button" data-block-add="button">Choose a question type</button>
-</div>
-```
+To give that '+' your own look, render a button inside the empty block and mark it `data-block-add="button"`. Inka then draws no '+' of its own, and clicking your button opens the block chooser beside it to fill the empty in place, as the '+' would. Style it as you like, an icon included, but give it no visible text: name it with `aria-label` so assistive tech still announces it, as in `<button type="button" data-block-add="button" aria-label="Add a question"></button>`.
 
 ### Starting a region with set children — `default`
 

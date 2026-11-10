@@ -1481,7 +1481,8 @@ function renderFormBlock(block) {
             // the admin supplies the '+' that picks its type. On one page this
             // frontend draws its OWN add button instead (data-block-add="button").
             if (window.hydraTestOwnAddButton) {
-                html += `<button type="button" data-block-add="button">Choose a question type</button>`;
+                // A ghost: styled, named for assistive tech, no visible text.
+                html += `<button type="button" data-block-add="button" aria-label="Add a question" style="width: 100%; min-height: 48px; border: 2px dashed #9ab; border-radius: 6px; background: rgba(150, 170, 190, 0.08); cursor: pointer;"></button>`;
             }
             html += '</div>';
             continue;
