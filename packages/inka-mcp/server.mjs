@@ -23,7 +23,7 @@ import { PictureGone, MediaGone, MEDIA_MS } from './codes.mjs';
 import { fetchMedia, isPublicAddress, mediaIn, MediaRefused, MEDIA_PREFIX } from './media.mjs';
 import { draftCheck } from './checkDraft.mjs';
 import {
-  previewLayout, getPage, editPage, listBlockTypes, describeBlock, search, listChildren, fillNewPage, movePage, renamePage, deletePage,
+  previewLayout, getPage, editPage, listBlockTypes, describeBlock, search, listChildren, contentTypes, fillNewPage, movePage, renamePage, deletePage,
   getTransitions, transitionPage, draftInfo, draftForAgent, editTarget, LIVE_EDIT_WARNING,
 } from './tools.mjs';
 
@@ -91,7 +91,7 @@ export function headlessAdmin({ adminUrl, auth, frontendUrl }) {
  */
 const INSTRUCTIONS = `This server edits a website built with Inka (a Plone-based CMS). The person you are working for edits the site in Inka's editor; they will say what they want changed, not how the site is built.
 
-- A page is a block of its content type (a Page is "Document"): its own fields (title, summary and the rest of its content type's fields) and its regions, which hold its blocks. Blocks have types (Text, Image, Hero, …; list_block_types gives each type's title, fields and regions), and some hold blocks of their own. In the editor, blocks are known by those titles and fields by their labels; ids and JSON are never shown.
+- A page is a block of its content type (the site's own: list_content_types says which a section takes): its own fields (title, summary and the rest of its content type's fields) and its regions, which hold its blocks. Blocks have types (Text, Image, Hero, …; list_block_types gives each type's title, fields and regions), and some hold blocks of their own. In the editor, blocks are known by those titles and fields by their labels; ids and JSON are never shown.
 - The site's own front end draws every page. view_page shows a page as visitors see it; preview_layout (a whole proposed layout) and edit_blocks with dryRun and preview (a change to the page) show the result the same way. None of them saves anything. In clients that show them, the person sees these pictures too. A long page's picture may show only its top ("cropped" says how much); its text ("renderedText") is all there.
 - Some blocks come from a template that many pages share (they carry "templateId"; "readOnly" ones are locked, as the editor shows them). A change to one is a change to the template, and so to every page that uses it: edit_blocks with changeTemplates. In the editor, unlocking a template warns of the same.
 - Saving (edit_blocks without dryRun, create_page, move_page, rename_page, delete_page, transition_page) changes the site itself: visitors of a published page see the change straight away. Whether a page is published is its "reviewState", which create_page and a save report: a new page may be private, so visitors can't see it yet. get_transitions says what can be done to a page and what each can set at the same time (a publishing date, an expiry); publishing, making a draft of a published page and changing who has access are all transitions, taken with transition_page. Publish only when the person has asked for it.
@@ -180,7 +180,7 @@ export function createServer(adminFor, { pictures, media, localFiles, userOf }) 
   server.registerTool('get_page', {
     title: 'Read a page',
     annotations: SAVES_NOTHING,
-    description: 'Read a page. The page is itself a block of its content type: "@uid" "_page", "@type" its content type (e.g. "Document"), its own fields (title, description — the summary — and the rest of its content type\'s fields), and its regions as lists of blocks ("blocks", and any others such as a footer). Each block has "@uid" and "@type"; containers hold their child blocks in lists named for the region; rich text is {"md": "..."}. Change the page\'s own fields with edit_blocks, an "update" on "_page". Keep "version" — edit_blocks needs it.',
+    description: 'Read a page. The page is itself a block of its content type: "@uid" "_page", "@type" its content type (one of the site\'s; see list_content_types), its own fields (title, description — the summary — and the rest of its content type\'s fields), and its regions as lists of blocks ("blocks", and any others such as a footer). Each block has "@uid" and "@type"; containers hold their child blocks in lists named for the region; rich text is {"md": "..."}. Change the page\'s own fields with edit_blocks, an "update" on "_page". Keep "version" — edit_blocks needs it.',
     inputSchema: {
       path: z.string().describe('The page path, e.g. /about'),
       live: z.boolean().optional().describe('If the page has a draft: read what visitors see now, not the draft'),
@@ -252,7 +252,7 @@ export function createServer(adminFor, { pictures, media, localFiles, userOf }) 
     description: 'Find pages by their text, content type or state (workflow state, or having a draft), narrowed to a section. Returns the total and a page of results: path, title, type, description and workflow state ("reviewState"). A page with a draft says "hasDraft". Use a result\'s path with get_page.',
     inputSchema: {
       text: z.string().optional().describe('Words to find (each word matches as a prefix)'),
-      types: z.array(z.string()).optional().describe('Content types, e.g. ["Document"]'),
+      types: z.array(z.string()).optional().describe('Content type ids, as list_content_types gives them'),
       reviewState: z.array(z.string()).optional().describe('Workflow states, e.g. ["private", "pending"] to find what visitors can\'t see yet'),
       hasDraft: z.boolean().optional().describe('Find pages with a draft waiting. With "reviewState", pages in either state. Not with "text" or "types"'),
       path: z.string().optional().describe('Only inside this section, e.g. /news'),
@@ -353,17 +353,24 @@ export function createServer(adminFor, { pictures, media, localFiles, userOf }) 
     };
   });
 
+  server.registerTool('list_content_types', {
+    title: 'List content types',
+    annotations: SAVES_NOTHING,
+    description: 'The kinds of page (content types) you may add inside a section: each one\'s id, for create_page, and its title, as the editor names it. Which there are, and which go where, is the site\'s.',
+    inputSchema: { path: z.string().describe('The section, e.g. / or /docs') },
+  }, async (args, extra) => asResult(await adminFor(extra).withSite((site) => contentTypes(site, args))));
+
   server.registerTool('create_page', {
     title: 'Create a page',
     description: 'Add a page inside a section, as an editor does through the admin\'s add form, and save it. Optional "blocks" (in the get_page format, each with your own "@uid" if you will refer to it) are added after the blocks the page starts with. For an item that is a file, such as an Image or a File, "file" is the media id of a file you staged (stage_media), and the item is made of it: the result\'s "media" gives the item, which the id names from then on. Returns the new page\'s path, its version for edit_blocks, its "reviewState" (a new page may be private, so visitors can\'t see it yet) and the ids of your blocks.',
     inputSchema: {
       parent: z.string().describe('The section to add it to, e.g. /docs'),
       title: z.string().describe('The page title'),
-      type: z.string().optional().describe('The content type (default "Document")'),
+      type: z.string().describe('The content type id: one list_content_types gives for this section'),
       blocks: z.array(z.object({ '@type': z.string() }).passthrough()).optional().describe('Blocks to start with'),
       ...(media && { file: z.string().optional().describe('For an Image, a File or another item that is a file: the media id of its file') }),
     },
-  }, async ({ parent, title, type = 'Document', blocks, file }, extra) => {
+  }, async ({ parent, title, type, blocks, file }, extra) => {
     if (mediaIn(blocks ?? []).size) {
       throw new MediaRefused('a new page does not take new files yet: create the page first, then add them with edit_blocks');
     }

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { fillNewPage, describeBlock, getPage, editPage, movePage, renamePage, deletePage, previewLayout, search, listChildren, getTransitions, transitionPage, editTarget } from './tools.mjs';
+import { fillNewPage, describeBlock, getPage, editPage, movePage, renamePage, deletePage, previewLayout, search, listChildren, getTransitions, transitionPage, editTarget, contentTypes } from './tools.mjs';
 
 const schemas = {
   page: { regions: [{ region: 'items', isObjectList: false, allowedBlocks: ['teaser', 'columns'], defaultBlockType: null, maxLength: null }] },
@@ -711,5 +711,22 @@ describe('what an edit reaches', () => {
   it('is the page if it has no draft', () => {
     expect(editTarget('/news', null)).toBe('/news');
     expect(editTarget('/news', null, true)).toBe('/news');
+  });
+});
+
+// Which content types there are, and which go where, is each site's: an agent
+// reads them from the site rather than being told a type by name (#663).
+describe('contentTypes', () => {
+  it("lists the types the site lets this user add in the section, by id and title", async () => {
+    const site = {
+      addableTypes: async (path) => {
+        expect(path).toBe('/news');
+        return [{ id: 'NewsArticle', title: 'News article' }, { id: 'Event', title: 'Event' }];
+      },
+    };
+    expect(await contentTypes(site, { path: '/news' })).toEqual({
+      path: '/news',
+      types: [{ id: 'NewsArticle', title: 'News article' }, { id: 'Event', title: 'Event' }],
+    });
   });
 });

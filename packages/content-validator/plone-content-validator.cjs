@@ -25,6 +25,9 @@ const path = require('path');
 const { getChildFields, getChildBlockEntries, isUnlabelledDefinition } = require('@volto-hydra/helpers');
 const { buildBlockPathMap, buildIdFieldMap, getResolvedSchema } = require('@volto-hydra/helpers/buildBlockPathMap.js');
 
+// Where an export keeps the site root: plone.exportimport's own name for it.
+const SITE_ROOT = 'plone_site_root';
+
 // Fields present in block data that are not schema properties but are never
 // authored/editable content: structural, serialisation, and Volto slot runtime.
 // The template trio (templateId/templateInstanceId/slotId) is written by the
@@ -272,7 +275,7 @@ function validate(contentDir, { allowMissingBlobs = false } = {}) {
   // The site's physical path is its root item's @id (/Plone in an export);
   // a root at "/" (or none) gives nothing to check against.
   const sitePath = (() => {
-    const rootFile = path.join(contentDir, 'plone_site_root', 'data.json');
+    const rootFile = path.join(contentDir, SITE_ROOT, 'data.json');
     if (!fs.existsSync(rootFile)) return '';
     const rootId = readJson(rootFile)['@id'];
     return rootId === '/' ? '' : rootId;
@@ -329,7 +332,7 @@ function validate(contentDir, { allowMissingBlobs = false } = {}) {
   for (const { rel, data, dir } of walkData(contentDir)) {
     const relSlash = rel.split(path.sep).join('/');
     const entry = relSlash === '.' ? 'data.json' : `${relSlash}/data.json`;
-    const isRoot = relSlash === 'plone_site_root';
+    const isRoot = relSlash === SITE_ROOT;
     const contentType = data['@type'] || '?';
 
     if (entry !== 'data.json' && !listed.has(entry)) {
@@ -508,11 +511,10 @@ function checkIntegrity(source, { schemasFor, allowMissingBlobs = false, idField
     // underscore-prefixed id is rejected by Plone OFS. Both silently leave an
     // empty site that still answers api-wait. Catch them here — like the
     // duplicate-UID check below — so they're deploy-blocking, not runtime
-    // surprises. (The site root legitimately has no on-disk `id`.)
-    const isRoot =
-      data['@type'] === 'Plone Site' ||
-      rel === 'plone_site_root' ||
-      data['@id'] === '/Plone';
+    // surprises. (The site root legitimately has no on-disk `id`.) The root
+    // is where the export keeps it, or, from a site, its site-relative "/":
+    // not a site called Plone (a site's id is its own) or a type name.
+    const isRoot = rel === SITE_ROOT || data['@id'] === '/';
     // Identity presence is an IMPORT-side concern (a real API always serves
     // `id`; mocks serving fixture JSON verbatim legitimately may not) — check
     // it only for on-disk export trees, where a missing id aborts the import.
@@ -534,9 +536,9 @@ function checkIntegrity(source, { schemasFor, allowMissingBlobs = false, idField
     if (atId) pathMap.set(atId, data);
     pathMap.set('/' + rel.split(path.sep).join('/'), data);
     // The site root is linked to as "/" in content hrefs, but on disk its @id
-    // is "/Plone" and its rel is "plone_site_root" — register "/" too so
-    // homepage links resolve instead of false-flagging as broken.
-    if (data['@type'] === 'Plone Site' || rel === 'plone_site_root' || atId === '/Plone') {
+    // is the site's own path and its rel is "plone_site_root" — register "/"
+    // too so homepage links resolve instead of false-flagging as broken.
+    if (isRoot) {
       pathMap.set('/', data);
     }
   }

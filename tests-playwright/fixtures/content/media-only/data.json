@@ -1,0 +1,15 @@
+{
+  "@id": "/_test_data/media-only",
+  "@type": "Folder",
+  "UID": "media-only-folder-uid",
+  "id": "media-only",
+  "title": "Media Only",
+  "description": "Takes images and files only (locally_allowed_types): a template can't be saved here.",
+  "review_state": "published",
+  "is_folderish": true,
+  "exclude_from_nav": true,
+  "locally_allowed_types": [
+    "Image",
+    "File"
+  ]
+}

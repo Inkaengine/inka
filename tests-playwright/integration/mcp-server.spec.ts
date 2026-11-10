@@ -127,10 +127,10 @@ test.describe('MCP server', () => {
   test('lists its tools', async () => {
     const { tools } = await client.listTools();
     // `picture` and `stage_dropped` are for the views alone: a client lists them to a view, not the model.
-    expect(tools.map((t) => t.name).sort()).toEqual(['ask_for_files', 'create_page', 'delete_page', 'describe_block', 'edit_blocks', 'get_page', 'get_transitions', 'list_block_types', 'list_children', 'move_page', 'picture', 'preview_layout', 'rename_page', 'search', 'stage_dropped', 'stage_media', 'transition_page', 'view_page']);
+    expect(tools.map((t) => t.name).sort()).toEqual(['ask_for_files', 'create_page', 'delete_page', 'describe_block', 'edit_blocks', 'get_page', 'get_transitions', 'list_block_types', 'list_children', 'list_content_types', 'move_page', 'picture', 'preview_layout', 'rename_page', 'search', 'stage_dropped', 'stage_media', 'transition_page', 'view_page']);
     // Those that change nothing say so, so a client need not ask the person every time.
     expect(tools.filter((t) => t.annotations?.readOnlyHint).map((t) => t.name).sort())
-      .toEqual(['ask_for_files', 'describe_block', 'get_page', 'get_transitions', 'list_block_types', 'list_children', 'picture', 'preview_layout', 'search', 'stage_dropped', 'stage_media', 'view_page']);
+      .toEqual(['ask_for_files', 'describe_block', 'get_page', 'get_transitions', 'list_block_types', 'list_children', 'list_content_types', 'picture', 'preview_layout', 'search', 'stage_dropped', 'stage_media', 'view_page']);
     expect(tools.find((t) => t.name === 'delete_page')!.annotations).toMatchObject({ destructiveHint: true });
   });
 
@@ -339,9 +339,18 @@ test.describe('MCP server', () => {
     // A file no one added is refused, and so is one in a new page, for now.
     const unknown = await call('edit_blocks', { path: DEFERRED, expectedVersion: again.version, ops: [{ op: 'update', id: 'image', set: { url: 'media:made-up' } }] });
     expect(unknown.text).toMatch(/add it again/);
-    const newPage = await call('create_page', { parent: '/_test_data', title: 'With a file', blocks: [{ '@type': 'image', url: added.media }] });
+    const newPage = await call('create_page', { parent: '/_test_data', type: 'Document', title: 'With a file', blocks: [{ '@type': 'image', url: added.media }] });
     expect(newPage.isError).toBe(true);
     expect(newPage.text).toMatch(/create the page first/);
+  });
+
+  // Which content types there are, and which go where, is the site's: an agent
+  // reads them, as the editor's Add menu does, rather than being told (#663).
+  test('list_content_types: the types a section takes, as the site says', async () => {
+    const all = (await call('list_content_types', { path: '/_test_data' })).json();
+    expect(all.types.map((t: { id: string }) => t.id)).toEqual(expect.arrayContaining(['Document', 'Image', 'File']));
+    const media = (await call('list_content_types', { path: '/_test_data/media-only' })).json();
+    expect(media.types).toEqual([{ id: 'Image', title: 'Image' }, { id: 'File', title: 'File' }]);
   });
 
   test('create_page: an Image or a File item made from a staged file, as the add form makes one', async ({ urls }) => {
@@ -376,7 +385,7 @@ test.describe('MCP server', () => {
     expect(twice.isError).toBe(true);
     expect(twice.text).toMatch(/is already on the site, as .*: use that item/);
     // A type whose add form has no file to fill takes none.
-    const page = await call('create_page', { parent: '/_test_data', title: 'A page', file: spare.media });
+    const page = await call('create_page', { parent: '/_test_data', type: 'Document', title: 'A page', file: spare.media });
     expect(page.isError).toBe(true);
     expect(page.text).toMatch(/a Document has no file field/);
   });

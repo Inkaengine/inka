@@ -273,6 +273,7 @@ export function siteOn(page) {
   return {
     search: (query) => call('search', query),
     get: (path) => call('get', path),
+    addableTypes: (path) => call('addableTypes', path),
     exists: (path) => call('exists', path),
     status: (path) => call('status', path),
     move: (op) => call('move', op),

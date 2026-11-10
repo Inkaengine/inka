@@ -670,8 +670,13 @@ const ParentBlockSection = ({
         };
         // The Short name is only editable for a not-yet-saved template; renaming a
         // saved template's id is a move (out of scope here).
+        // Where a template can be saved depends on its type: only the
+        // template's own document says which type that is. (While a new
+        // template's id is being changed, the document briefly isn't under
+        // the new id yet; the form shows nothing of it then.)
         const templateSchema = getTemplateInstanceSchema(contextIntl, {
           idEditable: !!tplDoc?._isNew,
+          templateType: tplDoc?.['@type'],
         });
         const formContent = isEditingThisTemplate ? (
           <HydraSchemaProvider value={{ blockPathMap, currentBlockId: blockId, formData, blocksConfig: config.blocks?.blocksConfig, liveBlockDataRef, onChangeBlock }}>

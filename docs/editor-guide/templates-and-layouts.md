@@ -136,7 +136,7 @@ Editing a template changes its **definition** — the change will appear on **ev
 
 ## Making a template
 
-Select a block, open its `⋯` menu and choose **Make Template**. The block becomes the start of a new template, unlocked so you can add to it. Give it a **Name**, and choose its **Save Location** if it shouldn't go in your site's usual templates folder: a template can be saved in any folder you can add pages to. It is saved when you lock it.
+Select a block, open its `⋯` menu and choose **Make Template**. The block becomes the start of a new template, unlocked so you can add to it. Give it a **Name**, and choose its **Save Location** if it shouldn't go in your site's usual templates folder: a template can be saved in any folder the site lets you add templates to. If you pick one that doesn't take them, it says so and keeps the location you had. It is saved when you lock it.
 
 A template is saved as its own kind of page, a **Template**. Site search leaves templates out, and so do search engines: they are templates, not pages for visitors to find on their own.
 

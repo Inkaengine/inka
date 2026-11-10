@@ -13,9 +13,9 @@
  *                   at /docs/architecture would claim / as its parent and the
  *                   admin's breadcrumb and object browser would both be wrong.
  *   position        sibling order, from the folder's `order:` frontmatter.
- *   is_folderish    from the content type, as Plone computes it: a Document is
- *                   folderish whether or not it holds children, a Link or an
- *                   Image is not. Whether a page is written as `X.md` or
+ *   is_folderish    from the content type, as the caller's isFolderish(type)
+ *                   says (Plone computes it from the type, whether or not the
+ *                   item holds children). Whether a page is written as `X.md` or
  *                   `X/index.md` is only how it is laid out, and says nothing
  *                   about this.
  *
@@ -473,7 +473,12 @@ export function resolveCodeExampleSources(page, { schemaFor } = {}) {
   return page;
 }
 
-export function readTree(root, { decode = decodeAuto, prefix = '', schemaFor } = {}) {
+export function readTree(root, { decode = decodeAuto, prefix = '', schemaFor, isFolderish } = {}) {
+  // Which types are folderish is the site's (Plone computes it from the type),
+  // so the caller says; the mount keeps no list of type names.
+  if (typeof isFolderish !== 'function') {
+    throw new Error('readTree needs isFolderish(type): whether the site makes that content type folderish');
+  }
   const items = new Map();
   const blobFiles = new Map();      // content path -> absolute file path
   const order = new Map();          // folder path -> child ids, in order
@@ -581,7 +586,7 @@ export function readTree(root, { decode = decodeAuto, prefix = '', schemaFor } =
 
   normalizeInstanceTemplateFields(items);
   resolveLinkSummaries(items, { schemaFor, prefix });
-  deriveServerState(items, order);
+  deriveServerState(items, order, isFolderish);
   return { items, blobFiles, order, folderForm };
 }
 
@@ -718,16 +723,8 @@ function normalizeInstanceTemplateFields(items) {
   }
 }
 
-/**
- * The types Plone does not make folderish. With plone.volto a Document, Event
- * or News Item is folderish whether or not it holds anything (checked against
- * a live Plone 6.2 + plone.volto: Document, Event, News Item true; Link, Image
- * false); a file-like or link item is not.
- */
-const NON_FOLDERISH_TYPES = new Set(['Image', 'File', 'Link', 'Collection']);
-
 /** Everything the markdown deliberately does not store, from tree position. */
-function deriveServerState(items, order) {
+function deriveServerState(items, order, isFolderish) {
   const parentPathOf = (p) => (p === '/' ? null : (p.slice(0, p.lastIndexOf('/')) || '/'));
 
   const childCount = new Map();
@@ -740,7 +737,7 @@ function deriveServerState(items, order) {
     if (!item.id) item.id = path === '/' ? '' : path.slice(path.lastIndexOf('/') + 1);
     // is_folderish is the type's, not the page's: Plone computes it, so a value
     // left in an older file is overridden rather than believed.
-    item.is_folderish = !NON_FOLDERISH_TYPES.has(item['@type']);
+    item.is_folderish = isFolderish(item['@type']);
 
     const parentPath = parentPathOf(path);
     const parent = parentPath === null ? null : items.get(parentPath);

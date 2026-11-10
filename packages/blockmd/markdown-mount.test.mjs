@@ -4,6 +4,10 @@ import { join } from 'path';
 import { tmpdir } from 'os';
 import { resolveLiteralIncludes, readTree, resolveMarkdownLink, resolveMediaUrl, resolveMarkdownLinksInBlocks, isMarkdownTree, resolveCodeExampleSources, schemaRegistryFromBlockDefinitions, decodeAuto, normalizeNestedUids } from './markdown-mount.mjs';
 
+// The site says which types are folderish; these tests stand in for it as
+// Plone 6 with plone.volto does.
+const isFolderish = (type) => !['Image', 'File', 'Link', 'Collection'].includes(type);
+
 describe('resolveLiteralIncludes', () => {
   let dir;
   beforeAll(() => {
@@ -237,7 +241,7 @@ describe('readTree fills object_browser link summaries from the local target', (
 
   it('fills @type/Title/Description onto a bare object_browser link', () => {
     const root = seed();
-    const { items } = readTree(root, { schemaFor });
+    const { items } = readTree(root, { schemaFor, isFolderish });
     rmSync(root, { recursive: true, force: true });
     const teaser = Object.values(items.get('/source').blocks)[0];
     expect(teaser.href[0]['@id']).toBe('/target');
@@ -258,7 +262,7 @@ describe('readTree fills object_browser link summaries from the local target', (
       '---', '"@type": Document', 'UID: srcuid1234567', 'id: source', '---', '',
       `<block type="teaser" data-json='{"href":[{"@id":"/page"}]}' />`, '',
     ].join('\n'));
-    const { items } = readTree(root, { schemaFor });
+    const { items } = readTree(root, { schemaFor, isFolderish });
     rmSync(root, { recursive: true, force: true });
     const teaser = Object.values(items.get('/source').blocks)[0];
     expect(teaser.href[0]).toEqual({
@@ -273,7 +277,7 @@ describe('readTree fills object_browser link summaries from the local target', (
       '---', '"@type": Document', 'UID: srcuid1234567', 'id: source', '---', '',
       `<block type="card" data-json='{"href":"https://example.com"}' />`, '',
     ].join('\n'));
-    const { items } = readTree(root, { schemaFor });
+    const { items } = readTree(root, { schemaFor, isFolderish });
     rmSync(root, { recursive: true, force: true });
     const card = Object.values(items.get('/source').blocks)[0];
     expect(card.href).toBe('https://example.com');
@@ -287,7 +291,7 @@ describe('README.md and index.md are the same folder landing', () => {
     writeFileSync(join(root, 'README.md'), page('"@type": Document\nUID: root\nid: Plone'));
     mkdirSync(join(root, 'guide'), { recursive: true });
     writeFileSync(join(root, 'guide', 'README.md'), page('"@type": Document\nUID: g\nid: guide'));
-    const { items } = readTree(root);
+    const { items } = readTree(root, { isFolderish });
     expect(items.has('/')).toBe(true);           // root README -> /
     expect(items.has('/guide')).toBe(true);       // folder README -> /guide, not /guide/README
     expect(items.has('/guide/README')).toBe(false);
@@ -326,7 +330,7 @@ describe('readTree honors a top-level `.blockmdignore` (gitignore syntax)', () =
       writeFileSync(join(root, 'examples', infra, 'stray.md'), 'no frontmatter\n');
     }
 
-    const { items } = readTree(root);
+    const { items } = readTree(root, { isFolderish });
     expect(items.has('/')).toBe(true);
     expect(items.has('/architecture')).toBe(true);
     expect(items.has('/examples/button')).toBe(true);
@@ -339,7 +343,7 @@ describe('readTree honors a top-level `.blockmdignore` (gitignore syntax)', () =
     writeFileSync(join(root, '.blockmdignore'), 'content/\n');
     writeFileSync(join(root, 'index.md'), page('"@type": Document\nUID: root\nid: Plone'));
     writeFileSync(join(root, 'broken.md'), 'no frontmatter here\n');
-    expect(() => readTree(root)).toThrow(/frontmatter/);
+    expect(() => readTree(root, { isFolderish })).toThrow(/frontmatter/);
     rmSync(root, { recursive: true, force: true });
   });
 });
@@ -418,7 +422,7 @@ describe("readTree registers a content item's own image/file blob", () => {
       'image:\n  blob_path: news/image/pic.jpg\n  filename: pic.jpg\n  content-type: image/jpeg'));
     writeFileSync(join(root, 'news/image/pic.jpg'), Buffer.from([0xff, 0xd8, 0xff, 0xd9]));
 
-    const { items, blobFiles } = readTree(root);
+    const { items, blobFiles } = readTree(root, { isFolderish });
     // The News Item keeps its image field...
     expect(items.get('/news').image.blob_path).toBe('news/image/pic.jpg');
     // ...and its bytes are registered under the item's own path, so the server
@@ -438,7 +442,7 @@ describe("readTree registers a content item's own image/file blob", () => {
     writeFileSync(join(root, 'news.md'), page(
       '"@type": News Item\nUID: n1\nid: news\nimage:\n  blob_path: news/image/gone.jpg'));
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
-    const { items, blobFiles } = readTree(root);
+    const { items, blobFiles } = readTree(root, { isFolderish });
     expect(items.has('/news')).toBe(true);       // item still served
     expect(blobFiles.has('/news')).toBe(false);  // but no bytes registered
     expect(warn).toHaveBeenCalledWith(expect.stringContaining('gone.jpg'));
@@ -460,7 +464,7 @@ describe("readTree registers a content item's own image/file blob", () => {
       '"@type": Document\nUID: imgs\nid: images\n' +
       'blobs:\n  - file: here.pdf\n    uid: b-here\n  - file: gone.pdf\n    uid: b-gone'));
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
-    const { items, blobFiles } = readTree(root);
+    const { items, blobFiles } = readTree(root, { isFolderish });
     expect(items.has('/images/here.pdf')).toBe(true);      // present blob: item + bytes
     expect(items.has('/images/gone.pdf')).toBe(true);      // absent blob: item registered (graph complete)
     expect(blobFiles.has('/images/here.pdf')).toBe(true);
@@ -492,7 +496,7 @@ describe('readTree: is_folderish comes from the type, not the markdown', () => {
 
   it('reads a flat Document as folderish, as Plone serves it', () => {
     const root = seed();
-    const { items } = readTree(root);
+    const { items } = readTree(root, { isFolderish });
     rmSync(root, { recursive: true, force: true });
     expect(items.get('/flat').is_folderish).toBe(true);
     expect(items.get('/event').is_folderish).toBe(true);
@@ -500,14 +504,14 @@ describe('readTree: is_folderish comes from the type, not the markdown', () => {
 
   it('ignores a stale is_folderish: false left in a Document', () => {
     const root = seed();
-    const { items } = readTree(root);
+    const { items } = readTree(root, { isFolderish });
     rmSync(root, { recursive: true, force: true });
     expect(items.get('/stale').is_folderish).toBe(true);
   });
 
   it('reads a Link and an Image as not folderish', () => {
     const root = seed();
-    const { items } = readTree(root);
+    const { items } = readTree(root, { isFolderish });
     rmSync(root, { recursive: true, force: true });
     expect(items.get('/link').is_folderish).toBe(false);
     expect(items.get('/gallery/pic.png').is_folderish).toBe(false);
@@ -535,7 +539,7 @@ describe('readTree: a blob kept outside the page folder', () => {
 
   it('names the item after the file, and reads the bytes from where file: points', () => {
     const root = seed();
-    const { items, blobFiles } = readTree(root);
+    const { items, blobFiles } = readTree(root, { isFolderish });
     const byName = items.get('/videos/filters.mp4');
     const explicit = items.get('/videos/search-filters.mp4');
     rmSync(root, { recursive: true, force: true });
@@ -544,5 +548,23 @@ describe('readTree: a blob kept outside the page folder', () => {
     expect(explicit.file['content-type']).toBe('video/mp4');
     expect(explicit.file.size).toBe('not really a video'.length);
     expect(blobFiles.get('/videos/search-filters.mp4')).toMatch(/cache\/search\/filters\.mp4$/);
+  });
+});
+
+// Which types are folderish is the site's, so the mount is told rather than
+// keeping a list of type names (#663).
+describe('is_folderish comes from the caller', () => {
+  const page = (fm) => `---\n${fm}\n---\n`;
+  it("asks the caller for each item's type, and refuses to guess without it", () => {
+    const root = mkdtempSync(join(tmpdir(), 'mm-folderish-'));
+    writeFileSync(join(root, 'README.md'), page('"@type": SiteRoot\nUID: r\nid: site'));
+    writeFileSync(join(root, 'gallery.md'), page('"@type": Gallery\nUID: g\nid: gallery'));
+    writeFileSync(join(root, 'photo.md'), page('"@type": Image\nUID: p\nid: photo'));
+    const folderish = new Set(['SiteRoot', 'Image']);
+    const { items } = readTree(root, { isFolderish: (type) => folderish.has(type) });
+    expect(items.get('/gallery').is_folderish).toBe(false);
+    expect(items.get('/photo').is_folderish).toBe(true);
+    expect(() => readTree(root)).toThrow(/isFolderish/);
+    rmSync(root, { recursive: true, force: true });
   });
 });

@@ -15,14 +15,14 @@
  */
 import { v4 as uuid } from 'uuid';
 import { uploadTypeOf } from './uploadPayload';
+import { checkAddable, NotAllowedThere } from './addableTypes';
+
+export { NotAllowedThere };
 
 export const PENDING_PREFIX = 'inka-pending:';
 
 /** A held image could not be uploaded, so the page was not saved. */
 export class UploadFailed extends Error {}
-
-/** The folder a file would be uploaded into does not take its kind from this user. */
-export class NotAllowedThere extends Error {}
 
 const KIND = { Image: 'images', File: 'files' };
 
@@ -36,10 +36,9 @@ const KIND = { Image: 'images', File: 'files' };
  */
 export async function checkAllowed(file, folder, typesIn) {
   const id = uploadTypeOf(file);
-  const type = (await typesIn(folder)).find((t) => t.id === id);
-  if (!type?.addable) {
-    throw new NotAllowedThere(`You can’t add ${KIND[id]} to ${folder}, so this one can’t be saved there.`);
-  }
+  await checkAddable(id, folder, typesIn, () =>
+    `You can’t add ${KIND[id]} to ${folder}, so this one can’t be saved there.`,
+  );
 }
 
 const held = new Map();

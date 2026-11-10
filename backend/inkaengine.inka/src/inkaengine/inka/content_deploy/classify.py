@@ -26,6 +26,10 @@ import enum
 import json
 
 
+# Where an export keeps the site root: plone.exportimport's own name for it.
+SITE_ROOT = "plone_site_root"
+
+
 # Fields that do NOT constitute a meaningful content change, so two data.jsons
 # differing only here compare equal. Timestamps/version/history are volatile;
 # the rest are derived fields the exporter emits and the importer ignores.
@@ -267,22 +271,24 @@ def load_exportimport_tree(content_dir):
     ({rel: data}, {rel: dirname}). The rel-path comes from each item's @id
     (an export's dirname is a UID and carries no hierarchy; a layout's may be
     a path, at any depth); pass the second mapping as ``dir_for`` to
-    build_subset_dir/apply_changeset. The site root becomes 'plone_site_root'.
+    build_subset_dir/apply_changeset. The site root is the item the export
+    keeps in 'plone_site_root', the format's own name for it: not a site
+    called 'Plone' (a site's id is its own) and not a type name.
     """
     content_dir = Path(content_dir)
     tree: dict[str, dict] = {}
     dirs: dict[str, str] = {}
     for data_file in item_data_files(content_dir):
         data = json.loads(data_file.read_text())
-        at_id = data.get("@id") or ""
-        if data.get("@type") == "Plone Site" or at_id in ("/", "/Plone"):
-            rel = "plone_site_root"
+        dirname = data_file.parent.relative_to(content_dir).as_posix()
+        if dirname == SITE_ROOT:
+            rel = SITE_ROOT
         else:
-            rel = at_id.lstrip("/")
+            rel = (data.get("@id") or "").lstrip("/")
         if not rel:
             continue
         tree[rel] = data
-        dirs[rel] = data_file.parent.relative_to(content_dir).as_posix()
+        dirs[rel] = dirname
     return tree, dirs
 
 

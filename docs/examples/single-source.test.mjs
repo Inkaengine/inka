@@ -25,7 +25,9 @@ const codeExamples = (page, slotId) =>
 
 let examplePages;
 beforeAll(() => {
-  const { items } = readTree(DOCS, { schemaFor });
+  // Inka's docs use Plone's own types, folderish as Plone makes them.
+  const isFolderish = (type) => !['Image', 'File', 'Link', 'Collection'].includes(type);
+  const { items } = readTree(DOCS, { schemaFor, isFolderish });
   examplePages = [...items].filter(([id, p]) => id.startsWith('/examples/') && usesTemplate(p));
 });
 
