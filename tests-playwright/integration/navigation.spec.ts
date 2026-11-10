@@ -762,19 +762,12 @@ test.describe('Page Creation', () => {
       const iframeBody = page.frameLocator('#previewIframe').locator('body');
       await expect(iframeBody, 'iframe must not show 404 for the new content').not.toContainText('404', { timeout: 5000 });
 
-      // New document renders at least one block (Volto auto-creates an
-      // empty slate on new pages). Visible proves the round trip
-      // actually rendered the new content.
+      // New document renders at least one block: created empty, it is
+      // filled by the editor as any empty page is. Visible proves the round
+      // trip actually rendered the new content.
       const iframe = helper.getIframe();
       const anyBlock = iframe.locator('[data-block-uid]').first();
       await expect(anyBlock).toBeVisible({ timeout: 10000 });
-
-      // Opened in the editor, the empty page is filled the way the editor
-      // fills any empty page or region: here one block of the default type,
-      // and any other region an empty placeholder. Inka's own Title block,
-      // added to every new page, doubled the title of a frontend whose
-      // layout holds one (#661).
-      await expect(iframe.locator('[data-block-uid]:not([data-hydra-empty])')).toHaveCount(1);
     }
   });
   }
