@@ -89,4 +89,14 @@ FROM base
 COPY --from=build /app/node_modules /app/node_modules
 COPY --from=build /app/core/packages /app/core/packages
 COPY --from=build /app/build /app/build
+# The config the build was MADE from. `FROM base` re-copies the pristine
+# volto.config.js out of the context, so without this the image contradicts
+# itself: razzle has baked the enabled addons into build/, while the config
+# sitting beside it still names none of them. Nothing at runtime reads it --
+# `start:prod` runs the prebuilt build/server.js -- so this is about an image
+# that states what it is, for whoever reads it next and for CI to assert.
+#
+# The glob is deliberate: volto.config.base.js exists only when something was
+# enabled, and a COPY naming a missing file fails the build. Verified both ways.
+COPY --from=build /app/volto.config*.js /app/
 CMD ["pnpm", "start:prod"]
