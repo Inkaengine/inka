@@ -238,6 +238,14 @@
       },
       slate: {
         id: 'slate',
+        // Mirrors the real admin (volto-hydra index.js): a new text block starts
+        // as one empty paragraph. A frontend's config arrives as JSON and can't
+        // carry this function, so without the mirror a region refilled with a
+        // text block gets a bare {"@type":"slate"} the admin never makes.
+        initialValue: ({ value }) => ({
+          ...value,
+          value: value.value || [{ type: 'p', children: [{ text: '' }] }],
+        }),
         blockSchema: {
           properties: {
             value: { widget: 'slate' },
