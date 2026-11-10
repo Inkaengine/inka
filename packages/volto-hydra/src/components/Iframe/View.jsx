@@ -874,24 +874,64 @@ const Iframe = (props) => {
   // Selection and toolbarRequestDone are now part of iframeSyncState.
   // Transforms are handled via SLATE_TRANSFORM_REQUEST and the toolbar's transformAction.
 
-  const { styles, attributes } = usePopper(referenceElement, popperElement, {
+  // The chooser opens where the editor asked for it and stays there. Its anchor
+  // is fixed when it opens: the "+" that was pressed (pressedAddRef), or, for a
+  // chooser no "+" opened (convert, wrap, a paste or drop that needs a type), the
+  // top edge of the block it acts on. Its height is held at what it opened with,
+  // so filtering — which only shortens the list — can't make it re-place itself
+  // (it used to measure against the whole canvas, fall back to pinning its bottom
+  // edge, and drop as the list got shorter).
+  const pressedAddRef = useRef(null);
+  const [chooserAnchor, setChooserAnchor] = useState(null);
+  const [chooserHeight, setChooserHeight] = useState(null);
+  const isRtl =
+    typeof document !== 'undefined' && document.documentElement.dir === 'rtl';
+  const chooserReference = useMemo(
+    () => chooserAnchor && { getBoundingClientRect: () => chooserAnchor },
+    [chooserAnchor],
+  );
+  const { styles, attributes } = usePopper(chooserReference, popperElement, {
     strategy: 'fixed',
-    placement: 'bottom',
+    // The corner it opens from: top-left, or top-right in a right-to-left admin.
+    placement: isRtl ? 'bottom-end' : 'bottom-start',
     modifiers: [
-      {
-        name: 'offset',
-        options: {
-          offset: [550, -300],
-        },
-      },
-      {
-        name: 'flip',
-        options: {
-          fallbackPlacements: ['right-end', 'top-start'],
-        },
-      },
+      { name: 'offset', options: { offset: [0, 4] } },
+      { name: 'flip', options: { fallbackPlacements: [isRtl ? 'top-end' : 'top-start'] } },
+      // Room neither below nor above (a "+" low on a short window): slide it
+      // up or down until all of it is on screen, over its anchor if need be.
+      { name: 'preventOverflow', options: { altAxis: true, tether: false, padding: 8 } },
     ],
   });
+
+  const chooserOpen = !!(addNewBlockOpened || chooser);
+  useEffect(() => {
+    if (!chooserOpen) {
+      // Closed (or a "+" press added its one allowed type without asking).
+      if (chooserAnchor) setChooserAnchor(null);
+      if (chooserHeight !== null) setChooserHeight(null);
+      return;
+    }
+    if (chooserAnchor) return;
+    // Nothing on screen opened it (no "+", no canvas drop): it opens at the top
+    // edge of the selected block (the first of a multi-selection being
+    // wrapped), or at the top of the canvas when nothing is selected (a drop
+    // from the sidebar's block list).
+    const frame = referenceElement.getBoundingClientRect();
+    const rect =
+      blockUI?.rect || Object.values(blockUI?.multiSelectRects || {})[0];
+    setChooserAnchor(
+      rect
+        ? new DOMRect(frame.left + rect.left, frame.top + rect.top, rect.width, 0)
+        : new DOMRect(frame.left, frame.top, frame.width, 0),
+    );
+  }, [chooserOpen, chooserAnchor]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Hold the height it opened with (see above).
+  useEffect(() => {
+    if (chooserOpen && popperElement && chooserHeight === null) {
+      setChooserHeight(popperElement.offsetHeight);
+    }
+  }, [chooserOpen, popperElement, chooserHeight]);
 
   // Frontend URL: from Redux store, cookie, or env default
   const urlFromEnv = getURlsFromEnv();
@@ -2090,6 +2130,18 @@ const Iframe = (props) => {
         }
         if (options.length > 1 && singleDrag) {
           // Ask-first: show the chooser; commitChooser converts + moves atomically.
+          // It opens where the block was dropped, when the drop was on the canvas.
+          if (data.dropRect) {
+            const frame = referenceElement.getBoundingClientRect();
+            setChooserAnchor(
+              new DOMRect(
+                frame.left + data.dropRect.left,
+                frame.top + data.dropRect.top,
+                data.dropRect.width,
+                data.dropRect.height,
+              ),
+            );
+          }
           setChooser({
             kind: 'convert',
             blockId: bid,
@@ -5693,7 +5745,11 @@ const Iframe = (props) => {
           <div
             ref={setPopperElement}
             className="add-new-block-popup"
-            style={styles.popper}
+            style={
+              chooserHeight === null
+                ? styles.popper
+                : { ...styles.popper, minHeight: `${chooserHeight}px` }
+            }
             {...attributes.popper}
           >
             {chooser ? (
@@ -6837,7 +6893,10 @@ const Iframe = (props) => {
                 justifyContent: 'center',
                 padding: '0',
               }}
-              onClick={handleIframeAdd}
+              onClick={(e) => {
+                setChooserAnchor(e.currentTarget.getBoundingClientRect());
+                handleIframeAdd();
+              }}
               title={addTitle}
             >
               {addIcon}
@@ -7024,6 +7083,8 @@ const Iframe = (props) => {
         blockPathMap={iframeSyncState.blockPathMap}
         onSelectBlock={onSelectBlock}
         onAddBlock={(parentBlockId, containerConfig, options) => {
+          // The sidebar "+" that was pressed is where its chooser opens.
+          if (options?.anchor) setChooserAnchor(options.anchor);
           if (options?.afterBlockId) {
             // Template slot section: add after specific block
             const afterId = options.afterBlockId;

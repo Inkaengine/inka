@@ -352,6 +352,40 @@ test.describe('Adding Blocks', () => {
     expect(await helper.isBlockTypeVisible('slate')).toBe(true);
     expect(await helper.isBlockTypeVisible('image')).toBe(true);
   });
+  test('the block chooser opens at its + and stays put while filtering', async ({ page }) => {
+    // The chooser is anchored to where it opened (Inkaengine/inka: the chooser
+    // jumped while typing a filter). Measured against the whole canvas, it fell
+    // back to pinning its bottom edge, so a shorter list pulled its top down.
+    const helper = new AdminUIHelper(page);
+    await helper.login();
+    await helper.navigateToEdit('/test-page');
+    await helper.clickBlockInIframe('block-1-uuid');
+
+    const plus = page.locator('.volto-hydra-add-button');
+    await expect(plus).toBeVisible();
+    const plusBox = (await plus.boundingBox())!;
+    await plus.click();
+
+    const chooser = page.locator('.blocks-chooser');
+    await expect(chooser).toBeVisible();
+    const opened = (await chooser.boundingBox())!;
+
+    // Opens at the + : no gap of more than a few pixels between the two boxes.
+    const gapX = Math.max(0, opened.x - (plusBox.x + plusBox.width), plusBox.x - (opened.x + opened.width));
+    const gapY = Math.max(0, opened.y - (plusBox.y + plusBox.height), plusBox.y - (opened.y + opened.height));
+    expect(gapX, `chooser ${JSON.stringify(opened)} beside the + ${JSON.stringify(plusBox)}`).toBeLessThanOrEqual(8);
+    expect(gapY, `chooser ${JSON.stringify(opened)} beside the + ${JSON.stringify(plusBox)}`).toBeLessThanOrEqual(8);
+
+    // Filtering shortens the list; the chooser keeps its place: the corner it
+    // opened from and its width. Only its bottom edge may come up.
+    const visibleTypes = chooser.locator('.ui.buttons > button:visible');
+    const before = await visibleTypes.count();
+    await chooser.locator('.searchbox input').pressSequentially('image');
+    await expect.poll(() => visibleTypes.count()).toBeLessThan(before);
+    const filtered = (await chooser.boundingBox())!;
+    expect({ x: filtered.x, y: filtered.y, width: filtered.width })
+      .toEqual({ x: opened.x, y: opened.y, width: opened.width });
+  });
 });
 
 test.describe('Removing Blocks', () => {
