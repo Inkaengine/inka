@@ -2366,6 +2366,59 @@ export function ensureEmptyBlockIfEmpty(
     return setBlockByPath(formData, parentPath, updatedParentBlock);
   }
 
+  // A block-defaults pass may have copied a region's raw `default` list onto the field
+  // itself; the region is stored in blocks_layout, so that copy would be a stray field.
+  const withoutStrayDefault = (updatedParentBlock) => {
+    const regionHolder = (containerConfig.regionPath || []).reduce(
+      (node, key) => node?.[key],
+      updatedParentBlock,
+    );
+    if (Array.isArray(regionHolder?.[containerConfig.region])) {
+      delete regionHolder[containerConfig.region];
+    }
+    return updatedParentBlock;
+  };
+
+  // A region of a LOCKED block — template content on a page that only uses the
+  // template, or a template's own block as stored — gets an `empty` placeholder,
+  // whatever its default type or `default` list. A real block there cannot be reached
+  // to fill in, yet would be validated as the page's own (an empty footer column's
+  // required link url refused the save of every page on a site whose footer template
+  // had no columns), and, since only an `empty` is stripped on save, it would be stored
+  // into the template although no author added it. The placeholder is locked with the
+  // block and joins its template by templateId, which a definition's own blocks carry
+  // before the merge gives them an instance id: unlocking the template gives it a "+",
+  // and a block added in its place is the template's.
+  if (parentBlock.readOnly === true) {
+    let emptyBlock = { '@type': 'empty' };
+    if (intl && blocksConfig) {
+      emptyBlock = getApplyBlockDefaults()(
+        { data: emptyBlock, intl, metadata, properties },
+        blocksConfig,
+      );
+    }
+    emptyBlock = {
+      ...emptyBlock,
+      ...(parentBlock.templateId && { templateId: parentBlock.templateId }),
+      ...(parentBlock.templateInstanceId && {
+        templateInstanceId: parentBlock.templateInstanceId,
+      }),
+      fixed: true,
+      readOnly: true,
+    };
+    if (containerConfig.vacatedSlotId && emptyBlock.templateId) {
+      emptyBlock = { ...emptyBlock, slotId: containerConfig.vacatedSlotId };
+    }
+    const blocksObj = { ...parentBlock.blocks, [newBlockId]: emptyBlock };
+    return setBlockByPath(
+      formData,
+      parentPath,
+      withoutStrayDefault(
+        setContainerItems(parentBlock, containerConfig, [newBlockId], blocksObj),
+      ),
+    );
+  }
+
   // A region with a `default` goes back to it, each child under a fresh id, seeded
   // like the placeholder below (a load-time refill: it does not inherit fixed).
   if (containerConfig.defaultBlocks) {
@@ -2384,17 +2437,11 @@ export function ensureEmptyBlockIfEmpty(
       blocksObj[id] = child;
       return id;
     });
-    const updatedParentBlock = setContainerItems(parentBlock, containerConfig, ids, blocksObj);
-    // A block-defaults pass may have copied the raw list onto the field itself;
-    // the region is stored in blocks_layout, so that copy would be a stray field.
-    const regionHolder = (containerConfig.regionPath || []).reduce(
-      (node, key) => node?.[key],
-      updatedParentBlock,
+    return setBlockByPath(
+      formData,
+      parentPath,
+      withoutStrayDefault(setContainerItems(parentBlock, containerConfig, ids, blocksObj)),
     );
-    if (Array.isArray(regionHolder?.[containerConfig.region])) {
-      delete regionHolder[containerConfig.region];
-    }
-    return setBlockByPath(formData, parentPath, updatedParentBlock);
   }
 
   // Standard blocks container — seed through the SAME shared seedTemplateChild as the
