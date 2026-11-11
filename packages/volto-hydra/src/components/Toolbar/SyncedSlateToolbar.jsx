@@ -28,6 +28,7 @@ import lockSVG from '@plone/volto/icons/lock.svg';
 import AddLinkForm from '@plone/volto/components/manage/AnchorPlugin/components/LinkButton/AddLinkForm';
 import { ImageInput } from '@plone/volto/components/manage/Widgets/ImageWidget';
 import { createLog } from '../../utils/log';
+import { probeToolbarButtons } from '../../utils/toolbarButtonKinds';
 
 const log = createLog('TOOLBAR');
 
@@ -108,54 +109,6 @@ class SlateErrorBoundary extends Component {
 
   render() {
     return this.props.children;
-  }
-}
-
-/**
- * Checks if a button factory creates a BlockButton component.
- *
- * Button factories in config.settings.slate.buttons are arrow functions that
- * return React elements: (props) => <MarkElementButton ... /> or <BlockButton ... />
- *
- * We call the factory (with empty props) to get the element, then compare the
- * element's type to the imported BlockButton component reference.
- *
- * BlockButtons are used for block-level formatting (headings, lists, blockquote).
- * They should go in the FormatDropdown. Other buttons (MarkElementButton for bold,
- * italic, etc.) stay in the toolbar.
- *
- * NOTE: We compare element.type === BlockButton directly, which works in both
- * development and production builds because it's a reference comparison, not
- * a string name comparison that would be affected by minification.
- */
-function isBlockButton(Btn, BlockButtonRef) {
-  if (!Btn || !BlockButtonRef) return false;
-  try {
-    // Call the factory function to get the React element
-    // The factory is like: (props) => <BlockButton format="h2" ... />
-    // Calling it returns the element {type: BlockButton, props: {...}}
-    const element = Btn({});
-    // Compare element.type to the imported BlockButton component reference
-    // This is a reference comparison that works in production builds
-    return element?.type === BlockButtonRef;
-  } catch (e) {
-    // If the factory throws (shouldn't happen), treat as non-block button
-    return false;
-  }
-}
-
-/**
- * The element type a toolbar button applies, or undefined when it doesn't name
- * one (the link editor, the style menu). Both button kinds carry it as
- * `format`: BlockButton for block-level types, MarkElementButton for the inline
- * ones — volto-slate models bold/italic as inline ELEMENTS, so one prop covers
- * both. A button with no `format` is left alone rather than guessed at.
- */
-function buttonFormat(Btn) {
-  try {
-    return Btn({})?.props?.format;
-  } catch (e) {
-    return undefined;
   }
 }
 
@@ -1310,9 +1263,12 @@ const SyncedSlateToolbar = ({
     [],
   );
 
-  // Classify buttons into block buttons (FormatDropdown) and inline buttons (toolbar)
-  // Computed inline (not in useMemo) because isBlockButton() calls the factory
-  // function which may use hooks - calling hooks inside useMemo violates Rules of Hooks
+  // Sort the listed buttons into block buttons (FormatDropdown) and inline
+  // buttons (toolbar). Every registered button is probed on every render,
+  // whatever is listed or the region allows (utils/toolbarButtonKinds.js), so
+  // a button can be left out below for any reason without changing the
+  // toolbar's hook count.
+  const kinds = probeToolbarButtons(buttons, BlockButton);
   const blockButtons = [];
   const allInlineButtons = [];
 
@@ -1323,9 +1279,11 @@ const SyncedSlateToolbar = ({
 
     // A button whose format this region disallows isn't offered. Cosmetic on
     // its own — paste, hotkeys and markdown are gated at their own surfaces —
-    // but this is the one the author sees.
-    const format = buttonFormat(Btn);
+    // but this is the one the author sees. The link button names no format,
+    // so it is gated by name.
+    const { block, format } = kinds[name];
     if (format && !isStyleAllowed(format, slateRules)) return;
+    if (name === 'link' && !isStyleAllowed('link', slateRules)) return;
 
     // Create element for later rendering. The region's rules go to every
     // button: a plain format button is already gated by name above, but the
@@ -1341,15 +1299,9 @@ const SyncedSlateToolbar = ({
         <Btn slateRules={slateRules} />
       );
 
-    // Check if this is a BlockButton (block-level format like h2, h3, ul, ol)
-    // isBlockButton compares element.type to imported BlockButton reference
-    if (isBlockButton(Btn, BlockButton)) {
+    if (block) {
       blockButtons.push({ name, element });
-    } else if (name !== 'link' || isStyleAllowed('link', slateRules)) {
-      // The link button names no format, so it is gated here, by name. Not by
-      // returning earlier: its factory holds hooks and isBlockButton calls it
-      // during this render, and the rules can arrive after the first one, so
-      // skipping that call changes the hook count and crashes the toolbar.
+    } else {
       allInlineButtons.push({ name, element });
     }
   });

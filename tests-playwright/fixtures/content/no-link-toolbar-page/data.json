@@ -1,0 +1,65 @@
+{
+  "@id": "http://localhost:8888/no-link-toolbar-page",
+  "@type": "Document",
+  "UID": "no-link-toolbar-page-uid",
+  "id": "no-link-toolbar-page",
+  "title": "No Link Toolbar Page",
+  "description": "The test frontend's toolbar on this page has no link button (settings.slate.toolbarButtons without 'link'), as a design system that offers no inline links does.",
+  "review_state": "published",
+  "parent": {
+    "@id": "http://localhost:8888",
+    "@type": "Plone Site",
+    "title": "Site"
+  },
+  "blocks": {
+    "title-block": {
+      "@type": "title"
+    },
+    "target": {
+      "@type": "slate",
+      "value": [
+        {
+          "type": "p",
+          "children": [
+            {
+              "text": ""
+            },
+            {
+              "type": "strong",
+              "children": [
+                {
+                  "text": "Bold words"
+                }
+              ]
+            },
+            {
+              "text": " and plain words"
+            }
+          ]
+        }
+      ],
+      "plaintext": "Bold words and plain words"
+    },
+    "plain": {
+      "@type": "slate",
+      "value": [
+        {
+          "type": "p",
+          "children": [
+            {
+              "text": "Only plain words"
+            }
+          ]
+        }
+      ],
+      "plaintext": "Only plain words"
+    }
+  },
+  "blocks_layout": {
+    "items": [
+      "title-block",
+      "target",
+      "plain"
+    ]
+  }
+}
