@@ -17,7 +17,7 @@ describe('initializeContainerBlock — object_list seed type mirrors getEmptyBlo
   const intl = { formatMessage: (m) => m?.defaultMessage || m?.id || '' };
   const mkSchema = (subblocksDef) => ({
     properties: {
-      subblocks: { widget: 'object_list', typeField: 'field_type', ...subblocksDef },
+      subblocks: { widget: 'object_list', idField: 'field_id', typeField: 'field_type', ...subblocksDef },
     },
   });
 

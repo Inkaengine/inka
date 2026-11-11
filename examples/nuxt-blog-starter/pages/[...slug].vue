@@ -231,6 +231,7 @@ onMounted(() => {
                             links: {
                                 title: 'Links',
                                 widget: 'object_list',
+                                idField: '@id',
                                 schema: {
                                     properties: {
                                         url: {

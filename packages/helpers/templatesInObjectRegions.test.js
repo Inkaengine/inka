@@ -113,7 +113,7 @@ describe('buildIdFieldMap reads inside objects', () => {
                   rows: { widget: 'object_list', idField: 'key' },
                   deep: {
                     widget: 'object',
-                    schema: { properties: { items: { widget: 'object_list' } } },
+                    schema: { properties: { items: { widget: 'object_list', idField: '@id' } } },
                   },
                 },
               },

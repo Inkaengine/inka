@@ -1,5 +1,5 @@
 import { getChildBlockEntries, getChildFields, translatableFieldIds } from './index.js';
-import { isObjectListRegion } from './regionWidgets.js';
+import { isObjectListRegion, regionIdField } from './regionWidgets.js';
 
 /**
  * A block's text, as a person reads it: the fields a person writes, as the schema for that
@@ -96,7 +96,7 @@ export function regionText(node, region, options, parts) {
 function objectListText(node, field, def, own, options, parts) {
   for (const item of node[field] || []) {
     const type = item[def.typeField || '@type'];
-    if (type) unreachedBlockText({ ...item, '@type': type }, item[def.idField || '@id'], options, parts);
+    if (type) unreachedBlockText({ ...item, '@type': type }, item[regionIdField(def, `field "${field}"`)], options, parts);
     else if (def.schema) nodeText(item, def.schema, own, options, parts, { idField: def.idField });
     else throw new Error(`Block text: no type or schema for an item of "${field}"`);
   }

@@ -182,7 +182,7 @@ ordered by a `blocks_layout` region (as above).
 
 - **\`object_list\`** (a slider's slides, a table's rows): children are an **inline array**
 
-of block objects, each identified by an **id field** (`@id` by default).
+of block objects, each identified by the **id field** its schema names (`idField`; none is assumed).
 
 Everything else is identical: every object_list item still needs a `slotId` (plus `templateId` / `fixed` / `readOnly` as appropriate), and a slot item fills from the page's content just like a `blocks_layout` slot.
 

@@ -373,7 +373,7 @@ A block's schema uses the same format as a [Volto block schema](https://6.docs.p
 | `widget` | Storage | Key fields |
 | --- | --- | --- |
 | `blocks_layout` | children are ids in the parent's shared `blocks` dict; this field's name is a region key under `blocks_layout` | `allowedBlocks`, `maxLength`, `allowedTemplates`, `allowedStyles` / `disallowedStyles` / `allowedMarks` / `disallowedMarks` ([slate styles](#restricting-slate-styles-per-region)) |
-| `object_list` | inline array on the field itself | `idField` (default `@id`), `schema` (item schema), `allowedBlocks` + `typeField` (typed items), `defaultBlockType`, `maxLength`, `addMode: 'table'`, `subBlocks` (default `true`; see below) |
+| `object_list` | inline array on the field itself | `idField` (required for a region — the field each item's id is kept in, such as `@id`, `key` or `field_id`; none is assumed, and a region without one throws), `schema` (item schema), `allowedBlocks` + `typeField` (typed items), `defaultBlockType`, `maxLength`, `addMode: 'table'`, `subBlocks` (default `true`; see below) |
 | `object` | groups sub-fields under one key; sub-fields (plain OR the two container widgets above) nest inside | `schema` (the nested properties) |
 
 </block>

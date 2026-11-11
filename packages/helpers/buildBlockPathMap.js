@@ -21,7 +21,7 @@
 // the workspace happened to be linked. A relative path needs nothing installed.
 import { getBlockType } from './index.js';
 import { foldSlateStyleRules } from './slateStyles.js';
-import { isObjectListRegion } from './regionWidgets.js';
+import { isObjectListRegion, regionIdField } from './regionWidgets.js';
 import { createFieldRulesEnhancer } from './fieldRules.js';
 
 // Same value as PAGE_BLOCK_UID in hydra.js — defined locally to avoid
@@ -212,7 +212,7 @@ export function buildIdFieldMap(blocksConfig, intl) {
     const visit = (properties, prefix) => {
       for (const [field, def] of Object.entries(properties || {})) {
         if (isObjectListRegion(def)) {
-          (map[type] || (map[type] = {}))[`${prefix}${field}`] = def.idField || '@id';
+          (map[type] || (map[type] = {}))[`${prefix}${field}`] = regionIdField(def, `block "${type}" field "${prefix}${field}"`);
         } else if (def.widget === 'object') {
           visit(def.schema?.properties, `${prefix}${field}/`);
         }
@@ -849,7 +849,7 @@ export function buildBlockPathMap(formData, blocksConfig, intl = {}) {
     }
 
     const regionSlateRules = foldSlateStyleRules(inheritedSlateRules, fieldDef);
-    const idField = fieldDef.idField || '@id';
+    const idField = regionIdField(fieldDef, `block "${parent?.['@type']}" field "${fieldName}"`);
     const itemSchema = fieldDef.schema;
     const typeField = fieldDef.typeField || null; // e.g., '@type' - which attribute stores the item's type
     const hasAllowedBlocks = !!fieldDef.allowedBlocks; // Typed items mode (multi-type container)

@@ -63,7 +63,7 @@ const cfg = {
     id: 'tableCell',
     blockSchema: {
       properties: {
-        blocks: { widget: 'object_list', typeField: '@type', allowedBlocks: ['slate'] },
+        blocks: { widget: 'object_list', idField: '@id', typeField: '@type', allowedBlocks: ['slate'] },
       },
     },
   },

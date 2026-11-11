@@ -3258,7 +3258,7 @@ export function getChildBlocks(parentBlock, descriptor = {}) {
  * the node at `regionPath`. Same prefix, one representation, no `dataPath`.
  *
  * @param {Object} parentBlock - the container block
- * @param {Object} descriptor - { isObjectList, regionPath, region='items', idField='@id' }
+ * @param {Object} descriptor - { isObjectList, regionPath, region='items', idField } (a list's idField is required)
  * @returns {Array<{id: string, block: Object}>}
  */
 export function getChildBlockEntries(parentBlock, descriptor = {}) {
@@ -3383,7 +3383,7 @@ function clearRegions(block, fields) {
  * cloning each level (INITIAL_DATA arrives deep-frozen).
  *
  * @param {Object} parentBlock - the container block to mutate
- * @param {Object} descriptor - { isObjectList, regionPath, region='items', idField='@id' }
+ * @param {Object} descriptor - { isObjectList, regionPath, region='items', idField } (a list's idField is required)
  * @param {Array<{id: string, block: Object}>} entries
  */
 export function setChildBlockEntries(parentBlock, descriptor, entries) {
@@ -4797,7 +4797,7 @@ export async function expandTemplates(inputItems, options = {}) {
  *  - Nested containers are detected from DATA, never schema:
  *      • blocks_layout container: a block with its own `blocks` + `blocks_layout`.
  *      • object_list container: a block field holding an array whose items carry
- *        `templateId` (idField defaults to `@id`).
+ *        `templateId` (read by the list's idField, which the caller names).
  *  - A template MAY embed a DIFFERENT template (a nested block whose `templateId`
  *    differs from the one being applied). It is re-instanced as a SEPARATE
  *    instance — a template-in-a-template. [NOT YET SUPPORTED: the merge currently

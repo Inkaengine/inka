@@ -399,6 +399,7 @@ export const sharedBlocksConfig = {
                 slides: {
                     title: 'Slides',
                     widget: 'object_list',
+                    idField: '@id',
                     itemTypeField: 'variation',  // sync trigger — names the sibling field
                     allowedBlocks: ['slide', 'image', 'listing', 'teaser'],
                     typeField: '@type',
@@ -525,6 +526,7 @@ export const sharedBlocksConfig = {
                 panels: {
                     title: 'Panels',
                     widget: 'object_list',
+                    idField: '@id',
                     schema: {
                         fieldsets: [{ id: 'default', title: 'Default', fields: ['title', 'items'] }],
                         properties: {
@@ -630,6 +632,7 @@ export const sharedBlocksConfig = {
                   // list it here without touching this schema.
                   title: 'Facets',
                   widget: 'object_list',
+                  idField: '@id',
                   typeField: 'type',
                   allowedBlocks: ['checkboxFacet', 'selectFacet', 'daterangeFacet', 'toggleFacet'],
                   defaultBlockType: 'checkboxFacet',
@@ -804,6 +807,7 @@ export const sharedBlocksConfig = {
                 tabs: {
                     title: 'Code Tabs',
                     widget: 'object_list',
+                    idField: '@id',
                     schema: {
                         fieldsets: [
                             {

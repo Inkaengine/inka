@@ -51,8 +51,11 @@ import {
   targetDestinations,
 } from '../../utils/copyFromTargetMapping';
 
-// The schema facts an agent needs, as plain data (see plain()).
-const FIELD_FACTS = ['title', 'description', 'widget', 'type', 'factory', 'choices', 'default', 'maxLength', 'allowedBlocks'];
+// The schema facts an agent needs, as plain data (see plain()). A list's
+// `idField` says which field its items' ids are kept in, and `subBlocks: false`
+// says it is a plain list rather than a region: without them a list's items
+// cannot be told apart.
+const FIELD_FACTS = ['title', 'description', 'widget', 'type', 'factory', 'choices', 'default', 'maxLength', 'allowedBlocks', 'idField', 'subBlocks'];
 
 /**
  * Which of a block type's fields a LINK owns, and which link: `{ title: 'href' }`.

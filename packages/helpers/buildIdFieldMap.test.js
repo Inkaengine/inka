@@ -8,7 +8,7 @@ import { buildIdFieldMap } from './buildBlockPathMap.js';
  * cross-test cache collisions in getBlockTypeSchema.
  */
 describe('buildIdFieldMap', () => {
-  test('derives { blockType: { field: idField } } for object_list fields, defaulting @id', () => {
+  test('derives { blockType: { field: idField } } for object_list fields', () => {
     const blocksConfig = {
       testform: {
         id: 'testform',
@@ -23,7 +23,7 @@ describe('buildIdFieldMap', () => {
         id: 'testslider',
         blockSchema: {
           properties: {
-            slides: { widget: 'object_list' }, // no idField declared → defaults to @id
+            slides: { widget: 'object_list', idField: '@id' },
           },
         },
       },
@@ -34,5 +34,17 @@ describe('buildIdFieldMap', () => {
       testform: { subblocks: 'field_id' },
       testslider: { slides: '@id' },
     });
+  });
+
+  test('a list region that names no idField throws: none is assumed', () => {
+    const blocksConfig = {
+      testundeclared: {
+        id: 'testundeclared',
+        blockSchema: { properties: { slides: { widget: 'object_list' } } },
+      },
+    };
+    expect(() => buildIdFieldMap(blocksConfig, undefined)).toThrow(
+      /block "testundeclared" field "slides".*idField/,
+    );
   });
 });

@@ -42,7 +42,7 @@ import { normalizeSlateFields, undefinedSlateTypes } from './slateStyles.js';
 import { getContainerFieldConfig, getBlockByPath, getBlockTypeSchema, getBlockById, updateBlockById,
   deleteBlockFromContainer, ensureEmptyBlockIfEmpty, removeReplacedPlaceholder, getChildBlockIds, getChildField, getChildBlockIdsInField, convertValueContainer, convertContainerBlock, getContainerRegionDescriptors, insertBlockInContainer, parseRegionPath, expandValueIntoRegion, collapseRegionToValue, inheritTemplateMembership } from './blockPath.js';
 import { addableSiblingTypes, buildBlockPathMap, buildIdFieldMap, PAGE_BLOCK_UID } from './buildBlockPathMap.js';
-import { isObjectListRegion } from './regionWidgets.js';
+import { isObjectListRegion, regionIdField } from './regionWidgets.js';
 import {
   createFieldRulesEnhancer,
   evaluateFieldRule,
@@ -1734,7 +1734,10 @@ export function filterAddableTypesByRule(
   // region's `typeRule` is carried onto each typed item's pathMap entry, so the
   // ref sibling carries it when the region has one.
   if (!blockPathMap?.[refBlockId]?.typeRule) return allowedBlocks;
-  const idField = containerConfig?.idField || '@id';
+  // A list item carries its id in the list's idField; a blocks_layout child is
+  // keyed by the layout, so its data holds no id.
+  const probeIdData = (probeId) =>
+    containerConfig.isObjectList ? { [containerConfig.idField]: probeId } : {};
   const filtered = allowedBlocks.filter((type) => {
     const probeId = `__probe_${type}__`;
     let sandbox;
@@ -1744,7 +1747,7 @@ export function filterAddableTypesByRule(
         blockPathMap,
         refBlockId,
         probeId,
-        { '@type': type, [idField]: probeId },
+        { '@type': type, ...probeIdData(probeId) },
         containerConfig,
         'after',
       );
@@ -2295,7 +2298,7 @@ function resolveRegionDescriptor(blockType, path, blocksConfig, intl) {
         return {
           ...base,
           isObjectList: true,
-          idField: fieldDef.idField || '@id',
+          idField: regionIdField(fieldDef, `block "${blockType}" field "${path}"`),
           typeField: fieldDef.typeField || null,
         };
       }

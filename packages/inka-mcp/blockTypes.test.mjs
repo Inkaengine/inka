@@ -36,7 +36,7 @@ const schemas = {
     },
     slider: {
       title: 'Slider',
-      blockSchema: { required: [], properties: { slides: field({ widget: 'object_list', title: 'Slides' }) } },
+      blockSchema: { required: [], properties: { slides: field({ widget: 'object_list', idField: '@id', title: 'Slides' }) } },
       regions: [{
         region: 'slides', isObjectList: true, allowedBlocks: ['slider:slides'], defaultBlockType: 'slider:slides', maxLength: null,
       }],

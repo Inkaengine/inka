@@ -1672,7 +1672,7 @@ describe('checkIntegrity() — object_list items must carry their type', () => {
   const accordionConfig = {
     accordion: {
       blockSchema: {
-        properties: { panels: { widget: 'object_list', allowedBlocks: ['panel'], typeField: '@type' } },
+        properties: { panels: { widget: 'object_list', idField: '@id', allowedBlocks: ['panel'], typeField: '@type' } },
       },
     },
     panel: { blockSchema: { properties: { title: {} } } },
@@ -1712,7 +1712,7 @@ describe('checkIntegrity() — object_list items must carry their type', () => {
     // A field can name where the type lives; the check reads THAT key.
     const facetConfig = {
       facetgroup: {
-        blockSchema: { properties: { facets: { widget: 'object_list', typeField: 'type' } } },
+        blockSchema: { properties: { facets: { widget: 'object_list', idField: '@id', typeField: 'type' } } },
       },
     };
     const { root, contentDir } = buildFixture({
@@ -1737,7 +1737,7 @@ describe('checkIntegrity() — object_list items must carry their type', () => {
     // `{"@type": "selectFacet"}` against a schema naming `type` renders fine.
     const facetConfig = {
       facetgroup: {
-        blockSchema: { properties: { facets: { widget: 'object_list', typeField: 'type' } } },
+        blockSchema: { properties: { facets: { widget: 'object_list', idField: '@id', typeField: 'type' } } },
       },
     };
     const r = checkIntegrity(
@@ -1766,7 +1766,7 @@ describe('checkIntegrity — every list item has its own id', () => {
       blocks, blocks_layout: { items: Object.keys(blocks) },
     },
   }];
-  const slidesConfig = (idField) => ({
+  const slidesConfig = (idField = '@id') => ({
     slider: {
       blockSchema: {
         properties: { slides: { widget: 'object_list', ...(idField ? { idField } : {}) } },
@@ -1776,7 +1776,7 @@ describe('checkIntegrity — every list item has its own id', () => {
   });
   const idErrors = (r) => r.errors.filter((e) => e.includes(' id '));
 
-  it('FAILS an object_list item with no id (default idField @id)', () => {
+  it('FAILS an object_list item with no id in its idField', () => {
     const r = checkIntegrity(page({ s: { '@type': 'slider', slides: [{ '@type': 'slide', '@id': 'a' }, { '@type': 'slide' }] } }), { schemasFor: () => slidesConfig() });
     assert.ok(r.errors.some((e) => e.includes('slides" item 1') && e.includes('has no id "@id"')), r.errors.join('\n'));
     assert.ok(!r.errors.some((e) => e.includes('slides" item 0')), r.errors.join('\n'));
@@ -1786,6 +1786,13 @@ describe('checkIntegrity — every list item has its own id', () => {
     // A region that put ids in @id while the frontend reads `key`.
     const r = checkIntegrity(page({ s: { '@type': 'slider', slides: [{ '@type': 'slide', '@id': 'a' }] } }), { schemasFor: () => slidesConfig('key') });
     assert.ok(r.errors.some((e) => e.includes('slides" item 0') && e.includes('has no id "key"')), r.errors.join('\n'));
+  });
+
+  it('STOPS on a list region whose schema names no idField: none is assumed', () => {
+    assert.throws(
+      () => checkIntegrity(page({ s: { '@type': 'slider', slides: [{ '@type': 'slide', '@id': 'a' }] } }), { schemasFor: () => slidesConfig(null) }),
+      /block "slider" field "slides".*idField/,
+    );
   });
 
   it('FAILS two object_list items that share an id', () => {

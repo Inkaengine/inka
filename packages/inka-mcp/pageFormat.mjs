@@ -17,7 +17,7 @@
  * the one the edit_blocks operations address blocks in.
  */
 import { slateToMd, mdToSlate, plaintextOf } from '@inka/blockmd/slate-md.mjs';
-import { isObjectListRegion } from '@volto-hydra/helpers/regionWidgets.js';
+import { isObjectListRegion, regionIdField } from '@volto-hydra/helpers/regionWidgets.js';
 
 /** A Slate value: an array of element nodes with `children`. */
 const isSlate = (v) => Array.isArray(v) && v.length > 0
@@ -50,7 +50,7 @@ export function schemaFacts(blocksConfig) {
     // regionWidgets.js), or null for a field that is no such list.
     objectListIdField: (type, field) => {
       const def = props(type)[field];
-      return isObjectListRegion(def) ? def.idField || '@id' : null;
+      return isObjectListRegion(def) ? regionIdField(def, `block "${type}" field "${field}"`) : null;
     },
   };
 }
