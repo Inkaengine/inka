@@ -30,7 +30,7 @@ describe('getChildBlockEntries — uniform child access across blocks_layout & o
 
   test('object_list: returns array items as {id: item[idField], block: item}', () => {
     const parent = { slides: [{ '@id': 's1', title: 'One' }, { '@id': 's2', title: 'Two' }] };
-    expect(getChildBlockEntries(parent, { isObjectList: true, region: 'slides' })).toEqual([
+    expect(getChildBlockEntries(parent, { isObjectList: true, region: 'slides', idField: '@id' })).toEqual([
       { id: 's1', block: { '@id': 's1', title: 'One' } },
       { id: 's2', block: { '@id': 's2', title: 'Two' } },
     ]);
@@ -39,7 +39,7 @@ describe('getChildBlockEntries — uniform child access across blocks_layout & o
   test('object_list: reads the array at a nested regionPath (e.g. table/rows)', () => {
     const parent = { table: { rows: [{ '@id': 'r1' }, { '@id': 'r2' }] } };
     expect(
-      getChildBlockEntries(parent, { isObjectList: true, regionPath: ['table'], region: 'rows' }).map((e) => e.id),
+      getChildBlockEntries(parent, { isObjectList: true, regionPath: ['table'], region: 'rows', idField: '@id' }).map((e) => e.id),
     ).toEqual(['r1', 'r2']);
   });
 
@@ -50,8 +50,15 @@ describe('getChildBlockEntries — uniform child access across blocks_layout & o
     ).toEqual(['x', 'y']);
   });
 
+  test('object_list: no idField throws — the key is never guessed', () => {
+    const parent = { slides: [{ '@id': 's1' }] };
+    expect(() => getChildBlockEntries(parent, { isObjectList: true, region: 'slides' })).toThrow(
+      /"slides" has no idField/,
+    );
+  });
+
   test('empty / missing region → []', () => {
     expect(getChildBlockEntries({ blocks: {}, blocks_layout: {} }, { region: 'nope' })).toEqual([]);
-    expect(getChildBlockEntries({}, { isObjectList: true, region: 'slides' })).toEqual([]);
+    expect(getChildBlockEntries({}, { isObjectList: true, region: 'slides', idField: '@id' })).toEqual([]);
   });
 });

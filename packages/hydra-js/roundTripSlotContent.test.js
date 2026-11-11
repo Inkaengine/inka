@@ -1,6 +1,12 @@
 import fs from 'fs';
 import path from 'path';
 import { mergeTemplatesIntoPage } from '@volto-hydra/helpers/mergeTemplates.js';
+import { buildIdFieldMap } from '@volto-hydra/helpers/buildBlockPathMap.js';
+import { sharedBlocksConfig as idFieldSchemas } from '../../tests-playwright/fixtures/shared-block-schemas.js';
+
+// Each list's id field, from the schema, as the admin derives it (buildIdFieldMap).
+const ID_FIELDS = buildIdFieldMap(idFieldSchemas);
+
 
 const load = (p) => JSON.parse(fs.readFileSync(path.resolve(process.cwd(), '..', '..', p), 'utf-8'));
 
@@ -20,6 +26,7 @@ test('round-trip: a new primary slot block survives a re-merge (save → view-mo
 
   // 1. LOAD (apply): forward-merge the template into the page.
   const { merged: loaded } = await mergeTemplatesIntoPage(page, {
+    idFieldMap: ID_FIELDS,
     loadTemplate: async () => template,
     pageBlocksFields: { items: {} },
     uuidGenerator,
@@ -53,6 +60,7 @@ test('round-trip: a new primary slot block survives a re-merge (save → view-mo
 
   // 3. RELOAD (view-mode re-merge): forward-merge the edited page again.
   const { merged: reloaded } = await mergeTemplatesIntoPage(loaded, {
+    idFieldMap: ID_FIELDS,
     loadTemplate: async () => template,
     pageBlocksFields: { items: {} },
     uuidGenerator,

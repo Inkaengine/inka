@@ -2115,12 +2115,15 @@ export function getSnippetTemplates(templates, containerType, fieldName) {
  * @param {Object} blocks - Template blocks object
  * @param {Array} layout - Template blocks_layout.items array
  * @param {Function} uuidGenerator - Function to generate UUIDs (default: generateUUID)
+ * @param {Object} [idFieldMap] - { blockType: { field: idField } } for the lists in
+ *   these blocks (buildIdFieldMap); a list it doesn't name throws
  * @returns {Object} { blocks, layout, idMap } where idMap tracks old->new IDs
  */
 export function cloneBlocksWithNewIds(
   blocks,
   layout,
   uuidGenerator = generateUUID,
+  idFieldMap = null,
 ) {
   const idMap = {}; // oldId -> newId
   const newBlocks = {};
@@ -2133,7 +2136,7 @@ export function cloneBlocksWithNewIds(
     // Deep clone the block, filtering nested blocks without template markers
     const block = blocks[oldId];
     if (block) {
-      newBlocks[newId] = cloneBlockFilteringNested(block, uuidGenerator);
+      newBlocks[newId] = cloneBlockFilteringNested(block, uuidGenerator, idFieldMap);
     }
 
     newLayout.push(newId);
@@ -2154,14 +2157,14 @@ export function cloneBlocksWithNewIds(
  * @param {Function} uuidGenerator - Function to generate UUIDs
  * @returns {Object} Cloned block with filtered nested blocks
  */
-export function cloneBlockFilteringNested(block, uuidGenerator) {
+export function cloneBlockFilteringNested(block, uuidGenerator, idFieldMap = null) {
   // Start with a shallow clone
   const cloned = { ...block };
 
-  // Snippet insertion copies a TEMPLATE's blocks, so the same exception
-  // applies: its children are known by templateId, not by this caller's
-  // schema, which it does not have.
-  const fields = getChildFields(cloned, null, { templateChildren: true });
+  // Snippet insertion copies a TEMPLATE's blocks: its children are known by
+  // templateId. A list's items get new ids under the list's own key, which only
+  // the caller's idFieldMap names — a list it doesn't name throws.
+  const fields = getChildFields(cloned, idFieldMap, { templateChildren: true });
   if (fields.length === 0) return cloned;
 
   // blocks_layout regions share cloned.blocks — reset it once so template-internal blocks don't
@@ -2177,7 +2180,7 @@ export function cloneBlockFilteringNested(block, uuidGenerator) {
         kept.push({
           id: uuidGenerator(),
           // Recursively filter this nested block's children too
-          block: cloneBlockFilteringNested(nestedBlock, uuidGenerator),
+          block: cloneBlockFilteringNested(nestedBlock, uuidGenerator, idFieldMap),
         });
       }
     }
@@ -2333,6 +2336,39 @@ function findBlockAnywhere(blocks, blockId, idFieldMap, regions = DECLARED_REGIO
   walkBlocks(blocks, idFieldMap, (id, block) => {
     if (!found && id === blockId) found = block;
   }, regions);
+  return found;
+}
+
+/**
+ * A template's block by id, at any depth — for the merge, which has no schema. A
+ * blocks_layout child is found by its id; a list's item only by `listIdField`, the
+ * key the caller named for the list being looked up (null for a blocks_layout one).
+ * Lists are walked through, by their blocks, whatever they are keyed by.
+ */
+function findTemplateBlock(blocks, blockId, listIdField) {
+  let found = null;
+  const visit = (block) => {
+    for (const field of getChildFields(block, null, { templateChildren: true })) {
+      if (field.isObjectList) {
+        for (const child of getChildBlocks(block, field)) {
+          if (found) return;
+          if (listIdField && child?.[listIdField] === blockId) found = child;
+          else visit(child);
+        }
+      } else {
+        for (const { id, block: child } of getChildBlockEntries(block, field)) {
+          if (found) return;
+          if (id === blockId) found = child;
+          else visit(child);
+        }
+      }
+    }
+  };
+  for (const [id, block] of Object.entries(blocks || {})) {
+    if (found) break;
+    if (id === blockId) found = block;
+    else visit(block);
+  }
   return found;
 }
 
@@ -2944,6 +2980,7 @@ function blockText(block, idFieldMap) {
  * @param {Object} templateData - Snippet template document
  * @param {number} position - Index to insert at
  * @param {Function} uuidGenerator - Function to generate UUIDs (default: generateUUID)
+ * @param {Object} [idFieldMap] - the id field of each list in the snippet (buildIdFieldMap)
  * @returns {Object} Updated formData with snippet inserted
  */
 export function insertSnippetBlocks(
@@ -2951,6 +2988,7 @@ export function insertSnippetBlocks(
   templateData,
   position,
   uuidGenerator = generateUUID,
+  idFieldMap = null,
 ) {
   const result = {
     blocks: { ...pageFormData.blocks },
@@ -2970,6 +3008,7 @@ export function insertSnippetBlocks(
     templateData.blocks,
     templateData.blocks_layout?.items || [],
     uuidGenerator,
+    idFieldMap,
   );
 
   // Add template fields
@@ -3172,6 +3211,30 @@ export function resolveFieldPath(fieldPath, blockId, blockPathMap) {
   return { blockId: currentBlockId, fieldName: remainingPath };
 }
 
+function missingIdField(region) {
+  return (
+    `object_list "${region}" has no idField: nothing says which field its items are ` +
+    'keyed by, and none is guessed. Pass the list\'s idField (the block\'s code knows it), ' +
+    'or read its blocks with getChildBlocks when their ids are not needed.'
+  );
+}
+
+/**
+ * A region's child blocks, in order, without their ids — for a walk that only
+ * looks at the blocks. A list read this way needs no idField.
+ *
+ * @param {Object} parentBlock - the container block
+ * @param {Object} descriptor - as getChildBlockEntries
+ * @returns {Object[]}
+ */
+export function getChildBlocks(parentBlock, descriptor = {}) {
+  const { isObjectList, regionPath = [], region = 'items' } = descriptor;
+  if (isObjectList) return [...(getAtPath(parentBlock, [...regionPath, region]) || [])];
+  const container = getAtPath(parentBlock, regionPath);
+  const ids = container?.blocks_layout?.[region] || [];
+  return ids.map((id) => container?.blocks?.[id]).filter(Boolean);
+}
+
 /**
  * The child blocks at a container's region, as ordered {id, block} entries — uniform
  * across BOTH storages. blocks_layout and object_list are just two ways to lay out the
@@ -3198,10 +3261,13 @@ export function getChildBlockEntries(parentBlock, descriptor = {}) {
     isObjectList,
     regionPath = [],
     region = 'items',
-    idField = '@id',
+    idField,
   } = descriptor;
   if (isObjectList) {
-    // object_list: an inline array at [...regionPath, region].
+    // object_list: an inline array at [...regionPath, region], keyed by the list's
+    // own idField. Nothing guesses one: a list nobody named the key of has no ids
+    // to give (read its blocks with getChildBlocks).
+    if (!idField) throw new Error(missingIdField(region));
     const arr = getAtPath(parentBlock, [...regionPath, region]);
     return [...(arr || [])].map((block) => ({ id: block[idField], block }));
   }
@@ -3278,7 +3344,9 @@ export function getChildFields(block, idFieldMap = null, options = {}) {
           isObjectList: true,
           region: key,
           ...at,
-          idField: idField || '@id',
+          // A list known only by its items' templateId has no idField: the
+          // merge has no schema, and only the block's code knows the key.
+          ...(idField ? { idField } : {}),
         });
       }
     }
@@ -3318,9 +3386,10 @@ export function setChildBlockEntries(parentBlock, descriptor, entries) {
     isObjectList,
     regionPath = [],
     region = 'items',
-    idField = '@id',
+    idField,
   } = descriptor;
   if (isObjectList) {
+    if (!idField) throw new Error(missingIdField(region));
     const parent = ensureMutablePath(parentBlock, regionPath);
     parent[region] = entries.map((e) => ({
       ...e.block,
@@ -3956,8 +4025,13 @@ export function collectContentFromTree(
   // shared funnel the apply path uses (getChildFields + getChildBlockEntries) — one region-aware
   // read, not a bespoke isBlocksMap scan with an all-keys fallback and a divergent object_list
   // heuristic. processBlock captures each child (by slot/instance) and recurses into it.
+  // Content is taken by slot. A blocks_layout child's id is its key in the region;
+  // a list item's id is in the item itself, read by the list's own call (which
+  // names the list's idField) when it is placed — so none is recorded here.
   for (const field of getChildFields(container, null, { templateChildren: true })) {
-    const entries = getChildBlockEntries(container, field);
+    const entries = field.isObjectList
+      ? getChildBlocks(container, field).map((block) => ({ id: null, block }))
+      : getChildBlockEntries(container, field);
     // In a region of this instance's own block, the slot its page content
     // fills: a sibling slot block's, else `default`.
     const regionSlotId =
@@ -4075,7 +4149,7 @@ function templateSlotIds(template) {
   const slots = new Set();
   const visit = (container) => {
     for (const field of getChildFields(container, null, { templateChildren: true })) {
-      for (const { block } of getChildBlockEntries(container, field)) {
+      for (const block of getChildBlocks(container, field)) {
         if (!block?.templateId) continue;
         slots.add(block.slotId || 'default');
         visit(block);
@@ -4143,10 +4217,10 @@ function fillRegionEntries(entries, templateState, options) {
       let childSlotIds;
       for (const field of getChildFields(child, null, { templateChildren: true })) {
         const key = field.isObjectList ? field.region : 'blocks';
-        const first = getChildBlockEntries(child, field).find(({ block }) => block && !block.fixed && block.slotId);
+        const first = getChildBlocks(child, field).find((block) => block && !block.fixed && block.slotId);
         if (first) {
           if (!childSlotIds) childSlotIds = {};
-          if (!childSlotIds[key]) childSlotIds[key] = first.block.slotId;
+          if (!childSlotIds[key]) childSlotIds[key] = first.slotId;
         }
       }
       const stamped = {
@@ -4302,10 +4376,10 @@ function leaveRegionsWaiting(stamped, tplBlock, ctx) {
   for (const field of fields) {
     const inInstance = (block) => ({ ...block, templateInstanceId: ctx.instanceId });
     mapChildBlocks(stamped, tplBlock, field, inInstance);
-    const entries = getChildBlockEntries(tplBlock, field).map(({ id, block }) => ({
-      id: field.isObjectList ? null : id,
-      block: inInstance(block),
-    }));
+    // A list's ids are in its items, for the block's own call to read by its idField.
+    const entries = field.isObjectList
+      ? getChildBlocks(tplBlock, field).map((block) => ({ id: null, block: inInstance(block) }))
+      : getChildBlockEntries(tplBlock, field).map(({ id, block }) => ({ id, block: inInstance(block) }));
     if (entries.length === 0) continue;
     ctx.waitingRegions.set(regionKey(entries), {
       blockType: tplBlock['@type'],
@@ -4860,7 +4934,7 @@ export function expandTemplatesSync(inputItems, options = {}) {
     templates,
     allowedLayouts,
     loadTemplate,
-    idField = '@id', // For object_list arrays: field name used as item ID (e.g. 'key')
+    idField, // For an object_list: the field its items are keyed by ('@id', 'field_id', 'key', …). Required; never guessed.
     editMode: editModeOverride, // explicit edit-mode signal for SSR frontends that have no window.name
   } = options;
 
@@ -4884,6 +4958,15 @@ export function expandTemplatesSync(inputItems, options = {}) {
   // detector when no override is given (the browser edit iframe + view render).
   const editMode =
     editModeOverride !== undefined ? editModeOverride : _isEditMode();
+  // A list of blocks (not of ids) is keyed by a field only the block's code knows.
+  const listItem = (inputItems || []).find((item) => item && typeof item === 'object');
+  if (listItem && !idField) {
+    throw new Error(
+      `expandTemplatesSync: this list holds blocks (type ${listItem['@type'] ?? 'unknown'}), not ids, ` +
+        'and no idField says which field they are keyed by. Pass the list\'s idField ' +
+        "('@id', 'field_id', 'key', …); none is guessed. See \"Expand every container\" in the templates guide.",
+    );
+  }
   if (idField) assertUniqueObjectListIds(inputItems || [], idField);
   if (editMode) {
     return (inputItems || [])
@@ -5121,14 +5204,13 @@ export function expandTemplatesSync(inputItems, options = {}) {
     // At any depth, through the container API, blocks_layout and object_list alike:
     // a container's re-entry brings a region nested inside the definition, whose
     // blocks are nested in the template — found by the merge's own region rule.
+    // A list's items are found by the idField this call was given: the template's
+    // own lists are keyed the same way, and nothing else knows the key.
     if (
       ownTemplate?.blocks &&
       templateBlockIds.length > 0 &&
       templateBlockIds.every((id) => {
-        const own = findBlockAnywhere(ownTemplate.blocks, id, null, {
-          allObjectLists: true,
-          templateChildren: true,
-        });
+        const own = findTemplateBlock(ownTemplate.blocks, id, listItem ? idField : null);
         return own !== null && isSameTemplateBlock(blocks[id], own);
       })
     ) {

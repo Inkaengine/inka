@@ -1,11 +1,18 @@
 import { expandEveryContainer } from './expandEveryContainer.testutil.js';
 import { expandTemplates, expandTemplatesSync } from '@volto-hydra/helpers';
 import { mergeTemplatesIntoPage, mergeInstanceIntoTemplate } from '@volto-hydra/helpers/mergeTemplates.js';
+import { buildIdFieldMap } from '@volto-hydra/helpers/buildBlockPathMap.js';
+import { sharedBlocksConfig as idFieldSchemas } from '../../tests-playwright/fixtures/shared-block-schemas.js';
+
+// Each list's id field, from the schema, as the admin derives it (buildIdFieldMap).
+const ID_FIELDS = buildIdFieldMap(idFieldSchemas);
+
 
 // Wrapper to match old applyLayoutTemplate signature for existing tests
 async function applyLayoutTemplate(pageData, templateData, uuidGenerator) {
   const templateUrl = templateData['@id'];
   const { merged } = await mergeTemplatesIntoPage(pageData, {
+    idFieldMap: ID_FIELDS,
     loadTemplate: async () => templateData,
     pageBlocksFields: { items: { allowedLayouts: [templateUrl] } },
     uuidGenerator,
@@ -18,6 +25,7 @@ async function mergeTemplateContent(target, source, filterTemplateId = null) {
   // For merge tests, source contains template structure, target has page content
   // This simulates the old merge behavior
   const { merged } = await mergeTemplatesIntoPage(target, {
+    idFieldMap: ID_FIELDS,
     loadTemplate: async () => source,
     pageBlocksFields: { items: {} },
   });
@@ -579,6 +587,7 @@ describe('reverse merge - page to template (for saving)', () => {
     // Merge page content back INTO template (reverse direction)
     // This simulates what happens on save
     const { merged } = await mergeTemplatesIntoPage(template, {
+      idFieldMap: ID_FIELDS,
       loadTemplate: async () => pageWithEdits, // The "template" to load is actually the page
       pageBlocksFields: { items: { allowedLayouts: ['/templates/header-footer'] } },
       uuidGenerator,
@@ -635,6 +644,7 @@ describe('reverse merge - page to template (for saving)', () => {
       blocks_layout: { items: ['p2-header', 'p2-user'] },
     };
     const { merged: page2Merged } = await mergeTemplatesIntoPage(page2, {
+      idFieldMap: ID_FIELDS,
       loadTemplate: async () => updatedTemplate,
       uuidGenerator: uuidGen,
     });
@@ -689,6 +699,8 @@ describe('reverse merge - page to template (for saving)', () => {
     };
 
     const { merged } = await mergeTemplatesIntoPage(template, {
+
+      idFieldMap: ID_FIELDS,
       loadTemplate: async () => pageWithEdits,
       pageBlocksFields: { items: { allowedLayouts: ['/templates/mixed'] } },
       uuidGenerator,
@@ -976,6 +988,7 @@ describe('multiple template instances with shared templateState', () => {
       blocks_layout: { items: ['cardA', 'cardB'] },
     };
     const { merged } = await mergeTemplatesIntoPage(page, {
+      idFieldMap: ID_FIELDS,
       loadTemplate: async () => cardTemplate,
       pageBlocksFields: { items: {} },
       uuidGenerator: (() => { let c = 0; return () => `u-${++c}`; })(),
@@ -1200,6 +1213,7 @@ describe('nextSlotId and childSlotIds on fixed blocks', () => {
     const loadTemplate = async (id) => ({ '/templates/a': A, '/templates/b': B })[id];
     const page = { blocks: { mine: { '@type': 'slate', text: 'Mine' } }, blocks_layout: { items: ['mine'] } };
     const { merged: onA } = await mergeTemplatesIntoPage(page, {
+      idFieldMap: ID_FIELDS,
       loadTemplate, pageBlocksFields: { items: { allowedLayouts: ['/templates/a'] } }, uuidGenerator,
     });
     for (const id of onA.blocks_layout.items) {
@@ -1208,6 +1222,7 @@ describe('nextSlotId and childSlotIds on fixed blocks', () => {
       if (onA.blocks[id].slotId === 'aside') onA.blocks[id].text = 'Page aside';
     }
     const { merged: onB } = await mergeTemplatesIntoPage(onA, {
+      idFieldMap: ID_FIELDS,
       loadTemplate, pageBlocksFields: { items: { allowedLayouts: ['/templates/b'] } }, uuidGenerator,
     });
     const introId = onA.blocks_layout.items.find((id) => onA.blocks[id].slotId === 'intro');
@@ -1235,6 +1250,8 @@ describe('nextSlotId and childSlotIds on fixed blocks', () => {
     expect(applied.blocks.mine.templateId).toBe('/templates/t1');
 
     const { merged } = await mergeTemplatesIntoPage(applied, {
+
+      idFieldMap: ID_FIELDS,
       loadTemplate: async () => templateData,
       pageBlocksFields: { items: { allowedLayouts: [null] } },
       uuidGenerator,
@@ -1388,6 +1405,8 @@ describe('a layout menu must not re-home a page', () => {
     };
 
     const { merged } = await mergeTemplatesIntoPage(page, {
+
+      idFieldMap: ID_FIELDS,
       loadTemplate: async (id) => {
         if (id !== '/inka-templates/event-view') {
           throw new Error(`the menu must not apply a different layout (asked for ${id})`);
