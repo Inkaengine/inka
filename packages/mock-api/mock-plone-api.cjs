@@ -949,6 +949,11 @@ const DEFAULT_METADATA_FIELDS = new Set([
   'nav_title', 'review_state', 'start', 'title', 'type_title',
 ]);
 
+/** Boolean indexes @search filters on: Plone's own, and kitconcept.seo's "No
+ *  Index", which a site indexes so search can leave such a page out. */
+const BOOLEAN_INDEXES = ['exclude_from_nav', 'seo_noindex'];
+const BOOLEAN_VALUES = { true: true, '1': true, false: false, '0': false };
+
 const CATALOG_SCHEMA = new Set([
   ...DEFAULT_METADATA_FIELDS,
   'CreationDate', 'Creator', 'Date', 'Description', 'EffectiveDate',
@@ -5657,14 +5662,13 @@ app.post('*/@querystring-search', (req, res) => {
         const t = new Date(item[index]).getTime();
         return after ? t > bound : t < bound;
       });
-    } else if (index === 'exclude_from_nav' && operation.includes('boolean')) {
-      // Nav listings filter out items marked exclude_from_nav: true.
-      // Mirrors Plone's plone.app.querystring.operation.boolean.{isFalse,isTrue}.
+    } else if (operation.includes('boolean')) {
+      // A boolean index (exclude_from_nav; a site's seo_noindex, kitconcept.seo's
+      // "No Index"). Mirrors Plone's plone.app.querystring.operation.boolean.
+      // {isFalse,isTrue}: an item without the field is False, as a site's
+      // indexer makes it, so isFalse finds every item nobody ticked.
       const wantTrue = operation.includes('isTrue');
-      allItems = allItems.filter((item) => {
-        const flag = item.exclude_from_nav === true;
-        return wantTrue ? flag : !flag;
-      });
+      allItems = allItems.filter((item) => (item[index] === true) === wantTrue);
       // Note: `review_state` and `Subject` selection.{any,all,none} are
       // handled generically above via `selectionFields` (which already
       // maps both indices), so we don't need explicit branches here.
@@ -5998,6 +6002,25 @@ app.get('*/@search', (req, res) => {
       // plone.restapi's search summaries do not include it.
       const itemPath = String(item['@id'] || '').replace(baseUrl, '') || '/';
       return wanted.includes(languageOf(itemPath, sessionId));
+    });
+  }
+
+  // Boolean indexes in the query string (`?seo_noindex=false`), as the catalog
+  // takes them: a site's sitemap leaves out no-index pages this way. A value
+  // that is not a boolean is refused: ignored, it would answer with everything.
+  // An item without the field is False, as for @querystring-search above.
+  const sessionForBooleans = getSessionId(req);
+  for (const index of BOOLEAN_INDEXES) {
+    const raw = req.query[index];
+    if (raw === undefined) continue;
+    const want = BOOLEAN_VALUES[String(raw).toLowerCase()];
+    if (want === undefined) {
+      return res.status(400).json({ type: 'BadRequest', message: `${index}=${raw} is not a boolean` });
+    }
+    items = items.filter((item) => {
+      const itemPath = String(item['@id'] || '').replace(baseUrl, '') || '/';
+      const value = item[index] ?? getContent(itemPath, sessionForBooleans)?.[index];
+      return (value === true) === want;
     });
   }
 
