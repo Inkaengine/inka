@@ -33,6 +33,22 @@
 
 ARG NODE_VERSION=24.22.1
 
+# WHAT THE ADMIN INSTALLS. Without this, `pnpm install` in this workspace
+# installs every member's dependencies -- including packages that have nothing
+# to do with the editor shell, such as the MCP server, whose express 5 then
+# competes with Volto's express 4 for the ONE copy `shamefully-hoist=true`
+# leaves at the top of node_modules. That is not hypothetical: adding a single
+# dependency to the MCP package was enough to make this image's server boot
+# with express 5's router and die in Volto's own express-middleware/devproxy.js
+# on the legacy `'*'` route that path-to-regexp 8 refuses. Nothing in the image
+# imports the MCP server, so it is not installed.
+#
+# `volto-hydra-dev...` is the root package and everything it depends on, which
+# is what razzle builds and what `start:prod` runs: the Volto addon and the
+# @plone/* packages under core/packages, plus the declared plugins. The filter
+# applies to BOTH stages, so the build and the runtime resolve the same way.
+ARG ADMIN_ONLY="--filter volto-hydra-dev..."
+
 FROM node:${NODE_VERSION}-slim AS base
 # Where the Inka checkout sits in the consumer's build context. Consumers vendor
 # it at different paths: hydra/, inka/, frontend/inka/, frontend/hydra/.
@@ -45,6 +61,7 @@ WORKDIR /app
 
 FROM base AS build
 WORKDIR /app
+ARG ADMIN_ONLY
 
 # Plugins Inka declares, which this site wants switched on. Enabling is a
 # volto.config.js edit and touches no dependency graph, so it is safe by
@@ -67,9 +84,9 @@ RUN --mount=type=cache,id=pnpm,target=/pnpm/store \
     pnpm dlx mrs-developer missdev --no-config --fetch-https \
  && if [ -n "$EXTRA_PLUGINS" ]; then \
       echo "EXTRA_PLUGINS set -- installing unfrozen (see the note above)"; \
-      node docker/add-plugins.cjs "$EXTRA_PLUGINS" && pnpm install --no-frozen-lockfile; \
+      node docker/add-plugins.cjs "$EXTRA_PLUGINS" && pnpm install $ADMIN_ONLY --no-frozen-lockfile; \
     else \
-      pnpm install --frozen-lockfile; \
+      pnpm install $ADMIN_ONLY --frozen-lockfile; \
     fi
 
 # @plone/registry + @plone/components must be BUILT, not just linked: razzle.config
@@ -93,6 +110,7 @@ RUN pnpm run build
 # same reason it does in the build stage. Addons themselves are plain
 # `dependencies`, so --prod keeps them.
 FROM base AS prod-deps
+ARG ADMIN_ONLY
 ARG VOLTO_PLUGINS=""
 ARG EXTRA_PLUGINS=""
 RUN apt-get -y update && apt-get -y install git make
@@ -100,9 +118,9 @@ RUN --mount=type=cache,id=pnpm,target=/pnpm/store \
     pnpm dlx mrs-developer missdev --no-config --fetch-https \
  && if [ -n "$EXTRA_PLUGINS" ]; then \
       echo "EXTRA_PLUGINS set -- installing unfrozen (see the note above)"; \
-      node docker/add-plugins.cjs "$EXTRA_PLUGINS" && pnpm install --prod --no-frozen-lockfile; \
+      node docker/add-plugins.cjs "$EXTRA_PLUGINS" && pnpm install $ADMIN_ONLY --prod --no-frozen-lockfile; \
     else \
-      pnpm install --prod --frozen-lockfile; \
+      pnpm install $ADMIN_ONLY --prod --frozen-lockfile; \
     fi
 
 FROM base

@@ -1737,6 +1737,9 @@ importers:
       '@modelcontextprotocol/server-legacy':
         specifier: 2.4.0
         version: 2.4.0(express@5.2.1)
+      '@sentry/node':
+        specifier: 10.78.0
+        version: 10.78.0(@opentelemetry/core@2.12.0(@opentelemetry/api@1.9.1))
       '@volto-hydra/helpers':
         specifier: workspace:*
         version: link:../helpers
@@ -1753,9 +1756,6 @@ importers:
       '@inka/mock-api':
         specifier: workspace:*
         version: link:../mock-api
-      '@sentry/node':
-        specifier: 10.78.0
-        version: 10.78.0(@opentelemetry/core@2.12.0(@opentelemetry/api@1.9.1))
       esbuild:
         specifier: ^0.28.0
         version: 0.28.0
