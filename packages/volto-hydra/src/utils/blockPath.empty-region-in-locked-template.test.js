@@ -1,5 +1,5 @@
 /**
- * An empty region inside a LOCKED template block must not refuse a page's save.
+ * An empty region inside a LOCKED template block is seeded with an `empty` placeholder.
  *
  * A page that uses a forced footer template holds the footer as readOnly
  * template content, and block validation skips readOnly blocks so that a page
@@ -10,10 +10,12 @@
  * both were validated, and the link's required `url` refused the save of EVERY
  * page on the site, naming a block the author could not reach.
  *
- * The placeholder in a locked block is locked too: it joins the block's template,
- * as a forced region's empty does, so validation passes it by and unlocking the
- * template is what makes it fillable. A placeholder in a block being edited
- * directly stays editable, as before.
+ * Locking that real placeholder is not enough: only `empty` blocks are stripped on
+ * save, so a footer column the author never added would be saved into the template
+ * wherever the footer is saved. A region of a locked block is seeded with an
+ * `empty` placeholder instead, whatever its default type: it has no fields to
+ * validate, it is never stored, and unlocking the template gives it a "+". A
+ * region of a block being edited directly is seeded as before.
  */
 import { describe, test, expect, vi } from 'vitest';
 
@@ -23,9 +25,13 @@ vi.mock('../context', () => ({
   getLiveBlockData: () => undefined,
   HydraSchemaProvider: ({ children }) => children,
 }));
-import { isBlockReadonly } from '@volto-hydra/helpers';
+import { getBlockAddability } from '@volto-hydra/helpers';
 import { mergeTemplatesIntoPage } from '@volto-hydra/helpers/mergeTemplates.js';
-import { ensureAllContainersHaveBlocks } from './blockPath.js';
+import {
+  buildBlockPathMap,
+  ensureAllContainersHaveBlocks,
+  stripEmptyBlocks,
+} from './blockPath.js';
 import { validateBlocksAgainstSchemas } from './validateBlocks';
 
 const intl = { formatMessage: (m) => m?.defaultMessage || m?.id || '' };
@@ -38,7 +44,11 @@ const blocksConfig = {
     id: '_page',
     schema: () => ({
       properties: {
-        items: { widget: 'blocks_layout', allowedBlocks: ['slate'], defaultBlockType: 'slate' },
+        items: {
+          widget: 'blocks_layout',
+          allowedBlocks: ['slate', 'footer'],
+          defaultBlockType: 'slate',
+        },
         footer: {
           widget: 'blocks_layout',
           allowedLayouts: [FOOTER_TEMPLATE_PATH],
@@ -93,6 +103,23 @@ const blocksConfig = {
   },
 };
 
+/** The same config, with the footer's columns region declaring a `default`. */
+const withUpperDefault = {
+  ...blocksConfig,
+  footer: {
+    ...blocksConfig.footer,
+    blockSchema: {
+      properties: {
+        ...blocksConfig.footer.blockSchema.properties,
+        upper: {
+          ...blocksConfig.footer.blockSchema.properties.upper,
+          default: [{ '@type': 'footerColumn' }],
+        },
+      },
+    },
+  },
+};
+
 /** A footer template with its mega-footer columns region empty, as LECC's is. */
 const footerTemplate = ({ readOnly }) => ({
   '@id': FOOTER_TEMPLATE_PATH,
@@ -121,15 +148,20 @@ const footerTemplate = ({ readOnly }) => ({
   blocks_layout: { items: ['footer0'] },
 });
 
+function counter() {
+  let n = 0;
+  return () => `seed-${(n += 1)}`;
+}
+
 /** A page as the editor opens it: the forced footer merged in, then every empty region seeded. */
 async function openPage({ readOnly, config = blocksConfig }) {
   const page = {
+    '@id': '/a-page',
     '@type': 'Document',
     blocks: { a: { '@type': 'slate' } },
     blocks_layout: { items: ['a'], footer: [] },
   };
-  let n = 0;
-  const uuid = () => `seed-${(n += 1)}`;
+  const uuid = counter();
   const { merged } = await mergeTemplatesIntoPage(page, {
     loadTemplate: async () => footerTemplate({ readOnly }),
     pageBlocksFields: {
@@ -140,83 +172,116 @@ async function openPage({ readOnly, config = blocksConfig }) {
     blocksConfig: config,
     intl,
   });
-  const opened = ensureAllContainersHaveBlocks(merged, config, intl, uuid);
-  const footerId = opened.blocks_layout.footer[0];
-  const footer = opened.blocks[footerId];
-  const column = footer.blocks[footer.blocks_layout.upper[0]];
-  const headingId = column?.blocks_layout?.links?.[0];
-  return { opened, footer, column, heading: column?.blocks?.[headingId] };
+  return opened(ensureAllContainersHaveBlocks(merged, config, intl, uuid), 'footer');
 }
 
-describe('an empty region inside a locked template block', () => {
-  test('the page still saves', async () => {
-    const { opened, footer } = await openPage({ readOnly: true });
+/**
+ * The footer template opened on its own page, in the editor's order: the frontend's
+ * INIT seeds the document as stored, before the merge gives the template's own blocks
+ * their instance id; the merge (never against the document's own template) follows,
+ * and seeds again.
+ */
+async function openTemplatePage({ config = blocksConfig } = {}) {
+  const definition = footerTemplate({ readOnly: true });
+  const uuid = counter();
+  const atInit = ensureAllContainersHaveBlocks(definition, config, intl, uuid);
+  const { merged } = await mergeTemplatesIntoPage(atInit, {
+    loadTemplate: async () => definition,
+    pageBlocksFields: { items: {} },
+    uuidGenerator: uuid,
+    blocksConfig: config,
+    intl,
+    skipOwnTemplate: true,
+  });
+  return opened(ensureAllContainersHaveBlocks(merged, config, intl, uuid), 'items');
+}
+
+function opened(formData, footerRegion) {
+  const footerId = formData.blocks_layout[footerRegion][0];
+  const footer = formData.blocks[footerId];
+  const placeholderId = footer.blocks_layout.upper[0];
+  return {
+    formData,
+    footerId,
+    footer,
+    placeholderId,
+    placeholder: footer.blocks[placeholderId],
+  };
+}
+
+function errorsOf(formData, config = blocksConfig) {
+  return validateBlocksAgainstSchemas(formData, { blocksConfig: config, intl, formatMessage })
+    .blocksErrors;
+}
+
+function savedUpper(formData, footerId, config = blocksConfig) {
+  const saved = stripEmptyBlocks(formData, config, intl);
+  return saved.blocks[footerId].blocks_layout.upper;
+}
+
+describe('an empty region inside a locked template block, on a page using the template', () => {
+  test('is seeded with an empty placeholder in the footer’s template', async () => {
+    const { footer, placeholder } = await openPage({ readOnly: true });
     expect(footer.readOnly, 'precondition: the footer is locked template content').toBe(true);
-    const { blocksErrors } = validateBlocksAgainstSchemas(opened, {
-      blocksConfig,
-      intl,
-      formatMessage,
+    expect(placeholder?.['@type']).toBe('empty');
+    expect(placeholder.templateId).toBe(FOOTER_TEMPLATE_PATH);
+    expect(placeholder.templateInstanceId).toBe(footer.templateInstanceId);
+    expect(placeholder.readOnly, 'the placeholder is not locked with the footer').toBe(true);
+  });
+
+  test('the page still saves', async () => {
+    const { formData } = await openPage({ readOnly: true });
+    expect(errorsOf(formData), 'a block the author cannot reach refused the save').toEqual({});
+  });
+
+  test('nothing the author did not add is saved', async () => {
+    const { formData, footerId } = await openPage({ readOnly: true });
+    expect(savedUpper(formData, footerId)).toEqual([]);
+  });
+
+  test('a region with a `default` is seeded with an empty placeholder too', async () => {
+    const { formData, footerId, placeholder } = await openPage({
+      readOnly: true,
+      config: withUpperDefault,
     });
-    expect(blocksErrors, 'a block the author cannot reach refused the save').toEqual({});
+    expect(placeholder?.['@type']).toBe('empty');
+    expect(errorsOf(formData, withUpperDefault)).toEqual({});
+    expect(savedUpper(formData, footerId, withUpperDefault)).toEqual([]);
   });
 
-  test('its placeholder, and everything seeded inside it, is locked template content', async () => {
-    const { footer, column, heading } = await openPage({ readOnly: true });
-    expect(column?.['@type']).toBe('footerColumn');
-    expect(heading?.['@type']).toBe('link');
-    for (const [name, block] of [['column', column], ['heading link', heading]]) {
-      expect(block.readOnly, `the seeded ${name} is not locked`).toBe(true);
-      expect(block.fixed, `the seeded ${name} is not fixed`).toBe(true);
-      expect(
-        block.templateInstanceId,
-        `the seeded ${name} is not in the footer's template`,
-      ).toBe(footer.templateInstanceId);
-    }
+  test('the placeholder offers nothing until the template is unlocked', async () => {
+    const { formData, footer, placeholderId, placeholder } = await openPage({ readOnly: true });
+    const map = buildBlockPathMap(formData, blocksConfig, intl);
+    expect(getBlockAddability(placeholderId, map, placeholder, null).canReplace).toBe(false);
+    expect(
+      getBlockAddability(placeholderId, map, placeholder, [footer.templateInstanceId]).canReplace,
+    ).toBe(true);
+  });
+});
+
+describe('an empty region inside a locked template block, on the template’s own page', () => {
+  test('is seeded with an empty placeholder in the template', async () => {
+    const { footer, placeholder } = await openTemplatePage();
+    expect(placeholder?.['@type']).toBe('empty');
+    // In the template, so a footer column added in its place is the template's and is
+    // not dropped from the pages that use it.
+    expect(placeholder.templateId).toBe(FOOTER_TEMPLATE_PATH);
+    expect(placeholder.templateInstanceId).toBe(footer.templateInstanceId);
+    expect(placeholder.readOnly).toBe(true);
   });
 
-  test('a region with a `default` is refilled locked too', async () => {
-    const config = {
-      ...blocksConfig,
-      footer: {
-        ...blocksConfig.footer,
-        blockSchema: {
-          properties: {
-            ...blocksConfig.footer.blockSchema.properties,
-            upper: {
-              ...blocksConfig.footer.blockSchema.properties.upper,
-              default: [{ '@type': 'footerColumn' }],
-            },
-          },
-        },
-      },
-    };
-    const { opened, column, heading } = await openPage({ readOnly: true, config });
-    expect(column?.['@type']).toBe('footerColumn');
-    expect(column.readOnly, 'the default column is not locked').toBe(true);
-    expect(heading?.readOnly, 'the default column\'s heading link is not locked').toBe(true);
-    const { blocksErrors } = validateBlocksAgainstSchemas(opened, {
-      blocksConfig: config,
-      intl,
-      formatMessage,
-    });
-    expect(blocksErrors).toEqual({});
-  });
-
-  test('unlocking the template makes the placeholder editable', async () => {
-    const { footer, column, heading } = await openPage({ readOnly: true });
-    const unlocked = [footer.templateInstanceId];
-    expect(isBlockReadonly(column, null)).toBe(true);
-    expect(isBlockReadonly(column, unlocked)).toBe(false);
-    expect(isBlockReadonly(heading, unlocked)).toBe(false);
+  test('the template saves, and gains no footer column', async () => {
+    const { formData, footerId } = await openTemplatePage();
+    expect(errorsOf(formData)).toEqual({});
+    expect(savedUpper(formData, footerId)).toEqual([]);
   });
 });
 
 describe('an empty region inside a block being edited directly', () => {
-  test('its placeholder stays editable', async () => {
-    const { footer, column, heading } = await openPage({ readOnly: false });
+  test('is seeded with its default type, editable, as before', async () => {
+    const { footer, placeholder } = await openPage({ readOnly: false });
     expect(footer.readOnly, 'precondition: the footer is editable').toBe(false);
-    expect(column?.['@type']).toBe('footerColumn');
-    expect(column.readOnly, 'the placeholder was locked where it can be edited').toBeFalsy();
-    expect(heading.readOnly, 'the seeded heading was locked where it can be edited').toBeFalsy();
+    expect(placeholder?.['@type']).toBe('footerColumn');
+    expect(placeholder.readOnly).toBeFalsy();
   });
 });

@@ -102,10 +102,11 @@ describe('ensureEmptyBlockIfEmpty — object_list seed applies item defaults (pa
   });
 
   // Parent is a fixed template instance; its blocks_layout region is empty. The seeded
-  // placeholder inherits membership (so the merge keeps it). It is locked only when its parent
-  // is: a blocks_layout block is edited inline, so freezing a placeholder in an EDITABLE block
-  // breaks editing a template directly, while one in a LOCKED block is unlocked with it
-  // (isBlockReadonly reads the unlocked instances first).
+  // placeholder inherits membership (so the merge keeps it). In an EDITABLE block it is a
+  // placeholder of the region's type and is not frozen: a blocks_layout block is edited
+  // inline, so freezing it breaks editing a template directly. In a LOCKED block it is an
+  // `empty`, locked with the block: a real block there could not be reached to fill in,
+  // and would be saved into the template although no author added it.
   const seedIntoInstance = (parentFlags) => {
     const formData = {
       blocks: {
@@ -137,12 +138,12 @@ describe('ensureEmptyBlockIfEmpty — object_list seed applies item defaults (pa
     expect(seeded.foo).toBe('bar'); // defaults applied via the unified seedTemplateChild path
   });
 
-  test('blocks_layout PLACEHOLDER seed in a locked block is locked with it', () => {
+  test('blocks_layout PLACEHOLDER seed in a locked block is an empty, locked with it', () => {
     const seeded = seedIntoInstance({ fixed: true, readOnly: true });
     expect(seeded).toBeTruthy();
+    expect(seeded['@type']).toBe('empty');
     expect(seeded.templateInstanceId).toBe('tmpl-1');
     expect(seeded.fixed).toBe(true);
     expect(seeded.readOnly).toBe(true);
-    expect(seeded.foo).toBe('bar');
   });
 });
