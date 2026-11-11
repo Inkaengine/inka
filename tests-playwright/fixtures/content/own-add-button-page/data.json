@@ -1,0 +1,39 @@
+{
+  "@id": "/own-add-button-page",
+  "@type": "Document",
+  "UID": "own-add-button-page-uid",
+  "id": "own-add-button-page",
+  "title": "Own Add Button Page",
+  "description": "A form whose empty field draws the frontend's own add button (data-block-add=\"button\") in place of the admin's +",
+  "review_state": "published",
+  "is_folderish": false,
+  "type_title": "Page",
+  "blocks": {
+    "title-block": {
+      "@type": "title"
+    },
+    "form-1": {
+      "@type": "form",
+      "title": "Contact",
+      "submit_label": "Submit",
+      "subblocks": [
+        {
+          "@id": "empty-1",
+          "field_id": "empty-1",
+          "field_type": "empty",
+          "label": ""
+        }
+      ],
+      "default_from": "noreply@example.com",
+      "default_to": "admin@example.com",
+      "default_subject": "New form submission",
+      "captcha": "honeypot"
+    }
+  },
+  "blocks_layout": {
+    "items": [
+      "title-block",
+      "form-1"
+    ]
+  }
+}

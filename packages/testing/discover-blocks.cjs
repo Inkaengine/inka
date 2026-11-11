@@ -116,14 +116,24 @@ function buildEmptyRegionCases(blocksConfig, blocks) {
   // Prefer an example on an ordinary page: a template's blocks are locked, so
   // an editor can't empty their regions and the case would only be skipped.
   const isTemplated = (b) => !!(b.blockData?.templateId || b.blockData?.readOnly || /\/templates\//.test(b.pagePath));
-  const exampleByType = new Map();
-  for (const b of blocks || []) {
-    const have = exampleByType.get(b.blockType);
-    if (!have || (isTemplated(have) && !isTemplated(b))) exampleByType.set(b.blockType, b);
-  }
+  // Then an example with blocks in THIS region: a container may draw only some
+  // of its regions (a layout whose setting picks the left or the right
+  // sidebar), and one that has content in a region draws it. Emptying a region
+  // its example doesn't draw checks nothing but that setting.
+  const holds = (b, field) => {
+    const data = b.blockData || {};
+    const list = data.blocks_layout?.[field] ?? data[field];
+    const items = Array.isArray(list) ? list : list?.items;
+    return Array.isArray(items) && items.length > 0;
+  };
+  const rank = (b, field) => (isTemplated(b) ? 0 : 2) + (holds(b, field) ? 1 : 0);
   const cases = [];
   for (const { parentType, field } of regionFields(blocksConfig)) {
-    const example = exampleByType.get(parentType);
+    let example;
+    for (const b of blocks || []) {
+      if (b.blockType !== parentType) continue;
+      if (!example || rank(b, field) > rank(example, field)) example = b;
+    }
     if (!example) continue;
     cases.push({ parentType, field, pagePath: example.pagePath, blockId: example.blockId });
   }

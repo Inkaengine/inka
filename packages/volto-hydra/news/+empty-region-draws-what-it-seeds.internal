@@ -1,0 +1,1 @@
+Empty-region sanity now checks what an emptied region is given: a default block must be drawn, and an empty placeholder must be drawn as empty space, with no control, editable field or text outside a data-block-add element. The mock parent seeds a new text block as the admin does. @djay
