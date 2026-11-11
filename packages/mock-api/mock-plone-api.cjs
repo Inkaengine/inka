@@ -4700,6 +4700,30 @@ app.get(/.*\/@history\/\d+$/, (req, res) => {
 });
 
 /**
+ * PATCH /@history {version} — revert the page to one of its versions, as the
+ * History view's "Revert to this revision" does. The state it leaves is kept
+ * as a version too, so a revert can itself be reverted.
+ */
+app.patch(/.*\/@history$/, (req, res) => {
+  const cleanPath = (req.path.replace('/++api++', '').replace(/\/?@history$/, '') || '/').replace(/\/+$/, '') || '/';
+  const sessionId = getSessionId(req);
+  if (lockedAgainst(req, cleanPath)) {
+    return res.status(403).json({ error: { type: 'Forbidden', message: 'Resource is locked.' } });
+  }
+  const content = getContent(cleanPath, sessionId);
+  const versions = contentVersions.get(cleanPath) || [];
+  const version = Number(req.body?.version);
+  const snapshot = versions.find((v) => v.version === version);
+  if (!content || !snapshot) {
+    return res.status(404).json({ error: { type: 'NotFound', message: `${cleanPath} has no version ${req.body?.version}` } });
+  }
+  versions.push({ version: versions.length, time: new Date().toISOString(), content: JSON.parse(JSON.stringify(content)) });
+  contentVersions.set(cleanPath, versions);
+  setSessionContent(sessionId, cleanPath, { ...JSON.parse(JSON.stringify(snapshot.content)), modified: new Date().toISOString() });
+  return res.json({ message: `${content.title} has been reverted to revision ${version}.` });
+});
+
+/**
  * GET /@history — the version + workflow trail the admin's History view lists.
  * The workflow half comes off the content's own workflow_history, which is
  * where a transition wrote it, so the trail grows as the demo publishes and
@@ -4714,6 +4738,11 @@ app.get(/.*\/@history$/, (req, res) => {
       version: n,
       time: new Date(Date.parse('2026-01-01T09:00:00Z') + n * 86400000).toISOString(),
     }));
+  }
+  // Every saved state is a version, the newest being what the page holds now
+  // (@history/<n> already serves it): a page that has been saved lists it too.
+  if (contentVersions.get(cleanPath)?.length && content) {
+    versions = [...versions, { version: versions.length, time: content.modified }];
   }
   const versioning = versions.map((v) => ({
     '@id': `http://localhost:${PORT}${cleanPath}/@history/${v.version}`,

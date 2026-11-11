@@ -13,6 +13,7 @@ import { useDispatch, useSelector } from 'react-redux';
 import { useHistory } from 'react-router-dom';
 import { searchContent } from '@plone/volto/actions/search/search';
 import { moveContent } from '@plone/volto/actions/clipboard/clipboard';
+import { getHistory, revertHistory } from '@plone/volto/actions/history/history';
 import {
   deleteContent,
   getContent,
@@ -153,6 +154,16 @@ export function siteApi(dispatch, history, token) {
           title: source.title,
         })),
       };
+    },
+
+    /** The page's saves and workflow changes, newest first (@history, as the History view lists them). */
+    async history(path) {
+      return run(`history of ${path}`, getHistory(path));
+    },
+
+    /** Put `path` back to one of its saved versions, as the History view's revert does. */
+    async revert({ path, version }) {
+      await run(`revert ${path} to version ${version}`, revertHistory(path, version));
     },
 
     /** Delete `path`. */

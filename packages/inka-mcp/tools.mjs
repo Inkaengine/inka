@@ -253,6 +253,45 @@ export async function deletePage(site, { path, expectedVersion, breakLinks = fal
 }
 
 /**
+ * What was done to a page, newest first, as the admin's History view lists it:
+ * each save, with the "version" that restores it (the newest is "current",
+ * what the page holds now), and each workflow change ("state" it went to).
+ */
+export async function getHistory(site, { path }) {
+  const entries = await site.history(path);
+  const newest = Math.max(...entries.filter((e) => e.type === 'versioning').map((e) => e.version));
+  return {
+    path,
+    history: entries.map((e) => ({
+      ...(e.type === 'versioning' && { version: e.version, ...(e.version === newest && { current: true }) }),
+      time: e.time,
+      by: e.actor?.fullname || e.actor?.id,
+      did: e.transition_title,
+      ...(e.comments && { note: e.comments }),
+      ...(e.type === 'workflow' && e.state_title && { state: e.state_title }),
+    })),
+  };
+}
+
+/**
+ * Put a page back to one of its earlier saves, as the History view's "Revert
+ * to this revision" does. What it held until now stays in its history, so this
+ * can be undone the same way.
+ */
+export async function revertPage(site, { path, version, expectedVersion }) {
+  await refuseWithDraft(site, path);
+  await checkVersion(site, path, expectedVersion);
+  const saves = (await site.history(path)).filter((e) => e.type === 'versioning');
+  const newest = Math.max(...saves.map((e) => e.version));
+  if (!saves.some((e) => e.version === version && e.may_revert !== false)) {
+    throw new Error(`${path} has no version ${version} to restore: get_history lists them`);
+  }
+  if (version === newest) throw new Error(`version ${version} is what ${path} holds now: nothing to restore`);
+  await site.revert({ path, version });
+  return { path, restored: version, version: (await site.status(path)).version };
+}
+
+/**
  * A page's state and what can be done to it: each transition with what it can
  * set at the same time ("takes") and what those are now ("current"). "update"
  * stays in the same state, for what can change without moving: who has access,

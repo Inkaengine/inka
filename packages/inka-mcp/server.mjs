@@ -24,7 +24,7 @@ import { fetchMedia, isPublicAddress, mediaIn, MediaRefused, MEDIA_PREFIX } from
 import { draftCheck } from './checkDraft.mjs';
 import {
   previewLayout, getPage, editPage, listBlockTypes, describeBlock, search, listChildren, contentTypes, fillNewPage, movePage, renamePage, deletePage,
-  getTransitions, transitionPage, draftInfo, draftForAgent, editTarget, LIVE_EDIT_WARNING, findUndeclaredFields,
+  getTransitions, transitionPage, getHistory, revertPage, draftInfo, draftForAgent, editTarget, LIVE_EDIT_WARNING, findUndeclaredFields,
 } from './tools.mjs';
 
 const OPS_HELP = `Operations, applied in order:
@@ -94,7 +94,7 @@ const INSTRUCTIONS = `This server edits a website built with Inka (a Plone-based
 - A page is a block of its content type (the site's own: list_content_types says which a section takes): its own fields (title, summary and the rest of its content type's fields) and its regions, which hold its blocks. Blocks have types (Text, Image, Hero, …; list_block_types gives each type's title, fields and regions), and some hold blocks of their own. In the editor, blocks are known by those titles and fields by their labels; ids and JSON are never shown.
 - The site's own front end draws every page. view_page shows a page as visitors see it; preview_layout (a whole proposed layout) and edit_blocks with dryRun and preview (a change to the page) show the result the same way. None of them saves anything. In clients that show them, the person sees these pictures too. A long page's picture may show only its top ("cropped" says how much); its text ("renderedText") is all there.
 - Some blocks come from a template that many pages share (they carry "templateId"; "readOnly" ones are locked, as the editor shows them). A change to one is a change to the template, and so to every page that uses it: edit_blocks with changeTemplates. In the editor, unlocking a template warns of the same.
-- Saving (edit_blocks without dryRun, create_page, move_page, rename_page, delete_page, transition_page) changes the site itself: visitors of a published page see the change straight away. Whether a page is published is its "reviewState", which create_page and a save report: a new page may be private, so visitors can't see it yet. get_transitions says what can be done to a page and what each can set at the same time (a publishing date, an expiry); publishing, making a draft of a published page and changing who has access are all transitions, taken with transition_page. Publish only when the person has asked for it.
+- Saving (edit_blocks without dryRun, create_page, move_page, rename_page, delete_page, transition_page, revert_page) changes the site itself: visitors of a published page see the change straight away. Whether a page is published is its "reviewState", which create_page and a save report: a new page may be private, so visitors can't see it yet. get_transitions says what can be done to a page and what each can set at the same time (a publishing date, an expiry); publishing, making a draft of a published page and changing who has access are all transitions, taken with transition_page. Publish only when the person has asked for it. A saved change to a page can be undone: get_history lists its saves, and revert_page puts it back to one.
 - A page has at most one draft, and it stays the same page at the same path. While it has one ("draft" in get_transitions and get_page), get_page and edit_blocks work on the draft and visitors keep seeing the page as it was, until the draft is published. view_page shows what visitors see unless asked for the draft. In an emergency, get_page and edit_blocks with "live" change what visitors see now, without publishing the draft; but publishing the draft replaces the live page, so make the same change on the draft too or it will be lost. To show someone the draft, give them its "url": they sign in to see it, and it is only at that address, not the page's.
 - search finds pages by their title, their summary and the text of their Text blocks. Text in other blocks' fields (a hero's heading, a teaser's title) may not be searched.
 - To find what isn't live yet, use search rather than going through pages one by one: "hasDraft" finds live pages with a draft waiting (the change isn't live), "reviewState" (such as ["private", "pending"]) finds pages visitors can't see at all. They can be asked together.`;
@@ -314,6 +314,23 @@ export function createServer(adminFor, { pictures, media, localFiles, userOf }) 
       breakLinks: z.boolean().optional().describe('Delete even though other pages link to it, leaving those links broken'),
     }),
   }, async (args, extra) => asResult(await adminFor(extra).withSite((site) => deletePage(site, args))));
+
+  server.registerTool('get_history', {
+    title: 'Page history',
+    annotations: SAVES_NOTHING,
+    description: 'What was done to a page, newest first, as the editor\'s History view lists it: each save, by whom and when, with the "version" that revert_page restores (the newest save is "current": what the page holds now), and each workflow change, such as publishing. Use it to undo a saved change.',
+    inputSchema: z.object({ path: z.string().describe('The page, e.g. /about') }),
+  }, async (args, extra) => asResult(await adminFor(extra).withSite((site) => getHistory(site, args))));
+
+  server.registerTool('revert_page', {
+    title: 'Restore an earlier version',
+    description: 'Put a page back to one of its earlier saves (a "version" get_history lists), as the editor\'s "Revert to this revision" does: the whole page, its fields and blocks, goes back to what it was then. Visitors of a published page see it straight away. What it held until now stays in its history, so this can be undone the same way. Returns its new "version".',
+    inputSchema: z.object({
+      path: z.string().describe('The page, e.g. /about'),
+      version: z.number().int().describe('The version to restore, as get_history gives it'),
+      expectedVersion: version,
+    }),
+  }, async (args, extra) => asResult(await adminFor(extra).withSite((site) => revertPage(site, args))));
 
   server.registerTool('get_transitions', {
     title: 'What can be done to a page',

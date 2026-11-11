@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { fillNewPage, describeBlock, getPage, editPage, movePage, renamePage, deletePage, previewLayout, search, listChildren, getTransitions, transitionPage, editTarget, contentTypes } from './tools.mjs';
+import { fillNewPage, describeBlock, getPage, editPage, movePage, renamePage, deletePage, previewLayout, search, listChildren, getTransitions, transitionPage, editTarget, contentTypes, getHistory, revertPage } from './tools.mjs';
 
 const schemas = {
   page: { regions: [{ region: 'items', isObjectList: false, allowedBlocks: ['teaser', 'columns'], defaultBlockType: null, maxLength: null }] },
@@ -847,5 +847,57 @@ describe('delete_page: links it would break', () => {
   it('deletes a page nothing links to, saying what went with it', async () => {
     const site = siteLinked([], 2);
     expect(await deletePage(site, { path: '/old', expectedVersion: 'v1' })).toEqual({ deleted: '/old', alsoDeleted: 2 });
+  });
+});
+
+describe('get_history and revert_page: undoing a saved change', () => {
+  const actor = (fullname) => ({ '@id': null, fullname, id: fullname.toLowerCase(), username: fullname.toLowerCase() });
+  const trail = [
+    { type: 'versioning', version: 2, time: '2026-11-11T10:00:00Z', actor: actor('Agent'), comments: '', transition_title: 'Edited', may_revert: true },
+    { type: 'workflow', action: 'publish', time: '2026-11-10T12:00:00Z', actor: actor('Jane'), comments: 'Go live', transition_title: 'Publish', state_title: 'Published' },
+    { type: 'versioning', version: 1, time: '2026-11-10T11:00:00Z', actor: actor('Jane'), comments: 'Fixed typo', transition_title: 'Edited', may_revert: true },
+    { type: 'versioning', version: 0, time: '2026-11-09T09:00:00Z', actor: actor('Jane'), comments: 'Initial version', transition_title: 'Edited', may_revert: true },
+  ];
+  function siteWithHistory() {
+    const reverted = [];
+    return {
+      reverted,
+      history: async () => trail,
+      status: async () => ({ version: reverted.length ? 'v2' : 'v1', lockedBy: null }),
+      draftOf: async () => null,
+      revert: async (op) => { reverted.push(op); },
+    };
+  }
+
+  it('lists what was done to a page, newest first: saves that can be restored, and workflow changes', async () => {
+    expect(await getHistory(siteWithHistory(), { path: '/about' })).toEqual({
+      path: '/about',
+      history: [
+        { version: 2, current: true, time: '2026-11-11T10:00:00Z', by: 'Agent', did: 'Edited' },
+        { time: '2026-11-10T12:00:00Z', by: 'Jane', did: 'Publish', note: 'Go live', state: 'Published' },
+        { version: 1, time: '2026-11-10T11:00:00Z', by: 'Jane', did: 'Edited', note: 'Fixed typo' },
+        { version: 0, time: '2026-11-09T09:00:00Z', by: 'Jane', did: 'Edited', note: 'Initial version' },
+      ],
+    });
+  });
+
+  it('puts a page back to an earlier save, and gives its new version', async () => {
+    const site = siteWithHistory();
+    expect(await revertPage(site, { path: '/about', version: 1, expectedVersion: 'v1' }))
+      .toEqual({ path: '/about', restored: 1, version: 'v2' });
+    expect(site.reverted).toEqual([{ path: '/about', version: 1 }]);
+  });
+
+  it('refuses a version the history does not offer, changing nothing', async () => {
+    const site = siteWithHistory();
+    await expect(revertPage(site, { path: '/about', version: 5, expectedVersion: 'v1' })).rejects.toThrow(/\/about has no version 5 to restore: get_history lists them/);
+    await expect(revertPage(site, { path: '/about', version: 2, expectedVersion: 'v1' })).rejects.toThrow(/version 2 is what \/about holds now/);
+    expect(site.reverted).toEqual([]);
+  });
+
+  it('refuses when the page changed since it was read', async () => {
+    const site = siteWithHistory();
+    await expect(revertPage(site, { path: '/about', version: 1, expectedVersion: 'old' })).rejects.toThrow(/changed since it was read/);
+    expect(site.reverted).toEqual([]);
   });
 });
