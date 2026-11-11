@@ -9493,12 +9493,14 @@ export class Bridge {
       // Focus specific field + cursor placement after DOM settles
       if (fieldToFocus === 'first' || fieldToFocus === 'last' || typeof fieldToFocus === 'string') {
         const cursorAt = opts.cursorAt || 'start';
-        // Where the caret was when this placement was asked for. Keys can be
-        // replayed into the field, and the author can type on, before the
-        // frames below: a caret that has moved since is theirs, and putting it
-        // back at the start put what they typed next before it (inka#645).
-        const askedSel = window.getSelection();
-        const askedAt = askedSel?.rangeCount ? [askedSel.anchorNode, askedSel.anchorOffset] : null;
+        // The block's text when this placement was asked for. Keys can be
+        // replayed into it, and the author type on, before the frames below:
+        // once text has been typed the caret is where the typing left it, and
+        // putting it back at the start put what they typed next before it
+        // (inka#645). A caret that only moved (an arrow key's own move into
+        // this block) is still placed.
+        const textOf = (el) => this.stripZeroWidthSpaces(el?.textContent || '');
+        const askedText = textOf(blockElement);
         requestAnimationFrame(() => {
           requestAnimationFrame(() => {
             const currentElement = this.queryBlockElement(blockUid);
@@ -9514,14 +9516,12 @@ export class Bridge {
               targetField = currentElement.querySelector(`[data-edit-text="${fieldToFocus}"]`);
             }
             if (targetField && targetField.getAttribute('contenteditable') === 'true') {
-              const sel = window.getSelection();
-              const movedInField = sel?.rangeCount && targetField.contains(sel.anchorNode)
-                && !(askedAt && askedAt[0] === sel.anchorNode && askedAt[1] === sel.anchorOffset);
-              if (movedInField) return;
+              if (textOf(currentElement) !== askedText) return;
               targetField.focus();
               if (cursorAt === 'end') {
                 this._placeCursorAtEnd(targetField);
               } else {
+                const sel = window.getSelection();
                 const range = document.createRange();
                 range.selectNodeContents(targetField);
                 range.collapse(true);
