@@ -594,6 +594,9 @@
                     // type is static_text because it has no schema defaults, so
                     // the typed item differs from the empty only by its type.
                     const singleTypeFields = /\/form-single-type-page(\/|$)/.test(pagePath);
+                    // A form whose empty field draws the frontend's OWN add button
+                    // (data-block-add="button") in place of the admin's '+'.
+                    window.hydraTestOwnAddButton = /\/own-add-button-page(\/|$)/.test(pagePath);
 
                     // Listen for changes from the admin UI and update blocks
                     // Return promise from async render so hydra.js can wait for DOM updates

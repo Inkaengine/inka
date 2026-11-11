@@ -1,0 +1,1 @@
+A frontend block whose region's `defaultBlockType`, or one of its `default` entries, is not in that region's `allowedBlocks` is refused when the frontend's config arrives, naming the block, the region and the type. `defaultBlockType: "empty"` stays allowed: it means the region sits empty. @djay

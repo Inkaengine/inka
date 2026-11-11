@@ -50,7 +50,7 @@ describe('inka-mock-parent', () => {
   });
 
   it('serves the admin code the page imports', async () => {
-    for (const mod of ['helpers', 'build-block-path-map', 'merge-templates', 'merge-frontend-block', 'block-path']) {
+    for (const mod of ['helpers', 'build-block-path-map', 'merge-templates', 'merge-frontend-block', 'block-path', 'block-sync']) {
       const res = await fetch(`${base}/inka-mock-parent/${mod}.js`);
       assert.equal(res.status, 200, `${mod}.js`);
     }

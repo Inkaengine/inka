@@ -34,6 +34,39 @@ describe('mergeFrontendBlock', () => {
       .toThrow('Block "slate": allowedBlocks at the block has [1] = null');
   });
 
+  // A region's default is what the admin seeds into it, and an allowed list says
+  // what it may hold. A default outside that list seeds a block the region
+  // then refuses to take back (on a move or a paste). `"empty"` is the one
+  // default that need not be listed: it means "sit empty" (Empty Blocks).
+  const withRegion = (region) => ({
+    id: 'panel', title: 'Panel', group: 'common',
+    blockSchema: { properties: { body: { widget: 'blocks_layout', ...region } } },
+  });
+
+  test('a region\'s defaultBlockType must be one of its allowedBlocks', () => {
+    expect(() => mergeFrontendBlock('panel', undefined, withRegion({ allowedBlocks: ['slate', 'image'], defaultBlockType: 'teaser' })))
+      .toThrow('Block "panel": defaultBlockType "teaser" at blockSchema.properties.body is not in its allowedBlocks (slate, image)');
+  });
+
+  test('"empty" is a default without being allowed: the region sits empty', () => {
+    expect(() => mergeFrontendBlock('panel', undefined, withRegion({ allowedBlocks: ['textItem'], defaultBlockType: 'empty' }))).not.toThrow();
+  });
+
+  test('a default in the list, or a region allowing anything, passes', () => {
+    expect(() => mergeFrontendBlock('panel', undefined, withRegion({ allowedBlocks: ['slate', 'image'], defaultBlockType: 'slate' }))).not.toThrow();
+    expect(() => mergeFrontendBlock('panel', undefined, withRegion({ defaultBlockType: 'slate' }))).not.toThrow();
+    expect(() => mergeFrontendBlock('panel', undefined, withRegion({ allowedBlocks: [], defaultBlockType: 'slate' }))).not.toThrow();
+  });
+
+  test('each entry of a region\'s `default` must be an allowed type, read through its typeField', () => {
+    const form = (entries) => withRegion({ widget: 'object_list', typeField: 'field_type', allowedBlocks: ['text', 'email'], default: entries });
+    expect(() => mergeFrontendBlock('panel', undefined, form([{ field_type: 'text' }, { field_type: 'email' }]))).not.toThrow();
+    expect(() => mergeFrontendBlock('panel', undefined, form([{ field_type: 'text' }, { field_type: 'phone' }])))
+      .toThrow('Block "panel": default[1] "phone" at blockSchema.properties.body is not in its allowedBlocks (text, email)');
+    expect(() => mergeFrontendBlock('panel', undefined, withRegion({ allowedBlocks: ['slate'], default: [{ '@type': 'image' }] })))
+      .toThrow('Block "panel": default[0] "image" at blockSchema.properties.body is not in its allowedBlocks (slate)');
+  });
+
   test('a block the admin has needs neither: its own stand', () => {
     const { entry } = mergeFrontendBlock('slate', { id: 'slate', title: 'Text', group: 'text' }, { schemaEnhancer: { fieldRules: {} } });
     expect(entry.title).toBe('Text');

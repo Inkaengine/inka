@@ -126,11 +126,12 @@
     import { mergeFrontendBlock } from '/inka-mock-parent/merge-frontend-block.js';
     import {
       getAllContainerFields,
-      getContainerFieldConfig,
-      deleteBlockFromContainer,
+      getChildBlockIds,
+      getChildBlockIdsInField,
       ensureEmptyBlockIfEmpty,
     } from '/inka-mock-parent/block-path.js';
-    import { isBlockReadonly, getAtPath } from '/inka-mock-parent/helpers.js';
+    import { deleteBlocks } from '/inka-mock-parent/block-sync.js';
+    import { getAtPath } from '/inka-mock-parent/helpers.js';
 
     // Configure iframe frontend from ?frontend= URL param. The default is the
     // origin THIS page is served from — vite injects it (see vite.config.js), and
@@ -238,6 +239,14 @@
       },
       slate: {
         id: 'slate',
+        // Mirrors the real admin (volto-hydra index.js): a new text block starts
+        // as one empty paragraph. A frontend's config arrives as JSON and can't
+        // carry this function, so without the mirror a region refilled with a
+        // text block gets a bare {"@type":"slate"} the admin never makes.
+        initialValue: ({ value }) => ({
+          ...value,
+          value: value.value || [{ type: 'p', children: [{ text: '' }] }],
+        }),
         blockSchema: {
           properties: {
             value: { widget: 'slate' },
@@ -1189,36 +1198,46 @@
           .filter((f) => !f.isTemplateInstance)
           .map((f) => ({ region: f.region, defaultBlockType: f.defaultBlockType ?? null }));
       },
-      // Empty one region the way an editor's delete does — remove each child
-      // (deleteBlockFromContainer), then let the admin seed what an empty region
-      // gets (ensureEmptyBlockIfEmpty: the default block type, or an `empty`
-      // placeholder when the region names none) — and send it to the frontend.
-      // Returns the uids now in the region, or why it can't be emptied.
+      // Empty one region the way an editor does: select everything in it and
+      // delete — the admin's own deleteBlocks, which then seeds what an empty
+      // region gets (its default block type, or an `empty` placeholder).
+      // Returns the uids now in the region, or why an editor can't empty it: a
+      // template block that is read-only or fixed in place can't be deleted (a
+      // page's forced layout block, say — the page's content sits inside it).
       emptyRegion: (blockId, region) => {
-        let formData = mockFormData;
-        let map = buildBlockPathMap(formData, mockBlocksConfig);
-        const inRegion = (m) => Object.keys(m).filter(
-          (uid) => m[uid]?.parentId === blockId && (m[uid].region || 'items') === region,
+        const map = buildBlockPathMap(mockFormData, mockBlocksConfig);
+        const send = (formData) => {
+          const blockPathMap = buildBlockPathMap(formData, mockBlocksConfig);
+          mockFormData = formData;
+          document.getElementById('previewIframe').contentWindow.postMessage(
+            { type: 'FORM_DATA', data: formData, blockPathMap }, '*',
+          );
+          return { seeded: inRegion(blockPathMap).map((uid) => ({ uid, type: blockPathMap[uid]?.blockType ?? null })) };
+        };
+        // The region's blocks. A template's first-level blocks hang off a
+        // virtual instance in the map (path null, never drawn), so take the
+        // instance's children in its place — the blocks an editor selects.
+        const inRegion = (m) => getChildBlockIdsInField(blockId, region, m).flatMap(
+          (uid) => (m[uid].isTemplateInstance ? getChildBlockIds(uid, m) : [uid]),
         );
         const children = inRegion(map);
-        // An editor can't delete a locked (template) block, so can't empty its region.
-        const locked = children.filter((uid) => isBlockReadonly(getAtPath(formData, map[uid].path) ?? {}, []));
-        if (locked.length) return { skipped: `holds locked block(s) ${locked.join(', ')}` };
-        for (const uid of children) {
-          const containerConfig = getContainerFieldConfig(uid, map, formData, mockBlocksConfig);
-          formData = deleteBlockFromContainer(formData, map, uid, containerConfig);
-          map = buildBlockPathMap(formData, mockBlocksConfig);
+        if (children.length === 0) {
+          // Already empty: the admin seeds it on load (View.jsx INITIAL_DATA);
+          // this page never had it seeded, as the mock parent doesn't run the
+          // load's Volto-bound half. Seed it the same way.
+          const formData = ensureEmptyBlockIfEmpty(
+            mockFormData, { parentId: blockId }, map, () => crypto.randomUUID(), mockBlocksConfig,
+          );
+          return send(formData);
         }
-        formData = ensureEmptyBlockIfEmpty(
-          formData, { parentId: blockId }, map, () => crypto.randomUUID(), mockBlocksConfig,
-        );
-        map = buildBlockPathMap(formData, mockBlocksConfig);
-        mockFormData = formData;
-        const seeded = inRegion(map).map((uid) => ({ uid, type: map[uid]?.blockType ?? null }));
-        document.getElementById('previewIframe').contentWindow.postMessage(
-          { type: 'FORM_DATA', data: formData, blockPathMap: map }, '*',
-        );
-        return { seeded };
+        const { formData, deleted } = deleteBlocks(mockFormData, map, children, {
+          blocksConfig: mockBlocksConfig,
+          uuidGenerator: () => crypto.randomUUID(),
+          templateEditMode: null,
+        });
+        const kept = children.filter((uid) => !deleted.includes(uid));
+        if (kept.length) return { skipped: `holds template block(s) an editor can't delete: ${kept.join(', ')}` };
+        return send(formData);
       },
       // Change a block's fields (found by uid anywhere, nested included) and send
       // the page to the frontend, as an edit in the sidebar would.

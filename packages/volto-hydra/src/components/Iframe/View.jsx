@@ -831,6 +831,9 @@ const Iframe = (props) => {
   // (`action` 'before' when "+" redirects to the top of a layout's default slot)
   const [pendingAdd, setPendingAdd] = useState(null);
   const [pendingDelete, setPendingDelete] = useState(null);
+  // A frontend's own add button in an empty placeholder was clicked (ADD_BLOCK):
+  // { uid, rect } — filled once that empty is the selected block.
+  const [pendingFill, setPendingFill] = useState(null);
   const [popperElement, setPopperElement] = useState(null);
   const [referenceElement, setReferenceElement] = useState(null);
   const [blockUI, setBlockUI] = useState(null); // { blockUid, rect, focusedFieldName }
@@ -2909,7 +2912,10 @@ const Iframe = (props) => {
           break;
 
         case 'ADD_BLOCK':
-          setAddNewBlockOpened(true);
+          // From a frontend's own add button in an empty placeholder
+          // (data-block-add="button"): fill that empty, as the admin's '+' on
+          // it would. The bridge selects it first; the fill waits for that.
+          setPendingFill({ uid: event.data.blockUid, rect: event.data.rect });
           break;
 
         case 'DELETE_BLOCK':
@@ -5281,6 +5287,20 @@ const Iframe = (props) => {
       setAddNewBlockOpened(true);
     }
   }, [iframeAllowedBlocks, selectedBlock, insertAndSelectBlock, iframeSyncState.blockPathMap, properties, blocksConfig, intl, onChangeFormData]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Fill an empty from the frontend's own add button once it is selected: the
+  // same gesture as the '+' (handleIframeAdd), with the chooser anchored at the
+  // frontend's button.
+  useEffect(() => {
+    if (!pendingFill || selectedBlock !== pendingFill.uid) return;
+    const { rect } = pendingFill;
+    setPendingFill(null);
+    if (rect && referenceElement) {
+      const frame = referenceElement.getBoundingClientRect();
+      setChooserAnchor(new DOMRect(frame.left + rect.left, frame.top + rect.top, rect.width, rect.height));
+    }
+    handleIframeAdd();
+  }, [pendingFill, selectedBlock, handleIframeAdd, referenceElement]);
 
   // Convert a block to newType IN PLACE (container-aware), returning new formData.
   // Container blocks (any region with children) go through reshapeContainerBlock

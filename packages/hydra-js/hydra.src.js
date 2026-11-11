@@ -1572,6 +1572,19 @@ export class Bridge {
     return depth % 2 === 0 ? 'bottom' : 'right';
   }
 
+  /**
+   * The add button a frontend draws inside an empty placeholder, if it draws
+   * one: an element marked data-block-add="button" (docs: Empty Blocks). Only
+   * an empty block has one; on any other block the attribute means nothing.
+   */
+  ownAddButton(blockElement) {
+    const uid = blockElement?.getAttribute('data-block-uid');
+    if (!uid || this.getBlockType(uid) !== 'empty') return null;
+    const button = blockElement.querySelector('[data-block-add="button"]');
+    // It must be this block's own, not one inside a nested block.
+    return button && button.closest('[data-block-uid]') === blockElement ? button : null;
+  }
+
   getAddDirection(blockElement) {
     const blockUid = blockElement.getAttribute('data-block-uid');
 
@@ -1590,6 +1603,14 @@ export class Bridge {
     // place. Without this, a seeded empty (no defaultBlockType + multiple allowedBlocks) is
     // stranded with no + and no way to be typed.
     if (!addability.canInsertAfter && !addability.canReplace) {
+      return 'hidden';
+    }
+
+    // An empty placeholder that draws its own add button (an element marked
+    // data-block-add="button", docs: Empty Blocks) gets no '+' from the admin:
+    // the frontend's button is the '+', and clicking it opens the chooser
+    // (blockClickHandler).
+    if (this.ownAddButton(blockElement)) {
       return 'hidden';
     }
 
@@ -5281,6 +5302,23 @@ export class Bridge {
             blockUid,
           });
         }
+        return;
+      }
+      // A frontend's own add button in an empty placeholder: select the empty
+      // and ask the admin to fill it, as its '+' would.
+      const ownAdd = event.target.closest('[data-block-add="button"]');
+      const ownAddBlock = ownAdd?.closest('[data-block-uid]');
+      if (ownAddBlock && this.ownAddButton(ownAddBlock) === ownAdd) {
+        event.preventDefault();
+        event.stopPropagation();
+        const blockUid = ownAddBlock.getAttribute('data-block-uid');
+        log('blockClickHandler: own add button for empty', blockUid);
+        this.selectBlock(ownAddBlock);
+        this.sendMessageToParent({
+          type: 'ADD_BLOCK',
+          blockUid,
+          rect: ownAdd.getBoundingClientRect().toJSON(),
+        });
         return;
       }
       log('blockClickHandler: event target:', event.target.tagName, event.target.className);
@@ -15407,6 +15445,10 @@ export class Bridge {
           font-size: 24px;
           color: #b8c6c8;
           pointer-events: none;
+        }
+        /* The frontend draws its own add button (data-block-add="button"). */
+        [data-hydra-empty]:has([data-block-add="button"])::after {
+          content: none;
         }
       `;
     document.head.appendChild(style);
