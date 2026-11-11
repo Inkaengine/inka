@@ -129,9 +129,18 @@
       getChildBlockIds,
       getChildBlockIdsInField,
       ensureEmptyBlockIfEmpty,
+      stripBlockPathMapForPostMessage,
     } from '/inka-mock-parent/block-path.js';
     import { deleteBlocks } from '/inka-mock-parent/block-sync.js';
     import { getAtPath } from '/inka-mock-parent/helpers.js';
+
+    /**
+     * The block path map as the admin posts it: without the functions a
+     * resolved schema can carry (an enhancer), which postMessage can't clone.
+     * Posting one raw threw DataCloneError and the bridge never connected (inka#652).
+     */
+    const postableBlockPathMap = (formData) =>
+      stripBlockPathMapForPostMessage(buildBlockPathMap(formData, mockBlocksConfig));
 
     // Configure iframe frontend from ?frontend= URL param. The default is the
     // origin THIS page is served from — vite injects it (see vite.config.js), and
@@ -772,7 +781,7 @@
           });
           mockFormData = merged;
 
-          const blockPathMap = buildBlockPathMap(mockFormData, mockBlocksConfig);
+          const blockPathMap = postableBlockPathMap(mockFormData);
 
           const response = {
             type: 'INITIAL_DATA',
@@ -826,7 +835,7 @@
           // Legacy handler for backwards compatibility
           console.log('[MOCK_PARENT] Received legacy GET_INITIAL_DATA');
 
-          const blockPathMap = buildBlockPathMap(mockFormData, mockBlocksConfig);
+          const blockPathMap = postableBlockPathMap(mockFormData);
 
           const response = {
             type: 'INITIAL_DATA',
@@ -986,7 +995,7 @@
             const response = {
               type: 'FORM_DATA',
               data: mockFormData,
-              blockPathMap: buildBlockPathMap(mockFormData, mockBlocksConfig),
+              blockPathMap: postableBlockPathMap(mockFormData),
   
               formatRequestId: requestId,
               transformedSelection,
@@ -1008,7 +1017,7 @@
                 const dupeResponse = {
                   type: 'FORM_DATA',
                   data: mockFormData,
-                  blockPathMap: buildBlockPathMap(mockFormData, mockBlocksConfig),
+                  blockPathMap: postableBlockPathMap(mockFormData),
       
                 };
                 event.source.postMessage(dupeResponse, event.origin);
@@ -1046,7 +1055,7 @@
               iframe.contentWindow.postMessage({
                 type: 'FORM_DATA',
                 data: echoData,
-                blockPathMap: buildBlockPathMap(mockFormData, mockBlocksConfig),
+                blockPathMap: postableBlockPathMap(mockFormData),
     
               }, '*');
               console.log('[MOCK_PARENT] Echoed FORM_DATA back');
@@ -1186,14 +1195,14 @@
       getStyleMenuClasses: () => Array.from(styleMenuClasses),
       getFrontendBlockKeys: () => Array.from(frontendBlockKeys),
       getBlock: (blockId) => mockFormData.blocks[blockId],
-      buildBlockPathMap: () => buildBlockPathMap(mockFormData, mockBlocksConfig),
+      buildBlockPathMap: () => postableBlockPathMap(mockFormData),
       setTransformDelay: (delay) => { window.mockTransformDelay = delay; },
       setEchoFormData: (enabled) => { window.mockEchoFormData = enabled; },
       setDuplicateFormData: (enabled) => { window.mockDuplicateFormData = enabled; },
       // The regions of a block ('_page' for the page's own), as the admin lists
       // them — the container fields its sidebar and add-button work from.
       listRegions: (blockId) => {
-        const map = buildBlockPathMap(mockFormData, mockBlocksConfig);
+        const map = postableBlockPathMap(mockFormData);
         return getAllContainerFields(blockId, map, mockFormData, mockBlocksConfig)
           .filter((f) => !f.isTemplateInstance)
           .map((f) => ({ region: f.region, defaultBlockType: f.defaultBlockType ?? null }));
@@ -1205,9 +1214,9 @@
       // template block that is read-only or fixed in place can't be deleted (a
       // page's forced layout block, say — the page's content sits inside it).
       emptyRegion: (blockId, region) => {
-        const map = buildBlockPathMap(mockFormData, mockBlocksConfig);
+        const map = postableBlockPathMap(mockFormData);
         const send = (formData) => {
-          const blockPathMap = buildBlockPathMap(formData, mockBlocksConfig);
+          const blockPathMap = postableBlockPathMap(formData);
           mockFormData = formData;
           document.getElementById('previewIframe').contentWindow.postMessage(
             { type: 'FORM_DATA', data: formData, blockPathMap }, '*',
@@ -1242,20 +1251,20 @@
       // Change a block's fields (found by uid anywhere, nested included) and send
       // the page to the frontend, as an edit in the sidebar would.
       updateBlock: (blockId, fields) => {
-        const map = buildBlockPathMap(mockFormData, mockBlocksConfig);
+        const map = postableBlockPathMap(mockFormData);
         if (!map[blockId]) throw new Error(`updateBlock: no block ${blockId}`);
         const formData = JSON.parse(JSON.stringify(mockFormData));
         Object.assign(getAtPath(formData, map[blockId].path), fields);
         mockFormData = formData;
         document.getElementById('previewIframe').contentWindow.postMessage(
-          { type: 'FORM_DATA', data: formData, blockPathMap: buildBlockPathMap(formData, mockBlocksConfig) }, '*',
+          { type: 'FORM_DATA', data: formData, blockPathMap: postableBlockPathMap(formData) }, '*',
         );
       },
       // Select a specific block by sending SELECT_BLOCK + FORM_DATA to iframe
       selectBlock: (blockId) => {
         const iframe = document.getElementById('previewIframe');
         if (!iframe?.contentWindow) return;
-        const blockPathMap = buildBlockPathMap(mockFormData, mockBlocksConfig);
+        const blockPathMap = postableBlockPathMap(mockFormData);
         iframe.contentWindow.postMessage({
           type: 'SELECT_BLOCK',
           uid: blockId,
