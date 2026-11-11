@@ -65,6 +65,8 @@ test.describe('hosted MCP server', () => {
       codes: localCodes({ instance: null, now: Date.now }),
       pictures: localPictures({ instance: null, now: Date.now }),
       media: localMedia({ instance: null, now: Date.now }),
+      // Nothing reported: these tests ARE the ones that make tools throw.
+      reporting: null,
       poolSize: 1,
     });
 
@@ -101,7 +103,7 @@ test.describe('hosted MCP server', () => {
   test('without a token, the server says how to sign in', async ({ urls }) => {
     let hosted: ReturnType<typeof hostedServer>;
     const mcp = await listen((req, res) => hosted.app(req, res));
-    hosted = hostedServer({ adminUrl: urls.voltoSsr, publicUrl: mcp.url, secret: randomBytes(32).toString('base64'), codes: localCodes({ instance: null, now: Date.now }), pictures: null, media: null, poolSize: 1 });
+    hosted = hostedServer({ adminUrl: urls.voltoSsr, publicUrl: mcp.url, secret: randomBytes(32).toString('base64'), codes: localCodes({ instance: null, now: Date.now }), pictures: null, media: null, reporting: null, poolSize: 1 });
     try {
       const res = await fetch(`${mcp.url}/mcp`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
       expect(res.status).toBe(401);

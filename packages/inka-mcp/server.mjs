@@ -22,13 +22,14 @@ import { DROP_VIEW, dropViewHtml } from './dropView.mjs';
 import { PictureGone, MediaGone, MEDIA_MS } from './codes.mjs';
 import { fetchMedia, isPublicAddress, mediaIn, MediaRefused, MEDIA_PREFIX } from './media.mjs';
 import { draftCheck } from './checkDraft.mjs';
+import { reportTheseTools } from './sentry.mjs';
 import {
   previewLayout, getPage, editPage, listBlockTypes, describeBlock, search, listChildren, contentTypes, fillNewPage, movePage, copyPage, renamePage, deletePage,
   getTransitions, transitionPage, getHistory, revertPage, getPageVersion, savedVersion, draftInfo, draftForAgent, editTarget, LIVE_EDIT_WARNING, findUndeclaredFields,
 } from './tools.mjs';
 
 const OPS_HELP = `Operations, applied in order:
-- {"op":"update","id":"<uid>","set":{field: value}} — change fields of a block. Only the fields named change: a field set to null is removed; a field that is an object of fields (such as "styles") takes the fields named inside it and keeps the others; a region named (a list of blocks) becomes the blocks given, keeping each by its "@uid", and the block's other regions are left as they are; any other value is replaced whole.
+- {"op":"update","id":"<uid>","set":{field: value}} — change fields of a block.
 - {"op":"add","after"|"before":"<uid>","blocks":[...]} — add blocks next to a block, in the order given.
 - {"op":"add","into":{"id":"<uid>","field":"<region>"},"blocks":[...]} — add blocks at the end of a container's region.
 - {"op":"move","id":"<uid>","after"|"before":"<uid>"} — move a block.
@@ -149,11 +150,15 @@ const EXTENSIONS = { 'image/png': 'png', 'image/jpeg': 'jpg' };
  * `localFiles` reads a file on the person's own computer from the folders they
  * allowed (media.mjs), or is null where there is no such source (hosted).
  */
-export function createServer(adminFor, { pictures, media, localFiles, userOf }) {
+export function createServer(adminFor, { pictures, media, localFiles, userOf, reporting }) {
   if (pictures === undefined) throw new Error('createServer: `pictures` is required (codes.mjs), or null to keep none');
   if (media === undefined) throw new Error('createServer: `media` is required (codes.mjs), or null to keep none');
   if (localFiles === undefined) throw new Error('createServer: `localFiles` is required (media.mjs), or null for none');
+  if (reporting === undefined) throw new Error('createServer: `reporting` is required (sentry.mjs reporter), or null to report nothing');
   const server = new McpServer({ name: 'inka', version: '0.0.1' }, { instructions: INSTRUCTIONS });
+  // Before a single registerTool below, so every tool is covered -- including
+  // any a deployment registers on the server this returns.
+  if (reporting) reportTheseTools(server, reporting);
   /** The ids `rendered` pictures are kept under, for the request's user (none when nothing is kept). */
   const keep = async (extra, rendered) => (pictures === null ? [] : Promise.all(rendered.map(({ image, mimeType }) => (
     pictures.issue({ user: userOf(extra), mimeType, data: image })

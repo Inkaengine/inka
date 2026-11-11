@@ -23,6 +23,7 @@
     "@modelcontextprotocol/node": "2.1.2",
     "@modelcontextprotocol/server": "2.4.0",
     "@modelcontextprotocol/server-legacy": "2.4.0",
+    "@sentry/node": "10.78.0",
     "@volto-hydra/helpers": "workspace:*",
     "express": "5.2.1",
     "playwright": "1.61.0",
