@@ -1683,6 +1683,18 @@ const Iframe = (props) => {
 
       const templateCache = templateCacheRef.current;
 
+      // A new template is saved with what the author did to it before this first
+      // save (its kind, its blocks' text): the same reverse merge as "Change on
+      // all pages", from the page as it is now. Make template's copy alone
+      // missed every edit after it (inka#693). Its instance id is its own id.
+      const page = propertiesRef.current;
+      const onPage = new Set(getUniqueTemplateIds(page));
+      for (const [id, tpl] of Object.entries(templateCache)) {
+        if (!tpl?._isNew || !onPage.has(id)) continue;
+        const { merged } = await mergeInstanceIntoTemplate(tpl, page, id, { idFieldMap, uuidGenerator: uuid });
+        templateCache[id] = { ...tpl, blocks: merged.blocks, blocks_layout: merged.blocks_layout };
+      }
+
       // Finalize the id/filename for any not-yet-saved template BEFORE we compute the
       // ids to save: choose its id from the Short name (or a slug of the Template
       // Name), then rewrite EVERY reference to the placeholder id — the template's own
@@ -1764,7 +1776,7 @@ const Iframe = (props) => {
       // `formData` param lacks).
       return pageFormData !== formData ? pageFormData : undefined;
     };
-  }, [saveTemplatesRef, flushIframeEdits, persistTemplateDoc, iframeSyncState.templateEditMode]);
+  }, [saveTemplatesRef, flushIframeEdits, persistTemplateDoc, iframeSyncState.templateEditMode, idFieldMap]);
 
   // v2 lock ("Change on all pages" or "Reset changes"): both act only after the
   // iframe flushes pending inline edits, so neither works on stale data and no
