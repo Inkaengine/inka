@@ -35,3 +35,20 @@ describe('expandListingBlocks — a result field that is null', () => {
     expect(items[1]).not.toHaveProperty('date');
   });
 });
+
+// A listing whose fetch fails is a failure, not an empty listing: drawn as "no
+// results" it hides a broken API or a bad query from everyone who could fix it.
+describe('expandListingBlocks — a listing whose fetch fails', () => {
+  const listing = { '@uid': 'listing-1', '@type': 'listing', variation: 'item' };
+
+  it('fails with the fetch error, rather than listing nothing', async () => {
+    const fetchItems = {
+      listing: async () => {
+        throw new Error('http://api/@querystring-search answered 500: boom');
+      },
+    };
+    await expect(
+      expandListingBlocks([listing], { fetchItems, itemTypeField: 'variation' }),
+    ).rejects.toThrow(/answered 500: boom/);
+  });
+});

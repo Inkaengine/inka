@@ -59,12 +59,24 @@ describe('buildQuerystringSearchBody: one criterion per index', () => {
     ).toEqual(expected);
   });
 
-  test('"any of" with nothing left matches nothing, and says so rather than matching everything', () => {
-    // An empty "any of" is no constraint to the catalog: the opposite of what
-    // two disjoint restrictions mean.
-    expect(() =>
-      combineQueries([{ i: 'portal_type', o: ANY, v: ['Document'] }], [{ i: 'portal_type', o: ANY, v: ['Image'] }]),
-    ).toThrow(/portal_type/);
+  test('"any of" with nothing left matches nothing: there is no query to send', () => {
+    // An empty "any of" is no constraint to the catalog, the opposite of what
+    // two disjoint restrictions mean, so no query is the answer, not an empty one.
+    const body = buildQuerystringSearchBody(
+      { query: [{ i: 'portal_type', o: ANY, v: ['Document'] }, { i: 'portal_type', o: ANY, v: ['Image'] }] },
+      {},
+      {},
+    );
+    expect(body).toBeNull();
+  });
+
+  test('"any of" less a "none of" that leaves nothing matches nothing too', () => {
+    const body = buildQuerystringSearchBody(
+      { query: [{ i: 'portal_type', o: NONE, v: ['Image'] }] },
+      {},
+      { 'facet.portal_type': 'Image' },
+    );
+    expect(body).toBeNull();
   });
 
   test('a "from" and a "to" on one date index stay: Plone makes them a range', () => {
@@ -115,6 +127,30 @@ describe('buildQuerystringSearchBody combines a facet with the listing\'s own cr
     );
     expect(body.query.filter((c) => c.i === 'portal_type')).toEqual([
       { i: 'portal_type', o: ANY, v: ['Document'] },
+    ]);
+  });
+});
+
+describe('a facet outside the listing\'s own criterion matches nothing', () => {
+  // The listing's query is the base: a facet narrows within it and can never
+  // reach past it (a hand-edited or stale ?facet.portal_type=Image on a
+  // listing of Documents and News Items).
+  const base = { query: [{ i: 'portal_type', o: ANY, v: ['Document', 'News Item'] }] };
+
+  test('a facet value the base allows narrows to it', () => {
+    const body = buildQuerystringSearchBody(base, {}, { 'facet.portal_type': 'News Item' });
+    expect(body.query).toEqual([{ i: 'portal_type', o: ANY, v: ['News Item'] }]);
+  });
+
+  test('a facet value the base does not allow: no query', () => {
+    expect(buildQuerystringSearchBody(base, {}, { 'facet.portal_type': 'Image' })).toBeNull();
+  });
+
+  test('a facet on an index the base does not restrict is kept alongside', () => {
+    const body = buildQuerystringSearchBody(base, {}, { 'facet.Subject': 'ai' });
+    expect(body.query).toEqual([
+      { i: 'portal_type', o: ANY, v: ['Document', 'News Item'] },
+      { i: 'Subject', o: ANY, v: ['ai'] },
     ]);
   });
 });
