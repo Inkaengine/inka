@@ -767,6 +767,53 @@ function matchTitleIndex(query, title) {
     );
 }
 
+/**
+ * Relevance, as Plone ranks a SearchableText search that names no sort_on.
+ * The index is ZCTextIndex's OkapiIndex (Okapi BM25, K1 = 1.2, B = 0.75): a
+ * page scores higher the more often it has the searched words, for its length,
+ * and a rarer word counts for more. Each word matches as a prefix, as
+ * `contains` munges it (matchSearchableText); a `search` term's operators and
+ * quotes are dropped and its words scored the same way. `items` are the
+ * matches; `textOf(item)` is the page's searchable text (title, description,
+ * id and blocks). Returns them best first; equal scores keep their order.
+ */
+const OKAPI_K1 = 1.2;
+const OKAPI_B = 0.75;
+function rankByRelevance(searchTerm, items, textOf) {
+  const words = String(searchTerm || '')
+    .replace(/["*]/g, ' ')
+    .toLowerCase()
+    .split(/\s+/)
+    .filter((w) => w && w !== 'and' && w !== 'or' && w !== 'not');
+  if (words.length === 0) {
+    throw new Error(`rankByRelevance: no words to rank by in ${JSON.stringify(searchTerm)}`);
+  }
+  const docs = items.map((item) => textOf(item).toLowerCase().split(/\W+/).filter(Boolean));
+  const avgLength = docs.reduce((sum, d) => sum + d.length, 0) / Math.max(docs.length, 1) || 1;
+  const counts = docs.map((tokens) => words.map((w) => tokens.filter((t) => t.startsWith(w)).length));
+  const idf = words.map((_, i) => {
+    const having = counts.filter((c) => c[i] > 0).length;
+    return Math.log(1 + docs.length / Math.max(having, 1));
+  });
+  const score = counts.map((c, d) =>
+    c.reduce((sum, tf, i) => {
+      const norm = OKAPI_K1 * (1 - OKAPI_B + (OKAPI_B * docs[d].length) / avgLength);
+      return sum + (idf[i] * tf * (OKAPI_K1 + 1)) / (tf + norm);
+    }, 0),
+  );
+  return items
+    .map((item, i) => ({ item, i, s: score[i] }))
+    .sort((a, b) => b.s - a.s || a.i - b.i)
+    .map((x) => x.item);
+}
+
+/** A page's searchable text, as the catalog has it: title, description, id and blocks. */
+function searchableTextOf(content) {
+  return [content?.title, content?.description, content?.id, blocksSearchableText(content?.blocks)]
+    .filter(Boolean)
+    .join(' ');
+}
+
 function matchSearchableText(searchTerm, item, blocksText = '') {
   const term = (searchTerm || '').replace(/\*+$/g, '').trim().toLowerCase();
   if (!term) return true;
@@ -5272,6 +5319,9 @@ app.post('*/@querystring-search', (req, res) => {
 
   const { query = [], sort_on, sort_order, b_start = 0, b_size = 10, limit } = req.body;
   console.log('[MOCK-API] @querystring-search query:', JSON.stringify(query));
+  // The SearchableText term, once the criteria are applied: with no sort_on,
+  // the matches are ranked by it (rankByRelevance).
+  let searchedText = null;
 
   // An operation the site does not have is a 400, as in Plone — never a
   // silent match-everything. See searchableTextOperations.
@@ -5308,10 +5358,12 @@ app.post('*/@querystring-search', (req, res) => {
   // NOT honoured by Plone's @querystring-search — verified against
   // demo.plone.org — so it is deliberately ignored here.
   // The path index takes three operations (a real Plone's @querystring says so:
-  // absolutePath, path, relativePath). `path` and `absolutePath` are the same
-  // query -- asked of a live backend, `/blog` under either returns the same 62
-  // items -- so they are one branch here. One site stores `string.path` in 9 of
-  // its 12 path criteria, and reading only absolutePath left those unfiltered.
+  // absolutePath, path, relativePath). `path` ("Navigation path") and
+  // `absolutePath` are the SAME query -- asked of a live backend, `/blog`
+  // under either answers the same 62 items, and `/blog::1` the same 34 -- so
+  // they are one branch here. One site stores `string.path` in 9 of its 12
+  // path criteria, and reading only absolutePath left those listings
+  // unfiltered.
   const isAbsolutePathQuery = (operation) =>
     operation.includes('absolutePath') || operation.endsWith('.string.path');
 
@@ -5464,6 +5516,7 @@ app.post('*/@querystring-search', (req, res) => {
       // searchableTextOperations; stock mode 400s it above) and keeps the raw
       // term's operators (matchRawSearch).
       if (value) {
+        searchedText = value;
         const matches = operation === TEXT_SEARCH ? matchRawSearch : matchSearchableText;
         allItems = allItems.filter((item) =>
           matches(
@@ -5575,6 +5628,11 @@ app.post('*/@querystring-search', (req, res) => {
   if (comparator) {
     allItems.sort(comparator);
     if (sort_order === 'descending') allItems.reverse();
+  } else if (!sort_on && searchedText) {
+    // No sort named: Plone ranks a text search by relevance.
+    allItems = rankByRelevance(searchedText, allItems, (item) =>
+      searchableTextOf(getContent(new URL(item['@id']).pathname, getSessionId(req))),
+    );
   }
 
   // Apply results limit (different from b_size which is for pagination)
@@ -5804,6 +5862,24 @@ app.get('*/@search', (req, res) => {
   // `Language=all` to opt out. A search that says nothing about language is
   // left alone: every single-language spec in this suite is one of those, and
   // filtering them by a default would answer a question they never asked.
+  // A search looks under where it was asked (`/news/@search`), or under the
+  // folder `path.query` names: the path index, at its default depth, takes
+  // that object and everything inside it. Depths 0 and 1 are scoped above.
+  // Without this every other search answered with the whole site, so an MCP
+  // search "only inside this section" was never held to its section here.
+  if (pathDepth !== '0' && pathDepth !== '1') {
+    const asked = pathQuery
+      ? (String(pathQuery).startsWith('http') ? new URL(String(pathQuery)).pathname : String(pathQuery))
+      : searchPath;
+    const scope = asked.replace(/\/$/, '');
+    if (scope) {
+      items = items.filter((item) => {
+        const itemPath = String(item['@id'] || '').replace(baseUrl, '') || '/';
+        return itemPath === scope || itemPath.startsWith(`${scope}/`);
+      });
+    }
+  }
+
   items = items.filter((item) => mayView(item, getSessionId(req)));
 
   const languageQuery = req.query.Language;
@@ -5835,6 +5911,12 @@ app.get('*/@search', (req, res) => {
   // metadata field of that name, and sort_order: descending reverses the
   // whole result, as in the querystring-search handler above.
   const sortOn = req.query.sort_on;
+  if (!sortOn && searchableText) {
+    // No sort named: Plone ranks a text search by relevance.
+    items = rankByRelevance(searchableText, items, (item) =>
+      searchableTextOf(getContent(new URL(item['@id']).pathname, getSessionId(req))),
+    );
+  }
   if (sortOn === 'getObjPositionInParent') {
     const position = (item) => uidPositionMap[item.UID] ?? Number.MAX_SAFE_INTEGER;
     items = [...items].sort((a, b) => position(a) - position(b));

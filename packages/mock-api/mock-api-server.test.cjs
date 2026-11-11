@@ -148,9 +148,10 @@ describe('@querystring-search', () => {
   });
 
   // Checked against a real Plone 6.2 (a live @querystring-search):
-  //   `path` and `absolutePath` on the same value return THE SAME items --
-  //   62 each, the folder itself among them, at any depth below it;
-  //   `/blog::1` returns 34, the folder NOT among them and nothing deeper.
+  //   `path` ("Navigation path") and `absolutePath` on the same value return
+  //   THE SAME items -- 62 each for `/blog`, the folder itself among them, at
+  //   any depth below it; `/blog::1` returns 34 under either, the folder NOT
+  //   among them and nothing deeper.
   // The path index offers all three operations (@querystring): absolutePath,
   // path, relativePath. One site stores `string.path` in 9 of its 12 path
   // criteria, so a mock that knows only absolutePath leaves those listings
