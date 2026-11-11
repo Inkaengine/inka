@@ -39,7 +39,9 @@ async function main(env) {
   // A server for the connection, on the protocol revision the host opens it
   // with (2026-07-28, or 2025's); the SDK may make another to answer its
   // probe, so the admin is not closed with a server.
-  serveStdio(() => createServer(() => admin, { pictures, media, localFiles: files, userOf: () => 'this-session' }));
+  // Nothing reported: this runs on the person's own computer, through their
+  // own host, and what it throws is theirs to see -- not a deployment's Sentry.
+  serveStdio(() => createServer(() => admin, { pictures, media, localFiles: files, userOf: () => 'this-session', reporting: null }));
   // The host is gone when it closes this process's input.
   process.stdin.on('close', () => admin.close());
 }

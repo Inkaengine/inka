@@ -30,6 +30,11 @@
  *                        loaded afresh (the admin may have been redeployed)
  *   PORT                 the port to listen on
  *   INKA_FRONTEND_URL    optional: the front end the editor uses
+ *   SENTRY_DSN           optional: report what a tool call throws (sentry.mjs).
+ *                        UNSET MEANS OFF -- nothing is started and nothing is
+ *                        sent, which is what a local run and CI want. With it,
+ *                        SENTRY_ENVIRONMENT and SENTRY_RELEASE say which
+ *                        deployment and which commit.
  *
  * What depends on where it runs is the deployment's own code, passed from an
  * entry of its own: `await main(process.env, { makeStore, route })`.
@@ -64,6 +69,7 @@ import {
 } from './codes.mjs';
 import { renewThrough, watchSignOut } from './signIn.mjs';
 import { memoryLimit, poolSize as poolSizeFor } from './poolSize.mjs';
+import { reporter, sentryOptions } from './sentry.mjs';
 
 /**
  * The bus a listening client (subscriptions/listen) hears changes on, telling
@@ -177,10 +183,11 @@ export function forwardTo(peerUrl) {
  * (codes.mjs). `route`: for local codes, pictures and files on several
  * instances, { instance, send } (see the configuration above).
  */
-export function hostedServer({ adminUrl, publicUrl, secret, codes, pictures, media, route, poolSize, pageIdleMs, frontendUrl }) {
+export function hostedServer({ adminUrl, publicUrl, secret, codes, pictures, media, route, poolSize, pageIdleMs, frontendUrl, reporting }) {
   if (!codes) throw new Error('hostedServer: `codes` is required, where sign-in codes wait (codes.mjs; codesFrom reads INKA_MCP_CODES)');
   if (pictures === undefined) throw new Error('hostedServer: `pictures` is required, where pictures are kept, or null for none (codesFrom gives it)');
   if (media === undefined) throw new Error('hostedServer: `media` is required, where the files an agent stages are kept, or null for none (codesFrom gives it)');
+  if (reporting === undefined) throw new Error('hostedServer: `reporting` is required (sentry.mjs reporter), or null to report nothing');
   if (route && !isInstanceName(route.instance)) {
     throw new Error(`a route's instance is its name: letters, digits and '-' (got ${JSON.stringify(route.instance)})`);
   }
@@ -299,7 +306,7 @@ export function hostedServer({ adminUrl, publicUrl, secret, codes, pictures, med
     // (provider.signedOut), so the client is asked to sign in again.
     () => provider.signedOut(plone),
   // A hosted server reads no one's computer: a file comes by URL or picture.
-  ), { pictures, media, localFiles: null, userOf: () => user }), {
+  ), { pictures, media, localFiles: null, userOf: () => user, reporting }), {
     bus: toldOnListening(),
     onerror: (error) => console.log(`mcp: ${error.message}`),
   });
@@ -392,6 +399,10 @@ export async function main(env, { makeStore, route } = {}) {
     poolSize,
     pageIdleMs: Number(required(env, 'INKA_MCP_PAGE_IDLE_SECONDS')) * 1000,
     frontendUrl: env.INKA_FRONTEND_URL,
+    // The SDK is imported ONLY when a DSN asks for it: it is external to the
+    // bundle (its instrumentation patches modules as they load), so this is
+    // also what keeps a server without Sentry from needing it installed.
+    reporting: sentryOptions(env) ? reporter(env, await import('@sentry/node')) : null,
   });
   // Every request, before anything can refuse it (the SDK's Host check runs
   // first in the app): method, path without its query, Host, user agent, and

@@ -22,13 +22,14 @@ import { DROP_VIEW, dropViewHtml } from './dropView.mjs';
 import { PictureGone, MediaGone, MEDIA_MS } from './codes.mjs';
 import { fetchMedia, isPublicAddress, mediaIn, MediaRefused, MEDIA_PREFIX } from './media.mjs';
 import { draftCheck } from './checkDraft.mjs';
+import { reportTheseTools } from './sentry.mjs';
 import {
   previewLayout, getPage, editPage, listBlockTypes, describeBlock, search, listChildren, contentTypes, fillNewPage, movePage, renamePage, deletePage,
-  getTransitions, transitionPage, draftInfo, draftForAgent, editTarget, LIVE_EDIT_WARNING, findUndeclaredFields,
+  getTransitions, transitionPage, draftInfo, draftForAgent, editTarget, LIVE_EDIT_WARNING,
 } from './tools.mjs';
 
 const OPS_HELP = `Operations, applied in order:
-- {"op":"update","id":"<uid>","set":{field: value}} — change fields of a block. Only the fields named change: a field set to null is removed; a field that is an object of fields (such as "styles") takes the fields named inside it and keeps the others; a region named (a list of blocks) becomes the blocks given, keeping each by its "@uid", and the block's other regions are left as they are; any other value is replaced whole.
+- {"op":"update","id":"<uid>","set":{field: value}} — change fields of a block.
 - {"op":"add","after"|"before":"<uid>","blocks":[...]} — add blocks next to a block, in the order given.
 - {"op":"add","into":{"id":"<uid>","field":"<region>"},"blocks":[...]} — add blocks at the end of a container's region.
 - {"op":"move","id":"<uid>","after"|"before":"<uid>"} — move a block.
@@ -149,11 +150,15 @@ const EXTENSIONS = { 'image/png': 'png', 'image/jpeg': 'jpg' };
  * `localFiles` reads a file on the person's own computer from the folders they
  * allowed (media.mjs), or is null where there is no such source (hosted).
  */
-export function createServer(adminFor, { pictures, media, localFiles, userOf }) {
+export function createServer(adminFor, { pictures, media, localFiles, userOf, reporting }) {
   if (pictures === undefined) throw new Error('createServer: `pictures` is required (codes.mjs), or null to keep none');
   if (media === undefined) throw new Error('createServer: `media` is required (codes.mjs), or null to keep none');
   if (localFiles === undefined) throw new Error('createServer: `localFiles` is required (media.mjs), or null for none');
+  if (reporting === undefined) throw new Error('createServer: `reporting` is required (sentry.mjs reporter), or null to report nothing');
   const server = new McpServer({ name: 'inka', version: '0.0.1' }, { instructions: INSTRUCTIONS });
+  // Before a single registerTool below, so every tool is covered -- including
+  // any a deployment registers on the server this returns.
+  if (reporting) reportTheseTools(server, reporting);
   /** The ids `rendered` pictures are kept under, for the request's user (none when nothing is kept). */
   const keep = async (extra, rendered) => (pictures === null ? [] : Promise.all(rendered.map(({ image, mimeType }) => (
     pictures.issue({ user: userOf(extra), mimeType, data: image })
@@ -260,15 +265,6 @@ export function createServer(adminFor, { pictures, media, localFiles, userOf }) 
     }),
   }, async (args, extra) => asResult(await adminFor(extra).withSite((site) => search(site, args))));
 
-  server.registerTool('find_undeclared_fields', {
-    title: 'Find fields nothing reads',
-    annotations: SAVES_NOTHING,
-    description: 'Fields stored on the blocks of a section\'s pages that no block type declares. Nothing reads them and the editor cannot show them, so what they say never reached the page: a style written beside "styles" instead of inside it, or a misspelt name. Each block type and field once, with the pages that hold it ("pages") and, when the block has a field of that name inside one of its own, where it belongs ("belongsIn", e.g. "styles.align"). Checks a page of pages at a time: pass "next" as "start" for more. To fix one, ask the person first: an edit_blocks "update" that sets the field to null removes it; to put it where it belongs, set it there in the same update, e.g. {"styles": {"align": "center"}, "align": null}. Moving a value changes how the page looks, since it starts to take effect; if the block already has a value there, keep that one and only remove the stray.',
-    inputSchema: z.object({ path: z.string().describe('The section to check, e.g. / or /news'), ...paging }),
-  }, async ({ path, limit, start }, extra) => asResult(await adminFor(extra).withEditor(
-    path, (agent, { site }) => findUndeclaredFields(agent, site, { path, limit, start }),
-  )));
-
   server.registerTool('list_children', {
     title: 'List a section',
     annotations: SAVES_NOTHING,
@@ -327,7 +323,7 @@ export function createServer(adminFor, { pictures, media, localFiles, userOf }) 
   server.registerTool('list_block_types', {
     title: 'List block types',
     annotations: SAVES_NOTHING,
-    description: 'The block types a page can hold: each type\'s fields (required ones marked; "markdown" fields take {"md": "..."}; a field with "fields" of its own takes an object of them, e.g. "styles": {"align": "center"}, never those fields at the block\'s top level) and its regions — the lists of child blocks, named as in get_page, with the types each allows. "page" lists what the page itself takes; "contentType" names the page\'s own type, listed with the others — its fields are the page\'s own (title, summary, …).',
+    description: 'The block types a page can hold: each type\'s fields (required ones marked; "markdown" fields take {"md": "..."}) and its regions — the lists of child blocks, named as in get_page, with the types each allows. "page" lists what the page itself takes; "contentType" names the page\'s own type, listed with the others — its fields are the page\'s own (title, summary, …).',
     inputSchema: z.object({ path: z.string().describe('The page path, e.g. /about') }),
   }, async ({ path }, extra) => asResult(await adminFor(extra).withEditor(path, listBlockTypes)));
 
@@ -335,7 +331,7 @@ export function createServer(adminFor, { pictures, media, localFiles, userOf }) 
     title: 'Describe a block type',
     annotations: SAVES_NOTHING,
     _meta: SHOWS_PICTURES,
-    description: 'One block type in full, as the page at "path" can use it: what it is, its front end\'s guidance on using it, its variations, every field (required ones marked; "markdown" fields take {"md": "..."}; a field with "fields" of its own takes an object of them), its regions, where on the page it can go, examples of it filled in from its front end, and a real one from a page on the site, showing the exact value each field takes (links, images, choices). With "preview", each front-end example is also rendered as a visitor sees it: use that to see what a block type looks like before proposing it.',
+    description: 'One block type in full, as the page at "path" can use it: what it is, its front end\'s guidance on using it, its variations, every field (required ones marked; "markdown" fields take {"md": "..."}), its regions, where on the page it can go, examples of it filled in from its front end, and a real one from a page on the site, showing the exact value each field takes (links, images, choices). With "preview", each front-end example is also rendered as a visitor sees it: use that to see what a block type looks like before proposing it.',
     inputSchema: z.object({
       path: z.string().describe('The page you will add it to, e.g. /about'),
       type: z.string().describe('The block type, as list_block_types names it, e.g. teaser'),

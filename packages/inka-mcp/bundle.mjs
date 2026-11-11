@@ -41,7 +41,10 @@ export function bundling(entry, outfile) {
     platform: 'node',
     target: 'node22',
     format: 'esm',
-    external: ['playwright'],
+    // Playwright: the image's base provides it with the browser it matches.
+    // @sentry/node: its instrumentation patches modules as they are loaded,
+    // which bundling it would defeat; the image installs it too (Dockerfile).
+    external: ['playwright', '@sentry/node'],
     plugins: [inlineAppClient],
     // Bundled CommonJS (express, inside the SDK) still calls require() for
     // Node's own modules; an ES module has no require of its own.

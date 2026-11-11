@@ -9,9 +9,10 @@
 # secret, never baked in.
 FROM mcr.microsoft.com/playwright:v1.61.0-noble
 WORKDIR /app
-# Playwright's library, at the version of the image's browser (the bundle
-# leaves it out).
-RUN corepack enable && pnpm init >/dev/null && pnpm add playwright@1.61.0
+# What the bundle leaves external: Playwright's library, at the version of the
+# image's browser, and the Sentry SDK (SENTRY_DSN; unset reports nothing, and
+# http.mjs then never imports it).
+RUN corepack enable && pnpm init >/dev/null && pnpm add playwright@1.61.0 @sentry/node@10.78.0
 COPY dist/inka-mcp-http.mjs ./
 ENV NODE_ENV=production
 CMD ["node", "inka-mcp-http.mjs"]

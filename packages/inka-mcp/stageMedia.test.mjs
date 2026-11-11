@@ -18,7 +18,7 @@ import { localFiles } from './media.mjs';
 
 async function connected(files) {
   const server = createServer(() => { throw new Error('no admin: staging a file needs none'); }, {
-    pictures: null, media: localMedia({ instance: null, now: Date.now }), localFiles: files, userOf: () => 'jane',
+    pictures: null, media: localMedia({ instance: null, now: Date.now }), localFiles: files, userOf: () => 'jane', reporting: null,
   });
   const [clientSide, serverSide] = InMemoryTransport.createLinkedPair();
   await server.connect(serverSide);
@@ -107,7 +107,7 @@ describe('ask_for_files: the person drops their own file', () => {
   });
 
   it('is not there where the server keeps no files', async () => {
-    const server = createServer(() => { throw new Error('no admin'); }, { pictures: null, media: null, localFiles: null, userOf: () => 'jane' });
+    const server = createServer(() => { throw new Error('no admin'); }, { pictures: null, media: null, localFiles: null, userOf: () => 'jane', reporting: null });
     const [clientSide, serverSide] = InMemoryTransport.createLinkedPair();
     await server.connect(serverSide);
     const none = new Client({ name: 'test', version: '0' });
