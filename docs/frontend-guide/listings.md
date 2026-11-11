@@ -145,6 +145,8 @@ async function ListingItems({ id, blocks, paging, seen, fetchItems, onPaging }) 
 
 A listing with no `querystring` defaults to showing the current folder's contents in folder order.
 
+The listing's own query is the base, and a `facet.*` narrows within it. Plone keeps one criterion per index, so a facet on an index the listing already restricts is combined with it, never appended: a type facet on a listing of Documents and News Items keeps only the values both allow. A facet value the listing doesn't allow (a stale or hand-edited `?facet.portal_type=Image`) matches nothing, so the listing is empty and the API isn't asked. `buildQuerystringSearchBody` returns `null` for that case.
+
 A search is sorted by the `sort_on` in `extraCriteria`, else by the listing's own, else by date (newest first). To rank the results by relevance, pass `sort_on: null` with a `SearchableText`: the request then names no sort, which is how Plone ranks a text search. Without a `SearchableText` there is nothing to rank, and `sort_on: null` throws.
 
 A search block usually sorts the way Volto's does (plone/volto#4000): a keyword is ranked by relevance unless the reader chose a sort; with no keyword the listing's own sort applies; and a sort the reader chose is dropped when the keyword starts or ends, but kept while one keyword changes to another. Three helpers answer those rules, wherever the frontend keeps the keyword and the chosen sort (the URL, component state):

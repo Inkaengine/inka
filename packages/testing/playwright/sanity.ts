@@ -29,7 +29,7 @@
 import { test as playwrightTest, type FrameLocator } from '@playwright/test';
 import { test as base, expect } from './fixtures';
 import { AdminUIHelper } from './AdminUIHelper';
-import { verifyBlockRendering, revealBlock, checkEveryBlockOnPage } from './BlockVerificationHelper';
+import { verifyBlockRendering, revealBlock, checkEveryBlockOnPage, blocksToCheck } from './BlockVerificationHelper';
 import { verifyPageIntegrity } from './PageIntegrityHelper';
 import { drainFieldCoverage } from '../field-coverage';
 import { measureTextStyles, recordTextStyles, slateStyles, drainStyleCoverage } from '../text-style-coverage';
@@ -511,6 +511,51 @@ export function defineBlockSanityTests(options: SanityOptions): void {
 
         const iframe = helper.getIframe();
 
+        // This test's cost is COUNTED IN BLOCKS, and a consumer's timeout is
+        // set for one ("a block renders in ~1-2s or it's broken" -- true of
+        // the blocks it was written for, and those tests take 2-3s). A
+        // container on a dense page is a different animal: timed, a table's
+        // test spent ~2s rendering and ~25s checking, and tipped over a 20s
+        // budget whenever the machine was slower.
+        //
+        // So the budget is taken from what this test will actually check,
+        // BEFORE it checks any of it -- a grant made later is made after the
+        // time has been spent, which is how the first version of this failed.
+        // The alternative, every consumer setting a timeout loose enough for
+        // its densest page, gives up fast failure for every other block.
+        const toCheck = await blocksToCheck(iframe, block.blockId);
+        const checksPage = checksItsPage.has(block);
+        const page_ = checksPage ? toCheck.page : 0;
+        if (toCheck.own + page_ > 0) {
+          // The two halves cost DIFFERENTLY, so they are budgeted
+          // differently. Timed on a docs page of table variants:
+          //
+          //   its own 81 descendants   ~19s   (every field, and an edit-text
+          //                                    click per field)
+          //   the page's other 291     ~6s    (a few reads each)
+          //
+          // Those were measured on a loaded machine, so read the RATIO, not
+          // the seconds: its own descendants cost roughly ten times what the
+          // rest of the page costs, which is what these two rates are for.
+          // The rates are ~2x the measurements because the same test wanted
+          // between 59s and 76s across runs on that machine while a quiet
+          // sample of its phases totalled ~28s -- a budget fitted to the
+          // quiet sample is a budget that flakes. A grant is not a target:
+          // the test takes what it takes, and this only says when to stop
+          // waiting.
+          //
+          // Ordinary blocks are unaffected -- a block with no descendants
+          // gets no grant and keeps the consumer's fast failure -- and the
+          // cap bounds the worst case.
+          const grant = Math.min(toCheck.own * 500 + page_ * 100, 150_000);
+          test.setTimeout(testInfo.timeout + grant);
+          test.info().annotations.push({
+            type: 'blocks-checked',
+            description:
+              `${toCheck.own} of its own + ${page_} on ${block.pagePath}; budget +${grant}ms`,
+          });
+        }
+
         await verifyBlockRendering(page, iframe, block.blockId, block.blockData, {
           isListing: block.isListing,
           // Sub-block iteration uses the bridge's blockPathMap (canonical,
@@ -686,15 +731,51 @@ interface EmptyRegionCase {
  * ensureEmptyBlockIfEmpty (mockParent.emptyRegion). When the region names no
  * default and allows more than one type, the admin seeds the special
  * `@type:"empty"` placeholder: the editor's only way to add the first block.
- * Assert it is drawn, visible, with a size to click. This catches the class of
- * bug where a container renderer rejects the empty child (e.g. a
- * contextNavigation that only expects navItem/listing) or draws it with no size.
+ * Otherwise it seeds the region's default (or its single allowed type).
  *
- * A region that seeds an ordinary block (its default, or its single allowed
- * type) is skipped: that block renders like any other, which block-sanity
- * covers. The admin's seeding decides which regions those are, so no copy of
- * that rule lives here.
+ * Whatever is seeded must be drawn, with a size to click. This catches a
+ * container renderer that rejects the child (e.g. a contextNavigation that only
+ * expects navItem/listing) or draws it with no size. A seeded block is on no
+ * stored page, so block-sanity never sees it; this is the only test that does.
+ *
+ * An empty placeholder must also be drawn AS empty — "Render them as empty
+ * space" (docs/frontend-guide/container-blocks.md, Empty Blocks). It may be
+ * styled (a ghost outline), but nothing in it an author could take for
+ * content: no text, no editable field, no form control. The frontend's own add
+ * button (data-block-add="button") is exempt, drawn as it likes. A renderer that
+ * falls through to some ordinary block's drawing (a form drawing the
+ * placeholder as a text question) fails here.
+ *
+ * The admin's seeding decides which regions seed what, so no copy of that rule
+ * lives here.
  */
+/**
+ * What an author could take for content inside an empty placeholder: visible
+ * text, editable fields and form controls. Style is fine (a ghost outline, a
+ * faint fill). The frontend's own add button — an element marked
+ * data-block-add="button" — is the frontend's to draw as it likes, so nothing
+ * inside it is judged. Runs in the page.
+ */
+function contentOfEmptyPlaceholder(root: Element): string[] {
+  const found: string[] = [];
+  const outsideOwnButton = (n: Node) =>
+    !(n instanceof Element ? n : n.parentElement)?.closest('[data-block-add="button"]');
+  for (const c of root.querySelectorAll('input:not([type="hidden"]), textarea, select, button')) {
+    if (outsideOwnButton(c)) found.push(`a <${c.tagName.toLowerCase()}> control`);
+  }
+  for (const f of root.querySelectorAll('[data-edit-text], [data-edit-media], [data-edit-link]')) {
+    if (!outsideOwnButton(f)) continue;
+    const attr = ['data-edit-text', 'data-edit-media', 'data-edit-link'].find((a) => f.hasAttribute(a))!;
+    found.push(`an editable field (${attr}="${f.getAttribute(attr)}")`);
+  }
+  const walker = root.ownerDocument.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+  for (let t = walker.nextNode(); t; t = walker.nextNode()) {
+    const text = (t.textContent ?? '').replace(/[\u200B\uFEFF]/g, '').trim();
+    if (text && outsideOwnButton(t)) found.push(`the text "${text.slice(0, 40)}"`);
+  }
+  return found;
+}
+
 export function defineEmptyRegionTests(options: SanityOptions): void {
   const projects = new Set(options.projects);
   const where = addresses(options);
@@ -723,7 +804,7 @@ export function defineEmptyRegionTests(options: SanityOptions): void {
   test.describe('Empty container region renders (auto-discovered)', () => {
     for (const c of cases) {
       const what = c.field === '*' ? `every ${c.parentType} region` : `${c.parentType}.${c.field}`;
-      test(`${what} renders a placeholder when its region is empty`, async ({ page, helper }, testInfo) => {
+      test(`${what} draws what it is given when its region is emptied`, async ({ page, helper }, testInfo) => {
         const frontendUrl = where.frontend(testInfo.project.name);
         const frontend = frontendUrl ? `&frontend=${encodeURIComponent(frontendUrl)}` : '';
         const apiOrigin = where.api();
@@ -756,31 +837,34 @@ export function defineEmptyRegionTests(options: SanityOptions): void {
           }
           const seeded = result.seeded ?? [];
           expect.soft(seeded.length, `${where}: emptying it left nothing to click`).toBeGreaterThan(0);
-          const placeholders = seeded.filter((b) => b.type === 'empty');
-          if (seeded.length && !placeholders.length) {
-            testInfo.annotations.push({
-              type: 'region-skipped',
-              description: `${where}: seeds ${seeded.map((b) => b.type).join(', ')}, not the empty placeholder`,
-            });
-            continue;
-          }
           checked++;
-          for (const { uid, type } of placeholders) {
+          for (const { uid, type } of seeded) {
+            const what = type === 'empty' ? 'empty placeholder' : `${type} block`;
             const el = iframe.locator(`[data-block-uid="${uid}"]`).first();
             // Show it first: it may sit in a collapsed panel or an inactive slide,
             // or in a region a frontend draws only once asked (a search's answer).
             await revealBlock(iframe, uid);
-            await expect.soft(el, `${where}: the frontend did not draw the seeded ${type} placeholder (${uid})`)
+            await expect.soft(el, `${where}: the frontend did not draw the seeded ${what} (${uid})`)
               .toBeAttached({ timeout: 10000 });
             if ((await iframe.locator(`[data-block-uid="${uid}"]`).count()) === 0) continue;
             const box = await el.boundingBox();
             expect.soft(
               !!box && box.width > 0 && box.height > 0,
-              `${where}: the seeded ${type} placeholder (${uid}) has no size to click, got ${JSON.stringify(box)}`,
+              `${where}: the seeded ${what} (${uid}) has no size to click, got ${JSON.stringify(box)}`,
             ).toBe(true);
+            if (type !== 'empty') continue;
+            const content = await el.evaluate(contentOfEmptyPlaceholder);
+            expect.soft(
+              content,
+              `${where}: the empty placeholder (${uid}) is drawn as if it were content. ` +
+                `Render @type "empty" as empty space — Inka draws the '+' that picks its type ` +
+                `(docs/frontend-guide/container-blocks.md, Empty Blocks). Style it if you like, but ` +
+                `with no text; to draw your own '+', put it in an element marked ` +
+                `data-block-add="button". Found: ${content.join('; ')}`,
+            ).toEqual([]);
           }
         }
-        test.skip(checked === 0, `no region of ${c.parentType} [${c.blockId}] seeds the empty placeholder`);
+        test.skip(checked === 0, `no region of ${c.parentType} [${c.blockId}] seeds anything when emptied`);
       });
     }
   });
