@@ -38,6 +38,15 @@ FROM node:${NODE_VERSION}-slim AS base
 # it at different paths: hydra/, inka/, frontend/inka/, frontend/hydra/.
 ARG INKA_PATH=hydra
 ENV PNPM_HOME="/pnpm"
+# What every install here installs: the admin -- Inka's root package -- and
+# what it depends on, NOT the whole workspace. The workspace also holds the
+# MCP server (its own server, its own image, on Express 5), the mock API and
+# the example frontends. Installed here they were dead weight, and worse: with
+# shamefully-hoist one Express is lifted to /app/node_modules/express, which
+# the built Volto server loads at runtime, and nothing chose which. An
+# unfrozen build lifted the MCP server's Express 5, whose router rejects
+# Volto's `*` route, and the admin exited on start.
+ENV ADMIN="volto-hydra-dev..."
 ENV PATH="$PNPM_HOME:$PATH"
 COPY ${INKA_PATH}/ /app
 RUN npm install -g corepack && corepack cache clean && corepack enable
@@ -67,9 +76,9 @@ RUN --mount=type=cache,id=pnpm,target=/pnpm/store \
     pnpm dlx mrs-developer missdev --no-config --fetch-https \
  && if [ -n "$EXTRA_PLUGINS" ]; then \
       echo "EXTRA_PLUGINS set -- installing unfrozen (see the note above)"; \
-      node docker/add-plugins.cjs "$EXTRA_PLUGINS" && pnpm install --no-frozen-lockfile; \
+      node docker/add-plugins.cjs "$EXTRA_PLUGINS" && pnpm install --no-frozen-lockfile --filter "$ADMIN"; \
     else \
-      pnpm install --frozen-lockfile; \
+      pnpm install --frozen-lockfile --filter "$ADMIN"; \
     fi
 
 # @plone/registry + @plone/components must be BUILT, not just linked: razzle.config
@@ -100,9 +109,9 @@ RUN --mount=type=cache,id=pnpm,target=/pnpm/store \
     pnpm dlx mrs-developer missdev --no-config --fetch-https \
  && if [ -n "$EXTRA_PLUGINS" ]; then \
       echo "EXTRA_PLUGINS set -- installing unfrozen (see the note above)"; \
-      node docker/add-plugins.cjs "$EXTRA_PLUGINS" && pnpm install --prod --no-frozen-lockfile; \
+      node docker/add-plugins.cjs "$EXTRA_PLUGINS" && pnpm install --prod --no-frozen-lockfile --filter "$ADMIN"; \
     else \
-      pnpm install --prod --frozen-lockfile; \
+      pnpm install --prod --frozen-lockfile --filter "$ADMIN"; \
     fi
 
 FROM base

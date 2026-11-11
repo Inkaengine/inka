@@ -581,6 +581,7 @@
                     // frontend adds it. Offered on this page only, so every other
                     // spec keeps the toolbar it was written against.
                     const offerClearFormatting = /\/clear-formatting-page(\/|$)/.test(pagePath);
+                    const offerNoLink = /\/no-link-toolbar-page(\/|$)/.test(pagePath);
                     // This frontend renders a complete image URL as it is (renderer.js
                     // getImageUrl), a data: URL included, so it can take images held
                     // until save. Declared on one page, so every other spec keeps
@@ -795,6 +796,11 @@
                                     ...(restrictStyles ? { styleAliases: { b: 'strong' } } : {}),
                                     ...(offerClearFormatting ? {
                                         toolbarButtons: ['bold', 'italic', 'link', 'separator', 'clearformatting'],
+                                    } : {}),
+                                    // A toolbar without the link button: volto-slate's link button
+                                    // is a component with hooks, not a factory (inka#485).
+                                    ...(offerNoLink ? {
+                                        toolbarButtons: ['bold', 'separator', 'clearformatting'],
                                     } : {}),
                                     ...(declareFormats ? {
                                         blockFormats: [

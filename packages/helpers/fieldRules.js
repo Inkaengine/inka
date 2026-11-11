@@ -143,8 +143,30 @@ export function createFieldRulesEnhancer(rulesConfig) {
       fields: [...fs.fields],
     }));
 
-    // Apply nested hides (add schemaEnhancer to parent property)
+    // Apply nested hides. A field that carries its own schema (an object
+    // widget) has the hide applied to that schema, as a top-level hide is:
+    // its widget draws that schema and runs no enhancer, and the resolved
+    // schema stays plain data that can cross postMessage. A field whose
+    // widget builds its schema itself (a querystring) is given an enhancer
+    // for the widget to run.
     for (const [parentField, childFields] of Object.entries(nestedHides)) {
+      const inner = newProperties[parentField]?.schema;
+      if (inner?.fieldsets) {
+        newProperties[parentField] = {
+          ...newProperties[parentField],
+          schema: {
+            ...inner,
+            fieldsets: inner.fieldsets.map((fs) => ({
+              ...fs,
+              fields: fs.fields.filter((f) => !childFields.has(f)),
+            })),
+            properties: Object.fromEntries(
+              Object.entries(inner.properties || {}).filter(([f]) => !childFields.has(f)),
+            ),
+          },
+        };
+        continue;
+      }
       const existingEnhancer = newProperties[parentField]?.schemaEnhancer;
       newProperties[parentField] = {
         ...newProperties[parentField],

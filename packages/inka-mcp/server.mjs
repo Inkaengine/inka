@@ -23,8 +23,8 @@ import { PictureGone, MediaGone, MEDIA_MS } from './codes.mjs';
 import { fetchMedia, isPublicAddress, mediaIn, MediaRefused, MEDIA_PREFIX } from './media.mjs';
 import { draftCheck } from './checkDraft.mjs';
 import {
-  previewLayout, getPage, editPage, listBlockTypes, describeBlock, search, listChildren, contentTypes, fillNewPage, movePage, renamePage, deletePage,
-  getTransitions, transitionPage, draftInfo, draftForAgent, editTarget, LIVE_EDIT_WARNING, findUndeclaredFields,
+  previewLayout, getPage, editPage, listBlockTypes, describeBlock, search, listChildren, contentTypes, fillNewPage, movePage, copyPage, renamePage, deletePage,
+  getTransitions, transitionPage, getHistory, revertPage, getPageVersion, savedVersion, draftInfo, draftForAgent, editTarget, LIVE_EDIT_WARNING, findUndeclaredFields,
 } from './tools.mjs';
 
 const OPS_HELP = `Operations, applied in order:
@@ -94,7 +94,7 @@ const INSTRUCTIONS = `This server edits a website built with Inka (a Plone-based
 - A page is a block of its content type (the site's own: list_content_types says which a section takes): its own fields (title, summary and the rest of its content type's fields) and its regions, which hold its blocks. Blocks have types (Text, Image, Hero, …; list_block_types gives each type's title, fields and regions), and some hold blocks of their own. In the editor, blocks are known by those titles and fields by their labels; ids and JSON are never shown.
 - The site's own front end draws every page. view_page shows a page as visitors see it; preview_layout (a whole proposed layout) and edit_blocks with dryRun and preview (a change to the page) show the result the same way. None of them saves anything. In clients that show them, the person sees these pictures too. A long page's picture may show only its top ("cropped" says how much); its text ("renderedText") is all there.
 - Some blocks come from a template that many pages share (they carry "templateId"; "readOnly" ones are locked, as the editor shows them). A change to one is a change to the template, and so to every page that uses it: edit_blocks with changeTemplates. In the editor, unlocking a template warns of the same.
-- Saving (edit_blocks without dryRun, create_page, move_page, rename_page, delete_page, transition_page) changes the site itself: visitors of a published page see the change straight away. Whether a page is published is its "reviewState", which create_page and a save report: a new page may be private, so visitors can't see it yet. get_transitions says what can be done to a page and what each can set at the same time (a publishing date, an expiry); publishing, making a draft of a published page and changing who has access are all transitions, taken with transition_page. Publish only when the person has asked for it.
+- Saving (edit_blocks without dryRun, create_page, copy_page, move_page, rename_page, delete_page, transition_page, revert_page) changes the site itself: visitors of a published page see the change straight away. Whether a page is published is its "reviewState", which create_page and a save report: a new page may be private, so visitors can't see it yet. get_transitions says what can be done to a page and what each can set at the same time (a publishing date, an expiry); publishing, making a draft of a published page and changing who has access are all transitions, taken with transition_page. Publish only when the person has asked for it. A saved change to a page can be undone: get_history lists its saves, and revert_page puts it back to one.
 - A page has at most one draft, and it stays the same page at the same path. While it has one ("draft" in get_transitions and get_page), get_page and edit_blocks work on the draft and visitors keep seeing the page as it was, until the draft is published. view_page shows what visitors see unless asked for the draft. In an emergency, get_page and edit_blocks with "live" change what visitors see now, without publishing the draft; but publishing the draft replaces the live page, so make the same change on the draft too or it will be lost. To show someone the draft, give them its "url": they sign in to see it, and it is only at that address, not the page's.
 - search finds pages by their title, their summary and the text of their Text blocks. Text in other blocks' fields (a hero's heading, a teaser's title) may not be searched.
 - To find what isn't live yet, use search rather than going through pages one by one: "hasDraft" finds live pages with a draft waiting (the change isn't live), "reviewState" (such as ["private", "pending"]) finds pages visitors can't see at all. They can be asked together.`;
@@ -184,8 +184,12 @@ export function createServer(adminFor, { pictures, media, localFiles, userOf }) 
     inputSchema: z.object({
       path: z.string().describe('The page path, e.g. /about'),
       live: z.boolean().optional().describe('If the page has a draft: read what visitors see now, not the draft'),
+      version: z.number().int().optional().describe('Read an earlier save instead: a "version" get_history lists. It is for reading (to compare, or before revert_page), not for edit_blocks'),
     }),
-  }, async ({ path, live }, extra) => {
+  }, async ({ path, live, version: earlier }, extra) => {
+    if (earlier !== undefined) {
+      return asResult(await adminFor(extra).withEditor(path, (agent, { site }) => getPageVersion(agent, site, { path, version: earlier })));
+    }
     const draft = await draftOf(extra, path);
     const read = await adminFor(extra).withEditor(editTarget(path, draft, live), getPage);
     return asResult(draft ? { ...read, path, draft: draftForAgent(draft), ...(live && { live: true }) } : read);
@@ -224,18 +228,23 @@ export function createServer(adminFor, { pictures, media, localFiles, userOf }) 
       path: z.string().describe('The page path, e.g. /about'),
       viewport: z.enum(['desktop', 'mobile']).optional().describe('The screen width to render at (default desktop)'),
       draft: z.boolean().optional().describe('Show the page\'s draft rather than what visitors see now'),
+      version: z.number().int().optional().describe('Show an earlier save as it was drawn: a "version" get_history lists'),
     }),
-  }, async ({ path, viewport = 'desktop', draft: wantsDraft }, extra) => {
+  }, async ({ path, viewport = 'desktop', draft: wantsDraft, version: earlier }, extra) => {
+    if (wantsDraft && earlier !== undefined) throw new Error('view_page shows the draft or an earlier version, not both');
     const draft = wantsDraft && await draftOf(extra, path);
     if (wantsDraft && !draft) throw new Error(`${path} has no draft`);
     const rendered = await adminFor(extra).withEditor(
-      draft?.path ?? path, async (agent, { render }) => render(await agent.getDraft(), viewport, { maxChars: IMAGE_CHARS }),
+      draft?.path ?? path, async (agent, { render, site }) => render(
+        earlier === undefined ? await agent.getDraft() : await savedVersion(site, { path, version: earlier }),
+        viewport, { maxChars: IMAGE_CHARS },
+      ),
     );
     const { text, renderedOn, cropped } = rendered;
     const kept = await keep(extra, [rendered]);
     return {
       content: [
-        { type: 'text', text: JSON.stringify({ path, ...(draft && { draft: draftForAgent(draft) }), viewport, renderedOn, cropped, renderedText: text, pictures: kept }, null, 2) },
+        { type: 'text', text: JSON.stringify({ path, ...(draft && { draft: draftForAgent(draft) }), ...(earlier !== undefined && { historyVersion: earlier }), viewport, renderedOn, cropped, renderedText: text, pictures: kept }, null, 2) },
         asImage(rendered),
       ],
     };
@@ -278,15 +287,34 @@ export function createServer(adminFor, { pictures, media, localFiles, userOf }) 
 
   const version = z.string().describe('The version get_page returned; refused if the page has changed since');
 
+  const pagePosition = z.union([
+    z.enum(['first', 'last']),
+    z.object({ before: z.string() }).strict(),
+    z.object({ after: z.string() }).strict(),
+  ]).describe('Where it goes among the pages of its section (the one given as "target", if any): "first", "last", {"before": "<path>"} or {"after": "<path>"} of a page in that section. That order is the order of the section\'s menu');
+
   server.registerTool('move_page', {
     title: 'Move a page',
-    description: 'Move a page (and everything inside it) into another section. Returns its new path.',
+    description: 'Move a page (and everything inside it) into another section, and/or change where it comes among its section\'s pages: that order is the order of the section\'s menu, as list_children shows it. Give "target" to move it, "position" to place it, or both. Returns its path.',
     inputSchema: z.object({
       path: z.string().describe('The page to move, e.g. /news/old-item'),
-      target: z.string().describe('The section to move it into, e.g. /archive'),
+      target: z.string().optional().describe('The section to move it into, e.g. /archive'),
+      position: pagePosition.optional(),
       expectedVersion: version,
     }),
   }, async (args, extra) => asResult(await adminFor(extra).withSite((site) => movePage(site, args))));
+
+  server.registerTool('copy_page', {
+    title: 'Copy a page',
+    description: 'Copy a page, and everything inside it, as the editor\'s copy and paste does: into its own section, where it gets a new short name (copy_of_…), or into another ("target"). Give it its own short name ("id") and "title", and a "position" among that section\'s pages, in the same call. The original is untouched. Returns the copy\'s path, its version for edit_blocks and its "reviewState": a copy may not be published yet.',
+    inputSchema: z.object({
+      path: z.string().describe('The page to copy, e.g. /events/spring-fair'),
+      target: z.string().optional().describe('The section to put the copy in; its own section if not given'),
+      id: z.string().optional().describe('The copy\'s short name (the last part of its path), e.g. autumn-fair'),
+      title: z.string().optional().describe('The copy\'s title'),
+      position: pagePosition.optional(),
+    }),
+  }, async (args, extra) => asResult(await adminFor(extra).withSite((site) => copyPage(site, args))));
 
   server.registerTool('rename_page', {
     title: 'Rename a page',
@@ -302,9 +330,30 @@ export function createServer(adminFor, { pictures, media, localFiles, userOf }) 
   server.registerTool('delete_page', {
     title: 'Delete a page',
     annotations: { destructiveHint: true },
-    description: 'Delete a page and everything inside it. This cannot be undone here.',
-    inputSchema: z.object({ path: z.string().describe('The page to delete'), expectedVersion: version }),
+    description: 'Delete a page and everything inside it. This cannot be undone here. If other pages link to it or to anything in it, nothing is deleted and the refusal names those pages, as the editor warns a person: tell the person, and delete with "breakLinks" only if they still want it gone. Returns how many items went with it ("alsoDeleted") and the pages left with broken links ("brokenLinksOn").',
+    inputSchema: z.object({
+      path: z.string().describe('The page to delete'),
+      expectedVersion: version,
+      breakLinks: z.boolean().optional().describe('Delete even though other pages link to it, leaving those links broken'),
+    }),
   }, async (args, extra) => asResult(await adminFor(extra).withSite((site) => deletePage(site, args))));
+
+  server.registerTool('get_history', {
+    title: 'Page history',
+    annotations: SAVES_NOTHING,
+    description: 'What was done to a page, newest first, as the editor\'s History view lists it: each save, by whom and when, with the "version" that revert_page restores (the newest save is "current": what the page holds now), and each workflow change, such as publishing. get_page and view_page with a "version" show what a save held, as the editor\'s Compare does. Use it to undo a saved change.',
+    inputSchema: z.object({ path: z.string().describe('The page, e.g. /about') }),
+  }, async (args, extra) => asResult(await adminFor(extra).withSite((site) => getHistory(site, args))));
+
+  server.registerTool('revert_page', {
+    title: 'Restore an earlier version',
+    description: 'Put a page back to one of its earlier saves (a "version" get_history lists), as the editor\'s "Revert to this revision" does: the whole page, its fields and blocks, goes back to what it was then. Visitors of a published page see it straight away. What it held until now stays in its history, so this can be undone the same way. Returns its new "version".',
+    inputSchema: z.object({
+      path: z.string().describe('The page, e.g. /about'),
+      version: z.number().int().describe('The version to restore, as get_history gives it'),
+      expectedVersion: version,
+    }),
+  }, async (args, extra) => asResult(await adminFor(extra).withSite((site) => revertPage(site, args))));
 
   server.registerTool('get_transitions', {
     title: 'What can be done to a page',
