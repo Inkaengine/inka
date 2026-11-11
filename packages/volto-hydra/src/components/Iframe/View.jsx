@@ -1200,6 +1200,31 @@ const Iframe = (props) => {
     templateEditMode: [], // v2: array of unlocked template instance ids (multiple at once)
   }));
 
+  // Undo/redo asked for by the page (SLATE_UNDO_REQUEST / SLATE_REDO_REQUEST),
+  // run once everything the page sent before them has committed. A synthetic
+  // Ctrl+Z / Ctrl+Y reaches Volto's undo manager (UndoToolbar's hotkeys).
+  // After this commit's effects, not among them: UndoToolbar saves the form's
+  // state in an effect of its own, and run before it, an undo had that save
+  // record the state it had just left as a new edit, which dropped the redo.
+  useEffect(() => {
+    const steps = iframeSyncState.pendingHistorySteps;
+    if (!steps?.length) return;
+    setIframeSyncState((prev) => ({
+      ...prev,
+      pendingHistorySteps: prev.pendingHistorySteps.slice(steps.length),
+    }));
+    setTimeout(() => {
+      for (const step of steps) {
+        document.dispatchEvent(new KeyboardEvent('keydown', {
+          key: step === 'undo' ? 'z' : 'y',
+          ctrlKey: true,
+          bubbles: true,
+          cancelable: true,
+        }));
+      }
+    }, 0);
+  }, [iframeSyncState.pendingHistorySteps]);
+
   // Keep the latest-ref current as of this render (see templateEditModeRef).
   templateEditModeRef.current = iframeSyncState.templateEditMode || [];
 
@@ -3608,27 +3633,20 @@ const Iframe = (props) => {
           }
           break;
 
-        case 'SLATE_UNDO_REQUEST': {
-          // Dispatch a synthetic Ctrl+Z event to trigger Volto's global undo manager
-          const undoEvent = new KeyboardEvent('keydown', {
-            key: 'z',
-            ctrlKey: true,
-            bubbles: true,
-            cancelable: true,
-          });
-          document.dispatchEvent(undoEvent);
-          break;
-        }
-
+        case 'SLATE_UNDO_REQUEST':
         case 'SLATE_REDO_REQUEST': {
-          // Dispatch a synthetic Ctrl+Y event to trigger Volto's global undo manager
-          const redoEvent = new KeyboardEvent('keydown', {
-            key: 'y',
-            ctrlKey: true,
-            bubbles: true,
-            cancelable: true,
-          });
-          document.dispatchEvent(redoEvent);
+          // Queued, not done here: the page sends its last typing just before
+          // this, and that edit must be committed (in Volto's undo history and
+          // in this state) before the undo runs. Done here, the undo found the
+          // typing not yet recorded and changed nothing, and the typing then
+          // landed on top (inka#555). Queued in this same state, after the
+          // edit's update, so the pendingHistorySteps effect sees it only once the edit has
+          // committed too.
+          const step = type === 'SLATE_UNDO_REQUEST' ? 'undo' : 'redo';
+          setIframeSyncState((prev) => ({
+            ...prev,
+            pendingHistorySteps: [...(prev.pendingHistorySteps || []), step],
+          }));
           break;
         }
 
