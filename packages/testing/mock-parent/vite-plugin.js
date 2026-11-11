@@ -31,8 +31,11 @@ const modules = () => ({
   [`${PREFIX}/merge-templates.js`]: require.resolve('@volto-hydra/helpers/mergeTemplates.js'),
   [`${PREFIX}/merge-frontend-block.js`]: require.resolve('@volto-hydra/hydra-js/mergeFrontendBlock.js'),
   // The admin's region helpers, so block-sanity can empty a region exactly as an
-  // editor's delete does (deleteBlockFromContainer + ensureEmptyBlockIfEmpty).
+  // editor's delete does.
   [`${PREFIX}/block-path.js`]: require.resolve('@volto-hydra/helpers/blockPath.js'),
+  // The admin's delete (View.jsx's Remove and multi-select delete both call it):
+  // it refuses a block an editor can't remove and re-seeds what it empties.
+  [`${PREFIX}/block-sync.js`]: require.resolve('@volto-hydra/helpers/blockSync.js'),
 });
 
 /**
