@@ -83,7 +83,7 @@ claude mcp add inka --env INKA_ADMIN_URL=https://admin.example.org --env INKA_ME
 - Preview a change as a visitor would see it before saving it.
 - Add images and other files to a page: from a web address, a screenshot it took, a file you drop into the conversation when it asks for one, or, when it runs on your computer, a folder you allowed. A file goes onto the site only when the change that uses it is saved. The site's front end has to support this; if it doesn't, the assistant says so.
 - Add, copy, move, rename and delete pages, and change the order of a section's pages, which is the order of its menu.
-- Undo a saved change, by putting a page back to an earlier version from its history.
+- See what a page held at an earlier save, and how it looked, and undo a saved change by putting the page back to it.
 - Change a template's locked blocks on every page that uses it, but only when you ask for that.
 
 It learns what each kind of block is for from the site itself: the description and guidance the site's developers gave it, examples of it, and pages that already use it.

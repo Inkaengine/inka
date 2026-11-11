@@ -8,7 +8,7 @@ import { AdminUIHelper } from '../helpers/AdminUIHelper';
 import { freshPage, tokenFor, whileEditing } from '../helpers/otherUser';
 import { agentOn, waitForAgent, discardEdits, createPage, siteOn, openAdmin } from '../../packages/inka-mcp/adminDriver.mjs';
 import {
-  getPage, editPage, listBlockTypes, describeBlock, search, listChildren, fillNewPage, movePage, copyPage, renamePage, deletePage, getTransitions, transitionPage, getHistory, revertPage,
+  getPage, editPage, listBlockTypes, describeBlock, search, listChildren, fillNewPage, movePage, copyPage, renamePage, deletePage, getTransitions, transitionPage, getHistory, revertPage, savedVersion,
   findUndeclaredFields,
 } from '../../packages/inka-mcp/tools.mjs';
 import { frontendUrlOf, previewDraft } from '../../packages/inka-mcp/preview.mjs';
@@ -333,6 +333,10 @@ test.describe('MCP tools', () => {
     const saves = (await getHistory(site, { path })).history.filter((entry: any) => 'version' in entry);
     expect(saves.map((entry: any) => entry.version)).toEqual([2, 1, 0]);
     expect(saves[0].current).toBe(true);
+    // What each save held, as Compare shows it.
+    expect((await savedVersion(site, { path, version: 0 })).title).toBe('A page of its own');
+    expect((await savedVersion(site, { path, version: 1 })).title).toBe('Second title');
+    await expect(savedVersion(site, { path, version: 9 })).rejects.toThrow(/has no version 9/);
 
     const reverted = await revertPage(site, { path, version: 0, expectedVersion: await versionOf() });
     expect(reverted).toMatchObject({ path, restored: 0 });

@@ -286,6 +286,7 @@ export function siteOn(page) {
     linksInto: (path) => call('linksInto', path),
     history: (path) => call('history', path),
     revert: (op) => call('revert', op),
+    historyVersion: (op) => call('historyVersion', op),
     state: (path) => call('state', path),
     stateForms: (path) => call('stateForms', path),
     transition: (op) => call('transition', op),

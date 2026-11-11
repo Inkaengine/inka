@@ -43,11 +43,34 @@ function withSitePaths(value, apiPath) {
 /** The page in the agent format, with the version a later save is checked against. */
 export async function getPage(agent) {
   const { path, version, formData, lockedBy, apiPath } = await agent.getPage();
+  return { path, version, ...(lockedBy && { lockedBy }), ...(await asAgentPage(agent, formData, apiPath)) };
+}
+
+/** Stored page content in the get_page format, read with the page's content type. */
+async function asAgentPage(agent, formData, apiPath) {
   const { page, types } = await agent.getBlockSchemas();
   const type = types[page.contentType];
   if (!type) throw new Error(`the page's content type "${page.contentType}" has no schema`);
   const asAgent = toAgentPage(formData, type);
-  return { path, version, ...(lockedBy && { lockedBy }), ...(apiPath ? withSitePaths(asAgent, apiPath) : asAgent) };
+  return apiPath ? withSitePaths(asAgent, apiPath) : asAgent;
+}
+
+/** What one of the page's saved versions (get_history's "version") held, as stored. */
+export async function savedVersion(site, { path, version }) {
+  const saves = (await site.history(path)).filter((e) => e.type === 'versioning');
+  if (!saves.some((e) => e.version === version)) throw new Error(`${path} has no version ${version}: get_history lists them`);
+  return site.historyVersion({ path, version });
+}
+
+/**
+ * A saved version of the page, in the get_page format, as the editor's
+ * Compare shows one: to read what it held, not to edit ("historyVersion" says
+ * which; it has no "version" for edit_blocks).
+ */
+export async function getPageVersion(agent, site, { path, version }) {
+  const stored = await savedVersion(site, { path, version });
+  const { apiPath } = await agent.getPage();
+  return { path, historyVersion: version, ...(await asAgentPage(agent, stored, apiPath)) };
 }
 
 /**

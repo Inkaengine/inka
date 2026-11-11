@@ -7,6 +7,7 @@ import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { test, expect } from '../fixtures';
 import { mintToken } from '../../packages/mock-api/mock-tokens.cjs';
 import { connect, CALL } from '../helpers/mcpClient';
+import { freshPage } from '../helpers/otherUser';
 
 const PAGE = '/_test_data/test-page';
 
@@ -51,6 +52,31 @@ test.describe('MCP server', () => {
       return JSON.parse(text);
     } };
   };
+
+  test('an earlier save can be read, seen and restored', async () => {
+    test.setTimeout(180000);
+    const path = await freshPage(token);
+    const read = (await call('get_page', { path })).json();
+    await call('edit_blocks', { path, expectedVersion: read.version, ops: [{ op: 'update', id: '_page', set: { title: 'A new title' } }] });
+
+    const saves = (await call('get_history', { path })).json().history.filter((entry: any) => 'version' in entry);
+    expect(saves.map((entry: any) => entry.version)).toEqual([1, 0]);
+
+    // What version 0 held, as Compare shows it: its blocks, and its look.
+    const old = (await call('get_page', { path, version: 0 })).json();
+    expect(old).toMatchObject({ path, historyVersion: 0, title: 'A page of its own' });
+    expect(old).not.toHaveProperty('version');
+    const seen = (await call('view_page', { path, version: 0 })).json();
+    expect(seen.historyVersion).toBe(0);
+    expect(seen.renderedText).toContain('A page of its own');
+    expect((await call('view_page', { path })).json().renderedText).toContain('A new title');
+    expect((await call('get_page', { path, version: 7 })).text).toMatch(/has no version 7/);
+
+    const now = (await call('get_page', { path })).json();
+    const restored = (await call('revert_page', { path, version: 0, expectedVersion: now.version })).json();
+    expect(restored).toMatchObject({ path, restored: 0 });
+    expect((await call('get_page', { path })).json().title).toBe('A page of its own');
+  });
 
   test('a page with a draft: reading and editing it reach the draft, visitors keep the page', async () => {
     test.setTimeout(180000);

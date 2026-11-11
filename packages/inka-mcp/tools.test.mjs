@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { fillNewPage, describeBlock, getPage, editPage, movePage, renamePage, deletePage, previewLayout, search, listChildren, getTransitions, transitionPage, editTarget, contentTypes, getHistory, revertPage, copyPage } from './tools.mjs';
+import { fillNewPage, describeBlock, getPage, editPage, movePage, renamePage, deletePage, previewLayout, search, listChildren, getTransitions, transitionPage, editTarget, contentTypes, getHistory, revertPage, copyPage, getPageVersion, savedVersion } from './tools.mjs';
 
 const schemas = {
   page: { regions: [{ region: 'items', isObjectList: false, allowedBlocks: ['teaser', 'columns'], defaultBlockType: null, maxLength: null }] },
@@ -954,5 +954,36 @@ describe('copy_page', () => {
     await expect(copyPage(site, { path: '/events/fair', target: '/archive', position: { after: '/events/fair' } }))
       .rejects.toThrow(/\/events\/fair is not in \/archive/);
     expect(site.calls).toEqual([]);
+  });
+});
+
+describe('get_page and view_page of an earlier version', () => {
+  const type = { blockSchema: { properties: { title: { title: 'Title' } } }, regions: [] };
+  const stored = (title, text) => ({
+    '@type': 'Document', title,
+    blocks: { p: { '@type': 'slate', value: [{ type: 'p', children: [{ text }] }] } }, blocks_layout: { items: ['p'] },
+  });
+  const agent = {
+    getBlockSchemas: async () => ({ page: { contentType: 'Document' }, types: { Document: type, slate: type } }),
+    getPage: async () => ({ path: '/about', apiPath: null }),
+  };
+  const site = {
+    history: async () => [
+      { type: 'versioning', version: 1, time: 't1' },
+      { type: 'versioning', version: 0, time: 't0' },
+    ],
+    historyVersion: async ({ version }) => (version === 0 ? stored('Old', 'Was') : stored('New', 'Is')),
+  };
+
+  it('reads what a version held, in the get_page format, saying which version it is', async () => {
+    const read = await getPageVersion(agent, site, { path: '/about', version: 0 });
+    expect(read).toMatchObject({ path: '/about', historyVersion: 0, '@uid': '_page', title: 'Old' });
+    expect(read.blocks[0]).toMatchObject({ '@uid': 'p', '@type': 'slate', value: { md: 'Was' } });
+    expect(read).not.toHaveProperty('version');
+  });
+
+  it('refuses a version the page does not have', async () => {
+    await expect(savedVersion(site, { path: '/about', version: 4 })).rejects.toThrow(/\/about has no version 4: get_history lists them/);
+    expect((await savedVersion(site, { path: '/about', version: 1 })).title).toBe('New');
   });
 });

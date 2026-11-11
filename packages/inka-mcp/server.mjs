@@ -24,7 +24,7 @@ import { fetchMedia, isPublicAddress, mediaIn, MediaRefused, MEDIA_PREFIX } from
 import { draftCheck } from './checkDraft.mjs';
 import {
   previewLayout, getPage, editPage, listBlockTypes, describeBlock, search, listChildren, contentTypes, fillNewPage, movePage, copyPage, renamePage, deletePage,
-  getTransitions, transitionPage, getHistory, revertPage, draftInfo, draftForAgent, editTarget, LIVE_EDIT_WARNING, findUndeclaredFields,
+  getTransitions, transitionPage, getHistory, revertPage, getPageVersion, savedVersion, draftInfo, draftForAgent, editTarget, LIVE_EDIT_WARNING, findUndeclaredFields,
 } from './tools.mjs';
 
 const OPS_HELP = `Operations, applied in order:
@@ -184,8 +184,12 @@ export function createServer(adminFor, { pictures, media, localFiles, userOf }) 
     inputSchema: z.object({
       path: z.string().describe('The page path, e.g. /about'),
       live: z.boolean().optional().describe('If the page has a draft: read what visitors see now, not the draft'),
+      version: z.number().int().optional().describe('Read an earlier save instead: a "version" get_history lists. It is for reading (to compare, or before revert_page), not for edit_blocks'),
     }),
-  }, async ({ path, live }, extra) => {
+  }, async ({ path, live, version: earlier }, extra) => {
+    if (earlier !== undefined) {
+      return asResult(await adminFor(extra).withEditor(path, (agent, { site }) => getPageVersion(agent, site, { path, version: earlier })));
+    }
     const draft = await draftOf(extra, path);
     const read = await adminFor(extra).withEditor(editTarget(path, draft, live), getPage);
     return asResult(draft ? { ...read, path, draft: draftForAgent(draft), ...(live && { live: true }) } : read);
@@ -224,18 +228,23 @@ export function createServer(adminFor, { pictures, media, localFiles, userOf }) 
       path: z.string().describe('The page path, e.g. /about'),
       viewport: z.enum(['desktop', 'mobile']).optional().describe('The screen width to render at (default desktop)'),
       draft: z.boolean().optional().describe('Show the page\'s draft rather than what visitors see now'),
+      version: z.number().int().optional().describe('Show an earlier save as it was drawn: a "version" get_history lists'),
     }),
-  }, async ({ path, viewport = 'desktop', draft: wantsDraft }, extra) => {
+  }, async ({ path, viewport = 'desktop', draft: wantsDraft, version: earlier }, extra) => {
+    if (wantsDraft && earlier !== undefined) throw new Error('view_page shows the draft or an earlier version, not both');
     const draft = wantsDraft && await draftOf(extra, path);
     if (wantsDraft && !draft) throw new Error(`${path} has no draft`);
     const rendered = await adminFor(extra).withEditor(
-      draft?.path ?? path, async (agent, { render }) => render(await agent.getDraft(), viewport, { maxChars: IMAGE_CHARS }),
+      draft?.path ?? path, async (agent, { render, site }) => render(
+        earlier === undefined ? await agent.getDraft() : await savedVersion(site, { path, version: earlier }),
+        viewport, { maxChars: IMAGE_CHARS },
+      ),
     );
     const { text, renderedOn, cropped } = rendered;
     const kept = await keep(extra, [rendered]);
     return {
       content: [
-        { type: 'text', text: JSON.stringify({ path, ...(draft && { draft: draftForAgent(draft) }), viewport, renderedOn, cropped, renderedText: text, pictures: kept }, null, 2) },
+        { type: 'text', text: JSON.stringify({ path, ...(draft && { draft: draftForAgent(draft) }), ...(earlier !== undefined && { historyVersion: earlier }), viewport, renderedOn, cropped, renderedText: text, pictures: kept }, null, 2) },
         asImage(rendered),
       ],
     };
@@ -332,7 +341,7 @@ export function createServer(adminFor, { pictures, media, localFiles, userOf }) 
   server.registerTool('get_history', {
     title: 'Page history',
     annotations: SAVES_NOTHING,
-    description: 'What was done to a page, newest first, as the editor\'s History view lists it: each save, by whom and when, with the "version" that revert_page restores (the newest save is "current": what the page holds now), and each workflow change, such as publishing. Use it to undo a saved change.',
+    description: 'What was done to a page, newest first, as the editor\'s History view lists it: each save, by whom and when, with the "version" that revert_page restores (the newest save is "current": what the page holds now), and each workflow change, such as publishing. get_page and view_page with a "version" show what a save held, as the editor\'s Compare does. Use it to undo a saved change.',
     inputSchema: z.object({ path: z.string().describe('The page, e.g. /about') }),
   }, async (args, extra) => asResult(await adminFor(extra).withSite((site) => getHistory(site, args))));
 

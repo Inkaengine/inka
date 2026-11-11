@@ -167,6 +167,14 @@ export function siteApi(dispatch, history, token) {
       return run(`history of ${path}`, getHistory(path));
     },
 
+    /** What one of `path`'s saved versions held, as stored (@history/<version>, what Compare shows). */
+    async historyVersion({ path, version }) {
+      return run(`version ${version} of ${path}`, {
+        type: 'INKA_AGENT_HISTORY_VERSION',
+        request: { op: 'get', path: `${path === '/' ? '' : path}/@history/${version}` },
+      });
+    },
+
     /** Put `path` back to one of its saved versions, as the History view's revert does. */
     async revert({ path, version }) {
       await run(`revert ${path} to version ${version}`, revertHistory(path, version));
