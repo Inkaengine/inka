@@ -12,6 +12,7 @@ import {
   isBlockPositionLocked,
   getChildBlockEntries,
   setChildBlockEntries,
+  getChildFields,
   getBlockType,
   setBlockType,
   clearBlockType,
@@ -2142,6 +2143,33 @@ export function inheritTemplateMembership(
         }
       : {}),
   };
+}
+
+/**
+ * A template block with everything inside it its template's too: every child, in
+ * every region and list, at every depth, takes the block's templateId and
+ * templateInstanceId (inheritTemplateMembership). The merge takes a template's
+ * blocks by their templateId, so a child without one is dropped: "Make template"
+ * labelled only the block it was made from, and its children were lost from the
+ * template on "Change on all pages" and from every published page (inka#231).
+ *
+ * Fixed and readOnly are not inherited: each child keeps its own.
+ *
+ * @param {Object} block - a block that is in a template (else returned as it is)
+ * @param {Object} idFieldMap - { blockType: { field: idField } }, for its lists
+ * @returns {Object} a copy, labelled; the input is not changed
+ */
+export function inheritTemplateMembershipDeep(block, idFieldMap) {
+  if (!block?.templateInstanceId) return block;
+  const out = { ...block };
+  for (const field of getChildFields(block, idFieldMap, { allObjectLists: true })) {
+    const entries = getChildBlockEntries(block, field).map(({ id, block: child }) => ({
+      id,
+      block: inheritTemplateMembershipDeep(inheritTemplateMembership(child, block), idFieldMap),
+    }));
+    setChildBlockEntries(out, field, entries);
+  }
+  return out;
 }
 
 /**
