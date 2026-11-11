@@ -859,7 +859,13 @@ function imageDimensions(file) {
           if (def.allowedBlocks && !def.typeField) {
             fail(rel, `  ${rel}: block ${bid} (${block['@type']}) object_list field "${field}" declares \`allowedBlocks\` but no \`typeField\` — its items vary in kind, so the schema has to name the field their type is read from`);
           }
-          checkItemIds(rel, v, def.idField || '@id', `object_list field "${field}" item`, `  ${rel}: block ${bid} (${block['@type']})`);
+          // A list's items are found by the field the schema names for their
+          // ids; none is assumed. A region that names none has already stopped
+          // the block map (regionIdField); a plain list (`subBlocks: false`) has
+          // ids only if it names a field for them.
+          if (def.idField) {
+            checkItemIds(rel, v, def.idField, `object_list field "${field}" item`, `  ${rel}: block ${bid} (${block['@type']})`);
+          }
           if (isTyped) {
             // The schema-named field first, `@type` as the alternative — the
             // way hydra's own reader works: getBlockType is

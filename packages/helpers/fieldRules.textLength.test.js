@@ -40,7 +40,7 @@ const blocksConfig = {
         anchor: { type: 'string', widget: 'url' },
         lead: { widget: 'blocks_layout' },
         links: {
-          widget: 'object_list',
+          widget: 'object_list', idField: '@id',
           schema: { properties: { label: { type: 'string' }, href: { widget: 'url' } } },
         },
       },

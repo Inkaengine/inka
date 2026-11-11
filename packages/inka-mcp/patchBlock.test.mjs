@@ -17,7 +17,7 @@ const schema = {
       schema: { properties: { headline: { widget: 'slate' }, body: { widget: 'blocks_layout' } } },
     },
     href: { widget: 'object_browser' },
-    slides: { widget: 'object_list' },
+    slides: { widget: 'object_list', idField: '@id' },
   },
 };
 

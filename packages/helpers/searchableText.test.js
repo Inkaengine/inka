@@ -51,7 +51,7 @@ const schemas = {
       },
     },
   },
-  tableCell: { properties: { blocks: { widget: 'object_list', typeField: '@type' } } },
+  tableCell: { properties: { blocks: { widget: 'object_list', idField: '@id', typeField: '@type' } } },
   tableHeaderCell: { properties: { value: { widget: 'slate' } } },
   form: {
     properties: {

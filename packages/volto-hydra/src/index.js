@@ -844,6 +844,8 @@ config.settings.additionalToolbarComponents = {
             'image',
           ],
           typeField: 'type',
+          // Volto's object-list widget keys each facet by `@id`.
+          idField: '@id',
         };
         // Remove schemaExtender (would override our typed behavior)
         delete schema.properties.facets.schemaExtender;

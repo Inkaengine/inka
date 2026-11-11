@@ -2481,8 +2481,11 @@ const Iframe = (props) => {
     if (customBlockData) {
       blockData = customBlockData;
     } else if (isObjectList) {
-      // object_list items: typeField defaults to '@type' — no special casing needed
-      const idField = containerConfig?.idField || fieldDef?.idField || '@id';
+      // object_list items: typeField defaults to '@type' — no special casing needed.
+      // The id goes in the list's own idField, which the container config
+      // carries (add-inside reads it from the region; before/after from the
+      // sibling's entry); none is assumed.
+      const { idField } = containerConfig;
       const typeFieldName = (action === 'inside' ? fieldDef?.typeField : blockPathMap[blockId]?.typeField) || '@type';
 
       let effectiveType;
@@ -2594,17 +2597,18 @@ const Iframe = (props) => {
     // Determine which block to select
     let selectBlockId = newBlockId;
     if (selectChildIndex != null && blockData) {
-      // Find the first array field in the block and get the child at selectChildIndex
-      // This is used when adding a row from a cell - we want to select the corresponding cell
-      for (const [, fieldValue] of Object.entries(blockData)) {
-        if (Array.isArray(fieldValue) && fieldValue[selectChildIndex]) {
-          const childItem = fieldValue[selectChildIndex];
-          // Get the ID field - typically 'key' or '@id'
-          const childId = childItem?.key || childItem?.['@id'];
-          if (childId) {
-            selectBlockId = childId;
-            break;
-          }
+      // Adding a row from a cell selects the matching cell: the child at
+      // selectChildIndex of the new block's first list region, read by that
+      // region's idField (a table's cells are keyed by `key`; none is assumed).
+      const childMap = buildBlockPathMap(newFormData, mergedBlocksConfig, intl);
+      for (const [field, fieldValue] of Object.entries(blockData)) {
+        if (!Array.isArray(fieldValue) || !fieldValue[selectChildIndex]) continue;
+        const region = Object.values(childMap).find(
+          (entry) => entry.parentId === newBlockId && entry.region === field && entry.isObjectListItem,
+        );
+        if (region) {
+          selectBlockId = fieldValue[selectChildIndex][region.idField];
+          break;
         }
       }
     }

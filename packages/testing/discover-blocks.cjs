@@ -10,9 +10,11 @@
  * @typedef {{ blockType: string, variation: string, blockId: string, pagePath: string, blockData: Object, isListing: boolean }} DiscoveredBlock
  */
 
+const { isObjectListRegion, regionIdField } = require('@volto-hydra/helpers/regionWidgets.js');
+
 /**
  * Build a map of blockType → { fieldName → idField } for object_list fields.
- * Same logic as BlockVerificationHelper.buildObjectListFieldsMap but in plain JS.
+ * A list region with no idField throws (regionIdField): none is assumed.
  * @param {Object} blocksConfig - Block schemas from initBridge INIT message
  * @returns {Map<string, Map<string, string>>}
  */
@@ -22,10 +24,9 @@ function buildObjectListFieldsMap(blocksConfig) {
     const props = blockDef?.blockSchema?.properties;
     if (!props) continue;
     for (const [fieldName, fieldDef] of Object.entries(props)) {
-      if (fieldDef?.widget === 'object_list') {
+      if (isObjectListRegion(fieldDef)) {
         if (!map.has(blockType)) map.set(blockType, new Map());
-        const idField = fieldDef.idField || '@id';
-        map.get(blockType).set(fieldName, idField);
+        map.get(blockType).set(fieldName, regionIdField(fieldDef, `block "${blockType}" field "${fieldName}"`));
       }
     }
   }
@@ -1050,8 +1051,8 @@ function collectWidgetShapeIssues(
         }
       }
     } else if (widget === 'object_list') {
-      // object_list stores an array of items; an idField (default '@id')
-      // identifies each. If data is nested (dataPath), value may be an
+      // object_list stores an array of items; a region's idField identifies
+      // each. If data is nested (dataPath), value may be an
       // object — tolerate that. Just check it's not a primitive.
       if (typeof value !== 'object' || value === null) {
         issues.push(describe('object_list array/object', value));
@@ -1062,7 +1063,9 @@ function collectWidgetShapeIssues(
         // default with a blank item (initializeContainerBlock used to overwrite
         // the already-applied default). Missing optional fields are otherwise
         // skipped above, so this default-aware check is what catches it.
-        const idField = def.idField || '@id';
+        // A region's items carry their id in its idField; a plain list's items
+        // carry none unless it names one.
+        const idField = def.idField || null;
         const defaultFields = Object.keys(def.default[0] || {}).filter((k) => k !== idField);
         if (defaultFields.length) {
           for (const item of value) {

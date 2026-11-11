@@ -19,7 +19,7 @@ describe('object_list subBlocks: false', () => {
             schema: { properties: { value: { type: 'string' }, label: { type: 'string' } } },
           },
           slides: {
-            widget: 'object_list',
+            widget: 'object_list', idField: '@id',
             schema: { properties: { title: { type: 'string' } } },
           },
         },

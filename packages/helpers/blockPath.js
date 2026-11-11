@@ -27,7 +27,7 @@ import {
   buildIdFieldMap,
   PAGE_BLOCK_UID,
 } from './buildBlockPathMap.js';
-import { isObjectListRegion } from './regionWidgets.js';
+import { isObjectListRegion, regionIdField } from './regionWidgets.js';
 // From the dep-free slateMerge (NOT slateTransforms) so the offline block-path
 // evaluator's esbuild bundle stays free of @plone/volto-slate / registry.
 import { mergeBlockValues } from './slateMerge.js';
@@ -172,7 +172,7 @@ export function getContainerItems(parentBlock, containerConfig) {
  */
 function reorderContainerItems(items, newOrder, containerConfig) {
   if (containerConfig.isObjectList) {
-    const idField = containerConfig.idField || '@id';
+    const { idField } = containerConfig;
     return newOrder
       .map((id) => items.find((item) => item[idField] === id))
       .filter(Boolean);
@@ -211,7 +211,7 @@ function setContainerItems(
   items,
   blocksObj = null,
 ) {
-  const { isObjectList, idField = '@id', regionPath } = containerConfig;
+  const { isObjectList, idField, regionPath } = containerConfig;
   const updatedParent = { ...parentBlock };
   if (!isObjectList) {
     // Full-dict replace at the region's blocks dict, which may live under a
@@ -248,10 +248,10 @@ export function listContainerChildren(parentBlock, containerConfig) {
   const items = getContainerItems(parentBlock, containerConfig);
 
   if (containerConfig.isObjectList) {
-    const idField = containerConfig.idField || '@id';
+    const { idField } = containerConfig;
     const typeField = containerConfig.typeField || null;
     return items.map((item) => ({
-      id: (idField && item[idField]) || item.key || item['@id'],
+      id: item[idField],
       type: getBlockType(item, typeField) || 'object_list_item',
       data: item,
     }));
@@ -578,7 +578,7 @@ export function getSelectAfterDelete(
   const items = getContainerItems(parentBlock, containerConfig);
 
   if (isObjectList) {
-    const idField = containerConfig.idField || '@id';
+    const { idField } = containerConfig;
     const index = items.findIndex((item) => item[idField] === blockId);
     if (index === -1) return parentId !== PAGE_BLOCK_UID ? parentId : null;
     // If more than one item, pick adjacent sibling
@@ -799,7 +799,7 @@ export function getAllContainerFields(
         canAdd: !parentIsReadonly && maxLengthOk,
         isObjectList: true,
         itemSchema: hasAllowedBlocks ? null : fieldDef.schema, // null for typed (schema from blocksConfig)
-        idField: fieldDef.idField || '@id', // ID field name for items
+        idField: regionIdField(fieldDef, `block "${blockType}" field "${fieldName}"`),
         typeField: fieldDef.typeField || null, // Attribute name for item type (e.g., '@type')
         defaultBlocks: regionDefault(fieldDef),
       });
@@ -865,7 +865,7 @@ export function insertBlockInContainer(
   // move) runs applyMembershipWhereLanded after the insert — the one rule,
   // docs/architecture.md "Template membership". This only inserts.
   if (isObjectList) {
-    const idField = containerConfig.idField || '@id';
+    const { idField } = containerConfig;
     const refIndex = items.findIndex((item) => item[idField] === refBlockId);
     const insertIndex = getInsertIndex(items, refIndex);
     items.splice(insertIndex, 0, { [idField]: newBlockId, ...newBlockData });
@@ -1330,7 +1330,7 @@ export function expandValueIntoRegion(targetBlock, region, rp, value, uuidGen) {
     (() =>
       globalThis.crypto?.randomUUID?.() || Math.random().toString(36).slice(2));
   setChildBlockEntries(targetBlock, region, [
-    { id: child['@id'] || gen(), block: child },
+    { id: gen(), block: child },
   ]);
 }
 
@@ -1470,7 +1470,7 @@ export function getContainerRegionDescriptors(
           region: fieldName,
           ...(regionPath.length > 0 && { regionPath }),
           isObjectList: true,
-          idField: fieldDef.idField || '@id',
+          idField: regionIdField(fieldDef, `block "${blockType}" field "${[...regionPath, fieldName].join('/')}"`),
           typeField: fieldDef.typeField || null,
           itemTypeField: fieldDef.itemTypeField || null,
           allowedBlocks: fieldDef.allowedBlocks || null,
@@ -1538,7 +1538,7 @@ export function deleteBlockFromContainer(
   const items = getContainerItems(parentBlock, containerConfig);
 
   if (isObjectList) {
-    const idField = containerConfig.idField || '@id';
+    const { idField } = containerConfig;
     const filteredItems = items.filter((item) => item[idField] !== blockId);
     updatedParentBlock = setContainerItems(
       parentBlock,
@@ -1979,7 +1979,7 @@ export function mutateBlockInContainer(
   let updatedParentBlock;
 
   if (isObjectList) {
-    const idField = containerConfig.idField || '@id';
+    const { idField } = containerConfig;
     const updatedItems = items.map((item) =>
       item[idField] === blockId
         ? { [idField]: blockId, ...newBlockData }
@@ -2502,7 +2502,7 @@ export function initializeContainerBlock(
     // Handle object_list containers (like cells in a row). A plain list
     // (`subBlocks: false`) is not a region and is not seeded.
     if (isObjectListRegion(fieldDef)) {
-      const idField = fieldDef.idField || '@id';
+      const idField = regionIdField(fieldDef, `block "${blockType || blockData['@type']}" field "${fieldName}"`);
       const typeFieldName = fieldDef.typeField || null;
       const hasAllowedBlocks = !!fieldDef.allowedBlocks;
 
@@ -2807,7 +2807,7 @@ export function reorderBlocksInContainer(
     region,
     isObjectList,
     regionPath: sampleChild?.regionPath || [],
-    idField: sampleChild?.idField || '@id',
+    ...(isObjectList ? { idField: sampleChild.idField } : {}),
   };
 
   const items = getContainerItems(parentBlock, containerConfig);
@@ -2952,8 +2952,7 @@ export function moveBlockBetweenContainers(
 
   // Strip source-format-specific ID field if moving FROM object_list
   if (sourceContainerConfig.isObjectList) {
-    const sourceIdField = sourceContainerConfig.idField || '@id';
-    delete adaptedBlockData[sourceIdField];
+    delete adaptedBlockData[sourceContainerConfig.idField];
   }
 
   // When moving TO blocks container, ensure @type is set
@@ -3032,7 +3031,7 @@ function reorderBlockInContainer(
   // Compute new ID order from blockId + targetBlockId + insertAfter
   const items = getContainerItems(parentBlock, containerConfig);
   const idField = containerConfig.isObjectList
-    ? containerConfig.idField || '@id'
+    ? containerConfig.idField
     : null;
   const getId = idField ? (item) => item[idField] : (item) => item;
 
