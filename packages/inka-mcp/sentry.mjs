@@ -17,6 +17,18 @@
  * @sentry/node external (its instrumentation patches modules as they load, and
  * bundling it defeats that), the image installs it beside Playwright, and the
  * tests hand these functions a recorder instead.
+ *
+ * It is a devDependency, not a dependency, and that is deliberate. The admin
+ * image installs EVERY workspace member's prod dependencies into one hoisted
+ * namespace (.npmrc: shamefully-hoist=true), where this package's express 5
+ * already competes with Volto's express 4. Adding one more prod dependency
+ * here was enough to change what that install resolved: the admin server then
+ * booted with express 5's router and died on Volto's own
+ * `express-middleware/devproxy.js`, which registers the legacy `'*'` route
+ * path-to-regexp 8 refuses. Nothing about Sentry caused that -- it is the
+ * hoisting -- but the MCP server has no business perturbing another image's
+ * tree, so its runtime SDK is installed by its own Dockerfile and declared
+ * here only so a developer running from source has the version.
  */
 
 /**
