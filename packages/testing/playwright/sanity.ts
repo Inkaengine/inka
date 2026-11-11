@@ -29,7 +29,7 @@
 import { test as playwrightTest, type FrameLocator } from '@playwright/test';
 import { test as base, expect } from './fixtures';
 import { AdminUIHelper } from './AdminUIHelper';
-import { verifyBlockRendering, revealBlock, checkEveryBlockOnPage } from './BlockVerificationHelper';
+import { verifyBlockRendering, revealBlock, checkEveryBlockOnPage, blocksToCheck } from './BlockVerificationHelper';
 import { verifyPageIntegrity } from './PageIntegrityHelper';
 import { drainFieldCoverage } from '../field-coverage';
 import { measureTextStyles, recordTextStyles, slateStyles, drainStyleCoverage } from '../text-style-coverage';
@@ -510,6 +510,51 @@ export function defineBlockSanityTests(options: SanityOptions): void {
         }
 
         const iframe = helper.getIframe();
+
+        // This test's cost is COUNTED IN BLOCKS, and a consumer's timeout is
+        // set for one ("a block renders in ~1-2s or it's broken" -- true of
+        // the blocks it was written for, and those tests take 2-3s). A
+        // container on a dense page is a different animal: timed, a table's
+        // test spent ~2s rendering and ~25s checking, and tipped over a 20s
+        // budget whenever the machine was slower.
+        //
+        // So the budget is taken from what this test will actually check,
+        // BEFORE it checks any of it -- a grant made later is made after the
+        // time has been spent, which is how the first version of this failed.
+        // The alternative, every consumer setting a timeout loose enough for
+        // its densest page, gives up fast failure for every other block.
+        const toCheck = await blocksToCheck(iframe, block.blockId);
+        const checksPage = checksItsPage.has(block);
+        const page_ = checksPage ? toCheck.page : 0;
+        if (toCheck.own + page_ > 0) {
+          // The two halves cost DIFFERENTLY, so they are budgeted
+          // differently. Timed on a docs page of table variants:
+          //
+          //   its own 81 descendants   ~19s   (every field, and an edit-text
+          //                                    click per field)
+          //   the page's other 291     ~6s    (a few reads each)
+          //
+          // Those were measured on a loaded machine, so read the RATIO, not
+          // the seconds: its own descendants cost roughly ten times what the
+          // rest of the page costs, which is what these two rates are for.
+          // The rates are ~2x the measurements because the same test wanted
+          // between 59s and 76s across runs on that machine while a quiet
+          // sample of its phases totalled ~28s -- a budget fitted to the
+          // quiet sample is a budget that flakes. A grant is not a target:
+          // the test takes what it takes, and this only says when to stop
+          // waiting.
+          //
+          // Ordinary blocks are unaffected -- a block with no descendants
+          // gets no grant and keeps the consumer's fast failure -- and the
+          // cap bounds the worst case.
+          const grant = Math.min(toCheck.own * 500 + page_ * 100, 150_000);
+          test.setTimeout(testInfo.timeout + grant);
+          test.info().annotations.push({
+            type: 'blocks-checked',
+            description:
+              `${toCheck.own} of its own + ${page_} on ${block.pagePath}; budget +${grant}ms`,
+          });
+        }
 
         await verifyBlockRendering(page, iframe, block.blockId, block.blockData, {
           isListing: block.isListing,
