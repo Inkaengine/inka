@@ -249,6 +249,28 @@ jobs:
               || { echo "::error::$plugin is enabled but not installed"; exit 1; }
           done
 
+      - name: Assert the image holds the admin and nothing else
+        run: |
+          # The admin image installs the admin and what it depends on -- not the
+          # whole workspace. Inka's workspace also holds the MCP server, its own
+          # server with its own image, on Express 5. Installed here too, its
+          # Express could be the one hoisted to /app/node_modules/express, which
+          # the built Volto server loads at runtime; Volto runs on Express 4, and
+          # Express 5's router rejects its `*` route, so the admin exits on start.
+          # Which copy was hoisted was never chosen: an unfrozen build got 5.
+          pkgs=$(docker run --rm --entrypoint ls inka-admin:ci /app/node_modules/.pnpm)
+          for stray in '@inka+mcp@' '@modelcontextprotocol+' 'express@5'; do
+            found=$(printf '%s\n' "$pkgs" | grep -F -- "$stray" || true)
+            [ -z "$found" ] || { echo "::error::the admin image holds what only the MCP server uses: $found"; exit 1; }
+          done
+          express=$(docker run --rm --entrypoint node inka-admin:ci \
+            -e "console.log(require('/app/node_modules/express/package.json').version)")
+          echo "express at the root: $express"
+          case "$express" in
+            4.*) ;;
+            *) echo "::error::the admin server would load Express $express; Volto runs on Express 4"; exit 1 ;;
+          esac
+
       - name: Report the image size
         run: |
           size=$(docker image inspect inka-admin:ci --format '{{.Size}}')
