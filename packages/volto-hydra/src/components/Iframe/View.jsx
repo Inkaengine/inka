@@ -2395,7 +2395,23 @@ const Iframe = (props) => {
       }
       // 'inside' adds to a specific region (default 'items'); the descriptor's
       // region flows into insertBlockInContainer via the funnel.
-      containerConfig = { parentId: blockId, fieldName, isObjectList, region: addRegion || 'items' };
+      // A list region carries its idField: its items are read and written by it.
+      const region = addRegion || 'items';
+      const listIdField = isObjectList
+        ? getContainerRegionDescriptors(
+            blockPathMap[blockId]?.blockType,
+            mergedBlocksConfig,
+            intl,
+            getBlockById(formData, blockPathMap, blockId),
+          ).find((d) => d.region === region)?.idField
+        : undefined;
+      containerConfig = {
+        parentId: blockId,
+        fieldName,
+        isObjectList,
+        region,
+        ...(isObjectList ? { idField: listIdField } : {}),
+      };
     } else {
       containerConfig = getContainerFieldConfig(blockId, blockPathMap, formData, mergedBlocksConfig, intl);
       // For before/after, get isObjectList from containerConfig
