@@ -5636,22 +5636,17 @@ app.post('*/@querystring-search', (req, res) => {
         allItems = allItems.filter((item) => matchTextIndex(value, item.title));
       }
     } else if (index === 'Description' && operation.includes('string.contains')) {
-      // Description is a ZCTextIndex too, asked the same way as Title.
+      // Description is a ZCTextIndex too, asked the same way as Title: whole
+      // words, and a trailing * for a prefix, never a substring. A live Plone
+      // 6.2's @querystring gives this index exactly one operation,
+      // string.contains, which is why there is nothing else to handle here.
+      //
+      // Worth keeping because of what its absence cost: with no branch the
+      // criterion was unapplied, which first meant "return the whole
+      // collection" and then, once an unapplied criterion became a 400, meant
+      // a site whose search names Description could not be served at all.
       if (value) {
         allItems = allItems.filter((item) => matchTextIndex(value, item.description));
-      }
-    } else if (index === 'Description' && operation.includes('string.contains')) {
-      // A real Plone has this index and gives it ONE operation
-      // (@querystring: string.contains). It is a ZCTextIndex like Title, so it
-      // matches whole words and takes a trailing * for a prefix -- the same
-      // matcher, not a substring test.
-      //
-      // Before this branch the criterion was unapplied: first that silently
-      // returned the whole collection, then (once unapplied criteria became a
-      // 400) it refused the request outright, so a site whose search names
-      // Description could not be served at all.
-      if (value) {
-        allItems = allItems.filter((item) => matchTitleIndex(value, item.description));
       }
     } else if (
       operation === 'plone.app.querystring.operation.date.largerThan' ||
