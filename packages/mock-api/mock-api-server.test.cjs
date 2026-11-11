@@ -147,6 +147,81 @@ describe('@querystring-search', () => {
     assert.deepStrictEqual(descIds, ascIds.toReversed());
   });
 
+  // Checked against a real Plone 6.2 (a live @querystring-search):
+  //   `path` ("Navigation path") and `absolutePath` on the same value return
+  //   THE SAME items -- 62 each for `/blog`, the folder itself among them, at
+  //   any depth below it; `/blog::1` returns 34 under either, the folder NOT
+  //   among them and nothing deeper.
+  // The path index offers all three operations (@querystring): absolutePath,
+  // path, relativePath. One site stores `string.path` in 9 of its 12 path
+  // criteria, so a mock that knows only absolutePath leaves those listings
+  // unfiltered.
+  it('string.path filters exactly as absolutePath does', async () => {
+    const forOperation = async (o) => {
+      const data = await querystringSearch('/', {
+        query: [{ i: 'path', o, v: '/_test_data' }],
+        b_start: 0,
+        b_size: 200,
+      });
+      return data.items.map((i) => new URL(i['@id']).pathname).sort();
+    };
+    const byPath = await forOperation('plone.app.querystring.operation.string.path');
+    const byAbsolute = await forOperation('plone.app.querystring.operation.string.absolutePath');
+    assert.ok(byAbsolute.length > 1, 'the fixture has items under /_test_data');
+    assert.deepStrictEqual(byPath, byAbsolute);
+  });
+
+  it('a path with no depth holds the folder itself, as Plone does', async () => {
+    for (const o of [
+      'plone.app.querystring.operation.string.path',
+      'plone.app.querystring.operation.string.absolutePath',
+    ]) {
+      const data = await querystringSearch('/', {
+        query: [{ i: 'path', o, v: '/_test_data' }],
+        b_start: 0,
+        b_size: 200,
+      });
+      const paths = data.items.map((i) => new URL(i['@id']).pathname);
+      assert.ok(paths.includes('/_test_data'), `${o}: the folder itself is a result`);
+    }
+  });
+
+  it('a path at depth 1 holds its children only, not the folder', async () => {
+    for (const o of [
+      'plone.app.querystring.operation.string.path',
+      'plone.app.querystring.operation.string.absolutePath',
+    ]) {
+      const data = await querystringSearch('/', {
+        query: [{ i: 'path', o, v: '/_test_data::1' }],
+        b_start: 0,
+        b_size: 200,
+      });
+      const paths = data.items.map((i) => new URL(i['@id']).pathname);
+      assert.ok(paths.length > 1, `${o}: the fixture has children`);
+      assert.ok(!paths.includes('/_test_data'), `${o}: the folder itself is not a result`);
+      const deeper = paths.filter((p) => p.split('/').filter(Boolean).length > 2);
+      assert.deepStrictEqual(deeper, [], `${o}: nothing below the children`);
+    }
+  });
+
+  // An ignored criterion answers with the whole collection, which reads
+  // exactly like a filter that matched everything -- the failure mode that
+  // hid the missing Title branch. A criterion this mock cannot apply is
+  // refused, as an operation the site does not have already is.
+  it('refuses a criterion it cannot apply, rather than answering unfiltered', async () => {
+    const res = await fetch(`${baseUrl}/@querystring-search`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+      body: JSON.stringify({
+        query: [{ i: 'path', o: 'plone.app.querystring.operation.string.inventedPath', v: '/_test_data' }],
+        b_size: 50,
+      }),
+    });
+    assert.equal(res.status, 400);
+    const body = await res.json();
+    assert.match(JSON.stringify(body), /inventedPath|path/);
+  });
+
   it('absolutePath filter returns items under that path', async () => {
     const data = await querystringSearch('/', {
       query: [

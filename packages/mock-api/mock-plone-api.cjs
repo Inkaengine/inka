@@ -4183,22 +4183,34 @@ app.get('*/@querystring', (req, res) => {
         'group': 'Metadata',
         'enabled': true,
         'sortable': false,
+        // All three the path index really takes, copied from a live Plone 6.2's
+        // @querystring (titles, descriptions, widgets and queryparser names as
+        // it gives them). `string.path` was missing, so a site storing it --
+        // one stores it in 9 of its 12 path criteria -- was configured with an
+        // operation this mock said the site did not have.
         'operations': [
           'plone.app.querystring.operation.string.absolutePath',
+          'plone.app.querystring.operation.string.path',
           'plone.app.querystring.operation.string.relativePath',
         ],
         'operators': {
           'plone.app.querystring.operation.string.absolutePath': {
             'title': 'Absolute path',
-            'description': 'Absolute path from site root',
+            'description': 'Location in the site structure',
             'widget': 'ReferenceWidget',
-            'operation': 'plone.app.querystring.operation.string.absolutePath',
+            'operation': 'plone.app.querystring.queryparser._absolutePath',
+          },
+          'plone.app.querystring.operation.string.path': {
+            'title': 'Navigation path',
+            'description': 'Location in the navigation structure',
+            'widget': 'ReferenceWidget',
+            'operation': 'plone.app.querystring.queryparser._navigationPath',
           },
           'plone.app.querystring.operation.string.relativePath': {
             'title': 'Relative path',
-            'description': 'Relative to current location',
-            'widget': 'ReferenceWidget',
-            'operation': 'plone.app.querystring.operation.string.relativePath',
+            'description': "Use '../' to navigate to parent objects.",
+            'widget': 'RelativePathWidget',
+            'operation': 'plone.app.querystring.queryparser._relativePath',
           },
         },
       },
@@ -5445,6 +5457,16 @@ app.post('*/@querystring-search', (req, res) => {
   // recursive query. The top-level `depth` field on the request body is
   // NOT honoured by Plone's @querystring-search — verified against
   // demo.plone.org — so it is deliberately ignored here.
+  // The path index takes three operations (a real Plone's @querystring says so:
+  // absolutePath, path, relativePath). `path` ("Navigation path") and
+  // `absolutePath` are the SAME query -- asked of a live backend, `/blog`
+  // under either answers the same 62 items, and `/blog::1` the same 34 -- so
+  // they are one branch here. One site stores `string.path` in 9 of its 12
+  // path criteria, and reading only absolutePath left those listings
+  // unfiltered.
+  const isAbsolutePathQuery = (operation) =>
+    operation.includes('absolutePath') || operation.endsWith('.string.path');
+
   const splitPathDepth = (v) => {
     const s = typeof v === 'string' ? v : '';
     const sep = s.indexOf('::');
@@ -5459,7 +5481,7 @@ app.post('*/@querystring-search', (req, res) => {
     if (cond.i !== 'path') continue;
     const { path: pathV, depth: critDepth } = splitPathDepth(cond.v);
     if (critDepth !== null) pathDepth = critDepth;
-    if (cond.o.includes('absolutePath')) {
+    if (isAbsolutePathQuery(cond.o)) {
       depthRoot = pathV;
     } else if (cond.o.includes('relativePath')) {
       let rel = pathV;
@@ -5504,6 +5526,9 @@ app.post('*/@querystring-search', (req, res) => {
     Subject: (item) => item.subjects || item.Subject || [],
   };
 
+  /** Criteria no branch below could apply: a 400 after the loop, never a silent pass. */
+  const unapplied = [];
+
   for (const condition of query) {
     const { i: index, o: operation } = condition;
     // For path criteria the value may carry a `::depth` suffix — strip it
@@ -5521,9 +5546,9 @@ app.post('*/@querystring-search', (req, res) => {
       const accessor = selectionFields[index];
       const wanted = Array.isArray(value) ? value : [value];
       if (!accessor) {
-        console.warn(
-          `[MOCK-API] @querystring-search: no selection mapping for index '${index}' — criterion ignored`,
-        );
+        // Same reason as the refusal below: an index with no accessor here
+        // filters nothing, and that reads like a filter everything passed.
+        unapplied.push(`selection on '${index}' (no accessor in selectionFields)`);
       } else if (operation.endsWith('.all')) {
         allItems = allItems.filter((item) =>
           wanted.every((w) => accessor(item).includes(w)),
@@ -5537,16 +5562,23 @@ app.post('*/@querystring-search', (req, res) => {
           wanted.some((w) => accessor(item).includes(w)),
         );
       }
-    } else if (index === 'path' && operation.includes('absolutePath')) {
-      // Filter by path — strict descendants of basePath (exclude basePath
-      // itself). The trailing '/' ensures `/foo` matches `/foo/bar` but
-      // not `/foo` itself, and avoids `/foo` matching `/foobar`.
+    } else if (index === 'path' && isAbsolutePathQuery(operation)) {
+      // Filter by path. The trailing '/' ensures `/foo` matches `/foo/bar` and
+      // not `/foobar`.
+      //
+      // basePath ITSELF is a result, as it is in Plone: a live
+      // @querystring-search for `/blog` answers with /blog among its 62 items.
+      // With a depth (`/blog::1`) it is not -- that answers 34, the folder
+      // gone and nothing below the children -- so the folder is kept only
+      // where no depth was asked for. (relativePath is different, and stays
+      // different: Plone leaves the context itself out. See below.)
       const basePath = value || '/';
       if (basePath !== '/') {
         const prefix = basePath.endsWith('/') ? basePath : basePath + '/';
+        const wholeTree = splitPathDepth(condition.v).depth === null;
         allItems = allItems.filter((item) => {
           const itemPath = new URL(item['@id']).pathname;
-          return itemPath.startsWith(prefix);
+          return itemPath.startsWith(prefix) || (wholeTree && itemPath === basePath);
         });
       }
     } else if (index === 'path' && operation.includes('relativePath')) {
@@ -5633,12 +5665,21 @@ app.post('*/@querystring-search', (req, res) => {
     } else {
       // Never drop a criterion quietly. An ignored filter returns the whole
       // collection, which looks exactly like a filter that matched everything
-      // — the failure mode that hid the missing Title branch above.
-      console.warn(
-        `[MOCK-API] @querystring-search: unhandled criterion '${index}' ` +
-          `with operation '${operation}' — returning unfiltered results`,
-      );
+      // — the failure mode that hid the missing Title branch above, and that
+      // left one site's nine `string.path` listings unfiltered in every test
+      // for as long as the warning was only a warning. A criterion this mock
+      // cannot apply is now refused, as an operation the site does not have
+      // already is: a gap fails a test instead of weakening it.
+      unapplied.push(`'${index}' with operation '${operation}'`);
     }
+  }
+
+  if (unapplied.length > 0) {
+    console.warn(`[MOCK-API] @querystring-search: cannot apply ${unapplied.join('; ')}`);
+    return res.status(400).json({
+      message: `Invalid query: this mock cannot apply ${unapplied.join('; ')}.`,
+      type: 'BadRequest',
+    });
   }
 
   // Apply depth limit from the path criterion's `::depth` suffix (parsed
