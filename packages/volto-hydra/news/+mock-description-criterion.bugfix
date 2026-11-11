@@ -1,0 +1,1 @@
+Mock API: a listing that filters on Description finds the items whose description has that word, rather than being refused. @djay
