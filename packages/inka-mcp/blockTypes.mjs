@@ -27,30 +27,51 @@ function regionOut(r) {
 }
 
 /**
+ * What an image or file field takes, said on the field: from `{"widget":
+ * "image"}` alone an agent guessed, and put a file's data in an image block,
+ * where it was stored as it was and drew nothing (inka#702). `media`: this
+ * server keeps the files an agent stages (stage_media, ask_for_files).
+ */
+function takesOf(facts, { media }) {
+  const staged = 'a file of your own: the media id stage_media or ask_for_files gives for it';
+  if (facts.widget === 'image') {
+    return `an image already on the site, by its path ("/images/team.jpg")${media ? `, or ${staged}` : ''}`;
+  }
+  if (['Image', 'File'].includes(facts.factory)) {
+    return media ? staged
+      : 'the file itself: {"data": <base64>, "encoding": "base64", "filename": "team.jpg", "content-type": "image/jpeg"}';
+  }
+  return undefined;
+}
+
+/**
  * A block's fields, each with its facts. A field that is an object of fields
  * of its own (`styles`: alignment, background, …) gives those as `fields`, as
  * a block does, not as the raw schema the editor draws its form from: read as
  * a schema, an agent wrote `styles`' fields at the block's top level, where
  * nothing reads them.
  */
-function fieldsOut(blockSchema, regionFields = new Set()) {
+function fieldsOut(blockSchema, regionFields, files) {
   const required = new Set(blockSchema.required);
   const fields = {};
   for (const [name, facts] of Object.entries(blockSchema.properties)) {
     if (regionFields.has(name)) continue;
     const { schema, ...rest } = facts;
     const nested = facts.widget === 'object' && schema?.properties;
+    const takes = takesOf(facts, files);
     fields[name] = {
       ...(nested ? rest : facts),
-      ...(nested && { fields: fieldsOut(schema) }),
+      ...(nested && { fields: fieldsOut(schema, new Set(), files) }),
       ...(required.has(name) && { required: true }),
       ...(facts.widget === 'slate' && { markdown: true }),
+      ...(takes && { takes }),
     };
   }
   return fields;
 }
 
-export function describeBlockTypes({ page, types }) {
+export function describeBlockTypes({ page, types }, files) {
+  if (typeof files?.media !== 'boolean') throw new Error('describeBlockTypes: say whether this server keeps staged files ({ media })');
   const out = {};
   const visit = (allowed, where) => {
     for (const type of allowed) {
@@ -61,7 +82,7 @@ export function describeBlockTypes({ page, types }) {
       out[type] = {
         title: t.title,
         ...(t.contentType && { contentType: true }),
-        fields: fieldsOut(t.blockSchema, regionFields),
+        fields: fieldsOut(t.blockSchema, regionFields, files),
         regions: t.regions.map(regionOut),
       };
       for (const r of t.regions) visit(r.allowedBlocks, `${type}'s ${r.region}`);
@@ -81,7 +102,8 @@ export function describeBlockTypes({ page, types }) {
  * filled in, which the front end declares as stored blocks and the agent gets
  * in its own format.
  */
-export function describeBlockType(schemas, type) {
+export function describeBlockType(schemas, type, files) {
+  if (typeof files?.media !== 'boolean') throw new Error('describeBlockType: say whether this server keeps staged files ({ media })');
   const t = schemas.types[type];
   if (!t) throw new Error(`no block type "${type}" (list_block_types lists what this page can hold)`);
   const regionFields = new Set(t.regions.filter((r) => !r.regionPath).map((r) => r.region));
@@ -97,7 +119,7 @@ export function describeBlockType(schemas, type) {
     ...(t.description !== undefined && { description: t.description }),
     ...(t.contentType && { contentType: true }),
     variations: t.variations,
-    fields: fieldsOut(t.blockSchema, regionFields),
+    fields: fieldsOut(t.blockSchema, regionFields, files),
     regions: t.regions.map(regionOut),
     allowedIn,
     ...(t.guidance !== undefined && { guidance: t.guidance }),

@@ -488,9 +488,10 @@ function checkIntegrity(source, { schemasFor, allowMissingBlobs = false, idField
   // checking one page among others (the MCP's save check) asks which are that
   // page's by `rel`, never by how the line happens to begin.
   const findings = [];
-  const fail = (rel, line) => {
+  // `about`: what a caller may need to say more ({ blockType, field, … }).
+  const fail = (rel, line, about = {}) => {
     errors.push(line);
-    findings.push({ rel, message: line.trim() });
+    findings.push({ rel, message: line.trim(), ...about });
   };
   // See validate(): a bytes-less generated blob is a warning under this flag.
   const missingBlob = (rel, msg) => (allowMissingBlobs ? warnings.push(msg) : fail(rel, msg));
@@ -809,6 +810,18 @@ function imageDimensions(file) {
             fail(rel, 
               `  ${rel}: block ${bid} (${block['@type']}) field "${field}" holds ${v} as a bare string, ` +
                 `which Plone does not resolve in a field of that name — store it as { "@id": "${v}" }`,
+            );
+            continue;
+          }
+          // An object with no reference in it is no image or link at all: a
+          // file's data put where its path goes (inka#702) was stored as it was,
+          // and the block drew nothing. An empty list is an empty field.
+          if (!Array.isArray(v) && typeof v === 'object' && refStrings(v).length === 0) {
+            stats.linksBroken += 1;
+            fail(rel,
+              `  ${rel}: block ${bid} (${block['@type']}) field "${field}" holds no reference: it is ${shape(v)}. ` +
+                `A ${def.widget} field holds an item on the site (its path, or { "@id": path }), not the item itself`,
+              { blockType: block['@type'], field, noReference: def.widget },
             );
             continue;
           }

@@ -70,7 +70,7 @@ test.describe('MCP tools', () => {
     await helper.login();
     await helper.navigateToEdit('/test-page');
     await waitForAgent(page);
-    const described = await listBlockTypes(agentOn(page));
+    const described = await listBlockTypes(agentOn(page), { media: false });
 
     const pageList = described.page.find((r) => r.field === 'blocks');
     expect(pageList.allowed).toContain('slate');
@@ -436,7 +436,7 @@ test.describe('MCP tools', () => {
     await waitForAgent(page);
     const [agent, site] = [agentOn(page), siteOn(page)];
 
-    const teaser = await describeBlock(agent, site, { type: 'teaser' });
+    const teaser = await describeBlock(agent, site, { type: 'teaser', media: false });
     expect(teaser.fields.href).toMatchObject({ widget: 'object_browser', required: true });
     expect(teaser.allowedIn).toContain("the page's blocks");
     // The example is a real teaser from a page on the site: the link's shape is there to copy.
@@ -445,7 +445,7 @@ test.describe('MCP tools', () => {
     expect(teaser.siteExample.block.href[0]['@id']).toBeTruthy();
 
     // A block's display variants, as its variation field offers them.
-    const callout = await describeBlock(agent, site, { type: 'callout' });
+    const callout = await describeBlock(agent, site, { type: 'callout', media: false });
     expect(callout.variations).toContainEqual({ id: 'note', title: 'Note', isDefault: true });
     expect(callout.variations.map((v) => v.id)).toEqual(['note', 'tip', 'warning', 'important']);
   });
@@ -460,6 +460,7 @@ test.describe('MCP tools', () => {
 
     const callout = await describeBlock(agent, site, {
       type: 'callout',
+      media: false,
       render: async (draft, uid) => previewDraft(page.context(), { frontendUrl, draft, blockPathMap: await agent.blockPathMapOf(draft), focus: uid, maxChars: 50_000 }),
     });
     expect(callout.guidance).toMatch(/aside/);

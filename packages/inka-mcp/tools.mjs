@@ -415,9 +415,13 @@ export async function findUndeclaredFields(agent, site, { path = '/', limit = 25
   };
 }
 
-/** The block types this page can hold, their fields, and where child blocks go. */
-export async function listBlockTypes(agent) {
-  return describeBlockTypes(await agent.getBlockSchemas());
+/**
+ * The block types this page can hold, their fields, and where child blocks go.
+ * `media`: this server keeps the files an agent stages, so a file field can
+ * say it takes one.
+ */
+export async function listBlockTypes(agent, { media }) {
+  return describeBlockTypes(await agent.getBlockSchemas(), { media });
 }
 
 /** The first block of `type` on a stored page, nested blocks included: [uid, block]. */
@@ -451,9 +455,9 @@ function findBlock(node, type) {
  * rendered on its own — a page holding only that block — as `rendered`; `of`
  * is how many there are, so their pictures can share one result.
  */
-export async function describeBlock(agent, site, { type, render }) {
+export async function describeBlock(agent, site, { type, render, media }) {
   const schemas = await agent.getBlockSchemas();
-  const described = describeBlockType(schemas, type);
+  const described = describeBlockType(schemas, type, { media });
   if (render) {
     const declared = schemas.types[type].examples;
     if (!declared?.length) throw new Error(`the front end declares no examples of ${type} to render`);

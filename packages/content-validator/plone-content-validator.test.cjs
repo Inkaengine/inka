@@ -1394,6 +1394,21 @@ describe('plone-content-validator checkIntegrity()', () => {
         assert.deepEqual(check(block), [], JSON.stringify(block));
       }
     });
+
+    // inka#702: an agent put a file's data in an image block. With no reference
+    // in it, nothing was checked, and it was stored as it was: the block drew
+    // no image. An image or link field holds a reference, or nothing.
+    it('FAILS on an image field holding an object with no reference in it, such as a file', () => {
+      const file = { data: '<svg/>', encoding: 'utf8', filename: 'd.svg', 'content-type': 'image/svg+xml' };
+      for (const block of [{ '@type': 'image', url: file }, { '@type': 'banner', image: file }]) {
+        const errors = check(block);
+        assert.ok(errors.some((e) => e.includes('holds no reference') && e.includes('data,encoding,filename,content-type')), `${JSON.stringify(block)}:\n${errors.join('\n')}`);
+      }
+    });
+
+    it('passes an image field left empty, as an empty list', () => {
+      assert.deepEqual(check({ '@type': 'banner', image: [] }), []);
+    });
   });
 
   it('FAILS on a blocks_layout.items entry with no matching block', () => {
