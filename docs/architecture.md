@@ -233,7 +233,7 @@ Three details make it hold:
 - **Write back against the original.** The update guard compares the result to the *stored* block, not the stripped copy, or a block whose recompute is a structural no-op keeps its stale membership.
 - **`templateEditModeRef` for the mode check.** The current set of unlocked instances is read from a ref, not an effect-closure value, so the gate sees the live edit-mode state.
 
-**Seeding is not placement.** Blocks the editor creates on its own — an empty placeholder for an empty slot, a forced region's default empty, a new container's default children — take their slot from what they fill (`inheritTemplateMembership` in `blockPath.js`), not from this rule.
+**Seeding is not placement.** Blocks the editor creates on its own — an empty placeholder for an empty slot, a forced region's default empty, a new container's default children — take their slot from what they fill (`inheritTemplateMembership` in `blockPath.js`), not from this rule. A placeholder seeded into a region of a **locked** (`readOnly`) template block is locked with it: the page cannot reach it, so validation passes it by, and unlocking the template makes it editable like the rest of the template.
 
 In normal mode the net effect matches the merge's own placement rules (a top/bottom slot outside a fixed anchor): dropping a block past a **free** edge flows it into that slot; dropping it past a **both-anchored** edge exits it to the surrounding page region. The drag scan that decides the drop position lives in `hydra.js` and, on a distance tie between coincident edges, prefers the deeper (inner) edge so a reorder inside a container isn't ejected to the outer level.
 

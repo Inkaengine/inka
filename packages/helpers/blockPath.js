@@ -2366,8 +2366,16 @@ export function ensureEmptyBlockIfEmpty(
     return setBlockByPath(formData, parentPath, updatedParentBlock);
   }
 
+  // A placeholder in a LOCKED block (template content on a page that only uses the
+  // template) is locked with it. The author cannot reach it, so it must not be validated
+  // as the page's own: an empty footer column's required link url refused the save of
+  // every page on a site whose footer template had no columns. Unlocking the template
+  // makes it editable, as it does every block of the template.
+  const inheritFixed = parentBlock.readOnly === true;
+
   // A region with a `default` goes back to it, each child under a fresh id, seeded
-  // like the placeholder below (a load-time refill: it does not inherit fixed).
+  // like the placeholder below (a load-time refill: it inherits fixed only from a
+  // locked block).
   if (containerConfig.defaultBlocks) {
     const blocksObj = { ...parentBlock.blocks };
     const ids = containerConfig.defaultBlocks.map((entry) => {
@@ -2376,7 +2384,7 @@ export function ensureEmptyBlockIfEmpty(
         intl,
         metadata,
         properties,
-        inheritFixed: false,
+        inheritFixed,
       });
       if (containerConfig.vacatedSlotId && child.templateInstanceId) {
         child = { ...child, slotId: containerConfig.vacatedSlotId };
@@ -2398,10 +2406,11 @@ export function ensureEmptyBlockIfEmpty(
   }
 
   // Standard blocks container — seed through the SAME shared seedTemplateChild as the
-  // object_list branch and initializeContainerBlock. inheritFixed:false because this is a
-  // load-time PLACEHOLDER, not an add: a blocks_layout block is edited inline, so inheriting
-  // readOnly would freeze editing a template directly (template-edit-mode "a template page
-  // loads + edits like a normal page"). Add-time seeds (initializeContainerBlock) DO inherit.
+  // object_list branch and initializeContainerBlock. Fixed is not inherited from an editable
+  // block because this is a load-time PLACEHOLDER, not an add: a blocks_layout block is edited
+  // inline, so inheriting readOnly would freeze editing a template directly (template-edit-mode
+  // "a template page loads + edits like a normal page"). Add-time seeds
+  // (initializeContainerBlock) DO inherit.
   const blockType = getEmptyBlockType(containerConfig);
   let blockData = seedTemplateChild(
     { '@type': blockType },
@@ -2410,7 +2419,7 @@ export function ensureEmptyBlockIfEmpty(
     parentBlock,
     blocksConfig,
     uuidGenerator,
-    { intl, metadata, properties, inheritFixed: false },
+    { intl, metadata, properties, inheritFixed },
   );
   // A FORCED region (allowedLayouts) is template-controlled: its default empty must
   // be a LOCKED template member so it can't be filled per-page — you unlock the
