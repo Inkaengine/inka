@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { fillNewPage, describeBlock, getPage, editPage, movePage, renamePage, deletePage, previewLayout, search, listChildren, getTransitions, transitionPage, editTarget, contentTypes, getHistory, revertPage } from './tools.mjs';
+import { fillNewPage, describeBlock, getPage, editPage, movePage, renamePage, deletePage, previewLayout, search, listChildren, getTransitions, transitionPage, editTarget, contentTypes, getHistory, revertPage, copyPage } from './tools.mjs';
 
 const schemas = {
   page: { regions: [{ region: 'items', isObjectList: false, allowedBlocks: ['teaser', 'columns'], defaultBlockType: null, maxLength: null }] },
@@ -899,5 +899,60 @@ describe('get_history and revert_page: undoing a saved change', () => {
     const site = siteWithHistory();
     await expect(revertPage(site, { path: '/about', version: 1, expectedVersion: 'old' })).rejects.toThrow(/changed since it was read/);
     expect(site.reverted).toEqual([]);
+  });
+});
+
+describe('copy_page', () => {
+  function copyingSite(sections) {
+    const calls = [];
+    const parentOf = (p) => p.replace(/\/[^/]+$/, '') || '/';
+    return {
+      calls,
+      async search({ path, limit, start = 0 }) {
+        const items = (sections[path] ?? []).map((p) => ({ path: p }));
+        return { total: items.length, items: items.slice(start, start + limit) };
+      },
+      async copy({ path, target }) {
+        calls.push(['copy', path, target]);
+        const id = path.split('/').pop();
+        const taken = (sections[target] ?? []).some((p) => p.endsWith(`/${id}`));
+        const made = `${target === '/' ? '' : target}/${taken ? `copy_of_${id}` : id}`;
+        sections[target] = [...(sections[target] ?? []), made];
+        return made;
+      },
+      async rename({ path, id, title }) {
+        calls.push(['rename', path, { id, title }]);
+        const renamed = id ? `${parentOf(path)}/${id}` : path;
+        sections[parentOf(path)] = sections[parentOf(path)].map((p) => (p === path ? renamed : p));
+        return renamed;
+      },
+      async order(op) { calls.push(['order', op]); },
+      get: async () => ({ review_state: 'private' }),
+      status: async () => ({ version: 'c1', lockedBy: null }),
+    };
+  }
+
+  it('copies a page beside itself, and says the copy\'s path, version and state', async () => {
+    const site = copyingSite({ '/events': ['/events/fair', '/events/talk'] });
+    expect(await copyPage(site, { path: '/events/fair' })).toEqual({ path: '/events/copy_of_fair', version: 'c1', reviewState: 'private' });
+    expect(site.calls).toEqual([['copy', '/events/fair', '/events']]);
+  });
+
+  it('copies into another section, names it and places it there', async () => {
+    const site = copyingSite({ '/events': ['/events/fair'], '/archive': ['/archive/a', '/archive/b'] });
+    const made = await copyPage(site, { path: '/events/fair', target: '/archive', id: 'fair-2025', title: 'Fair 2025', position: 'first' });
+    expect(made.path).toBe('/archive/fair-2025');
+    expect(site.calls).toEqual([
+      ['copy', '/events/fair', '/archive'],
+      ['rename', '/archive/fair', { id: 'fair-2025', title: 'Fair 2025' }],
+      ['order', { section: '/archive', id: 'fair-2025', delta: -2, subset: ['a', 'b', 'fair-2025'] }],
+    ]);
+  });
+
+  it('refuses a neighbour outside the section before copying anything', async () => {
+    const site = copyingSite({ '/events': ['/events/fair'], '/archive': ['/archive/a'] });
+    await expect(copyPage(site, { path: '/events/fair', target: '/archive', position: { after: '/events/fair' } }))
+      .rejects.toThrow(/\/events\/fair is not in \/archive/);
+    expect(site.calls).toEqual([]);
   });
 });

@@ -1,6 +1,6 @@
 /**
  * window.__inkaSite — the site-wide half of what an MCP server drives in a
- * headless admin: finding pages, moving, ordering, renaming and deleting them, and what
+ * headless admin: finding pages, moving, copying, ordering, renaming and deleting them, and what
  * state they are in and taking them to another.
  * Mounted on every admin page (appExtras), so none of it needs an editor
  * open — an open editor locks its page, and a locked page can't be moved or
@@ -12,7 +12,7 @@ import { useEffect } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import { useHistory } from 'react-router-dom';
 import { searchContent } from '@plone/volto/actions/search/search';
-import { moveContent } from '@plone/volto/actions/clipboard/clipboard';
+import { copyContent, moveContent } from '@plone/volto/actions/clipboard/clipboard';
 import { getHistory, revertHistory } from '@plone/volto/actions/history/history';
 import {
   deleteContent,
@@ -122,6 +122,12 @@ export function siteApi(dispatch, history, token) {
     /** Move `path` into the section `target`; resolves to its new path. */
     async move({ path, target }) {
       const results = await run(`move ${path}`, moveContent([path], target === '/' ? '' : target));
+      return flattenToAppURL(results[0].target);
+    },
+
+    /** Copy `path`, and what it holds, into the section `target` (copy and paste); resolves to the copy's path. */
+    async copy({ path, target }) {
+      const results = await run(`copy ${path}`, copyContent([path], target === '/' ? '' : target));
       return flattenToAppURL(results[0].target);
     },
 

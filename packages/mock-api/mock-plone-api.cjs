@@ -3140,6 +3140,7 @@ app.post('*/@move', (req, res) => {
  * Same shape as @move, but the source stays put and the copy gets a fresh UID
  * so it is a genuinely distinct document rather than a second path onto one.
  */
+let copyCount = 0;
 app.post('*/@copy', (req, res) => {
   const targetPath = req.path.replace('/@copy', '') || '/';
   const sessionId = getSessionId(req);
@@ -3156,13 +3157,30 @@ app.post('*/@copy', (req, res) => {
       error: { type: 'NotFound', message: `No such resource: ${sourcePath}` },
     });
   }
-  const id = sourcePath.split('/').filter(Boolean).pop();
-  const destPath = `${targetPath === '/' ? '' : targetPath}/${id}`;
-  const raw = JSON.parse(JSON.stringify(source));
-  delete raw['@components'];
-  raw.UID = `${raw.UID || id}-copy-${Object.keys(sessionContent[sessionId] || {}).length}`;
-  setSessionContent(sessionId, destPath, raw);
-  uidToPathMap[raw.UID] = destPath;
+  // As Plone pastes: an id already taken in the folder becomes copy_of_<id>,
+  // then copy2_of_<id>…, so a copy never lands on the original.
+  const taken = new Set(allContentPaths(sessionId));
+  const sourceId = sourcePath.split('/').filter(Boolean).pop();
+  const inTarget = (id) => `${targetPath === '/' ? '' : targetPath}/${id}`;
+  let id = sourceId;
+  for (let n = 1; taken.has(inTarget(id)); n += 1) {
+    id = n === 1 ? `copy_of_${sourceId}` : `copy${n}_of_${sourceId}`;
+  }
+  const destPath = inTarget(id);
+  // What the item holds is copied with it, each a distinct object.
+  const subtree = [...taken].filter((p) => p === sourcePath || p.startsWith(`${sourcePath}/`));
+  for (const from of subtree) {
+    const item = from === sourcePath ? source : getContent(from, sessionId);
+    if (!item) continue;
+    const to = `${destPath}${from.slice(sourcePath.length)}`;
+    const raw = JSON.parse(JSON.stringify(item));
+    delete raw['@components'];
+    if (from === sourcePath) raw.id = id;
+    copyCount += 1;
+    raw.UID = `${raw.UID || raw.id}-copy-${copyCount}`;
+    setSessionContent(sessionId, to, raw);
+    uidToPathMap[raw.UID] = to;
+  }
   return res.json([{ source: sourcePath, target: destPath }]);
 });
 

@@ -215,13 +215,33 @@ export async function movePage(site, { path, target, position, expectedVersion }
   const moving = section !== parentOf(path);
   if (position) placeAmong((await pagesIn(site, section)).filter((p) => p !== path), position, section);
   const now = moving ? await site.move({ path, target: section }) : path;
-  if (position) {
-    const pages = await pagesIn(site, section);
-    const from = pages.indexOf(now);
-    const to = placeAmong(pages.filter((p) => p !== now), position, section);
-    if (to !== from) await site.order({ section, id: idOf(now), delta: to - from, subset: pages.map(idOf) });
-  }
+  if (position) await place(site, now, section, position);
   return { path: now };
+}
+
+/** Put the page at `path` where `position` says among the pages of `section`, as the contents view orders them. */
+async function place(site, path, section, position) {
+  const pages = await pagesIn(site, section);
+  const from = pages.indexOf(path);
+  const to = placeAmong(pages.filter((p) => p !== path), position, section);
+  if (to !== from) await site.order({ section, id: idOf(path), delta: to - from, subset: pages.map(idOf) });
+}
+
+/**
+ * Copy a page, and everything inside it, as the editor's copy and paste does:
+ * into its own section (where it gets a new short name) or another, then
+ * optionally give it a short name and title of its own and place it among
+ * that section's pages. The original is untouched. Returns the copy's path,
+ * its version for edit_blocks and its workflow state (a copy may start
+ * private).
+ */
+export async function copyPage(site, { path, target, id, title, position }) {
+  const section = target ?? parentOf(path);
+  if (position) placeAmong(await pagesIn(site, section), position, section);
+  let copy = await site.copy({ path, target: section });
+  if (id || title) copy = await site.rename({ path: copy, id, title });
+  if (position) await place(site, copy, section, position);
+  return { path: copy, version: (await site.status(copy)).version, reviewState: (await site.get(copy)).review_state };
 }
 
 /** Change a page's short name (the last part of its path) and/or its title. Returns its path. */

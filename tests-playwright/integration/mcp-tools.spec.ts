@@ -8,7 +8,7 @@ import { AdminUIHelper } from '../helpers/AdminUIHelper';
 import { freshPage, tokenFor, whileEditing } from '../helpers/otherUser';
 import { agentOn, waitForAgent, discardEdits, createPage, siteOn, openAdmin } from '../../packages/inka-mcp/adminDriver.mjs';
 import {
-  getPage, editPage, listBlockTypes, describeBlock, search, listChildren, fillNewPage, movePage, renamePage, deletePage, getTransitions, transitionPage, getHistory, revertPage,
+  getPage, editPage, listBlockTypes, describeBlock, search, listChildren, fillNewPage, movePage, copyPage, renamePage, deletePage, getTransitions, transitionPage, getHistory, revertPage,
   findUndeclaredFields,
 } from '../../packages/inka-mcp/tools.mjs';
 import { frontendUrlOf, previewDraft } from '../../packages/inka-mcp/preview.mjs';
@@ -343,6 +343,29 @@ test.describe('MCP tools', () => {
     expect(after.map((entry: any) => entry.version)).toEqual([3, 2, 1, 0]);
     await revertPage(site, { path, version: 2, expectedVersion: reverted.version });
     expect(await titleOf()).toBe('Third title');
+  });
+
+  test('copy_page copies a page beside itself, or into another section named and placed', async ({ page }) => {
+    test.setTimeout(90000);
+    const helper = new AdminUIHelper(page);
+    await helper.login();
+    await page.goto(`${helper.adminUrl}/contents`);
+    await page.waitForFunction(() => !!(window as any).__inkaSite);
+    const site = siteOn(page);
+    const token = (await page.context().cookies()).find((c) => c.name === 'auth_token')!.value;
+    const original = await freshPage(token);
+    const id = original.split('/').pop();
+
+    const beside = await copyPage(site, { path: original });
+    expect(beside.path).toBe(`/_test_data/copy_of_${id}`);
+    expect((await site.get(beside.path)).title).toBe('A page of its own');
+    expect((await site.get(original)).title).toBe('A page of its own');
+
+    const section = '/_test_data/accordion-test-page';
+    const named = await copyPage(site, { path: original, target: section, id: 'its-copy', title: 'Its copy', position: 'first' });
+    expect(named.path).toBe(`${section}/its-copy`);
+    expect((await site.get(named.path)).title).toBe('Its copy');
+    expect((await listChildren(site, { path: section })).items[0].path).toBe(named.path);
   });
 
   test('move_page, rename_page and delete_page, version-checked', async ({ page, urls }) => {

@@ -280,6 +280,7 @@ export function siteOn(page) {
     status: (path) => call('status', path),
     move: (op) => call('move', op),
     order: (op) => call('order', op),
+    copy: (op) => call('copy', op),
     rename: (op) => call('rename', op),
     remove: (path) => call('remove', path),
     linksInto: (path) => call('linksInto', path),
