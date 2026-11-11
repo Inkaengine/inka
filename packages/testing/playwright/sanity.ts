@@ -29,7 +29,7 @@
 import { test as playwrightTest, type FrameLocator } from '@playwright/test';
 import { test as base, expect } from './fixtures';
 import { AdminUIHelper } from './AdminUIHelper';
-import { verifyBlockRendering, revealBlock, checkEveryBlockOnPage } from './BlockVerificationHelper';
+import { verifyBlockRendering, revealBlock, checkEveryBlockOnPage, blocksOnPage } from './BlockVerificationHelper';
 import { verifyPageIntegrity } from './PageIntegrityHelper';
 import { drainFieldCoverage } from '../field-coverage';
 import { measureTextStyles, recordTextStyles, slateStyles, drainStyleCoverage } from '../text-style-coverage';
@@ -510,6 +510,33 @@ export function defineBlockSanityTests(options: SanityOptions): void {
         }
 
         const iframe = helper.getIframe();
+
+        // A test that owns its page does a PAGE's work, not a block's, and a
+        // consumer's timeout is set for a block ("a block renders in ~1-2s or
+        // it's broken" -- and that is right for the other tests). One
+        // nominated test per page carries checkEveryBlockOnPage, so on a dense
+        // page -- a docs page demonstrating every table variant -- it alone
+        // ran ~20s against a 20s budget while its siblings took 2-3s, and
+        // tipped over whenever the machine was slower. Each block is a handful
+        // of in-page reads, so the budget grows with the page rather than
+        // every consumer having to set one loose enough for its densest page.
+        //
+        // Taken HERE, not at the sweep: this test's own block is drawn and
+        // verified first, on that same dense page, so a budget granted after
+        // that is granted after most of it has been spent.
+        if (checksItsPage.has(block)) {
+          const toCheck = await blocksOnPage(iframe, block.blockId);
+          // 250ms a block, capped: the measured cost is well under that (a
+          // page of 291 blocks sweeps in a few seconds once the per-block
+          // round trip is gone), and the cap keeps a broken page failing in
+          // about a minute and a half rather than minutes.
+          const grant = Math.min(toCheck * 250, 120_000);
+          test.setTimeout(testInfo.timeout + grant);
+          test.info().annotations.push({
+            type: 'page-sweep',
+            description: `checks ${toCheck} more block(s) on ${block.pagePath}; budget +${grant}ms`,
+          });
+        }
 
         await verifyBlockRendering(page, iframe, block.blockId, block.blockData, {
           isListing: block.isListing,

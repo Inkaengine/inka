@@ -1360,7 +1360,40 @@ export async function verifyPathMapCoverage(
  * loaded image to judge. Returns one line per failing check, naming every
  * block it failed on — a broken image in a nested block fails its ancestors'
  * checks too, so one finding lists them together instead of repeating.
+ *
+ * WHICH blocks the page draws is read ONCE, in the page, with the pathMap.
+ * Asking `locator.count()` per block instead cost a round trip each for a
+ * page's worth of blocks before any checking began, which is what made the
+ * test that owns a dense page (a docs page of table variants) sit at ~20s
+ * and tip over a 20s budget. Every such failure named `locator.count`, on a
+ * line whose only job was to skip the block.
  */
+/**
+ * How many blocks the page drew that checkEveryBlockOnPage would check: the
+ * sweep's size, for a caller that has to budget time for it (sanity.ts gives
+ * the test that owns the sweep a budget that grows with the page). Counted
+ * the same way the sweep selects, in one in-page read.
+ */
+export async function blocksOnPage(iframe: FrameLocator, verifiedUid: string): Promise<number> {
+  return iframe.locator('body').evaluate((_b, sampleUid) => {
+    const b = (window as any).__hydraBridge;
+    if (!b?.blockPathMap) throw new Error('blocksOnPage: __hydraBridge.blockPathMap not available');
+    const pathMap = b.blockPathMap;
+    const underSample = (uid: string): boolean => {
+      for (let cur: string | undefined = uid; cur; cur = pathMap[cur]?.parentId) {
+        if (cur === sampleUid) return true;
+      }
+      return false;
+    };
+    const onScreen = new Set(
+      [...document.querySelectorAll('[data-block-uid]')].map((el) => el.getAttribute('data-block-uid')),
+    );
+    return Object.keys(pathMap).filter(
+      (uid) => !uid.startsWith('_') && !underSample(uid) && onScreen.has(uid),
+    ).length;
+  }, verifiedUid);
+}
+
 export async function checkEveryBlockOnPage(
   iframe: FrameLocator,
   verifiedUid: string,
@@ -1380,8 +1413,14 @@ export async function checkEveryBlockOnPage(
       }
       return false;
     };
+    // The uids the page actually drew, from the same read: a block the page
+    // does not draw is skipped, and asking the page about it one block at a
+    // time was the cost this read replaces.
+    const onScreen = new Set(
+      [...document.querySelectorAll('[data-block-uid]')].map((el) => el.getAttribute('data-block-uid')),
+    );
     return Object.keys(pathMap)
-      .filter((uid) => !uid.startsWith('_') && !underSample(uid))
+      .filter((uid) => !uid.startsWith('_') && !underSample(uid) && onScreen.has(uid))
       .map((uid) => ({ id: uid, data: b.getBlockData?.(uid) || null }))
       .filter((s: { id: string; data: unknown }) => !!s.data && typeof s.data === 'object');
   }, verifiedUid) as SubBlock[];
@@ -1390,7 +1429,6 @@ export async function checkEveryBlockOnPage(
   for (const { id, data } of blocks) {
     if (outsideContract((data as { '@type'?: string })['@type'] ?? '')) continue;
     const drawn = iframe.locator(`[data-block-uid="${id}"]`);
-    if ((await drawn.count()) === 0) continue;
     try {
       await checkEditAnnotations(drawn.first(), data);
     } catch (e) {
