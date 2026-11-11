@@ -156,6 +156,42 @@ describe('@querystring-search', () => {
   // path, relativePath. One site stores `string.path` in 9 of its 12 path
   // criteria, so a mock that knows only absolutePath leaves those listings
   // unfiltered.
+  // A real Plone 6.2 has a Description index, and its @querystring gives it
+  // exactly one operation: string.contains. It is a ZCTextIndex like Title, so
+  // it matches whole words and takes a trailing * for a prefix.
+  //
+  // Until this branch existed the criterion was unapplied, which used to mean
+  // "return the whole collection" and now means a 400 -- so a site with a
+  // Description search (one does) could not be served at all.
+  it('Description filters on whole words, and a prefix with *', async () => {
+    const found = async (v) => {
+      const data = await querystringSearch('/', {
+        query: [{ i: 'Description', o: 'plone.app.querystring.operation.string.contains', v }],
+        metadata_fields: ['id', 'description'],
+        b_start: 0,
+        b_size: 200,
+      });
+      return data.items.map((i) => i.id).sort();
+    };
+    const all = await querystringSearch('/', { query: [], metadata_fields: ['id', 'description'], b_start: 0, b_size: 200 });
+    const everything = all.items.map((i) => i.id).sort();
+
+    // Something in the fixture has a description; the filter narrows to it.
+    const described = all.items.filter((i) => (i.description || '').trim());
+    assert.ok(described.length > 0, 'the fixture has a described item to search for');
+    const word = described[0].description.split(/\s+/).find((w) => /^[A-Za-z]{4,}$/.test(w));
+    assert.ok(word, `a searchable word in ${JSON.stringify(described[0].description)}`);
+
+    const hits = await found(word);
+    assert.ok(hits.includes(described[0].id), `${word} finds the item whose description has it`);
+    assert.notDeepStrictEqual(hits, everything, `${word} is a filter, not a pass-through`);
+
+    // Whole words, as the index matches: half a word finds nothing, with * it does.
+    const half = word.slice(0, Math.max(2, word.length - 2));
+    assert.deepStrictEqual(await found(half), [], `${half} is not a whole word`);
+    assert.ok((await found(`${half}*`)).includes(described[0].id), `${half}* is a prefix`);
+  });
+
   it('string.path filters exactly as absolutePath does', async () => {
     const forOperation = async (o) => {
       const data = await querystringSearch('/', {
