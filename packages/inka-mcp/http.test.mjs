@@ -73,7 +73,7 @@ async function instances(count, make) {
   })));
   const publicUrl = `http://127.0.0.1:${ports[0]}`;
   return ports.map((port) => {
-    const { app, close } = hostedServer({ adminUrl: ADMIN, publicUrl, poolSize: 1, pageIdleMs: 60_000, ...make(port) });
+    const { app, close } = hostedServer({ adminUrl: ADMIN, publicUrl, poolSize: 1, pageIdleMs: 60_000, reporting: null, ...make(port) });
     const listening = createServer(app).listen(port, '127.0.0.1');
     running.push({ listening, close });
     return `http://127.0.0.1:${port}`;
@@ -295,6 +295,21 @@ describe('hostedServer', () => {
   it('refuses to start without a code store', () => {
     expect(() => hostedServer({ adminUrl: ADMIN, publicUrl: 'http://127.0.0.1:1', secret: randomBytes(32).toString('base64'), poolSize: 1, pageIdleMs: 60_000 }))
       .toThrow(/codes/);
+  });
+
+  // As for pictures and media: a deployment says where errors go, `null`
+  // saying nowhere, rather than silently reporting nothing by default.
+  it('wants to be told where a tool error is reported, or that it is not', () => {
+    expect(() => hostedServer({
+      adminUrl: ADMIN,
+      publicUrl: 'http://127.0.0.1:1',
+      secret: randomBytes(32).toString('base64'),
+      codes: localCodes({ instance: null, now: Date.now }),
+      pictures: null,
+      media: null,
+      poolSize: 1,
+      pageIdleMs: 60_000,
+    })).toThrow(/reporting/);
   });
 
   // DNS rebinding: a page on another site whose name resolves here can't
