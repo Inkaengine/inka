@@ -307,8 +307,12 @@ export function createServer(adminFor, { pictures, media, localFiles, userOf }) 
   server.registerTool('delete_page', {
     title: 'Delete a page',
     annotations: { destructiveHint: true },
-    description: 'Delete a page and everything inside it. This cannot be undone here.',
-    inputSchema: z.object({ path: z.string().describe('The page to delete'), expectedVersion: version }),
+    description: 'Delete a page and everything inside it. This cannot be undone here. If other pages link to it or to anything in it, nothing is deleted and the refusal names those pages, as the editor warns a person: tell the person, and delete with "breakLinks" only if they still want it gone. Returns how many items went with it ("alsoDeleted") and the pages left with broken links ("brokenLinksOn").',
+    inputSchema: z.object({
+      path: z.string().describe('The page to delete'),
+      expectedVersion: version,
+      breakLinks: z.boolean().optional().describe('Delete even though other pages link to it, leaving those links broken'),
+    }),
   }, async (args, extra) => asResult(await adminFor(extra).withSite((site) => deletePage(site, args))));
 
   server.registerTool('get_transitions', {

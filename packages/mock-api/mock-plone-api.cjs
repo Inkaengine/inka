@@ -4627,6 +4627,59 @@ app.post(/.*\/@workflow\/[^/]+$/, (req, res) => {
 });
 
 /**
+ * GET /@linkintegrity?uids=… — what deleting each item would break, as
+ * plone.restapi answers it: per item, the pages outside it that link to it or
+ * to anything inside it ("breaches", each with its @id, title and uid), and
+ * how many items it holds ("items_total"). A link is a string naming one of
+ * those items: by path, by this site's URL, or by UID (resolveuid). Plone
+ * keeps links by UID, so a move or rename breaks none; only a delete does.
+ */
+app.get(/.*\/@linkintegrity$/, (req, res) => {
+  const sessionId = getSessionId(req);
+  const baseUrl = `http://localhost:${PORT}`;
+  const uids = [].concat(req.query.uids || []);
+  const paths = allContentPaths(sessionId);
+  const raw = (p) => rawContentForComponents(p, sessionId);
+  // As @search and the content GET name an item that has no UID of its own.
+  const uidOf = (p) => raw(p) && (raw(p).UID || `${raw(p).id || p.split('/').pop()}-uid`);
+  const byUid = new Map(paths.map((p) => [uidOf(p), p]).filter(([uid]) => uid));
+  const results = uids.map((uid) => {
+    const path = byUid.get(uid);
+    if (!path) return null;
+    const inside = paths.filter((p) => p === path || p.startsWith(`${path}/`));
+    const doomedPaths = new Set(inside);
+    const doomedUids = new Set(inside.map(uidOf).filter(Boolean));
+    const names = (value) => {
+      const resolved = value.match(/resolveuid\/([^/?#"]+)/);
+      if (resolved) return doomedUids.has(resolved[1]);
+      const local = value.replace(/^https?:\/\/[^/]+/, '').replace('/++api++', '').replace(/\/+$/, '');
+      return local.startsWith('/') && doomedPaths.has(local);
+    };
+    const linksIn = (value, key) => {
+      if (key === 'parent' || key === '@components') return false;
+      if (typeof value === 'string') return names(value);
+      if (Array.isArray(value)) return value.some((v) => linksIn(v));
+      if (value && typeof value === 'object') return Object.entries(value).some(([k, v]) => linksIn(v, k));
+      return false;
+    };
+    const breaches = paths
+      .filter((p) => !doomedPaths.has(p))
+      .filter((p) => {
+        const content = raw(p);
+        return content && Object.entries(content).some(([k, v]) => k !== '@id' && k !== 'UID' && linksIn(v, k));
+      })
+      .map((p) => ({ '@id': `${baseUrl}${p}`, title: raw(p).title, uid: uidOf(p) }));
+    return {
+      '@id': `${baseUrl}${path}`,
+      title: raw(path).title,
+      items_total: inside.length - 1,
+      breaches,
+    };
+  });
+  res.json(results.filter(Boolean));
+});
+
+/**
  * GET /@history/:version — a content SNAPSHOT: what the page held before edit
  * N+1 (or current for the newest). The compare view renders these in frontend
  * iframes.

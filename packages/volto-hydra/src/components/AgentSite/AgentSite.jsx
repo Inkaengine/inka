@@ -13,7 +13,13 @@ import { useDispatch, useSelector } from 'react-redux';
 import { useHistory } from 'react-router-dom';
 import { searchContent } from '@plone/volto/actions/search/search';
 import { moveContent } from '@plone/volto/actions/clipboard/clipboard';
-import { deleteContent, getContent, orderContent, updateContent } from '@plone/volto/actions/content/content';
+import {
+  deleteContent,
+  getContent,
+  linkIntegrityCheck,
+  orderContent,
+  updateContent,
+} from '@plone/volto/actions/content/content';
 import { flattenToAppURL } from '@plone/volto/helpers/Url/Url';
 import { lockedBy } from './lockedBy';
 import { contentState } from './contentState';
@@ -130,6 +136,23 @@ export function siteApi(dispatch, history, token) {
     async rename({ path, id, title }) {
       await run(`rename ${path}`, updateContent(path, { ...(id && { id }), ...(title && { title }) }));
       return id ? `${path.replace(/\/[^/]+\/?$/, '')}/${id}` : path;
+    },
+
+    /**
+     * What deleting `path` would break, as the editor's delete dialog asks
+     * (@linkintegrity): the pages outside it that link to it or to anything
+     * in it, and how many items it holds.
+     */
+    async linksInto(path) {
+      const { UID } = await run(`get ${path}`, getContent(path, null, 'inka-agent-links'));
+      const [result] = await run(`links into ${path}`, linkIntegrityCheck([UID]));
+      return {
+        holds: result?.items_total ?? 0,
+        linkedFrom: (result?.breaches ?? []).map((source) => ({
+          path: flattenToAppURL(source['@id']),
+          title: source.title,
+        })),
+      };
     },
 
     /** Delete `path`. */

@@ -816,3 +816,36 @@ describe('move_page: where a page goes in its section', () => {
       .rejects.toThrow(/needs a "target".*"position"/);
   });
 });
+
+describe('delete_page: links it would break', () => {
+  function siteLinked(linkedFrom, holds = 0) {
+    const removed = [];
+    return {
+      removed,
+      status: async () => ({ version: 'v1', lockedBy: null }),
+      draftOf: async () => null,
+      linksInto: async () => ({ linkedFrom, holds }),
+      remove: async (path) => { removed.push(path); },
+    };
+  }
+
+  it('refuses, naming the pages that link to it, and deletes nothing', async () => {
+    const site = siteLinked([{ path: '/home', title: 'Home' }, { path: '/news/launch', title: 'Launch' }]);
+    await expect(deletePage(site, { path: '/events', expectedVersion: 'v1' }))
+      .rejects.toThrow(/would break links on 2 pages: Home \(\/home\), Launch \(\/news\/launch\).*breakLinks/s);
+    expect(site.removed).toEqual([]);
+  });
+
+  it('deletes when told to break them, and says where they were', async () => {
+    const site = siteLinked([{ path: '/home', title: 'Home' }], 3);
+    expect(await deletePage(site, { path: '/events', expectedVersion: 'v1', breakLinks: true })).toEqual({
+      deleted: '/events', alsoDeleted: 3, brokenLinksOn: [{ path: '/home', title: 'Home' }],
+    });
+    expect(site.removed).toEqual(['/events']);
+  });
+
+  it('deletes a page nothing links to, saying what went with it', async () => {
+    const site = siteLinked([], 2);
+    expect(await deletePage(site, { path: '/old', expectedVersion: 'v1' })).toEqual({ deleted: '/old', alsoDeleted: 2 });
+  });
+});

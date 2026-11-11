@@ -292,6 +292,30 @@ test.describe('MCP tools', () => {
     expect(await order()).toEqual([before[0], before[1], last, ...before.slice(2, -1)]);
   });
 
+  test('delete_page names the pages it would leave with broken links, and deletes only when told to', async ({ page, urls }) => {
+    test.setTimeout(90000);
+    const helper = new AdminUIHelper(page);
+    await helper.login();
+    await page.goto(`${helper.adminUrl}/contents`);
+    await page.waitForFunction(() => !!(window as any).__inkaSite);
+    const site = siteOn(page);
+    const token = (await page.context().cookies()).find((c) => c.name === 'auth_token')?.value;
+    const status = async (path: string) => (await fetch(`${urls.mockApi}${path}`, {
+      headers: { Accept: 'application/json', Authorization: `Bearer ${token}` },
+    })).status;
+    const target = '/_test_data/target-page';
+
+    await expect(deletePage(site, { path: target, expectedVersion: (await site.status(target)).version }))
+      .rejects.toThrow(/would break links on 3 pages: .*\(\/_test_data\/test-page\)/);
+    expect(await status(target)).toBe(200);
+
+    const deleted = await deletePage(site, { path: target, expectedVersion: (await site.status(target)).version, breakLinks: true });
+    expect(deleted.brokenLinksOn.map((p: any) => p.path).sort()).toEqual([
+      '/_test_data/field-rules-page', '/_test_data/optional-fields-page', '/_test_data/test-page',
+    ]);
+    expect(await status(target)).toBe(404);
+  });
+
   test('move_page, rename_page and delete_page, version-checked', async ({ page, urls }) => {
     test.setTimeout(90000);
     const helper = new AdminUIHelper(page);

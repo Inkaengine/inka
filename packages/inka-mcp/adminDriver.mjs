@@ -282,6 +282,7 @@ export function siteOn(page) {
     order: (op) => call('order', op),
     rename: (op) => call('rename', op),
     remove: (path) => call('remove', path),
+    linksInto: (path) => call('linksInto', path),
     state: (path) => call('state', path),
     stateForms: (path) => call('stateForms', path),
     transition: (op) => call('transition', op),

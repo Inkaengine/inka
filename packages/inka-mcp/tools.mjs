@@ -232,12 +232,24 @@ export async function renamePage(site, { path, id, title, expectedVersion }) {
   return { path: await site.rename({ path, id, title }) };
 }
 
-/** Delete a page. */
-export async function deletePage(site, { path, expectedVersion }) {
+/**
+ * Delete a page and what it holds. Links to them from other pages would be
+ * left pointing at nothing, so, as the editor's delete dialog does, it says
+ * which pages those are, and deletes only when told to break them.
+ */
+export async function deletePage(site, { path, expectedVersion, breakLinks = false }) {
   await refuseWithDraft(site, path);
   await checkVersion(site, path, expectedVersion);
+  const { linkedFrom, holds } = await site.linksInto(path);
+  if (linkedFrom.length && !breakLinks) {
+    const pages = linkedFrom.map((page) => `${page.title} (${page.path})`).join(', ');
+    throw new Error(
+      `Deleting ${path}${holds ? ` and the ${holds} item(s) in it` : ''} would break links on ${linkedFrom.length} page${linkedFrom.length === 1 ? '' : 's'}: ${pages}. `
+      + 'Nothing was deleted. Tell the person; change those links first, or delete with breakLinks if they still want it gone.',
+    );
+  }
   await site.remove(path);
-  return { deleted: path };
+  return { deleted: path, ...(holds && { alsoDeleted: holds }), ...(linkedFrom.length && { brokenLinksOn: linkedFrom }) };
 }
 
 /**
