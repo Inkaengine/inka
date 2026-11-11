@@ -157,17 +157,23 @@ export function contentPath(url, apiUrl) {
  *   two date bounds on one index, or several paths → kept: Plone merges those
  *     itself (a "from" and a "to" make a range; paths are searched together)
  *
+ * An "any of" left with no values means the criteria together match nothing
+ * (a facet outside what the listing's own query allows). No query can say so:
+ * to the catalog an empty "any of" is no restriction at all. So the answer is
+ * `null`, no query, and the caller lists nothing without asking.
+ *
  * Anything else on an index that already has a criterion is an error, naming
- * it, rather than one criterion silently replacing another. So is an "any of"
- * left with no values: to the catalog that is no restriction at all.
+ * it, rather than one criterion silently replacing another.
  *
  * @param {...Array<{i: string, o: string, v?: unknown}>} queries
- * @returns {Array<{i: string, o: string, v?: unknown}>} a new list; the inputs are not changed
+ * @returns {Array<{i: string, o: string, v?: unknown}>|null} a new list (the
+ *   inputs are not changed), or null when nothing can match
  */
 const ANY = 'plone.app.querystring.operation.selection.any';
 const NONE = 'plone.app.querystring.operation.selection.none';
 const DATE_BOUND = /\.date\.(largerThan|lessThan|largerThanRelativeDate|lessThanRelativeDate)$/;
 
+const MATCHES_NOTHING = Symbol('matches nothing');
 const same = (a, b) => a.o === b.o && JSON.stringify(a.v) === JSON.stringify(b.v);
 const values = (c) => (Array.isArray(c.v) ? c.v : c.v === undefined ? [] : [c.v]);
 
@@ -190,12 +196,7 @@ function combineTwo(kept, next) {
         'Plone keeps only one criterion per index, and these cannot be combined',
     );
   }
-  if (any.length === 0) {
-    throw new Error(
-      `combineQueries: index "${i}" allows no value once combined (${JSON.stringify(kept.v)} with ${JSON.stringify(next.v)}); ` +
-        'an empty "any of" would match everything',
-    );
-  }
+  if (any.length === 0) return MATCHES_NOTHING;
   return { i, o: ANY, v: any };
 }
 
@@ -216,7 +217,9 @@ function combineQueries(...queries) {
     if (onIndex.length > 1) {
       throw new Error(`combineQueries: index "${i}" already has ${onIndex.length} criteria`);
     }
-    out[out.indexOf(onIndex[0])] = combineTwo(onIndex[0], criterion);
+    const combined = combineTwo(onIndex[0], criterion);
+    if (combined === MATCHES_NOTHING) return null;
+    out[out.indexOf(onIndex[0])] = combined;
   }
   return out;
 }
@@ -296,7 +299,9 @@ export function searchSort(text, sortOn, sortOrder) {
  *   matches (it needs a SearchableText; without one this throws).
  * @param {string} [extraCriteria.sort_order] - Override sort order
  * @param {string|string[]} [extraCriteria['facet.*']] - Facet filters (e.g., 'facet.portal_type': ['Document'])
- * @returns {Object} Request body for POST to @querystring-search
+ * @returns {Object|null} Request body for POST to @querystring-search, or
+ *   null when the criteria together can match nothing (a facet value outside
+ *   what the listing's own query allows): list nothing, ask nothing.
  */
 export function buildQuerystringSearchBody(
   queryConfig,
@@ -381,6 +386,8 @@ export function buildQuerystringSearchBody(
   // One criterion per index: a facet on an index the listing's own query
   // already restricts is combined with it, not appended, which would make
   // Plone keep only the facet (combineQueries).
+  // A facet outside the listing's own criterion matches nothing: the listing's
+  // query is the base, and a facet narrows within it.
   query = combineQueries(query);
 
   // Default sort: folder order for unconfigured listings, effective date
@@ -398,6 +405,7 @@ export function buildQuerystringSearchBody(
       'buildQuerystringSearchBody: relevance (sort_on: null) ranks SearchableText matches, and no SearchableText was given',
     );
   }
+  if (query === null) return null;
   const explicitSortOn = extraCriteria.sort_on || queryConfig?.sort_on;
   const defaultSort = hasQuery ? 'effective' : 'getObjPositionInParent';
   const defaultOrder = hasQuery && !explicitSortOn ? 'descending' : 'ascending';
@@ -1175,6 +1183,7 @@ export function ploneFetchItems({
       },
       extraCriteria,
     );
+    if (body === null) return { items: [], total: 0 };
 
     // This folder's children in folder order, and nothing else, is the
     // question plone.restapi answers for every folderish page: its content
