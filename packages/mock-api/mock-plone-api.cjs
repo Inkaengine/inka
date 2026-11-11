@@ -748,13 +748,14 @@ function matchRawSearch(searchTerm, item, blocksText = '') {
 }
 
 /**
- * The Title index (ZCTextIndex) asked on its own — `@search?Title=`, or a
- * `Title` criterion, which plone.app.querystring passes to the catalog
+ * A text index (ZCTextIndex: Title, Description) asked on its own —
+ * `@search?Title=`, or a `Title` or `Description` criterion, which
+ * plone.app.querystring passes to the catalog
  * un-munged: every word must be a whole word of the title, unless it ends in
  * `*`, which makes it a prefix. Checked against Plone 6.2: `Comp` finds
  * nothing, `Comp*` finds "Complaint…", `omplain` finds nothing.
  */
-function matchTitleIndex(query, title) {
+function matchTextIndex(query, title) {
   const words = String(title || '').toLowerCase().split(/\W+/).filter(Boolean);
   return String(query)
     .toLowerCase()
@@ -5632,7 +5633,12 @@ app.post('*/@querystring-search', (req, res) => {
       // was dropped, so the endpoint returned the whole collection and any
       // test asserting "the filter found something" passed without filtering.
       if (value) {
-        allItems = allItems.filter((item) => matchTitleIndex(value, item.title));
+        allItems = allItems.filter((item) => matchTextIndex(value, item.title));
+      }
+    } else if (index === 'Description' && operation.includes('string.contains')) {
+      // Description is a ZCTextIndex too, asked the same way as Title.
+      if (value) {
+        allItems = allItems.filter((item) => matchTextIndex(value, item.description));
       }
     } else if (
       operation === 'plone.app.querystring.operation.date.largerThan' ||
@@ -5824,7 +5830,7 @@ app.get('*/@search', (req, res) => {
       .filter((content) => !searchableText || matchSearchableText(searchableText, content, blocksSearchableText(content.blocks)))
       .map((content) => formatSearchItem(content, baseUrl));
     if (titleQuery) {
-      items = items.filter((item) => matchTitleIndex(titleQuery, item.title));
+      items = items.filter((item) => matchTextIndex(titleQuery, item.title));
     }
     // Filter by portal_type if specified
     if (portalType) {

@@ -222,6 +222,33 @@ describe('@querystring-search', () => {
     assert.match(JSON.stringify(body), /inventedPath|path/);
   });
 
+  // Description is a ZCTextIndex, as Title is, and a criterion on it is passed
+  // to the catalog un-munged: whole words, unless one ends in `*`. A listing
+  // that filters on it was refused with a 400 once an unapplied criterion
+  // stopped being a warning, and its page drew no blocks.
+  it('a Description criterion finds the items whose description has that word', async () => {
+    const descriptionContains = (v) =>
+      querystringSearch('/', {
+        query: [
+          { i: 'path', o: 'plone.app.querystring.operation.string.absolutePath', v: '/_test_data' },
+          { i: 'Description', o: 'plone.app.querystring.operation.string.contains', v },
+        ],
+        metadata_fields: ['id', 'description'],
+        b_size: 200,
+      });
+    const paths = (data) => data.items.map((i) => new URL(i['@id']).pathname);
+
+    const found = await descriptionContains('accordion');
+    assert.ok(paths(found).includes('/_test_data/accordion-test-page'), JSON.stringify(paths(found)));
+    assert.ok(paths(found).includes('/_test_data/accordion-nested-page'), JSON.stringify(paths(found)));
+    for (const item of found.items) {
+      assert.match(item.description, /\baccordion\b/i, new URL(item['@id']).pathname);
+    }
+
+    assert.deepStrictEqual(paths(await descriptionContains('accordio')), [], 'a part of a word is not a word');
+    assert.deepStrictEqual(paths(await descriptionContains('accordio*')).sort(), paths(found).sort());
+  });
+
   it('absolutePath filter returns items under that path', async () => {
     const data = await querystringSearch('/', {
       query: [
