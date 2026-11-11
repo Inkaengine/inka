@@ -1,0 +1,1 @@
+The admin image installs the admin and what it depends on, not the whole workspace. It used to carry the MCP server and its Express 5, and an unfrozen build (one with `EXTRA_PLUGINS`) could load that Express for the admin, which then exited on start.
