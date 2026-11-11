@@ -280,10 +280,15 @@ export function createServer(adminFor, { pictures, media, localFiles, userOf }) 
 
   server.registerTool('move_page', {
     title: 'Move a page',
-    description: 'Move a page (and everything inside it) into another section. Returns its new path.',
+    description: 'Move a page (and everything inside it) into another section, and/or change where it comes among its section\'s pages: that order is the order of the section\'s menu, as list_children shows it. Give "target" to move it, "position" to place it, or both. Returns its path.',
     inputSchema: z.object({
       path: z.string().describe('The page to move, e.g. /news/old-item'),
-      target: z.string().describe('The section to move it into, e.g. /archive'),
+      target: z.string().optional().describe('The section to move it into, e.g. /archive'),
+      position: z.union([
+        z.enum(['first', 'last']),
+        z.object({ before: z.string() }).strict(),
+        z.object({ after: z.string() }).strict(),
+      ]).optional().describe('Where it goes among the pages of its section (the one it is moved into, if "target" is given): "first", "last", {"before": "<path>"} or {"after": "<path>"} of a page in that section'),
       expectedVersion: version,
     }),
   }, async (args, extra) => asResult(await adminFor(extra).withSite((site) => movePage(site, args))));

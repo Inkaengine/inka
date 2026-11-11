@@ -272,6 +272,26 @@ test.describe('MCP tools', () => {
     expect(await gone(draftAt)).toBe(404);
   });
 
+  test('move_page places a page among its section\'s pages, as the contents view orders them', async ({ page }) => {
+    test.setTimeout(90000);
+    const helper = new AdminUIHelper(page);
+    await helper.login();
+    await page.goto(`${helper.adminUrl}/contents`);
+    await page.waitForFunction(() => !!(window as any).__inkaSite);
+    const site = siteOn(page);
+    const order = async () => (await listChildren(site, { path: '/_test_data', limit: 100 })).items.map((item: any) => item.path);
+
+    const before = await order();
+    expect(before.length, 'the section has pages to order').toBeGreaterThan(2);
+    const last = before[before.length - 1];
+    await movePage(site, { path: last, position: 'first', expectedVersion: (await site.status(last)).version });
+    expect(await order()).toEqual([last, ...before.slice(0, -1)]);
+
+    // …and next to a named page.
+    await movePage(site, { path: last, position: { after: before[1] }, expectedVersion: (await site.status(last)).version });
+    expect(await order()).toEqual([before[0], before[1], last, ...before.slice(2, -1)]);
+  });
+
   test('move_page, rename_page and delete_page, version-checked', async ({ page, urls }) => {
     test.setTimeout(90000);
     const helper = new AdminUIHelper(page);

@@ -735,3 +735,84 @@ describe('contentTypes', () => {
     });
   });
 });
+
+describe('move_page: where a page goes in its section', () => {
+  /** A site whose sections hold pages in order; `order` is the admin's reorder (Volto's orderContent). */
+  function orderedSite(sections) {
+    const calls = [];
+    const parentOf = (p) => p.replace(/\/[^/]+$/, '') || '/';
+    const site = {
+      calls,
+      status: async () => ({ version: 'v1', lockedBy: null }),
+      draftOf: async () => null,
+      async search({ path, depth, limit, start = 0 }) {
+        expect(depth).toBe(1);
+        const items = (sections[path] ?? []).map((p) => ({ path: p }));
+        return { total: items.length, items: items.slice(start, start + limit) };
+      },
+      async move({ path, target }) {
+        calls.push(['move', path, target]);
+        const moved = `${target === '/' ? '' : target}/${path.split('/').pop()}`;
+        sections[parentOf(path)] = sections[parentOf(path)].filter((p) => p !== path);
+        sections[target] = [...(sections[target] ?? []), moved];
+        return moved;
+      },
+      async order(op) { calls.push(['order', op]); },
+    };
+    return site;
+  }
+  const about = () => ({ '/about': ['/about/team', '/about/history', '/about/contact', '/about/jobs'] });
+
+  it('puts a page first or last among its section\'s pages, as the contents view reorders', async () => {
+    let site = orderedSite(about());
+    expect(await movePage(site, { path: '/about/contact', position: 'first', expectedVersion: 'v1' })).toEqual({ path: '/about/contact' });
+    expect(site.calls).toEqual([['order', { section: '/about', id: 'contact', delta: -2, subset: ['team', 'history', 'contact', 'jobs'] }]]);
+
+    site = orderedSite(about());
+    await movePage(site, { path: '/about/team', position: 'last', expectedVersion: 'v1' });
+    expect(site.calls).toEqual([['order', { section: '/about', id: 'team', delta: 3, subset: ['team', 'history', 'contact', 'jobs'] }]]);
+  });
+
+  it('puts a page before or after another page in its section', async () => {
+    let site = orderedSite(about());
+    await movePage(site, { path: '/about/jobs', position: { before: '/about/history' }, expectedVersion: 'v1' });
+    expect(site.calls[0][1]).toMatchObject({ id: 'jobs', delta: -2 });
+
+    site = orderedSite(about());
+    await movePage(site, { path: '/about/team', position: { after: '/about/contact' }, expectedVersion: 'v1' });
+    expect(site.calls[0][1]).toMatchObject({ id: 'team', delta: 2 });
+  });
+
+  it('asks nothing of the site when the page is already there', async () => {
+    const site = orderedSite(about());
+    await movePage(site, { path: '/about/history', position: { after: '/about/team' }, expectedVersion: 'v1' });
+    expect(site.calls).toEqual([]);
+  });
+
+  it('moves into another section and places it there', async () => {
+    const site = orderedSite({ ...about(), '/archive': ['/archive/2024', '/archive/2025'] });
+    expect(await movePage(site, { path: '/about/jobs', target: '/archive', position: 'first', expectedVersion: 'v1' })).toEqual({ path: '/archive/jobs' });
+    expect(site.calls).toEqual([
+      ['move', '/about/jobs', '/archive'],
+      ['order', { section: '/archive', id: 'jobs', delta: -2, subset: ['2024', '2025', 'jobs'] }],
+    ]);
+  });
+
+  it('does not move a page into the section it is already in', async () => {
+    const site = orderedSite(about());
+    await movePage(site, { path: '/about/jobs', target: '/about', position: 'first', expectedVersion: 'v1' });
+    expect(site.calls.map(([kind]) => kind)).toEqual(['order']);
+  });
+
+  it('refuses a neighbour that is not in the same section, before changing anything', async () => {
+    const site = orderedSite({ ...about(), '/archive': ['/archive/2024'] });
+    await expect(movePage(site, { path: '/about/jobs', target: '/archive', position: { before: '/about/team' }, expectedVersion: 'v1' }))
+      .rejects.toThrow(/\/about\/team is not in \/archive/);
+    expect(site.calls).toEqual([]);
+  });
+
+  it('needs a section to move to or a place to go', async () => {
+    await expect(movePage(orderedSite(about()), { path: '/about/jobs', expectedVersion: 'v1' }))
+      .rejects.toThrow(/needs a "target".*"position"/);
+  });
+});

@@ -279,6 +279,7 @@ export function siteOn(page) {
     exists: (path) => call('exists', path),
     status: (path) => call('status', path),
     move: (op) => call('move', op),
+    order: (op) => call('order', op),
     rename: (op) => call('rename', op),
     remove: (path) => call('remove', path),
     state: (path) => call('state', path),

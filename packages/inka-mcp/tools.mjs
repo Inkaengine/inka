@@ -176,11 +176,52 @@ async function refuseWithDraft(site, path) {
   }
 }
 
-/** Move a page into another section. Returns its new path. */
-export async function movePage(site, { path, target, expectedVersion }) {
+const parentOf = (path) => path.replace(/\/[^/]+\/?$/, '') || '/';
+const idOf = (path) => path.split('/').filter(Boolean).pop();
+
+/** Every page directly in `section`, in its order (the order its menu shows). */
+async function pagesIn(site, section) {
+  const paths = [];
+  for (let total = Infinity; paths.length < total;) {
+    const found = await site.search({ path: section, depth: 1, limit: 100, start: paths.length });
+    total = found.total;
+    if (!found.items.length) break;
+    paths.push(...found.items.map((item) => item.path));
+  }
+  return paths;
+}
+
+/** Where `position` puts a page among `others` (its section's pages, itself left out). */
+function placeAmong(others, position, section) {
+  if (position === 'first') return 0;
+  if (position === 'last') return others.length;
+  const [side, neighbour] = Object.entries(position)[0];
+  const at = others.indexOf(neighbour);
+  if (at === -1) throw new Error(`${neighbour} is not in ${section}: a page can only be placed next to a page in the same section`);
+  return side === 'before' ? at : at + 1;
+}
+
+/**
+ * Move a page into another section, and/or say where it goes among its
+ * section's pages (their order is the order of the section's menu). The order
+ * is changed as the admin's contents view changes it: the page moves by a
+ * number of places among the pages listed. Returns its path.
+ */
+export async function movePage(site, { path, target, position, expectedVersion }) {
+  if (!target && !position) throw new Error('move_page needs a "target" section to move to, a "position" in its section, or both');
   await refuseWithDraft(site, path);
   await checkVersion(site, path, expectedVersion);
-  return { path: await site.move({ path, target }) };
+  const section = target ?? parentOf(path);
+  const moving = section !== parentOf(path);
+  if (position) placeAmong((await pagesIn(site, section)).filter((p) => p !== path), position, section);
+  const now = moving ? await site.move({ path, target: section }) : path;
+  if (position) {
+    const pages = await pagesIn(site, section);
+    const from = pages.indexOf(now);
+    const to = placeAmong(pages.filter((p) => p !== now), position, section);
+    if (to !== from) await site.order({ section, id: idOf(now), delta: to - from, subset: pages.map(idOf) });
+  }
+  return { path: now };
 }
 
 /** Change a page's short name (the last part of its path) and/or its title. Returns its path. */

@@ -1,6 +1,6 @@
 /**
  * window.__inkaSite — the site-wide half of what an MCP server drives in a
- * headless admin: finding pages, moving, renaming and deleting them, and what
+ * headless admin: finding pages, moving, ordering, renaming and deleting them, and what
  * state they are in and taking them to another.
  * Mounted on every admin page (appExtras), so none of it needs an editor
  * open — an open editor locks its page, and a locked page can't be moved or
@@ -13,7 +13,7 @@ import { useDispatch, useSelector } from 'react-redux';
 import { useHistory } from 'react-router-dom';
 import { searchContent } from '@plone/volto/actions/search/search';
 import { moveContent } from '@plone/volto/actions/clipboard/clipboard';
-import { deleteContent, getContent, updateContent } from '@plone/volto/actions/content/content';
+import { deleteContent, getContent, orderContent, updateContent } from '@plone/volto/actions/content/content';
 import { flattenToAppURL } from '@plone/volto/helpers/Url/Url';
 import { lockedBy } from './lockedBy';
 import { contentState } from './contentState';
@@ -116,6 +116,14 @@ export function siteApi(dispatch, history, token) {
     async move({ path, target }) {
       const results = await run(`move ${path}`, moveContent([path], target === '/' ? '' : target));
       return flattenToAppURL(results[0].target);
+    },
+
+    /**
+     * Move the page `id` by `delta` places among the pages of `section` named
+     * in `subset` (in their current order), as the contents view reorders.
+     */
+    async order({ section, id, delta, subset }) {
+      await run(`order ${id} in ${section}`, orderContent(section === '/' ? '' : section, id, delta, subset));
     },
 
     /** Give `path` a new id (its last path segment) and/or title; resolves to its path. */
