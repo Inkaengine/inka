@@ -1369,15 +1369,25 @@ export async function verifyPathMapCoverage(
  * line whose only job was to skip the block.
  */
 /**
- * How many blocks the page drew that checkEveryBlockOnPage would check: the
- * sweep's size, for a caller that has to budget time for it (sanity.ts gives
- * the test that owns the sweep a budget that grows with the page). Counted
- * the same way the sweep selects, in one in-page read.
+ * How many drawn blocks a render test will check, split by who pays for them:
+ * the sample's OWN descendants (verifyBlockRendering walks them, with their
+ * fields and edit-text clicks) and the REST of the page
+ * (checkEveryBlockOnPage). A caller budgets time from this; sanity.ts does.
+ *
+ * Both counted the way their consumer selects, in one in-page read, because
+ * asking the page per block is what the sweep used to do.
+ *
+ * Measured on a docs page of table variants: `own` is where the time goes --
+ * ~19s against ~6s for the whole rest of the page -- so a budget scaled only
+ * by the page would be sized by the wrong half.
  */
-export async function blocksOnPage(iframe: FrameLocator, verifiedUid: string): Promise<number> {
+export async function blocksToCheck(
+  iframe: FrameLocator,
+  verifiedUid: string,
+): Promise<{ own: number; page: number }> {
   return iframe.locator('body').evaluate((_b, sampleUid) => {
     const b = (window as any).__hydraBridge;
-    if (!b?.blockPathMap) throw new Error('blocksOnPage: __hydraBridge.blockPathMap not available');
+    if (!b?.blockPathMap) throw new Error('blocksToCheck: __hydraBridge.blockPathMap not available');
     const pathMap = b.blockPathMap;
     const underSample = (uid: string): boolean => {
       for (let cur: string | undefined = uid; cur; cur = pathMap[cur]?.parentId) {
@@ -1388,9 +1398,11 @@ export async function blocksOnPage(iframe: FrameLocator, verifiedUid: string): P
     const onScreen = new Set(
       [...document.querySelectorAll('[data-block-uid]')].map((el) => el.getAttribute('data-block-uid')),
     );
-    return Object.keys(pathMap).filter(
-      (uid) => !uid.startsWith('_') && !underSample(uid) && onScreen.has(uid),
-    ).length;
+    const drawn = Object.keys(pathMap).filter((uid) => !uid.startsWith('_') && onScreen.has(uid));
+    return {
+      own: drawn.filter((uid) => uid !== sampleUid && underSample(uid)).length,
+      page: drawn.filter((uid) => !underSample(uid)).length,
+    };
   }, verifiedUid);
 }
 
