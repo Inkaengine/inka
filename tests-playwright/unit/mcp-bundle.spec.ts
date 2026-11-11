@@ -39,7 +39,20 @@ test('the image installs every module the bundle leaves external', () => {
   const dockerfile = readFileSync(mcp('Dockerfile'), 'utf8');
   const added = dockerfile.match(/^RUN .*\bpnpm add ([^\n]*)$/m);
   expect(added, 'the Dockerfile installs nothing with `pnpm add`').not.toBe(null);
-  const installed = added![1].split(/\s+/).map((spec) => spec.replace(/@[^@]*$/, ''));
+  // The specs are written with ARGs now that consumers build this same file
+  // (PLAYWRIGHT is theirs to pass, SENTRY is pinned here), so resolve each
+  // ARG's default before reading them -- otherwise this asserts against
+  // "${SENTRY}" and passes for the wrong reason.
+  const defaults = new Map(
+    [...dockerfile.matchAll(/^ARG\s+([A-Z_]+)=(\S+)$/gm)].map((m) => [m[1], m[2]]),
+  );
+  const resolved = added![1].replace(/\$\{([A-Z_]+)\}/g, (whole, name) => {
+    const value = defaults.get(name);
+    expect(value, `ARG ${name} has no default, so this test cannot resolve it`).toBeTruthy();
+    return value!;
+  });
+  expect(resolved, 'every ${ARG} resolved').not.toContain('${');
+  const installed = resolved.split(/\s+/).map((spec) => spec.replace(/@[^@]*$/, ''));
   const external = bundling(mcp('start.mjs'), mcp('dist/unwritten.mjs')).external as string[];
   expect([...external].sort()).toEqual([...installed].sort());
 });

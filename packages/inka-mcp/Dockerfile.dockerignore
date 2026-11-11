@@ -1,0 +1,23 @@
+# Build context for the MCP image, shipped with the Dockerfile so every
+# consumer gets the same slim upload:
+#
+#   fly deploy -c fly.mcp.toml \
+#     --ignorefile hydra/packages/inka-mcp/Dockerfile.dockerignore
+#
+# The filename matters: BuildKit picks up `<dockerfile-path>.dockerignore`
+# automatically, so this one name serves both a local `docker build -f
+# hydra/packages/inka-mcp/Dockerfile .` and the explicit --ignorefile flyctl
+# needs (flyctl builds the context itself and does not apply the convention).
+#
+# This Dockerfile COPYs ONE file -- the bundle -- so everything else in a
+# consumer's repo was being uploaded and discarded. One consumer measured its
+# MCP context at three megabytes of files the image never reads.
+#
+# An ALLOW-LIST (`*` then `!path`), so a new directory stays out until
+# something names it. The bundle lands in different places depending on who
+# builds: Inka's own is dist/, a consumer's is mcp/bundle/ (the path its
+# BUNDLE arg names). Both are allowed; the one a given build does not have
+# matches nothing.
+*
+!dist/inka-mcp-http.mjs
+!mcp/bundle
