@@ -916,28 +916,24 @@ export async function expandListingBlocks(inputItems, options = {}) {
       localSize = windowEnd - Math.max(blockStart, windowStart);
     }
 
-    try {
-      const fetcher = fetchItems[blocks[blockId]['@type']];
-      const result = await fetcher(blocks[blockId], {
-        start: localStart,
-        size: localSize,
-      });
-      const total = result.total || 0;
-      listingTotals[blockId] = total;
-      batchTotal += total;
+    // A failed fetch fails the listing: drawn as "no results" it would hide a
+    // broken API or a bad query from everyone who could fix it.
+    const fetcher = fetchItems[blocks[blockId]['@type']];
+    const result = await fetcher(blocks[blockId], {
+      start: localStart,
+      size: localSize,
+    });
+    const total = result.total || 0;
+    listingTotals[blockId] = total;
+    batchTotal += total;
 
-      // Now that we know the actual total, check if this listing truly overlaps
-      const blockEnd = blockStart + total;
-      if (localSize > 0 && blockEnd > windowStart && blockStart < windowEnd) {
-        listingResults[blockId] = result.items || [];
-      }
-
-      globalPos += total;
-    } catch (error) {
-      console.error(`[HYDRA] Failed to fetch listing ${blockId}:`, error);
-      listingTotals[blockId] = 0;
-      globalPos += 0;
+    // Now that we know the actual total, check if this listing truly overlaps
+    const blockEnd = blockStart + total;
+    if (localSize > 0 && blockEnd > windowStart && blockStart < windowEnd) {
+      listingResults[blockId] = result.items || [];
     }
+
+    globalPos += total;
   }
 
   // Build items array — walk layout in order, emitting items that fall in the page window
