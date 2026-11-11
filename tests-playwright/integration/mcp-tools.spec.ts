@@ -8,7 +8,7 @@ import { AdminUIHelper } from '../helpers/AdminUIHelper';
 import { freshPage, tokenFor, whileEditing } from '../helpers/otherUser';
 import { agentOn, waitForAgent, discardEdits, createPage, siteOn, openAdmin } from '../../packages/inka-mcp/adminDriver.mjs';
 import {
-  getPage, editPage, listBlockTypes, describeBlock, search, listChildren, fillNewPage, movePage, renamePage, deletePage, getTransitions, transitionPage,
+  getPage, editPage, listBlockTypes, describeBlock, search, listChildren, fillNewPage, movePage, copyPage, renamePage, deletePage, getTransitions, transitionPage, getHistory, revertPage, savedVersion,
   findUndeclaredFields,
 } from '../../packages/inka-mcp/tools.mjs';
 import { frontendUrlOf, previewDraft } from '../../packages/inka-mcp/preview.mjs';
@@ -270,6 +270,106 @@ test.describe('MCP tools', () => {
     expect((await stored(path)).title).toBe('Retitled on the copy');
     expect(applied).not.toHaveProperty('draft');
     expect(await gone(draftAt)).toBe(404);
+  });
+
+  test('move_page places a page among its section\'s pages, as the contents view orders them', async ({ page }) => {
+    test.setTimeout(90000);
+    const helper = new AdminUIHelper(page);
+    await helper.login();
+    await page.goto(`${helper.adminUrl}/contents`);
+    await page.waitForFunction(() => !!(window as any).__inkaSite);
+    const site = siteOn(page);
+    const order = async () => (await listChildren(site, { path: '/_test_data', limit: 100 })).items.map((item: any) => item.path);
+
+    const before = await order();
+    expect(before.length, 'the section has pages to order').toBeGreaterThan(2);
+    const last = before[before.length - 1];
+    await movePage(site, { path: last, position: 'first', expectedVersion: (await site.status(last)).version });
+    expect(await order()).toEqual([last, ...before.slice(0, -1)]);
+
+    // …and next to a named page.
+    await movePage(site, { path: last, position: { after: before[1] }, expectedVersion: (await site.status(last)).version });
+    expect(await order()).toEqual([before[0], before[1], last, ...before.slice(2, -1)]);
+  });
+
+  test('delete_page names the pages it would leave with broken links, and deletes only when told to', async ({ page, urls }) => {
+    test.setTimeout(90000);
+    const helper = new AdminUIHelper(page);
+    await helper.login();
+    await page.goto(`${helper.adminUrl}/contents`);
+    await page.waitForFunction(() => !!(window as any).__inkaSite);
+    const site = siteOn(page);
+    const token = (await page.context().cookies()).find((c) => c.name === 'auth_token')?.value;
+    const status = async (path: string) => (await fetch(`${urls.mockApi}${path}`, {
+      headers: { Accept: 'application/json', Authorization: `Bearer ${token}` },
+    })).status;
+    const target = '/_test_data/target-page';
+
+    await expect(deletePage(site, { path: target, expectedVersion: (await site.status(target)).version }))
+      .rejects.toThrow(/would break links on 3 pages: .*\(\/_test_data\/test-page\)/);
+    expect(await status(target)).toBe(200);
+
+    const deleted = await deletePage(site, { path: target, expectedVersion: (await site.status(target)).version, breakLinks: true });
+    expect(deleted.brokenLinksOn.map((p: any) => p.path).sort()).toEqual([
+      '/_test_data/field-rules-page', '/_test_data/optional-fields-page', '/_test_data/test-page',
+    ]);
+    expect(await status(target)).toBe(404);
+  });
+
+  test('get_history lists a page\'s saves, and revert_page puts it back to one', async ({ page }) => {
+    test.setTimeout(90000);
+    const helper = new AdminUIHelper(page);
+    await helper.login();
+    await page.goto(`${helper.adminUrl}/contents`);
+    await page.waitForFunction(() => !!(window as any).__inkaSite);
+    const site = siteOn(page);
+    const token = (await page.context().cookies()).find((c) => c.name === 'auth_token')!.value;
+    const path = await freshPage(token);
+    const titleOf = async () => (await site.get(path)).title;
+    const versionOf = async () => (await site.status(path)).version;
+
+    await renamePage(site, { path, title: 'Second title', expectedVersion: await versionOf() });
+    await renamePage(site, { path, title: 'Third title', expectedVersion: await versionOf() });
+    const saves = (await getHistory(site, { path })).history.filter((entry: any) => 'version' in entry);
+    expect(saves.map((entry: any) => entry.version)).toEqual([2, 1, 0]);
+    expect(saves[0].current).toBe(true);
+    // What each save held, as Compare shows it.
+    expect((await savedVersion(site, { path, version: 0 })).title).toBe('A page of its own');
+    expect((await savedVersion(site, { path, version: 1 })).title).toBe('Second title');
+    await expect(savedVersion(site, { path, version: 9 })).rejects.toThrow(/has no version 9/);
+
+    const reverted = await revertPage(site, { path, version: 0, expectedVersion: await versionOf() });
+    expect(reverted).toMatchObject({ path, restored: 0 });
+    expect(await titleOf()).toBe('A page of its own');
+
+    // What it held until now is a version too, so the revert can be undone.
+    const after = (await getHistory(site, { path })).history.filter((entry: any) => 'version' in entry);
+    expect(after.map((entry: any) => entry.version)).toEqual([3, 2, 1, 0]);
+    await revertPage(site, { path, version: 2, expectedVersion: reverted.version });
+    expect(await titleOf()).toBe('Third title');
+  });
+
+  test('copy_page copies a page beside itself, or into another section named and placed', async ({ page }) => {
+    test.setTimeout(90000);
+    const helper = new AdminUIHelper(page);
+    await helper.login();
+    await page.goto(`${helper.adminUrl}/contents`);
+    await page.waitForFunction(() => !!(window as any).__inkaSite);
+    const site = siteOn(page);
+    const token = (await page.context().cookies()).find((c) => c.name === 'auth_token')!.value;
+    const original = await freshPage(token);
+    const id = original.split('/').pop();
+
+    const beside = await copyPage(site, { path: original });
+    expect(beside.path).toBe(`/_test_data/copy_of_${id}`);
+    expect((await site.get(beside.path)).title).toBe('A page of its own');
+    expect((await site.get(original)).title).toBe('A page of its own');
+
+    const section = '/_test_data/accordion-test-page';
+    const named = await copyPage(site, { path: original, target: section, id: 'its-copy', title: 'Its copy', position: 'first' });
+    expect(named.path).toBe(`${section}/its-copy`);
+    expect((await site.get(named.path)).title).toBe('Its copy');
+    expect((await listChildren(site, { path: section })).items[0].path).toBe(named.path);
   });
 
   test('move_page, rename_page and delete_page, version-checked', async ({ page, urls }) => {

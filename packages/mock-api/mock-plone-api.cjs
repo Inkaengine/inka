@@ -3140,6 +3140,7 @@ app.post('*/@move', (req, res) => {
  * Same shape as @move, but the source stays put and the copy gets a fresh UID
  * so it is a genuinely distinct document rather than a second path onto one.
  */
+let copyCount = 0;
 app.post('*/@copy', (req, res) => {
   const targetPath = req.path.replace('/@copy', '') || '/';
   const sessionId = getSessionId(req);
@@ -3156,13 +3157,30 @@ app.post('*/@copy', (req, res) => {
       error: { type: 'NotFound', message: `No such resource: ${sourcePath}` },
     });
   }
-  const id = sourcePath.split('/').filter(Boolean).pop();
-  const destPath = `${targetPath === '/' ? '' : targetPath}/${id}`;
-  const raw = JSON.parse(JSON.stringify(source));
-  delete raw['@components'];
-  raw.UID = `${raw.UID || id}-copy-${Object.keys(sessionContent[sessionId] || {}).length}`;
-  setSessionContent(sessionId, destPath, raw);
-  uidToPathMap[raw.UID] = destPath;
+  // As Plone pastes: an id already taken in the folder becomes copy_of_<id>,
+  // then copy2_of_<id>…, so a copy never lands on the original.
+  const taken = new Set(allContentPaths(sessionId));
+  const sourceId = sourcePath.split('/').filter(Boolean).pop();
+  const inTarget = (id) => `${targetPath === '/' ? '' : targetPath}/${id}`;
+  let id = sourceId;
+  for (let n = 1; taken.has(inTarget(id)); n += 1) {
+    id = n === 1 ? `copy_of_${sourceId}` : `copy${n}_of_${sourceId}`;
+  }
+  const destPath = inTarget(id);
+  // What the item holds is copied with it, each a distinct object.
+  const subtree = [...taken].filter((p) => p === sourcePath || p.startsWith(`${sourcePath}/`));
+  for (const from of subtree) {
+    const item = from === sourcePath ? source : getContent(from, sessionId);
+    if (!item) continue;
+    const to = `${destPath}${from.slice(sourcePath.length)}`;
+    const raw = JSON.parse(JSON.stringify(item));
+    delete raw['@components'];
+    if (from === sourcePath) raw.id = id;
+    copyCount += 1;
+    raw.UID = `${raw.UID || raw.id}-copy-${copyCount}`;
+    setSessionContent(sessionId, to, raw);
+    uidToPathMap[raw.UID] = to;
+  }
   return res.json([{ source: sourcePath, target: destPath }]);
 });
 
@@ -4627,6 +4645,59 @@ app.post(/.*\/@workflow\/[^/]+$/, (req, res) => {
 });
 
 /**
+ * GET /@linkintegrity?uids=… — what deleting each item would break, as
+ * plone.restapi answers it: per item, the pages outside it that link to it or
+ * to anything inside it ("breaches", each with its @id, title and uid), and
+ * how many items it holds ("items_total"). A link is a string naming one of
+ * those items: by path, by this site's URL, or by UID (resolveuid). Plone
+ * keeps links by UID, so a move or rename breaks none; only a delete does.
+ */
+app.get(/.*\/@linkintegrity$/, (req, res) => {
+  const sessionId = getSessionId(req);
+  const baseUrl = `http://localhost:${PORT}`;
+  const uids = [].concat(req.query.uids || []);
+  const paths = allContentPaths(sessionId);
+  const raw = (p) => rawContentForComponents(p, sessionId);
+  // As @search and the content GET name an item that has no UID of its own.
+  const uidOf = (p) => raw(p) && (raw(p).UID || `${raw(p).id || p.split('/').pop()}-uid`);
+  const byUid = new Map(paths.map((p) => [uidOf(p), p]).filter(([uid]) => uid));
+  const results = uids.map((uid) => {
+    const path = byUid.get(uid);
+    if (!path) return null;
+    const inside = paths.filter((p) => p === path || p.startsWith(`${path}/`));
+    const doomedPaths = new Set(inside);
+    const doomedUids = new Set(inside.map(uidOf).filter(Boolean));
+    const names = (value) => {
+      const resolved = value.match(/resolveuid\/([^/?#"]+)/);
+      if (resolved) return doomedUids.has(resolved[1]);
+      const local = value.replace(/^https?:\/\/[^/]+/, '').replace('/++api++', '').replace(/\/+$/, '');
+      return local.startsWith('/') && doomedPaths.has(local);
+    };
+    const linksIn = (value, key) => {
+      if (key === 'parent' || key === '@components') return false;
+      if (typeof value === 'string') return names(value);
+      if (Array.isArray(value)) return value.some((v) => linksIn(v));
+      if (value && typeof value === 'object') return Object.entries(value).some(([k, v]) => linksIn(v, k));
+      return false;
+    };
+    const breaches = paths
+      .filter((p) => !doomedPaths.has(p))
+      .filter((p) => {
+        const content = raw(p);
+        return content && Object.entries(content).some(([k, v]) => k !== '@id' && k !== 'UID' && linksIn(v, k));
+      })
+      .map((p) => ({ '@id': `${baseUrl}${p}`, title: raw(p).title, uid: uidOf(p) }));
+    return {
+      '@id': `${baseUrl}${path}`,
+      title: raw(path).title,
+      items_total: inside.length - 1,
+      breaches,
+    };
+  });
+  res.json(results.filter(Boolean));
+});
+
+/**
  * GET /@history/:version — a content SNAPSHOT: what the page held before edit
  * N+1 (or current for the newest). The compare view renders these in frontend
  * iframes.
@@ -4647,6 +4718,30 @@ app.get(/.*\/@history\/\d+$/, (req, res) => {
 });
 
 /**
+ * PATCH /@history {version} — revert the page to one of its versions, as the
+ * History view's "Revert to this revision" does. The state it leaves is kept
+ * as a version too, so a revert can itself be reverted.
+ */
+app.patch(/.*\/@history$/, (req, res) => {
+  const cleanPath = (req.path.replace('/++api++', '').replace(/\/?@history$/, '') || '/').replace(/\/+$/, '') || '/';
+  const sessionId = getSessionId(req);
+  if (lockedAgainst(req, cleanPath)) {
+    return res.status(403).json({ error: { type: 'Forbidden', message: 'Resource is locked.' } });
+  }
+  const content = getContent(cleanPath, sessionId);
+  const versions = contentVersions.get(cleanPath) || [];
+  const version = Number(req.body?.version);
+  const snapshot = versions.find((v) => v.version === version);
+  if (!content || !snapshot) {
+    return res.status(404).json({ error: { type: 'NotFound', message: `${cleanPath} has no version ${req.body?.version}` } });
+  }
+  versions.push({ version: versions.length, time: new Date().toISOString(), content: JSON.parse(JSON.stringify(content)) });
+  contentVersions.set(cleanPath, versions);
+  setSessionContent(sessionId, cleanPath, { ...JSON.parse(JSON.stringify(snapshot.content)), modified: new Date().toISOString() });
+  return res.json({ message: `${content.title} has been reverted to revision ${version}.` });
+});
+
+/**
  * GET /@history — the version + workflow trail the admin's History view lists.
  * The workflow half comes off the content's own workflow_history, which is
  * where a transition wrote it, so the trail grows as the demo publishes and
@@ -4661,6 +4756,11 @@ app.get(/.*\/@history$/, (req, res) => {
       version: n,
       time: new Date(Date.parse('2026-01-01T09:00:00Z') + n * 86400000).toISOString(),
     }));
+  }
+  // Every saved state is a version, the newest being what the page holds now
+  // (@history/<n> already serves it): a page that has been saved lists it too.
+  if (contentVersions.get(cleanPath)?.length && content) {
+    versions = [...versions, { version: versions.length, time: content.modified }];
   }
   const versioning = versions.map((v) => ({
     '@id': `http://localhost:${PORT}${cleanPath}/@history/${v.version}`,

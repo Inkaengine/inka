@@ -43,11 +43,34 @@ function withSitePaths(value, apiPath) {
 /** The page in the agent format, with the version a later save is checked against. */
 export async function getPage(agent) {
   const { path, version, formData, lockedBy, apiPath } = await agent.getPage();
+  return { path, version, ...(lockedBy && { lockedBy }), ...(await asAgentPage(agent, formData, apiPath)) };
+}
+
+/** Stored page content in the get_page format, read with the page's content type. */
+async function asAgentPage(agent, formData, apiPath) {
   const { page, types } = await agent.getBlockSchemas();
   const type = types[page.contentType];
   if (!type) throw new Error(`the page's content type "${page.contentType}" has no schema`);
   const asAgent = toAgentPage(formData, type);
-  return { path, version, ...(lockedBy && { lockedBy }), ...(apiPath ? withSitePaths(asAgent, apiPath) : asAgent) };
+  return apiPath ? withSitePaths(asAgent, apiPath) : asAgent;
+}
+
+/** What one of the page's saved versions (get_history's "version") held, as stored. */
+export async function savedVersion(site, { path, version }) {
+  const saves = (await site.history(path)).filter((e) => e.type === 'versioning');
+  if (!saves.some((e) => e.version === version)) throw new Error(`${path} has no version ${version}: get_history lists them`);
+  return site.historyVersion({ path, version });
+}
+
+/**
+ * A saved version of the page, in the get_page format, as the editor's
+ * Compare shows one: to read what it held, not to edit ("historyVersion" says
+ * which; it has no "version" for edit_blocks).
+ */
+export async function getPageVersion(agent, site, { path, version }) {
+  const stored = await savedVersion(site, { path, version });
+  const { apiPath } = await agent.getPage();
+  return { path, historyVersion: version, ...(await asAgentPage(agent, stored, apiPath)) };
 }
 
 /**
@@ -176,11 +199,72 @@ async function refuseWithDraft(site, path) {
   }
 }
 
-/** Move a page into another section. Returns its new path. */
-export async function movePage(site, { path, target, expectedVersion }) {
+const parentOf = (path) => path.replace(/\/[^/]+\/?$/, '') || '/';
+const idOf = (path) => path.split('/').filter(Boolean).pop();
+
+/** Every page directly in `section`, in its order (the order its menu shows). */
+async function pagesIn(site, section) {
+  const paths = [];
+  for (let total = Infinity; paths.length < total;) {
+    const found = await site.search({ path: section, depth: 1, limit: 100, start: paths.length });
+    total = found.total;
+    if (!found.items.length) break;
+    paths.push(...found.items.map((item) => item.path));
+  }
+  return paths;
+}
+
+/** Where `position` puts a page among `others` (its section's pages, itself left out). */
+function placeAmong(others, position, section) {
+  if (position === 'first') return 0;
+  if (position === 'last') return others.length;
+  const [side, neighbour] = Object.entries(position)[0];
+  const at = others.indexOf(neighbour);
+  if (at === -1) throw new Error(`${neighbour} is not in ${section}: a page can only be placed next to a page in the same section`);
+  return side === 'before' ? at : at + 1;
+}
+
+/**
+ * Move a page into another section, and/or say where it goes among its
+ * section's pages (their order is the order of the section's menu). The order
+ * is changed as the admin's contents view changes it: the page moves by a
+ * number of places among the pages listed. Returns its path.
+ */
+export async function movePage(site, { path, target, position, expectedVersion }) {
+  if (!target && !position) throw new Error('move_page needs a "target" section to move to, a "position" in its section, or both');
   await refuseWithDraft(site, path);
   await checkVersion(site, path, expectedVersion);
-  return { path: await site.move({ path, target }) };
+  const section = target ?? parentOf(path);
+  const moving = section !== parentOf(path);
+  if (position) placeAmong((await pagesIn(site, section)).filter((p) => p !== path), position, section);
+  const now = moving ? await site.move({ path, target: section }) : path;
+  if (position) await place(site, now, section, position);
+  return { path: now };
+}
+
+/** Put the page at `path` where `position` says among the pages of `section`, as the contents view orders them. */
+async function place(site, path, section, position) {
+  const pages = await pagesIn(site, section);
+  const from = pages.indexOf(path);
+  const to = placeAmong(pages.filter((p) => p !== path), position, section);
+  if (to !== from) await site.order({ section, id: idOf(path), delta: to - from, subset: pages.map(idOf) });
+}
+
+/**
+ * Copy a page, and everything inside it, as the editor's copy and paste does:
+ * into its own section (where it gets a new short name) or another, then
+ * optionally give it a short name and title of its own and place it among
+ * that section's pages. The original is untouched. Returns the copy's path,
+ * its version for edit_blocks and its workflow state (a copy may start
+ * private).
+ */
+export async function copyPage(site, { path, target, id, title, position }) {
+  const section = target ?? parentOf(path);
+  if (position) placeAmong(await pagesIn(site, section), position, section);
+  let copy = await site.copy({ path, target: section });
+  if (id || title) copy = await site.rename({ path: copy, id, title });
+  if (position) await place(site, copy, section, position);
+  return { path: copy, version: (await site.status(copy)).version, reviewState: (await site.get(copy)).review_state };
 }
 
 /** Change a page's short name (the last part of its path) and/or its title. Returns its path. */
@@ -191,12 +275,63 @@ export async function renamePage(site, { path, id, title, expectedVersion }) {
   return { path: await site.rename({ path, id, title }) };
 }
 
-/** Delete a page. */
-export async function deletePage(site, { path, expectedVersion }) {
+/**
+ * Delete a page and what it holds. Links to them from other pages would be
+ * left pointing at nothing, so, as the editor's delete dialog does, it says
+ * which pages those are, and deletes only when told to break them.
+ */
+export async function deletePage(site, { path, expectedVersion, breakLinks = false }) {
   await refuseWithDraft(site, path);
   await checkVersion(site, path, expectedVersion);
+  const { linkedFrom, holds } = await site.linksInto(path);
+  if (linkedFrom.length && !breakLinks) {
+    const pages = linkedFrom.map((page) => `${page.title} (${page.path})`).join(', ');
+    throw new Error(
+      `Deleting ${path}${holds ? ` and the ${holds} item(s) in it` : ''} would break links on ${linkedFrom.length} page${linkedFrom.length === 1 ? '' : 's'}: ${pages}. `
+      + 'Nothing was deleted. Tell the person; change those links first, or delete with breakLinks if they still want it gone.',
+    );
+  }
   await site.remove(path);
-  return { deleted: path };
+  return { deleted: path, ...(holds && { alsoDeleted: holds }), ...(linkedFrom.length && { brokenLinksOn: linkedFrom }) };
+}
+
+/**
+ * What was done to a page, newest first, as the admin's History view lists it:
+ * each save, with the "version" that restores it (the newest is "current",
+ * what the page holds now), and each workflow change ("state" it went to).
+ */
+export async function getHistory(site, { path }) {
+  const entries = await site.history(path);
+  const newest = Math.max(...entries.filter((e) => e.type === 'versioning').map((e) => e.version));
+  return {
+    path,
+    history: entries.map((e) => ({
+      ...(e.type === 'versioning' && { version: e.version, ...(e.version === newest && { current: true }) }),
+      time: e.time,
+      by: e.actor?.fullname || e.actor?.id,
+      did: e.transition_title,
+      ...(e.comments && { note: e.comments }),
+      ...(e.type === 'workflow' && e.state_title && { state: e.state_title }),
+    })),
+  };
+}
+
+/**
+ * Put a page back to one of its earlier saves, as the History view's "Revert
+ * to this revision" does. What it held until now stays in its history, so this
+ * can be undone the same way.
+ */
+export async function revertPage(site, { path, version, expectedVersion }) {
+  await refuseWithDraft(site, path);
+  await checkVersion(site, path, expectedVersion);
+  const saves = (await site.history(path)).filter((e) => e.type === 'versioning');
+  const newest = Math.max(...saves.map((e) => e.version));
+  if (!saves.some((e) => e.version === version && e.may_revert !== false)) {
+    throw new Error(`${path} has no version ${version} to restore: get_history lists them`);
+  }
+  if (version === newest) throw new Error(`version ${version} is what ${path} holds now: nothing to restore`);
+  await site.revert({ path, version });
+  return { path, restored: version, version: (await site.status(path)).version };
 }
 
 /**

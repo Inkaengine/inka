@@ -7,6 +7,7 @@ import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { test, expect } from '../fixtures';
 import { mintToken } from '../../packages/mock-api/mock-tokens.cjs';
 import { connect, CALL } from '../helpers/mcpClient';
+import { freshPage } from '../helpers/otherUser';
 
 const PAGE = '/_test_data/test-page';
 
@@ -51,6 +52,31 @@ test.describe('MCP server', () => {
       return JSON.parse(text);
     } };
   };
+
+  test('an earlier save can be read, seen and restored', async () => {
+    test.setTimeout(180000);
+    const path = await freshPage(token);
+    const read = (await call('get_page', { path })).json();
+    await call('edit_blocks', { path, expectedVersion: read.version, ops: [{ op: 'update', id: '_page', set: { title: 'A new title' } }] });
+
+    const saves = (await call('get_history', { path })).json().history.filter((entry: any) => 'version' in entry);
+    expect(saves.map((entry: any) => entry.version)).toEqual([1, 0]);
+
+    // What version 0 held, as Compare shows it: its blocks, and its look.
+    const old = (await call('get_page', { path, version: 0 })).json();
+    expect(old).toMatchObject({ path, historyVersion: 0, title: 'A page of its own' });
+    expect(old).not.toHaveProperty('version');
+    const seen = (await call('view_page', { path, version: 0 })).json();
+    expect(seen.historyVersion).toBe(0);
+    expect(seen.renderedText).toContain('A page of its own');
+    expect((await call('view_page', { path })).json().renderedText).toContain('A new title');
+    expect((await call('get_page', { path, version: 7 })).text).toMatch(/has no version 7/);
+
+    const now = (await call('get_page', { path })).json();
+    const restored = (await call('revert_page', { path, version: 0, expectedVersion: now.version })).json();
+    expect(restored).toMatchObject({ path, restored: 0 });
+    expect((await call('get_page', { path })).json().title).toBe('A page of its own');
+  });
 
   test('a page with a draft: reading and editing it reach the draft, visitors keep the page', async () => {
     test.setTimeout(180000);
@@ -127,10 +153,10 @@ test.describe('MCP server', () => {
   test('lists its tools', async () => {
     const { tools } = await client.listTools();
     // `picture` and `stage_dropped` are for the views alone: a client lists them to a view, not the model.
-    expect(tools.map((t) => t.name).sort()).toEqual(['ask_for_files', 'create_page', 'delete_page', 'describe_block', 'edit_blocks', 'find_undeclared_fields', 'get_page', 'get_transitions', 'list_block_types', 'list_children', 'list_content_types', 'move_page', 'picture', 'preview_layout', 'rename_page', 'search', 'stage_dropped', 'stage_media', 'transition_page', 'view_page']);
+    expect(tools.map((t) => t.name).sort()).toEqual(['ask_for_files', 'copy_page', 'create_page', 'delete_page', 'describe_block', 'edit_blocks', 'find_undeclared_fields', 'get_history', 'get_page', 'get_transitions', 'list_block_types', 'list_children', 'list_content_types', 'move_page', 'picture', 'preview_layout', 'rename_page', 'revert_page', 'search', 'stage_dropped', 'stage_media', 'transition_page', 'view_page']);
     // Those that change nothing say so, so a client need not ask the person every time.
     expect(tools.filter((t) => t.annotations?.readOnlyHint).map((t) => t.name).sort())
-      .toEqual(['ask_for_files', 'describe_block', 'find_undeclared_fields', 'get_page', 'get_transitions', 'list_block_types', 'list_children', 'list_content_types', 'picture', 'preview_layout', 'search', 'stage_dropped', 'stage_media', 'view_page']);
+      .toEqual(['ask_for_files', 'describe_block', 'find_undeclared_fields', 'get_history', 'get_page', 'get_transitions', 'list_block_types', 'list_children', 'list_content_types', 'picture', 'preview_layout', 'search', 'stage_dropped', 'stage_media', 'view_page']);
     expect(tools.find((t) => t.name === 'delete_page')!.annotations).toMatchObject({ destructiveHint: true });
   });
 
