@@ -5992,8 +5992,10 @@ export class Bridge {
 
     if (processing) {
       log('BLOCKING input for', blockId);
-      // Clear any existing buffer when starting new blocking
-      this.eventBuffer = [];
+      // Keys already buffered for this block (typed while focus was on the body,
+      // between a transform and its new field's focus) are kept and replayed
+      // with what is buffered next; keys for another block go (inka#645).
+      if (blockId !== this.selectedBlockUid) this.eventBuffer = [];
       this.blockedBlockId = blockId;
 
       this._ensureDocumentKeyboardBlocker();
@@ -6499,9 +6501,17 @@ export class Bridge {
 
       // If no text node exists, create one with ZWS for cursor positioning
       if (!textNode) {
+        // Inside the innermost element the frontend drew for the empty text
+        // (its leaf <span>, say), not beside it: its next render writes the
+        // text into that element, so text typed beside it was left behind,
+        // and the caret with it (inka#645).
+        let leaf = firstNodeIdEl;
+        while (leaf.firstElementChild && leaf.firstElementChild.tagName !== 'BR') {
+          leaf = leaf.firstElementChild;
+        }
         textNode = document.createTextNode('\uFEFF');
-        firstNodeIdEl.appendChild(textNode);
-        log('getValidPositionForWhitespace: created ZWS text node in empty element');
+        leaf.appendChild(textNode);
+        log('getValidPositionForWhitespace: created ZWS text node in empty element', leaf.tagName);
         return { textNode, offset: 1 }; // Position after ZWS
       }
 
@@ -6745,6 +6755,13 @@ export class Bridge {
         anchorPos = this.getValidatedPosition(range.startContainer, range.startOffset);
         focusPos = this.getValidatedPosition(range.endContainer, range.endOffset);
       }
+    } else if (range.collapsed) {
+      // One caret, one position. Resolving each end separately put them in
+      // different places when the first made a text node for the caret: the
+      // second then found that node and resolved elsewhere, so text went
+      // before what was typed (inka#645).
+      anchorPos = this.getValidatedPosition(range.startContainer, range.startOffset);
+      focusPos = anchorPos;
     } else {
       anchorPos = this.getValidatedPosition(range.startContainer, range.startOffset);
       focusPos = this.getValidatedPosition(range.endContainer, range.endOffset);
@@ -9445,11 +9462,13 @@ export class Bridge {
       this.scrollBlockIntoView(blockElement);
     }
 
-    // Flush any pending text updates from the previous block before switching
-    // Also clear event buffer - user is reorienting to a new block
+    // Flush any pending text updates from the previous block before switching.
+    // Keys still buffered were typed for the old block, so they go - unless a
+    // transform is pending: then this switch IS its result (Enter made this
+    // block) and the keys typed after it belong here (inka#645).
     if (!isSelectingSameBlock) {
       this.flushPendingTextUpdates();
-      this.eventBuffer = [];
+      if (!this.pendingTransform) this.eventBuffer = [];
     }
 
     // editMode is controlled by user actions only (Escape → block, click/Enter → text).
@@ -9474,6 +9493,12 @@ export class Bridge {
       // Focus specific field + cursor placement after DOM settles
       if (fieldToFocus === 'first' || fieldToFocus === 'last' || typeof fieldToFocus === 'string') {
         const cursorAt = opts.cursorAt || 'start';
+        // Where the caret was when this placement was asked for. Keys can be
+        // replayed into the field, and the author can type on, before the
+        // frames below: a caret that has moved since is theirs, and putting it
+        // back at the start put what they typed next before it (inka#645).
+        const askedSel = window.getSelection();
+        const askedAt = askedSel?.rangeCount ? [askedSel.anchorNode, askedSel.anchorOffset] : null;
         requestAnimationFrame(() => {
           requestAnimationFrame(() => {
             const currentElement = this.queryBlockElement(blockUid);
@@ -9489,11 +9514,14 @@ export class Bridge {
               targetField = currentElement.querySelector(`[data-edit-text="${fieldToFocus}"]`);
             }
             if (targetField && targetField.getAttribute('contenteditable') === 'true') {
+              const sel = window.getSelection();
+              const movedInField = sel?.rangeCount && targetField.contains(sel.anchorNode)
+                && !(askedAt && askedAt[0] === sel.anchorNode && askedAt[1] === sel.anchorOffset);
+              if (movedInField) return;
               targetField.focus();
               if (cursorAt === 'end') {
                 this._placeCursorAtEnd(targetField);
               } else {
-                const sel = window.getSelection();
                 const range = document.createRange();
                 range.selectNodeContents(targetField);
                 range.collapse(true);
