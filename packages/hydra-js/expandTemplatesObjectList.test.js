@@ -195,35 +195,34 @@ describe('expandTemplatesSync: object_list items must carry their id', () => {
   });
 });
 
-describe('expandTemplatesSync: an object_list called with no idField is keyed by @id', () => {
-  // The items a caller hands over with no idField used to pass through unchecked:
-  // two rows keyed on `field_id` both came back as the second.
+describe('expandTemplatesSync: an object_list call names its idField', () => {
+  // Nothing guesses a list's key: only the block's code knows it.
   const rows = [
     { '@type': 'row', field_id: 'a' },
     { '@type': 'row', field_id: 'b' },
   ];
 
-  test.each([false, true])('throws, naming the option to pass (editMode=%s)', (editMode) => {
+  test.each([false, true])('a call without one throws, naming the option to pass (editMode=%s)', (editMode) => {
     expect(() => expandTemplatesSync(rows, { templateState: {}, templates: {}, editMode })).toThrow(
-      /no "@id".*pass its idField/s,
+      /no idField says which field.*none is guessed/s,
     );
   });
 
-  test('items with an @id get it as their @uid', () => {
+  test('items keyed by @id say so, and get it as their @uid', () => {
     const out = expandTemplatesSync([{ '@type': 'row', '@id': 'r1' }], {
-      templateState: {}, templates: {}, editMode: false,
+      templateState: {}, templates: {}, idField: '@id', editMode: false,
     });
     expect(out.map((r) => r['@uid'])).toEqual(['r1']);
   });
 
   test('a repeated @id throws', () => {
     const dup = [{ '@type': 'row', '@id': 'r1' }, { '@type': 'row', '@id': 'r1' }];
-    expect(() => expandTemplatesSync(dup, { templateState: {}, templates: {}, editMode: false })).toThrow(
+    expect(() => expandTemplatesSync(dup, { templateState: {}, templates: {}, idField: '@id', editMode: false })).toThrow(
       /repeats "@id" "r1"/,
     );
   });
 
-  test('a list of block ids is unaffected', () => {
+  test('a list of block ids needs none', () => {
     const out = expandTemplatesSync(['x'], {
       blocks: { x: { '@type': 'slate' } }, templateState: {}, templates: {}, editMode: false,
     });

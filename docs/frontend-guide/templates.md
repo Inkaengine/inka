@@ -186,7 +186,9 @@ of block objects, each identified by an **id field** (`@id` by default).
 
 Everything else is identical: every object_list item still needs a `slotId` (plus `templateId` / `fixed` / `readOnly` as appropriate), and a slot item fills from the page's content just like a `blocks_layout` slot.
 
-The merge identifies object_list items by their **id field**, and it varies per field — a form's `subblocks` key on `field_id`, a slider's `slides` on `@id`, a table's `rows` on `key`. The merge doesn't read block schemas. Your block's code knows its own field, so it passes `idField` when it hands the list to the merge. Without it the merge takes `@id`, and throws if an item doesn't have one.
+The merge identifies object_list items by their **id field**, and it varies per field — a form's `subblocks` key on `field_id`, a slider's `slides` on `@id`, a table's `rows` on `key`. The merge doesn't read block schemas. Your block's code knows its own field, so it passes `idField` when it hands the list to the merge, `@id` included. Without it the merge throws: it never guesses a list's key.
+
+Inside one call the merge reads other lists only by their blocks, never by their ids. It takes content by slot, and a list item's id is in the item itself, read by that list's own call.
 
 ### Javascript
 
@@ -248,7 +250,8 @@ An editor can place a template anywhere a block can go: inside a grid, a column,
 
 The merge throws when it can tell it isn't being used this way:
 
-- A list whose items have no id: pass the list's `idField`.
+- A list called without its `idField`, even one keyed by `@id`: pass it.
+- A list whose items have no value in their `idField`.
 - An `idFieldMap` option: there isn't one. Each call names its own list's `idField`.
 
 The merge can't see a call that never happens. So at the end of a render, ask: **\`assertAllExpanded(templateState)\`** throws, naming any template region no container passed through the merge in that `templateState`. Call it in your tests, and in dev if your frontend has a clear end of render. Don't call it in production: a block that deliberately doesn't draw a region would break the page.

@@ -24,7 +24,7 @@ import {
   getFieldDef,
   getFieldTypeString,
   getBlockType,
-  getChildBlockEntries,
+  getChildBlocks,
   isSlateFieldType,
   slateNodesText,
 } from './index.js';
@@ -596,8 +596,9 @@ function resolveWhenField(fieldPath, formData, args) {
     def?.widget === 'blocks_layout' ||
     Array.isArray(block?.blocks_layout?.[fieldName]);
   if (isObjectList || isBlocksLayoutRegion) {
-    const entries = getChildBlockEntries(block, { isObjectList, region: fieldName });
-    const types = entries.map((e) => getBlockType(e.block, def?.typeField));
+    const types = getChildBlocks(block, { isObjectList, region: fieldName }).map((child) =>
+      getBlockType(child, def?.typeField),
+    );
     return { kind: 'array', value: types, fieldPath };
   }
 

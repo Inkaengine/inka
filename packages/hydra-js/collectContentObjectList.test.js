@@ -120,7 +120,8 @@ test('cloneBlockFilteringNested re-ids + filters children in an object_list regi
       { '@id': 'drop-1', '@type': 'slate', value: 'user-added' }, // no template marker → dropped
     ],
   };
-  const cloned = cloneBlockFilteringNested(block, uuidGenerator);
+  // A slider's slides are keyed by @id — the caller's schema says so.
+  const cloned = cloneBlockFilteringNested(block, uuidGenerator, { slider: { slides: '@id' } });
 
   expect(cloned.slides).toHaveLength(1); // non-template slide dropped
   expect(cloned.slides[0]['@id']).not.toBe('keep-1'); // re-id'd (no id collision on insert)
