@@ -101,19 +101,18 @@ describe('ensureEmptyBlockIfEmpty — object_list seed applies item defaults (pa
     expect(seeded.color).toBe('red');
   });
 
-  test('blocks_layout PLACEHOLDER seed applies defaults but does NOT inherit fixed (inline-editable)', () => {
-    // Parent is a fixed template instance; its blocks_layout region is empty. The seeded
-    // placeholder must inherit membership (so the merge keeps it) but NOT fixed/readOnly — a
-    // blocks_layout block is edited inline, so freezing it breaks editing a template directly.
-    // Guards the load-bearing add-vs-placeholder asymmetry the unified seedTemplateChild path
-    // preserves via inheritFixed:false.
+  // Parent is a fixed template instance; its blocks_layout region is empty. The seeded
+  // placeholder inherits membership (so the merge keeps it). It is locked only when its parent
+  // is: a blocks_layout block is edited inline, so freezing a placeholder in an EDITABLE block
+  // breaks editing a template directly, while one in a LOCKED block is unlocked with it
+  // (isBlockReadonly reads the unlocked instances first).
+  const seedIntoInstance = (parentFlags) => {
     const formData = {
       blocks: {
         'inst-1': {
           '@type': 'section',
           templateInstanceId: 'tmpl-1',
-          fixed: true,
-          readOnly: true,
+          ...parentFlags,
           blocks: {},
           blocks_layout: { items: [] },
         },
@@ -126,11 +125,24 @@ describe('ensureEmptyBlockIfEmpty — object_list seed applies item defaults (pa
 
     const result = ensureEmptyBlockIfEmpty(formData, containerConfig, blockPathMap, uuid, blocksConfig, { intl });
     const seededId = result.blocks['inst-1'].blocks_layout.items[0];
-    const seeded = result.blocks['inst-1'].blocks[seededId];
+    return result.blocks['inst-1'].blocks[seededId];
+  };
+
+  test('blocks_layout PLACEHOLDER seed in an editable block applies defaults but does NOT inherit fixed (inline-editable)', () => {
+    const seeded = seedIntoInstance({ fixed: true, readOnly: false });
     expect(seeded).toBeTruthy();
     expect(seeded.templateInstanceId).toBe('tmpl-1'); // membership inherited (merge keeps it)
     expect(seeded.fixed).toBeFalsy(); // but NOT frozen — stays inline-editable
     expect(seeded.readOnly).toBeFalsy();
     expect(seeded.foo).toBe('bar'); // defaults applied via the unified seedTemplateChild path
+  });
+
+  test('blocks_layout PLACEHOLDER seed in a locked block is locked with it', () => {
+    const seeded = seedIntoInstance({ fixed: true, readOnly: true });
+    expect(seeded).toBeTruthy();
+    expect(seeded.templateInstanceId).toBe('tmpl-1');
+    expect(seeded.fixed).toBe(true);
+    expect(seeded.readOnly).toBe(true);
+    expect(seeded.foo).toBe('bar');
   });
 });
