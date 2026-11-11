@@ -15,6 +15,7 @@ vi.mock('../../context', () => ({
 import config from '@plone/volto/registry';
 import { registerAgentApi } from './agentApi';
 import { heldImage, releaseImages } from '../../utils/pendingImages';
+import { toStoredBlock } from '../../../../inka-mcp/pageFormat.mjs';
 
 describe('agent API before the editor has its page', () => {
   let unregister;
@@ -112,6 +113,37 @@ describe('what a block says about rules that depend on the data', () => {
     });
     expect(types.teaser.blockSchema.properties.lead).toEqual({ title: 'Lead', type: 'object', factory: 'Image' });
     expect(types.teaser.blockSchema.properties.url.factory).toBeUndefined();
+  });
+
+  it("says which field a list's items are keyed by, and which lists are plain", () => {
+    // A form's fields are keyed by `field_id`, not `@id`. An agent told only
+    // that `subblocks` is an object_list read and wrote every field's id as
+    // `@id`; the MCP page format now refuses a list region that names none.
+    const { types } = schemas({
+      form: {
+        id: 'form',
+        title: 'Form',
+        blockSchema: {
+          properties: {
+            subblocks: { title: 'Fields', widget: 'object_list', idField: 'field_id', allowedBlocks: ['text'], typeField: 'field_type' },
+            options: { title: 'Options', widget: 'object_list', subBlocks: false },
+          },
+          fieldsets: [],
+        },
+      },
+      text: { id: 'text', title: 'Text', blockSchema: { properties: { label: { title: 'Label' } }, fieldsets: [] } },
+    });
+    expect(types.form.blockSchema.properties.subblocks.idField).toBe('field_id');
+    expect(types.form.blockSchema.properties.options.subBlocks).toBe(false);
+
+    // What the MCP server does with those facts: a new field gets its id in
+    // `field_id`, and the plain list is stored as it is.
+    const stored = toStoredBlock(
+      { '@type': 'form', subblocks: [{ field_type: 'text', label: 'Name' }], options: [{ value: 'a' }] },
+      { blocksConfig: types, mintId: () => 'f-1' },
+    );
+    expect(stored.subblocks).toEqual([{ field_type: 'text', label: 'Name', field_id: 'f-1' }]);
+    expect(stored.options).toEqual([{ value: 'a' }]);
   });
 
   it('says nothing about a block with no rules at all', () => {
