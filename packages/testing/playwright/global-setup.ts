@@ -143,6 +143,48 @@ export interface DiscoveryOptions {
   maxPages?: number;
 }
 
+/** What discoverPerFrontend needs from the world: each step, so a test can stand in for it. */
+export interface PerFrontendSteps {
+  reachable: (url: string) => Promise<boolean>;
+  fetchRegistry: (url: string) => Promise<FrontendRegistry>;
+  discover: (blocksConfig: Record<string, any>, frontendKeys: string[], styleMenuClasses: string[]) => Promise<any[]>;
+}
+
+/**
+ * Discover each frontend in turn, from its own registry: its blocks, and the
+ * styles its menu offers, which decide whether a stored `styleName` is one an
+ * author could have picked. One menu for all of them (FRONTEND_URL's, or none
+ * without it) judged each frontend by another's styles (inka#619). A frontend
+ * that is down, or gives no schemas, is skipped. Each block carries the
+ * frontend it came from.
+ *
+ * One after another, not at once: discoverBlocks keeps the menu it is given
+ * in a module-level variable each call resets.
+ */
+export async function discoverPerFrontend(
+  targets: Array<[string, string]>,
+  { reachable: isUp, fetchRegistry, discover }: PerFrontendSteps,
+) {
+  const blocks: any[] = [];
+  const perFrontend: Record<string, number> = {};
+  let blocksConfig: Record<string, any> = {};
+  let frontendKeys: string[] = [];
+  for (const [project, url] of targets) {
+    if (!(await isUp(url))) continue;
+    const { blocksConfig: cfg, frontendKeys: keys, styleMenuClasses } = await fetchRegistry(url);
+    if (Object.keys(cfg).length === 0) {
+      console.warn(`[SETUP] ${project} (${url}) returned no schemas — skipped`);
+      continue;
+    }
+    const found = await discover(cfg, keys, styleMenuClasses);
+    for (const b of found) blocks.push({ ...b, frontend: project });
+    perFrontend[project] = found.length;
+    blocksConfig = cfg;      // last one wins for the single-config uses below
+    frontendKeys = keys;
+  }
+  return { blocks, perFrontend, blocksConfig, frontendKeys };
+}
+
 /**
  * Discover every block case the sanity suites run, from each frontend's own
  * registry, and write the discovery files. Does nothing when no API is named.
@@ -170,24 +212,6 @@ export async function discoverForFrontends(options: DiscoveryOptions): Promise<v
     process.env.MOCK_PARENT_URL ??
     `${harnessUrls().testFrontend}/mock-parent.html`;
 
-  // The styles a frontend offers come from the frontend FRONTEND_URL names,
-  // when the launcher gives one with MOCK_PARENT_URL.
-  let styleMenuClasses: string[] = [];
-  if (process.env.MOCK_PARENT_URL && process.env.FRONTEND_URL) {
-    console.log(`[SETUP] Fetching blocksConfig via ${process.env.MOCK_PARENT_URL}...`);
-    let blocksConfig: Record<string, any>;
-    let frontendKeys: string[];
-    ({ blocksConfig, frontendKeys, styleMenuClasses } = await fetchBlocksConfig(
-      process.env.MOCK_PARENT_URL,
-      process.env.FRONTEND_URL,
-      schemaApi,
-    ));
-    console.log(
-      `[SETUP] Got ${Object.keys(blocksConfig).length} block schemas from frontend ` +
-        `(${frontendKeys.length} registered by frontend, rest baseline)`,
-    );
-  }
-
   console.log(`[SETUP] Discovering blocks from ${discoverApi} (${maxLabel})...`);
   // Two keys can point at the SAME server (a job sets FRONTEND_URL to the very
   // frontend it also names as a project). That is one frontend, not two:
@@ -209,24 +233,11 @@ export async function discoverForFrontends(options: DiscoveryOptions): Promise<v
     targets.push([project, url]);
   }
 
-  const blocks: any[] = [];
-  const perFrontend: Record<string, number> = {};
-  let blocksConfig: Record<string, any> = {};
-  let frontendKeys: string[] = [];
-  for (const [project, url] of targets) {
-    if (!(await reachable(url))) continue;
-    const { blocksConfig: cfg, frontendKeys: keys } = await fetchBlocksConfig(
-      mockParent, url, schemaApi);
-    if (Object.keys(cfg).length === 0) {
-      console.warn(`[SETUP] ${project} (${url}) returned no schemas — skipped`);
-      continue;
-    }
-    const found = await discoverBlocks(discoverApi, maxPages, cfg, keys, styleMenuClasses);
-    for (const b of found) blocks.push({ ...b, frontend: project });
-    perFrontend[project] = found.length;
-    blocksConfig = cfg;      // last one wins for the single-config uses below
-    frontendKeys = keys;
-  }
+  const { blocks, perFrontend, blocksConfig, frontendKeys } = await discoverPerFrontend(targets, {
+    reachable,
+    fetchRegistry: (url) => fetchBlocksConfig(mockParent, url, schemaApi),
+    discover: (cfg, keys, menu) => discoverBlocks(discoverApi, maxPages, cfg, keys, menu),
+  });
   if (blocks.length === 0) {
     throw new Error(
       '[SETUP] No frontend yielded schemas. Discovery would be type-only, and ' +
