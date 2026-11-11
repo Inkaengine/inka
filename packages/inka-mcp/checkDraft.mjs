@@ -38,12 +38,17 @@ async function onSite({ kind, value }, site) {
 }
 
 /**
- * A finding as the agent is told it. A stray field (one the block's schema does
+ * A finding as the agent is told it. A field holding a file where a reference
+ * goes says where the file goes instead. A stray field (one the block's schema does
  * not declare) that a field of the block holds by that name — `styles`' `align`
  * written as the block's own — says where it belongs, so the agent puts it
  * there instead of guessing again.
  */
-function told({ message, blockType, field }, { path, blocksConfig }) {
+function told({ message, blockType, field, noReference }, { path, blocksConfig }) {
+  // A file's data where an image or link goes (inka#702): its own goes up first.
+  if (noReference) {
+    return `${message}. For an image or file of your own, stage it (stage_media, or ask_for_files for the person's own) and put its "media" id here.`;
+  }
   if (!field) return message;
   const homes = whereItBelongs(blocksConfig, blockType, field);
   return homes.length ? `${path}: ${blockType} has no field "${field}" — it is ${homes.join(' or ')}` : message;

@@ -101,6 +101,13 @@ const INSTRUCTIONS = `This server edits a website built with Inka (a Plone-based
 - To find what isn't live yet, use search rather than going through pages one by one: "hasDraft" finds live pages with a draft waiting (the change isn't live), "reviewState" (such as ["private", "pending"]) finds pages visitors can't see at all. They can be asked together.`;
 
 /**
+ * How an image or file of the agent's own gets onto a page, for a server that
+ * keeps staged files. Without it an agent found no way, and fitted a diagram
+ * into one call as inline data (inka#702).
+ */
+const FILES_INSTRUCTION = `- An image or file of your own (a photo, a diagram you made, a PDF) goes onto a page in two steps. First stage it: stage_media takes a public URL, a picture a tool here took, or a file on the person's computer where offered; ask_for_files asks the person to drop one in (an attachment in the conversation can't reach this server). Each gives a "media" id. Then put that id where the image or file goes in edit_blocks (an image block's field, or the page's own image field such as a lead image), or create_page's "file" for an Image or File item. Saving uploads it; a dry run with a preview shows it first. Never put a file's data in a field: list_block_types and describe_block say what each image or file field "takes".`;
+
+/**
  * For a tool that changes nothing on the site: a client may then let the
  * person allow it once, for good, instead of on every call.
  */
@@ -155,7 +162,7 @@ export function createServer(adminFor, { pictures, media, localFiles, userOf, re
   if (media === undefined) throw new Error('createServer: `media` is required (codes.mjs), or null to keep none');
   if (localFiles === undefined) throw new Error('createServer: `localFiles` is required (media.mjs), or null for none');
   if (reporting === undefined) throw new Error('createServer: `reporting` is required (sentry.mjs reporter), or null to report nothing');
-  const server = new McpServer({ name: 'inka', version: '0.0.1' }, { instructions: INSTRUCTIONS });
+  const server = new McpServer({ name: 'inka', version: '0.0.1' }, { instructions: media ? `${INSTRUCTIONS}\n${FILES_INSTRUCTION}` : INSTRUCTIONS });
   // Before a single registerTool below, so every tool is covered -- including
   // any a deployment registers on the server this returns.
   if (reporting) reportTheseTools(server, reporting);
@@ -381,15 +388,15 @@ export function createServer(adminFor, { pictures, media, localFiles, userOf, re
   server.registerTool('list_block_types', {
     title: 'List block types',
     annotations: SAVES_NOTHING,
-    description: 'The block types a page can hold: each type\'s fields (required ones marked; "markdown" fields take {"md": "..."}; a field with "fields" of its own takes an object of them, e.g. "styles": {"align": "center"}, never those fields at the block\'s top level) and its regions — the lists of child blocks, named as in get_page, with the types each allows. "page" lists what the page itself takes; "contentType" names the page\'s own type, listed with the others — its fields are the page\'s own (title, summary, …).',
+    description: 'The block types a page can hold: each type\'s fields (required ones marked; "markdown" fields take {"md": "..."}; an image or file field says what it "takes"; a field with "fields" of its own takes an object of them, e.g. "styles": {"align": "center"}, never those fields at the block\'s top level) and its regions — the lists of child blocks, named as in get_page, with the types each allows. "page" lists what the page itself takes; "contentType" names the page\'s own type, listed with the others — its fields are the page\'s own (title, summary, …).',
     inputSchema: z.object({ path: z.string().describe('The page path, e.g. /about') }),
-  }, async ({ path }, extra) => asResult(await adminFor(extra).withEditor(path, listBlockTypes)));
+  }, async ({ path }, extra) => asResult(await adminFor(extra).withEditor(path, (agent) => listBlockTypes(agent, { media: !!media }))));
 
   registerAppTool(server, 'describe_block', {
     title: 'Describe a block type',
     annotations: SAVES_NOTHING,
     _meta: SHOWS_PICTURES,
-    description: 'One block type in full, as the page at "path" can use it: what it is, its front end\'s guidance on using it, its variations, every field (required ones marked; "markdown" fields take {"md": "..."}; a field with "fields" of its own takes an object of them), its regions, where on the page it can go, examples of it filled in from its front end, and a real one from a page on the site, showing the exact value each field takes (links, images, choices). With "preview", each front-end example is also rendered as a visitor sees it: use that to see what a block type looks like before proposing it.',
+    description: 'One block type in full, as the page at "path" can use it: what it is, its front end\'s guidance on using it, its variations, every field (required ones marked; "markdown" fields take {"md": "..."}; an image or file field says what it "takes"; a field with "fields" of its own takes an object of them), its regions, where on the page it can go, examples of it filled in from its front end, and a real one from a page on the site, showing the exact value each field takes (links, images, choices). With "preview", each front-end example is also rendered as a visitor sees it: use that to see what a block type looks like before proposing it.',
     inputSchema: z.object({
       path: z.string().describe('The page you will add it to, e.g. /about'),
       type: z.string().describe('The block type, as list_block_types names it, e.g. teaser'),
@@ -399,6 +406,7 @@ export function createServer(adminFor, { pictures, media, localFiles, userOf, re
     const described = await adminFor(extra).withEditor(path, (agent, { site, render }) => describeBlock(agent, site, {
       // The examples share the room for pictures.
       type, render: preview && ((draft, uid, of) => render(draft, preview, { focus: uid, maxChars: Math.floor(IMAGE_CHARS / of) })),
+      media: !!media,
     }));
     if (!preview) return asResult(described);
     // Each example's picture follows the text, in the examples' order.

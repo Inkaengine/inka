@@ -78,6 +78,16 @@ describe('checkDraft', () => {
     expect(refused.message).toMatch(/teaser has no field "align" — it is styles\.align/);
   });
 
+  // inka#702: an agent put a file's data in an image block, and it was saved as
+  // it was. Refused, with where a file of its own goes.
+  it('refuses a file put where an image goes, saying to stage it', async () => {
+    const file = { data: '<svg/>', encoding: 'utf8', filename: 'd.svg', 'content-type': 'image/svg+xml' };
+    const refused = await check(SAVED, withBlock(SAVED, 'i', { '@type': 'image', url: file })).catch((error) => error);
+    expect(refused).toBeInstanceOf(DraftInvalid);
+    expect(refused.message).toMatch(/block i \(image\) field "url" holds no reference/);
+    expect(refused.message).toMatch(/stage_media/);
+  });
+
   it('does not blame the change for a problem the page already had', async () => {
     const broken = withBlock(SAVED, 't', teaserTo('/gone'));
     const edited = { ...broken, title: 'News, retitled' };
