@@ -49,15 +49,18 @@ const blocksConfig = {
           allowedBlocks: ['slate', 'footer'],
           defaultBlockType: 'slate',
         },
+        // As a site declares it: the footer and what lives beside it. More than one
+        // type, so the region itself is seeded with an `empty` where it is empty.
         footer: {
           widget: 'blocks_layout',
           allowedLayouts: [FOOTER_TEMPLATE_PATH],
-          allowedBlocks: ['footer'],
+          allowedBlocks: ['footer', 'cookieConsent'],
         },
       },
     }),
   },
   slate: { id: 'slate', blockSchema: { properties: {} } },
+  cookieConsent: { id: 'cookieConsent', blockSchema: { properties: {} } },
   footer: {
     id: 'footer',
     blockSchema: {
