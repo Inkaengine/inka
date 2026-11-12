@@ -3,11 +3,10 @@
  * never meant to. A template is written by its own commit ("Change on all
  * pages") with what the author changed in it, and by nothing else.
  */
-import { test, expect } from '../fixtures';
+import { test, expect, URLS } from '../fixtures';
 import { randomUUID } from 'node:crypto';
 import { AdminUIHelper } from '../helpers/AdminUIHelper';
 import { whileEditing } from '../helpers/otherUser';
-import { URLS } from '../ports';
 
 const TEMPLATE_HEADER_CONTENT = 'Template Header - From Template';
 
