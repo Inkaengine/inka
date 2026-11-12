@@ -257,6 +257,33 @@ test.describe("a commit stores the author's change and nothing the editor made",
   });
 });
 
+test.describe("a block the author adds in a template's empty region", () => {
+  // Case 5: added with the sidebar's "+" while the template was unlocked, it
+  // was stored fixed and read-only beside the placeholder, so no page could
+  // edit it.
+  test('replaces the placeholder, and stays the author\'s to edit', async ({ page }) => {
+    const helper = new AdminUIHelper(page);
+    await helper.login();
+    const { template, page: path } = await freshTemplatePage(helper.authToken, { emptySection: true });
+    await helper.navigateToEdit(path);
+
+    const { blockId: head } = await helper.waitForBlockByContent('Its own heading');
+    await helper.unlockTemplate(head);
+    // An empty section's body is its placeholder: click it, then Escape up to the section.
+    await helper.getIframe().locator('[data-block-uid="s"]').first().click();
+    await page.keyboard.press('Escape');
+    await helper.waitForBlockSelectedInAdmin('s');
+    await helper.addBlockViaSidebar('Blocks', 'Text');
+    await helper.lockTemplate(head, 'commit');
+
+    await expect.poll(async () => {
+      const saved = await stored(template, helper.authToken);
+      const aside = Object.values(saved.blocks).find((b: any) => b['@type'] === 'section') as any;
+      return aside.blocks_layout.items.map((id: string) => aside.blocks[id]).map((b: any) => [b['@type'], !!b.fixed, !!b.readOnly]);
+    }, { message: 'the section holds the added block alone, editable' }).toEqual([['slate', false, false]]);
+  });
+});
+
 test.describe('a drop goes only where it is allowed, and where its indicator can be seen', () => {
   // Case 4: the layout's title, dragged over a paragraph in `main`, landed at
   // page level after the layout block: where the drag walked up to, at an edge
