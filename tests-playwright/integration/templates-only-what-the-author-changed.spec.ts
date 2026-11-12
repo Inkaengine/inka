@@ -71,7 +71,7 @@ test.describe('a template is written only by its own commit', () => {
  * seen by every user, so locking a shared fixture template would refuse the
  * unlocks of every other test using it at the same time.
  */
-async function freshTemplatePage(token: string): Promise<{ template: string; page: string }> {
+async function freshTemplatePage(token: string, { emptySection = false } = {}): Promise<{ template: string; page: string }> {
   const post = async (folder: string, body: object) => {
     const response = await fetch(`${URLS.mockApi}${folder}`, {
       method: 'POST',
@@ -89,8 +89,10 @@ async function freshTemplatePage(token: string): Promise<{ template: string; pag
         value: [{ type: 'p', children: [{ text: 'Its own heading' }] }], plaintext: 'Its own heading' },
       body: { '@type': 'slate', templateId: `/_test_data/templates/${id}`, slotId: 'default',
         value: [{ type: 'p', children: [{ text: 'Its slot' }] }], plaintext: 'Its slot' },
+      ...(emptySection && { aside: { '@type': 'section', templateId: `/_test_data/templates/${id}`, slotId: 'aside', fixed: true, readOnly: true,
+        blocks: {}, blocks_layout: { items: [] } } }),
     },
-    blocks_layout: { items: ['head', 'body'] },
+    blocks_layout: { items: ['head', 'body', ...(emptySection ? ['aside'] : [])] },
   });
   const instance = `instance-${randomUUID()}`;
   const page = await post('/_test_data', {
@@ -100,8 +102,10 @@ async function freshTemplatePage(token: string): Promise<{ template: string; pag
         value: [{ type: 'p', children: [{ text: 'Its own heading' }] }], plaintext: 'Its own heading' },
       b: { '@type': 'slate', templateId: template, templateInstanceId: instance, slotId: 'default',
         value: [{ type: 'p', children: [{ text: 'Page text' }] }], plaintext: 'Page text' },
+      ...(emptySection && { s: { '@type': 'section', templateId: template, templateInstanceId: instance, slotId: 'aside', fixed: true, readOnly: true,
+        blocks: {}, blocks_layout: { items: [] } } }),
     },
-    blocks_layout: { items: ['h', 'b'] },
+    blocks_layout: { items: ['h', 'b', ...(emptySection ? ['s'] : [])] },
   });
   return { template, page };
 }
@@ -205,5 +209,37 @@ test.describe('unlocking a template locks it on the site, as editing a page does
       await expect(toggle, 'it stays locked').toHaveAttribute('aria-pressed', 'false');
       expect((await lockOf(template, helper.authToken)).creator, "jane's lock is left as it is").toBe('jane');
     });
+  });
+});
+
+/** The template as the site has it now, in the session of `token`. */
+async function stored(path: string, token: string) {
+  const response = await fetch(`${URLS.mockApi}${path}`, { headers: { Accept: 'application/json', Authorization: `Bearer ${token}` } });
+  expect(response.status).toBe(200);
+  return response.json();
+}
+
+test.describe("a commit stores the author's change and nothing the editor made", () => {
+  // Case 2: an empty region of a locked block is given an `empty` placeholder
+  // in the editor (#700). A commit stored them as the template's own blocks.
+  test('the placeholders in empty regions are not stored', async ({ page }) => {
+    const helper = new AdminUIHelper(page);
+    await helper.login();
+    const { template, page: path } = await freshTemplatePage(helper.authToken, { emptySection: true });
+    await helper.navigateToEdit(path);
+
+    const { blockId: head } = await helper.waitForBlockByContent('Its own heading');
+    await helper.unlockTemplate(head);
+    const editor = await helper.enterEditMode(head);
+    await helper.moveCursorToEnd(editor);
+    await editor.pressSequentially(' changed', { delay: 10 });
+    await helper.lockTemplate(head, 'commit');
+
+    await expect.poll(async () => JSON.stringify((await stored(template, helper.authToken)).blocks), { message: 'the edit is stored' })
+      .toContain('Its own heading changed');
+    const saved = await stored(template, helper.authToken);
+    expect(JSON.stringify(saved), 'no placeholder is stored').not.toContain('"@type":"empty"');
+    const aside = Object.values(saved.blocks).find((b: any) => b['@type'] === 'section') as any;
+    expect(aside.blocks_layout.items, 'the empty region is stored empty').toEqual([]);
   });
 });
