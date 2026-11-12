@@ -11165,8 +11165,12 @@ export class Bridge {
         // Single element: clone it as before
         draggedBlock = allElements[0].cloneNode(true);
         draggedBlock.classList.add('dragging');
-        // Remove data-block-uid from shadow so it doesn't interfere with selectors
+        // Remove data-block-uid from the shadow, and from every block inside it,
+        // so none of it interferes with selectors: the shadow follows the cursor,
+        // and a container's own children in it were taken as the nearest drop
+        // target, dropping it into itself (inka#705).
         draggedBlock.removeAttribute('data-block-uid');
+        for (const inner of draggedBlock.querySelectorAll('[data-block-uid]')) inner.removeAttribute('data-block-uid');
       }
 
       // IMPORTANT: Set styles BEFORE appending to avoid brief layout flash
@@ -11271,8 +11275,10 @@ export class Bridge {
         // resolution is uniform for every cursor position (it effectively walks both up
         // and down and takes the nearest droppable edge). Enable HYDRA_DEBUG to trace.
         {
+          // Nor anything inside a dragged block: a block can't go into itself.
           const candidates = Array.from(document.querySelectorAll('[data-block-uid]'))
-            .filter(el => el !== draggedBlock && !draggedBlockUids.includes(uidOf(el)));
+            .filter(el => el !== draggedBlock && !draggedBlockUids.includes(uidOf(el))
+              && !allElements.some((dragged) => dragged.contains(el)));
           // For each candidate, measure BOTH insert edges along the axis its siblings
           // are laid out on — a horizontal row (columns / data-block-add="right") uses
           // the left/right edges + clientX, a vertical stack uses top/bottom + clientY
@@ -11592,10 +11598,27 @@ export class Bridge {
               borderLeft: 'none', borderTop: '3px dashed #007bff', display: 'block'
             });
           }
+          // The indicator shows where the drop goes: a place the author can't
+          // see is no drop. Walked up to a container's far edge, out of the
+          // window, a layout's title was dropped after the whole layout (inka#705).
+          // The edge it lands at must be in the window; the indicator, drawn in
+          // the gap beside that edge, is then kept on screen with it.
+          const landsAt = isHorizontal ? (insertAt === 0 ? rect.left : rect.right) : (insertAt === 0 ? rect.top : rect.bottom);
+          const windowEnd = isHorizontal ? window.innerWidth : window.innerHeight;
+          if (landsAt < 0 || landsAt > windowEnd) {
+            dropIndicator.style.display = 'none';
+            dropIndicatorVisible = false;
+            closestBlockUid = null;
+            replaceTargetUid = null;
+            return;
+          }
+          const scrolled = isHorizontal ? window.scrollX : window.scrollY;
+          const along = isHorizontal ? 'left' : 'top';
+          const at = parseFloat(dropIndicator.style[along]);
+          const kept = Math.min(Math.max(at, scrolled), scrolled + windowEnd - indicatorSize);
+          if (kept !== at) dropIndicator.style[along] = `${kept}px`;
           this._nameDropTarget(dropIndicator, closestBlockUid, insertAt === 1, isHorizontal);
           dropIndicatorVisible = true;
-          // TODO(scroll-into-view): if the resolved edge is off-screen, scroll it into
-          // view — deferred; scrolling mid-drag fights a held cursor, needs its own design.
         } else {
           // No valid drop target - hide indicator and mark as not droppable
           const existingIndicator = document.querySelector('.volto-hydra-drop-indicator');

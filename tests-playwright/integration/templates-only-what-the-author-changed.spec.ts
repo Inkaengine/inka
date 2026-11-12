@@ -71,7 +71,7 @@ test.describe('a template is written only by its own commit', () => {
  * seen by every user, so locking a shared fixture template would refuse the
  * unlocks of every other test using it at the same time.
  */
-async function freshTemplatePage(token: string, { emptySection = false } = {}): Promise<{ template: string; page: string }> {
+async function freshTemplatePage(token: string, { emptySection = false, framed = false } = {}): Promise<{ template: string; page: string }> {
   const post = async (folder: string, body: object) => {
     const response = await fetch(`${URLS.mockApi}${folder}`, {
       method: 'POST',
@@ -91,8 +91,13 @@ async function freshTemplatePage(token: string, { emptySection = false } = {}): 
         value: [{ type: 'p', children: [{ text: 'Its slot' }] }], plaintext: 'Its slot' },
       ...(emptySection && { aside: { '@type': 'section', templateId: `/_test_data/templates/${id}`, slotId: 'aside', fixed: true, readOnly: true,
         blocks: {}, blocks_layout: { items: [] } } }),
+      // A locked section holding a fixed heading of its own, as a layout's hero holds its title.
+      ...(framed && { frame: { '@type': 'section', templateId: `/_test_data/templates/${id}`, slotId: 'frame', fixed: true, readOnly: true,
+        blocks: { framed: { '@type': 'slate', templateId: `/_test_data/templates/${id}`, slotId: 'framed', fixed: true, readOnly: true,
+          value: [{ type: 'p', children: [{ text: 'Framed heading' }] }], plaintext: 'Framed heading' } },
+        blocks_layout: { items: ['framed'] } } }),
     },
-    blocks_layout: { items: ['head', 'body', ...(emptySection ? ['aside'] : [])] },
+    blocks_layout: { items: ['head', 'body', ...(emptySection ? ['aside'] : []), ...(framed ? ['frame'] : [])] },
   });
   const instance = `instance-${randomUUID()}`;
   const page = await post('/_test_data', {
@@ -104,8 +109,16 @@ async function freshTemplatePage(token: string, { emptySection = false } = {}): 
         value: [{ type: 'p', children: [{ text: 'Page text' }] }], plaintext: 'Page text' },
       ...(emptySection && { s: { '@type': 'section', templateId: template, templateInstanceId: instance, slotId: 'aside', fixed: true, readOnly: true,
         blocks: {}, blocks_layout: { items: [] } } }),
+      ...(framed && {
+        f: { '@type': 'section', templateId: template, templateInstanceId: instance, slotId: 'frame', fixed: true, readOnly: true,
+          blocks: { fh: { '@type': 'slate', templateId: template, templateInstanceId: instance, slotId: 'framed', fixed: true, readOnly: true,
+            value: [{ type: 'p', children: [{ text: 'Framed heading' }] }], plaintext: 'Framed heading' } },
+          blocks_layout: { items: ['fh'] } },
+        // The page's own, outside the template.
+        own: { '@type': 'slate', value: [{ type: 'p', children: [{ text: 'Not the template' }] }], plaintext: 'Not the template' },
+      }),
     },
-    blocks_layout: { items: ['h', 'b', ...(emptySection ? ['s'] : [])] },
+    blocks_layout: { items: ['h', 'b', ...(emptySection ? ['s'] : []), ...(framed ? ['f', 'own'] : [])] },
   });
   return { template, page };
 }
@@ -241,5 +254,69 @@ test.describe("a commit stores the author's change and nothing the editor made",
     expect(JSON.stringify(saved), 'no placeholder is stored').not.toContain('"@type":"empty"');
     const aside = Object.values(saved.blocks).find((b: any) => b['@type'] === 'section') as any;
     expect(aside.blocks_layout.items, 'the empty region is stored empty').toEqual([]);
+  });
+});
+
+test.describe('a drop goes only where it is allowed, and where its indicator can be seen', () => {
+  // Case 4: the layout's title, dragged over a paragraph in `main`, landed at
+  // page level after the layout block: where the drag walked up to, at an edge
+  // the author could not see.
+  const blockOrder = async (iframe: any) => Promise.all((await iframe.locator('[data-block-uid]').all())
+    .map((b: any) => b.getAttribute('data-block-uid')));
+
+  test('a block allowed in only one container is dropped nowhere else', async ({ page }) => {
+    const helper = new AdminUIHelper(page);
+    await helper.login();
+    await helper.navigateToEdit('/container-test-page');
+    const iframe = helper.getIframe();
+    await helper.waitForIframeBlockHandle('col-2').catch(() => {});
+    const before = await blockOrder(iframe);
+
+    await helper.dragBlockAfterNoReorderAssert('col-2', 'text-after');
+
+    await expect.poll(() => blockOrder(iframe), { message: 'nothing moved' }).toEqual(before);
+    await expect(iframe.locator('[data-block-uid="columns-1"] [data-block-uid="col-2"]'), 'still in its columns').toHaveCount(1);
+  });
+
+  test('a drop whose place is off-screen is refused', async ({ page }) => {
+    const helper = new AdminUIHelper(page);
+    await helper.login();
+    // A page of its own: a columns block far taller than the window, and a
+    // section after it. A section can't go in a column.
+    const paras = Object.fromEntries(Array.from({ length: 40 }, (_, n) => [`p${n}`,
+      { '@type': 'slate', value: [{ type: 'p', children: [{ text: `Paragraph ${n}` }] }], plaintext: `Paragraph ${n}` }]));
+    const response = await fetch(`${URLS.mockApi}/_test_data`, {
+      method: 'POST',
+      headers: { Accept: 'application/json', 'Content-Type': 'application/json', Authorization: `Bearer ${helper.authToken}` },
+      body: JSON.stringify({
+        '@type': 'Document', id: `own-page-${randomUUID()}`, title: 'A tall page',
+        blocks: {
+          cols: { '@type': 'columns', blocks: { col: { '@type': 'column', blocks: paras, blocks_layout: { items: Object.keys(paras) } } }, blocks_layout: { columns: ['col'] } },
+          sec: { '@type': 'section', blocks: { inner: { '@type': 'slate', value: [{ type: 'p', children: [{ text: 'In the section' }] }], plaintext: 'In the section' } }, blocks_layout: { items: ['inner'] } },
+        },
+        blocks_layout: { items: ['cols', 'sec'] },
+      }),
+    });
+    expect(response.status).toBe(201);
+    await helper.navigateToEdit(new URL((await response.json())['@id']).pathname);
+    const iframe = helper.getIframe();
+    const before = await blockOrder(iframe);
+
+    // A section's body is its children: select one, then Escape up to the section.
+    await helper.clickBlockInIframe('inner');
+    await helper.escapeFromEditing();
+    await page.keyboard.press('Escape');
+    await helper.waitForBlockSelectedInAdmin('sec');
+
+    // Over a paragraph just past the middle of the columns (clear of the window's
+    // edges, where a drag scrolls), the drag walks up to the columns block, to
+    // after it: its bottom edge, far below the window.
+    await helper.dragBlockWithMouseNoDrop(page.locator('.quanta-toolbar'), iframe.locator('[data-block-uid="p21"]').first(), true);
+    const columnsBottom = await iframe.locator('[data-block-uid="cols"]').first().evaluate((el: Element) => el.getBoundingClientRect().bottom - window.innerHeight);
+    expect(columnsBottom, "the columns block's bottom edge is out of sight").toBeGreaterThan(0);
+    await expect(iframe.locator('.volto-hydra-drop-indicator:visible'), 'no indicator for a place out of sight').toHaveCount(0);
+    await page.mouse.up();
+
+    await expect.poll(() => blockOrder(iframe), { message: 'nothing moved' }).toEqual(before);
   });
 });
