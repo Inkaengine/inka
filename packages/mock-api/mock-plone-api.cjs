@@ -7021,6 +7021,7 @@ app.patch('*', (req, res) => {
     const parent = cleanPath.split('/').slice(0, -1).join('/') || '';
     const renamedPath = `${parent}/${req.body.id}`;
     const renamed = { ...content, ...req.body, id: req.body.id };
+    delete renamed.lock;
     setSessionContent(sessionId, renamedPath, renamed);
     if (!sessionDeletions[sessionId]) sessionDeletions[sessionId] = new Set();
     sessionDeletions[sessionId].add(cleanPath);
@@ -7087,6 +7088,10 @@ app.patch('*', (req, res) => {
     // Plone stamps `modified` on every save; a client comparing it before
     // saving (the agent API's version check) relies on that.
     const mergedContent = { ...content, ...registeredBody, modified: new Date().toISOString() };
+    // A lock is not part of the page (Plone keeps it apart, and @lock is how it
+    // changes). `content` is the page as GET shows it, its lock included: stored
+    // with it, the page showed itself locked after its holder let go (inka#705).
+    delete mergedContent.lock;
 
     // Persist to session storage for test verification when session is provided
     // Default session doesn't persist to maintain backward compatibility

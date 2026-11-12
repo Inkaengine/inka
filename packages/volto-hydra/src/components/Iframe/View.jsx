@@ -26,6 +26,7 @@ import { PAGE_BLOCK_UID } from '@volto-hydra/hydra-js';
 import { isObjectListRegion } from '@volto-hydra/helpers/regionWidgets.js';
 import { mergeFrontendBlock } from '@volto-hydra/hydra-js/mergeFrontendBlock.js';
 import { registerAgentApi } from './agentApi';
+import { lockedBy } from '../AgentSite/lockedBy';
 import {
   isSlateFieldType,
   formDataContentEqual,
@@ -1512,6 +1513,30 @@ const Iframe = (props) => {
   // Template cache: stores loaded template documents keyed by templateId
   // Used for comparison on save to detect template changes
   const templateCacheRef = useRef({});
+  // Each template as the site has it (its blocks and their layout, as JSON):
+  // set when it is loaded from the site and when it is written. A template is
+  // written only when it differs from this, so a save writes what the author
+  // changed and nothing else (inka#705).
+  const templateStoredRef = useRef({});
+  // The templates this editor has unlocked, and so locked on the site, as
+  // opening a page to edit locks the page: instance id → template id. Released
+  // by the save that commits it, by locking it again unchanged or with Reset,
+  // and by leaving the editor (inka#705).
+  const heldTemplateLocksRef = useRef({});
+  const releaseTemplateLock = (instanceId) => {
+    const templateId = heldTemplateLocksRef.current[instanceId];
+    if (!templateId) return;
+    delete heldTemplateLocksRef.current[instanceId];
+    new Api().del(`${templateId}/@lock`, { data: {} }).catch((error) => {
+      console.error(`[HYDRA] Couldn't unlock template ${templateId}:`, error);
+    });
+  };
+  useEffect(() => () => {
+    for (const instanceId of Object.keys(heldTemplateLocksRef.current)) releaseTemplateLock(instanceId);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  const rememberStored = (templateId, template) => {
+    templateStoredRef.current[templateId] = JSON.stringify({ blocks: template?.blocks, blocks_layout: template?.blocks_layout });
+  };
 
   // Pending template edit exit - stores { requestId, prevInstanceId, mode } when
   // waiting for flush before a lock-commit reverse-merge.
@@ -1562,7 +1587,8 @@ const Iframe = (props) => {
     }));
     postTemplateEditMode(next);
     delete templateSnapshotsRef.current[instanceId];
-  }, [iframeSyncState.templateEditMode, postTemplateEditMode]);
+    releaseTemplateLock(instanceId);
+  }, [iframeSyncState.templateEditMode, postTemplateEditMode]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Persist ONE template document from the cache: POST a brand-new template
   // (_isNew) into its parent folder, else PATCH the existing one. Shared by the
@@ -1571,6 +1597,12 @@ const Iframe = (props) => {
   const persistTemplateDoc = useCallback(async (api, templateId) => {
     const template = templateCacheRef.current[templateId];
     if (!template) return;
+    // Written only when it changed: a page save offers every template the page
+    // uses, and writing one the author never changed rewrote it from this
+    // editor's copy, over anyone else's later change (inka#705).
+    // A new template (Make template) is not on the site yet, so it differs.
+    if (templateStoredRef.current[templateId] ===
+        JSON.stringify({ blocks: template.blocks, blocks_layout: template.blocks_layout })) return;
     try {
       if (template._isNew) {
         // New template: POST to parent folder so Plone creates it (as the type
@@ -1605,6 +1637,7 @@ const Iframe = (props) => {
         });
         // Mutate in place so the cached reference stays valid; next save PATCHes.
         delete template._isNew;
+        rememberStored(templateId, template);
       } else {
         await api.patch(templateId, {
           data: {
@@ -1612,6 +1645,7 @@ const Iframe = (props) => {
             blocks_layout: template.blocks_layout,
           },
         });
+        rememberStored(templateId, template);
       }
     } catch (error) {
       console.error(`[HYDRA] Failed to save template ${templateId}:`, error);
@@ -1828,6 +1862,7 @@ const Iframe = (props) => {
       }));
       postTemplateEditMode(next);
       delete templateSnapshotsRef.current[prevInstanceId];
+      releaseTemplateLock(prevInstanceId);
       setCommittingTemplate(false); // commit round-trip done — drop the saving overlay
     };
 
@@ -4689,6 +4724,7 @@ const Iframe = (props) => {
             // A template is the id it was referenced by (adoptTemplate).
             const template = adoptTemplate(await api.get(templateId), templateId);
             templateCacheRef.current[templateId] = template;
+            rememberStored(templateId, template);
             return template;
           };
 
@@ -4780,6 +4816,7 @@ const Iframe = (props) => {
 
         // Update template cache
         templateCacheRef.current = { ...templateCacheRef.current, ...newTemplates };
+        for (const [id, template] of Object.entries(newTemplates)) if (template) rememberStored(id, template);
 
         // Create loadTemplate that uses cache and falls back to API
         const loadTemplate = async (templateId) => {
@@ -4789,6 +4826,7 @@ const Iframe = (props) => {
           // Load from API and cache
           const template = adoptTemplate(await api.get(templateId), templateId);
           templateCacheRef.current[templateId] = template;
+          rememberStored(templateId, template);
           return template;
         };
 
@@ -5500,13 +5538,6 @@ const Iframe = (props) => {
   // fresh, add the instance to the unlocked set, and tell the iframe. Does NOT
   // lock the rest of the page.
   const enterTemplateEdit = async (instanceId) => {
-    // Snapshot the current page so "Reset changes" can revert only this template's
-    // blocks later, leaving page edits intact.
-    templateSnapshotsRef.current[instanceId] = properties;
-
-    // Re-fetch the template fresh into the cache — templateCacheRef persists across
-    // page navigations, so without this we'd commit a stale copy. Skip for a
-    // not-yet-saved template (_isNew): a GET would 404 / return a stub and clobber it.
     let editTemplateId = null;
     for (const block of Object.values(iframeSyncState.formData?.blocks || {})) {
       if (block.templateInstanceId === instanceId && block.templateId) {
@@ -5514,12 +5545,40 @@ const Iframe = (props) => {
         break;
       }
     }
+
+    // Lock the template on the site, as opening a page to edit locks the page.
+    // Someone else has it unlocked: it stays locked here, and the author is told
+    // who. A new template isn't on the site yet, so there's nothing to lock.
+    if (editTemplateId && !templateCacheRef.current[editTemplateId]?._isNew) {
+      const lock = await new Api().post(`${editTemplateId}/@lock`, { data: {} });
+      const holder = lockedBy(lock, sessionToken);
+      if (holder) {
+        toast.error(
+          <Toast
+            error
+            title="Someone else is changing this template"
+            content={`${holder.user} has it unlocked. It can be changed once they are done.`}
+          />,
+        );
+        return;
+      }
+      heldTemplateLocksRef.current[instanceId] = editTemplateId;
+    }
+
+    // Snapshot the current page so "Reset changes" can revert only this template's
+    // blocks later, leaving page edits intact.
+    templateSnapshotsRef.current[instanceId] = properties;
+
+    // Re-fetch the template fresh into the cache — templateCacheRef persists across
+    // page navigations, so without this we'd commit a stale copy. Skip for a
+    // not-yet-saved template (_isNew): a GET would 404 / return a stub and clobber it.
     if (editTemplateId && !templateCacheRef.current[editTemplateId]?._isNew) {
       try {
         templateCacheRef.current[editTemplateId] = adoptTemplate(
           await new Api().get(editTemplateId),
           editTemplateId,
         );
+        rememberStored(editTemplateId, templateCacheRef.current[editTemplateId]);
       } catch {
         // Offline / 404 — keep whatever's cached rather than dropping it.
       }
