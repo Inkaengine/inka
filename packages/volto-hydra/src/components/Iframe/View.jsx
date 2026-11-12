@@ -27,6 +27,7 @@ import { isObjectListRegion } from '@volto-hydra/helpers/regionWidgets.js';
 import { mergeFrontendBlock } from '@volto-hydra/hydra-js/mergeFrontendBlock.js';
 import { registerAgentApi } from './agentApi';
 import { lockedBy } from '../AgentSite/lockedBy';
+import { validateBlocksAgainstSchemas } from '../../utils/validateBlocks';
 import {
   isSlateFieldType,
   formDataContentEqual,
@@ -1891,8 +1892,27 @@ const Iframe = (props) => {
 
     if (templateId && templateCacheRef.current[templateId]) {
       const template = templateCacheRef.current[templateId];
+      let keepUnlocked = false;
       mergeInstanceIntoTemplate(template, formData, prevInstanceId, { idFieldMap, uuidGenerator: uuid })
         .then(async ({ merged: updatedTemplate }) => {
+          // Checked as a page save checks a page (Form.jsx): a template its own
+          // blocks' rules refuse would be refused on every page using it. A
+          // commit was checked for slot grouping only (inka#705). Not saved,
+          // and left unlocked for the author to fix.
+          const check = validateBlocksAgainstSchemas(updatedTemplate, {
+            blocksConfig: config.blocks.blocksConfig, intl, formatMessage: intl.formatMessage,
+          });
+          const reasons = Object.entries(check.blocksErrors).flatMap(([blockId, errors]) => {
+            const type = getBlockById(updatedTemplate, check.blockPathMap, blockId)?.['@type'];
+            const name = config.blocks.blocksConfig?.[type]?.title || type;
+            return Object.entries(errors).map(([field, error]) => `${name}: ${check.fieldTitles?.[blockId]?.[field] || field}: ${
+              Array.isArray(error) ? error.join(', ') : error?.message || error}`);
+          });
+          if (reasons.length) {
+            keepUnlocked = true;
+            toast.error(<Toast error title="This template can't be saved" content={reasons.join('; ')} />);
+            return;
+          }
           templateCacheRef.current[templateId] = updatedTemplate;
           // "Change on all pages": persist the template document immediately.
           await persistTemplateDoc(new Api(), templateId);
@@ -1910,7 +1930,7 @@ const Iframe = (props) => {
             />,
           );
         })
-        .finally(finish);
+        .finally(() => (keepUnlocked ? setCommittingTemplate(false) : finish()));
     } else {
       finish();
     }

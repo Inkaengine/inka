@@ -284,6 +284,35 @@ test.describe("a block the author adds in a template's empty region", () => {
   });
 });
 
+test.describe("a commit is checked as a page save is", () => {
+  // Case 6: a commit was checked for slot grouping only, so a template could be
+  // stored with blocks its own rules refuse on any page that uses it.
+  test("a template that breaks its blocks' rules is not saved, and says why", async ({ page }) => {
+    const helper = new AdminUIHelper(page);
+    await helper.login();
+    const { template, page: path } = await freshTemplatePage(helper.authToken, { emptySection: true });
+    await helper.navigateToEdit(path);
+    const writes = recordWrites(page, URLS.mockApi);
+
+    const { blockId: head } = await helper.waitForBlockByContent('Its own heading');
+    await helper.unlockTemplate(head);
+    await helper.getIframe().locator('[data-block-uid="s"]').first().click();
+    await page.keyboard.press('Escape');
+    await helper.waitForBlockSelectedInAdmin('s');
+    // An image with no image: its `url` is required.
+    await helper.addBlockViaSidebar('Blocks', 'Image');
+
+    await helper.clickBlockInIframe(head);
+    await page.locator('.quanta-toolbar .template-lock-toggle').click();
+    await page.locator('.template-lock-modal .template-commit').click();
+
+    await expect(page.locator('.Toastify'), 'the author is told why').toContainText(/image|required/i);
+    await expect(page.locator('.quanta-toolbar .template-lock-toggle'), 'it stays unlocked to fix').toHaveAttribute('aria-pressed', 'true');
+    expect(templateWrites(writes), 'the template is not written').toEqual([]);
+    expect(JSON.stringify((await stored(template, helper.authToken)).blocks)).not.toContain('"@type":"image"');
+  });
+});
+
 test.describe('a drop goes only where it is allowed, and where its indicator can be seen', () => {
   // Case 4: the layout's title, dragged over a paragraph in `main`, landed at
   // page level after the layout block: where the drag walked up to, at an edge
