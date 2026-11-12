@@ -327,6 +327,32 @@ export function instanceContent(formData, instanceId, idFieldMap) {
 }
 
 /**
+ * The page without the editor's `empty` placeholders, at any depth. A
+ * placeholder is not page content, and is never stored (a page save strips
+ * them too). Merged into a template it was stored as the template's own block,
+ * and, counted as the `default` slot in a region the page stores before the
+ * slot's own, it moved the slot there (inka#705).
+ */
+function withoutPlaceholders(container, idFieldMap) {
+  const fields = getChildFields(container, idFieldMap, { allObjectLists: true });
+  if (!fields.length) return container;
+  const out = { ...container };
+  for (const field of fields) {
+    const kept = getChildBlockEntries(container, field)
+      .filter(({ block }) => block?.['@type'] !== 'empty')
+      .map(({ id, block }) => ({ id, block: withoutPlaceholders(block, idFieldMap) }));
+    setChildBlockEntries(out, field, kept);
+  }
+  // A blocks_layout region's entries are added to the shared dict, never taken
+  // out of it: drop what no region lists any more.
+  if (out.blocks && out.blocks_layout) {
+    const listed = new Set(Object.values(out.blocks_layout).flat());
+    out.blocks = Object.fromEntries(Object.entries(out.blocks).filter(([id]) => listed.has(id)));
+  }
+  return out;
+}
+
+/**
  * "Change on all pages": one template instance on a page, merged into its template.
  * The instance's own blocks, wherever it sits (instanceContent), in its own order:
  * the merge reads a page's top-level regions, and a nested instance is not in them.
@@ -342,7 +368,7 @@ export function instanceContent(formData, instanceId, idFieldMap) {
  * @returns {Promise<{merged: Object, newTemplateIds: string[]}>} the template to save
  */
 export async function mergeInstanceIntoTemplate(template, page, instanceId, { idFieldMap, uuidGenerator }) {
-  const instance = instanceContent(page, instanceId, idFieldMap);
+  const instance = instanceContent(withoutPlaceholders(page, idFieldMap), instanceId, idFieldMap);
   const instancePage = {
     ...page,
     blocks: instance.blocks,

@@ -339,7 +339,7 @@ import slateTransforms from '../../utils/slateTransforms';
 import OpenObjectBrowser from './OpenObjectBrowser';
 import SyncedSlateToolbar from '../Toolbar/SyncedSlateToolbar';
 import { getBlockTypeSchema } from '../../utils/blockPath';
-import { removeReplacedPlaceholder, buildBlockPathMap, buildIdFieldMap, stripBlockPathMapForPostMessage, getBlockByPath, getBlockById, updateBlockById, getChildBlockIds, getContainerFieldConfig, getSelectAfterDelete, insertBlockInContainer, deleteBlockFromContainer, mutateBlockInContainer, ensureEmptyBlockIfEmpty, ensureAllContainersHaveBlocks, initializeContainerBlock, moveBlockBetweenContainers, reorderBlocksInContainer, getAllContainerFields, insertTableColumn, deleteTableColumn, removeTemplateInstance, getContainerItems, getResolvedSchema, getCommonAncestor, wrapBlocksInContainer, unwrapContainer, getEmptyBlockType, getContainerRegionDescriptors, inheritTemplateMembershipDeep, stripEmptyBlocks } from '../../utils/blockPath';
+import { removeReplacedPlaceholder, buildBlockPathMap, buildIdFieldMap, stripBlockPathMapForPostMessage, getBlockByPath, getBlockById, updateBlockById, getChildBlockIds, getContainerFieldConfig, getSelectAfterDelete, insertBlockInContainer, deleteBlockFromContainer, mutateBlockInContainer, ensureEmptyBlockIfEmpty, ensureAllContainersHaveBlocks, initializeContainerBlock, moveBlockBetweenContainers, reorderBlocksInContainer, getAllContainerFields, insertTableColumn, deleteTableColumn, removeTemplateInstance, getContainerItems, getResolvedSchema, getCommonAncestor, wrapBlocksInContainer, unwrapContainer, getEmptyBlockType, getContainerRegionDescriptors, inheritTemplateMembershipDeep } from '../../utils/blockPath';
 import { mergeAnchorsIntoContent } from '../../utils/linkableAnchors';
 import { heldImages, onImageHeld } from '../../utils/pendingImages';
 import { withImageMetadata } from '../../utils/imageMetadata';
@@ -1751,8 +1751,7 @@ const Iframe = (props) => {
       for (const [id, tpl] of Object.entries(templateCache)) {
         if (!tpl?._isNew || !onPage.has(id)) continue;
         const { merged } = await mergeInstanceIntoTemplate(tpl, page, id, { idFieldMap, uuidGenerator: uuid });
-        const kept = stripEmptyBlocks(merged, config.blocks.blocksConfig, intl);
-        templateCache[id] = { ...tpl, blocks: kept.blocks, blocks_layout: kept.blocks_layout };
+        templateCache[id] = { ...tpl, blocks: merged.blocks, blocks_layout: merged.blocks_layout };
       }
 
       // Finalize the id/filename for any not-yet-saved template BEFORE we compute the
@@ -1893,11 +1892,7 @@ const Iframe = (props) => {
     if (templateId && templateCacheRef.current[templateId]) {
       const template = templateCacheRef.current[templateId];
       mergeInstanceIntoTemplate(template, formData, prevInstanceId, { idFieldMap, uuidGenerator: uuid })
-        .then(async ({ merged }) => {
-          // The editor's `empty` placeholders are never stored, here as on a page
-          // save: one in an empty region of a locked block went into the template
-          // as its own block (inka#705).
-          const updatedTemplate = stripEmptyBlocks(merged, config.blocks.blocksConfig, intl);
+        .then(async ({ merged: updatedTemplate }) => {
           templateCacheRef.current[templateId] = updatedTemplate;
           // "Change on all pages": persist the template document immediately.
           await persistTemplateDoc(new Api(), templateId);
