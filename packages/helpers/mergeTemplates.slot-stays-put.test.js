@@ -77,3 +77,34 @@ describe('a commit leaves a slot where the template has it', () => {
     expect(await commit(pageWith(SIDEBAR_FIRST, placeholder))).toEqual(await commit(pageWith(MAIN_FIRST, placeholder)));
   });
 });
+
+/**
+ * A template keeps a slot that is empty (inka#708): an `empty` naming the slot
+ * is the slot, and a commit stores it. Pages never store one; templates do, so
+ * a slot nobody has filled yet (a hero's links) still has its place, and a slot
+ * an author emptied is still there for every page using the template.
+ */
+describe('a commit keeps a slot that is empty', () => {
+  const emptied = (slotId) => ({ '@type': 'empty', ...member, slotId, fixed: false });
+
+  // A slot's contents are the page's, never the template's: the template's own
+  // block for the slot stays as it was, and the slot with it.
+  test('a slot a page has emptied stays in the template, where it was', async () => {
+    const page = pageWith(MAIN_FIRST);
+    const layout = page.blocks.layout;
+    delete layout.blocks.c;
+    layout.blocks.e = emptied('default');
+    layout.blocks_layout.main = ['e'];
+    let n = 0;
+    const { merged } = await mergeInstanceIntoTemplate(template, page, I, { idFieldMap: {}, uuidGenerator: () => `u${++n}` });
+    const stored = Object.values(merged.blocks).find((b) => b['@type'] === 'contentLayout');
+    const main = stored.blocks_layout.main.map((id) => stored.blocks[id]);
+    expect(main.map((b) => [b['@type'], b.slotId])).toEqual([['slate', 'default']]);
+  });
+
+  test('a region holding only an empty slot keeps it', async () => {
+    expect(await commit(pageWith(MAIN_FIRST, emptied('links')))).toEqual({
+      hero: ['title'], main: ['slate'], leftSidebar: ['empty'],
+    });
+  });
+});

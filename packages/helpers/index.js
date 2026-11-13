@@ -4268,6 +4268,11 @@ function fillRegionEntries(entries, templateState, options) {
     ctx.pendingContent.delete(slotId);
 
     if (content.length === 0) {
+      // A template keeps a slot nobody has filled as an `empty` (inka#708): a
+      // place the editor offers to add to. A visitor's page has none — only the
+      // admin's merge asks for them (keepEmptySlots), so no frontend draws
+      // editing furniture for visitors.
+      if (child['@type'] === 'empty' && !options.keepEmptySlots) continue;
       // The target has nothing for this slot: the template's slot block, without
       // what it holds (a slot's contents are a page's, never the template's).
       const { blocks: _slotBlocks, blocks_layout: _slotLayout, ...childDef } = child;
