@@ -2249,6 +2249,49 @@ function imageBlockUrl(url) {
   return null;
 }
 
+/**
+ * The image_scales of a referenced object, derived from the content ON DISK.
+ *
+ * Deliberately does NOT call enrichContent: a reference can point at the very
+ * object being enriched. Volto writes exactly that when an author picks the
+ * page's own lead image for an image block (`url: "../../resolveuid/<the
+ * page's own UID>"`), and enriching the referenced content then found the same
+ * block, loaded the same page and recursed until the stack gave out — a 500
+ * for the page AND for `@search`, so nothing came up at all.
+ *
+ * Scales need only the field's width/height: the downloads are relative
+ * (`@@images/<field>[/scale]`), as getLeadImageScales explains. So the raw
+ * content is all this needs, and no walk can re-enter.
+ *
+ * WHAT REAL PLONE DOES, checked rather than assumed (plone.restapi 10.2.1,
+ * `serializer/blocks.py` `ResolveUIDSerializerBase._process_data`): a block is
+ * a dict, so for each of `@id`, `url`, `href`, `preview_image` holding a
+ * string it calls `resolve_uid`, and when a BRAIN comes back it sets
+ * `image_scales` from `brain.image_scales` — the catalog metadata, not
+ * anything computed per request. That metadata covers lead images on ordinary
+ * types, not only Image objects: measured on a live Plone 6.2.3 catalog, 137
+ * of 213 items carry it — Image 97, CaseStudy 33, News Item 7 — shaped
+ * `{"image": [{content-type, download, filename, height, scales, size,
+ * width}]}`, keyed by the field the OBJECT has.
+ *
+ * Hence: keyed by the object's own field, and `image_field` on the reference
+ * only picks between an object's fields — it cannot name a field the object
+ * lacks, which is why 'image' remains the fallback.
+ */
+function referencedImageScales(rawContent, imageField) {
+  if (!rawContent || typeof rawContent !== 'object') return null;
+  if (rawContent['@type'] === 'Image' && rawContent.image) {
+    return getImageScales(rawContent);
+  }
+  // A lead image on an ordinary type (the ILeadImage behaviour). Real Plone
+  // answers with the brain's own keys, so a reference naming a field the
+  // object does not have still gets the object's image.
+  for (const field of [imageField, 'image'].filter(Boolean)) {
+    if (rawContent[field]) return getLeadImageScales(rawContent, field);
+  }
+  return null;
+}
+
 function enrichImageBrains(obj, baseUrl) {
   if (!obj || typeof obj !== 'object') return obj;
   if (Array.isArray(obj)) return obj.map(item => enrichImageBrains(item, baseUrl));
@@ -2260,8 +2303,7 @@ function enrichImageBrains(obj, baseUrl) {
     const contentPath = idUrl.startsWith('http') ? new URL(idUrl).pathname : idUrl;
     const rawContent = loadRawContentFromDisk(contentPath);
     if (rawContent) {
-      const enrichedImage = enrichContent(rawContent, contentPath, baseUrl);
-      const scales = getImageScales(enrichedImage);
+      const scales = referencedImageScales(rawContent, obj.image_field);
       if (scales) {
         obj = { ...obj, image_scales: scales };
       }
@@ -2285,8 +2327,7 @@ function enrichImageBrains(obj, baseUrl) {
       const contentPath = url.startsWith('http') ? new URL(url).pathname : url;
       const rawContent = loadRawContentFromDisk(contentPath);
       if (rawContent) {
-        const enrichedImage = enrichContent(rawContent, contentPath, baseUrl);
-        const scales = getImageScales(enrichedImage);
+        const scales = referencedImageScales(rawContent, obj.image_field);
         if (scales) {
           obj = { ...obj, image_scales: scales };
         }
