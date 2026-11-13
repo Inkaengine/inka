@@ -672,6 +672,18 @@ export class Bridge {
    * @param {string} blockUid - The block drawing the field
    * @returns {boolean}
    */
+  /**
+   * The field carrying `attr` that a click on `target` landed in, if it can be
+   * edited: not inside a frontend's own `data-block-readonly`, and not locked
+   * by its owning block (isFieldReadonly), so a page field drawn in a locked
+   * block still counts.
+   */
+  clickedFieldAt(target, attr, blockUid) {
+    if (target.closest('[data-block-readonly]')) return null;
+    const field = target.closest(`[${attr}]`);
+    return field && !this.isFieldReadonly(field.getAttribute(attr), blockUid) ? field : null;
+  }
+
   isFieldReadonly(fieldName, blockUid) {
     return this.isBlockReadonly(
       fieldName ? this.resolveFieldPath(fieldName, blockUid).blockId : blockUid,
@@ -5545,11 +5557,7 @@ export class Bridge {
         // Inside readonly blocks, ignore editable/linkable/media fields (they're from query results, not editable)
         // A field is judged by its own lock (isFieldReadonly), so a page field
         // drawn in a locked block is still editable.
-        const editableAt = (attr) => {
-          const field = event.target.closest('[data-block-readonly]') ? null : event.target.closest(`[${attr}]`);
-          return field && !this.isFieldReadonly(field.getAttribute(attr), blockUid) ? field : null;
-        };
-        const clickedEditableField = editableAt('data-edit-text');
+        const clickedEditableField = this.clickedFieldAt(event.target, 'data-edit-text', blockUid);
         const editableField = clickedEditableField || this.getOwnFirstEditableField(blockElement);
 
         // Clicking a data-edit-text element starts INLINE text editing, so prevent
@@ -5561,7 +5569,7 @@ export class Bridge {
           event.preventDefault();
         }
 
-        this.recordClickPosition(event, editableField, editableAt);
+        this.recordClickPosition(event, editableField, blockUid);
         // Cancel any pending initial-selection from waitForStable —
         // user click takes priority over automatic block restoration
         if (this._pendingInitialSelectTimer) {
@@ -9916,13 +9924,13 @@ export class Bridge {
    * @param {HTMLElement|null} editableField - The text field the click resolved
    *   to, or null when the click wasn't on one (the target is still recorded,
    *   for field detection).
-   * @param {Function} editableAt - (attr) => the clicked field carrying `attr`
-   *   that can be edited, or null. A locked field (a listing item's, a locked
-   *   template block's own) is not recorded.
+   * @param {string} blockUid - The clicked block. A locked field (a listing
+   *   item's, a locked template block's own) is not recorded.
    */
-  recordClickPosition(event, editableField, editableAt) {
+  recordClickPosition(event, editableField, blockUid) {
     const rect = editableField?.getBoundingClientRect();
-    const fieldAttr = (attr) => editableAt(attr)?.getAttribute(attr) || null;
+    const fieldAttr = (attr) =>
+      this.clickedFieldAt(event.target, attr, blockUid)?.getAttribute(attr) || null;
     this.lastClickPosition = {
       ...(editableField && {
         relativeX: event.clientX - rect.left,
@@ -9992,7 +10000,7 @@ export class Bridge {
       return;
     }
 
-    this.recordClickPosition(event, field);
+    this.recordClickPosition(event, field, ownerUid);
     // editMode FIRST: focusedFieldName is an accessor that drops any value
     // assigned while the mode is still 'block' (block mode has no focused
     // field). Assigning the other way round silently loses the field name, and
