@@ -602,7 +602,7 @@ config.settings.additionalToolbarComponents = {
       };
     },
     fieldMappings: {
-      '@default': { '@id': 'href', 'title': 'alt', 'image': 'url' },
+      '@default': { getURL: 'href', 'title': 'alt', 'image': 'url' },
       // Converting from teaser block
       teaser: { 'href': 'href', 'title': 'alt', 'preview_image': 'url' },
     },
@@ -626,7 +626,7 @@ config.settings.additionalToolbarComponents = {
       required: [],
     }),
     fieldMappings: {
-      '@default': { '@id': 'href', 'title': 'title', 'description': 'description' },
+      '@default': { getURL: 'href', 'title': 'title', 'description': 'description' },
     },
   };
 
@@ -649,7 +649,7 @@ config.settings.additionalToolbarComponents = {
       required: [],
     }),
     fieldMappings: {
-      '@default': { '@id': 'href', 'title': 'title', 'description': 'description', 'image': 'image' },
+      '@default': { getURL: 'href', 'title': 'title', 'description': 'description', 'image': 'image' },
     },
   };
 
@@ -657,7 +657,7 @@ config.settings.additionalToolbarComponents = {
   config.blocks.blocksConfig.teaser = {
     ...config.blocks.blocksConfig.teaser,
     fieldMappings: {
-      '@default': { '@id': 'href', 'title': 'title', 'description': 'description', 'image': 'preview_image' },
+      '@default': { getURL: 'href', 'title': 'title', 'description': 'description', 'image': 'preview_image' },
       // Converting from image block
       image: { 'href': 'href', 'alt': 'title', 'url': 'preview_image' },
     },

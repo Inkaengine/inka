@@ -17,6 +17,9 @@
  * working unchanged.
  */
 
+import { ADDRESS_SOURCE, sourceValue } from './catalogAddress.js';
+export { ADDRESS_SOURCE, sourceValue } from './catalogAddress.js';
+
 ////////////////////////////////////////////////////////////////////////////////
 // Internal: SSR-safe logging + auth header
 ////////////////////////////////////////////////////////////////////////////////
@@ -530,7 +533,7 @@ export function calculatePaging(itemsTotal, bSize, currentPage = 0) {
  * // {
  * //   '@type': 'listing',
  * //   'itemType': 'teaser',
- * //   'fieldMapping': { 'title': 'headline', '@id': 'href' },
+ * //   'fieldMapping': { 'title': 'headline', getURL: 'href' },
  * //   'itemDefaults': { 'showImage': true }
  * // }
  * // Query result: { title: 'My Page', '@id': '/my-page', description: '...' }
@@ -964,7 +967,13 @@ export async function expandListingBlocks(inputItems, options = {}) {
         items.push({ '@uid': blockId, '@type': 'empty', readOnly: true });
       } else if (listingResults[blockId]) {
         const itemType = block[itemTypeField] || defaultItemType;
-        const fieldMapping = block.fieldMapping || {};
+        const fieldMapping = block.fieldMapping;
+        if (!fieldMapping || Object.keys(fieldMapping).length === 0) {
+          throw new Error(
+            `Listing ${blockId} has no fieldMapping: the editor stores one when its item type is picked, ` +
+              `and there is no schema here to make one up from.`,
+          );
+        }
 
         // Extract itemDefaults from flat keys (e.g., itemDefaults_overwrite -> overwrite)
         const itemDefaults = {};
@@ -986,18 +995,10 @@ export async function expandListingBlocks(inputItems, options = {}) {
         // Convert each query result to a block of itemType
         // All expanded items share the same @uid (the listing block's ID)
         // fieldMapping acts as an allowlist: only mapped fields end up on the block.
-        // Format: { source: { field: target, type: jsonSchemaType } }
-        // Or legacy: { source: target } (simple rename, no conversion)
-        const DEFAULT_FIELD_MAPPING = {
-          '@id': 'href',
-          title: 'title',
-          description: 'description',
-          image: 'image',
-        };
-        const effectiveMapping =
-          Object.keys(fieldMapping).length > 0
-            ? fieldMapping
-            : DEFAULT_FIELD_MAPPING;
+        // Format: { source: { field: target, type: conversion } }. Every entry
+        // carries its conversion: there's no schema here to work one out, so
+        // an entry without one is refused (mappingConversions decides them).
+        const effectiveMapping = fieldMapping;
 
         for (const result of listingResults[blockId]) {
           const itemBlock = {
@@ -1010,18 +1011,22 @@ export async function expandListingBlocks(inputItems, options = {}) {
           for (const [sourceField, mapping] of Object.entries(
             effectiveMapping,
           )) {
-            const targetField =
-              typeof mapping === 'string' ? mapping : mapping?.field;
-            const targetType =
-              typeof mapping === 'object' ? mapping?.type : undefined;
-            if (!targetField) continue;
+            const targetField = mapping?.field;
+            const targetType = mapping?.type;
+            if (!targetField || !targetType) {
+              throw new Error(
+                `Listing ${blockId}: fieldMapping "${sourceField}" is ${JSON.stringify(mapping)}; ` +
+                  `each entry is { field, type }, carrying its conversion (there is no schema here to work one out).`,
+              );
+            }
             // A brain carries null for a field the page never set (an
             // unpublished page's `effective`): no value, like a missing field.
             // Converted, it became the text "null".
-            if (result[sourceField] === undefined || result[sourceField] === null) continue;
+            const value = sourceValue(result, sourceField);
+            if (value === undefined || value === null) continue;
 
             itemBlock[targetField] = convertFieldValue(
-              result[sourceField],
+              value,
               targetType,
             );
           }

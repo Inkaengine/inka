@@ -11,10 +11,10 @@
   ],
   "blocks": {
     "title-block": { "@type": "title" },
-    "rel-1": { "@type": "relatedItemsListing", "variation": "summary" },
-    "ss-page": { "@type": "searchShortcuts", "index": "Subject", "pageField": "subjects", "searchUrl": "/search", "variation": "default" },
-    "ss-site": { "@type": "searchShortcuts", "index": "Subject", "searchUrl": "/search", "variation": "default" },
-    "rss-1": { "@type": "rssFeed", "feedUrl": "http://localhost:8888/rss-stub", "count": 6, "variation": "summary" }
+    "rel-1": { "fieldMapping": {"getURL": {"field": "href", "type": "link"}, "title": {"field": "title", "type": "string"}, "description": {"field": "description", "type": "textarea"}, "image": {"field": "image", "type": "image_link"}}, "@type": "relatedItemsListing", "variation": "summary" },
+    "ss-page": { "fieldMapping": {"getURL": {"field": "href", "type": "link"}, "title": {"field": "title", "type": "string"}}, "@type": "searchShortcuts", "index": "Subject", "pageField": "subjects", "searchUrl": "/search", "variation": "default" },
+    "ss-site": { "fieldMapping": {"getURL": {"field": "href", "type": "link"}, "title": {"field": "title", "type": "string"}}, "@type": "searchShortcuts", "index": "Subject", "searchUrl": "/search", "variation": "default" },
+    "rss-1": { "fieldMapping": {"getURL": {"field": "href", "type": "link"}, "title": {"field": "title", "type": "string"}, "description": {"field": "description", "type": "textarea"}}, "@type": "rssFeed", "feedUrl": "http://localhost:8888/rss-stub", "count": 6, "variation": "summary" }
   },
   "blocks_layout": {
     "items": ["title-block", "rel-1", "ss-page", "ss-site", "rss-1"]

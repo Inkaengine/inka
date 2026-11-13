@@ -181,7 +181,7 @@ For non-Plone backends (RSS feeds, external APIs, etc.), write your own fetcher:
 
 ## Example fetchers
 
-The same `fetchItems` seam powers other "collection" blocks — each is just a fetcher that returns raw result objects (`expandListingBlocks` maps `@id → href` etc. and repeats an item block per result, so they need **no bespoke renderer**; they render via the standard item types on every frontend). `@hydra-js/helpers` ships three reference fetchers:
+The same `fetchItems` seam powers other "collection" blocks — each is just a fetcher that returns raw result objects (`expandListingBlocks` maps each result's address, `getURL`, to `href` etc. and repeats an item block per result, so they need **no bespoke renderer**; they render via the standard item types on every frontend). `@hydra-js/helpers` ships three reference fetchers:
 
 <block type="slateTable" table.fixed table.celled>
 
@@ -213,7 +213,9 @@ The **Search Shortcuts** link target reads the search block's facet params — a
 
 ## Field Mapping
 
-`fieldMapping` on a listing block controls which fields appear on expanded items — only mapped fields are included. Default: `{ @id → href, title → title, description → description, image → image }`. Values can be a string (rename) or `{ field, type }` for conversions:
+`fieldMapping` on a listing block controls which fields appear on expanded items — only mapped fields are included. Each entry is `{ field, type }`: the item field it fills and the conversion that gets it there. Default: `getURL` → `href` (link), `title` → `title` and `description` → `description` (string), `image` → `image` (image_link).
+
+A result's address is mapped from `getURL`, the catalog's name for it, never `@id`: Plone reads every `@id` in a block's stored data as a link, so a stored mapping keyed `@id` with a `{ field, type }` value can't be saved, and a config that maps from `@id` stops the editor loading. A listing saved before the rename keeps its `@id` key and is still read as the address.
 
 Built-in item types and the fields they expose:
 
@@ -231,13 +233,16 @@ Built-in item types and the fields they expose:
 
 ```json
 "fieldMapping": {
-  "@id": { "field": "href", "type": "link" },
-  "title": "title",
-  "image": { "field": "preview_image", "type": "image" },
-  "Subject": { "field": "tags", "type": "string" }
+  "getURL": { "field": "href", "type": "link" },
+  "title": { "field": "title", "type": "string" },
+  "image": { "field": "preview_image", "type": "image_link" },
+  "Subject": { "field": "tags", "type": "array" }
 }
 
-Types: string (array→join, image→URL), link (→[{@id}]), image (pass through)
+Every entry carries its conversion: the listing is expanded where there is no
+schema to work one out, so an entry without one is refused. Types: string
+(a list is joined), textarea, slate, link (→ [{@id}]), image_link (the image
+with its scales), array, boolean.
 ```
 
 **Worked example:** [RSS Feed Block](../examples/rssFeed.md) — feed entries mapped onto the item schema by a fetcher you provide.
@@ -264,7 +269,7 @@ listing: {
                 title: 'Field mapping',
                 widget: 'field_mapping',
                 sourceFields: {
-                    '@id': { title: 'URL', type: 'string' },
+                    getURL: { title: 'URL', type: 'string' },
                     title: { title: 'Title', type: 'string' },
                     description: { title: 'Description', type: 'string' },
                     image: { title: 'Lead Image', type: 'image' },
@@ -282,7 +287,7 @@ listing: {
 }
 ```
 
-`filterConvertibleFrom: '@default'` restricts the dropdown to types that have a `fieldMappings['@default']` entry — i.e. types that can be populated from the canonical content fields (`@id`, `title`, `description`, `image`) that listing queries return. Each item type's `fieldMappings['@default']` (on its own block config) defines how those source fields land on its schema. Adding `mappingField` to the enhancer fills the declared `field_mapping` widget with its smart defaults for the chosen item type, so the editor can override the mapping per listing instance. The widget and its `sourceFields` are yours to declare: a listing schema you send is the whole schema, so nothing from the admin's own listing is added to it.
+`filterConvertibleFrom: '@default'` restricts the dropdown to types that have a `fieldMappings['@default']` entry — i.e. types that can be populated from the canonical content fields (`getURL`, `title`, `description`, `image`) that listing queries return. Each item type's `fieldMappings['@default']` (on its own block config) defines how those source fields land on its schema. Adding `mappingField` to the enhancer fills the declared `field_mapping` widget with its smart defaults for the chosen item type, so the editor can override the mapping per listing instance. The widget and its `sourceFields` are yours to declare: a listing schema you send is the whole schema, so nothing from the admin's own listing is added to it.
 
 **Worked example:** [Related Items Block](../examples/relatedItemsListing.md) — the page's relation field, drawn with a configurable item type.
 
@@ -300,16 +305,13 @@ listing: {
 
 </block>
 
-The registry mapping is an *editing-time* input: it decides what the widget proposes for the selected `variation`. `expandListingBlocks` never reads a block config — it reads `block.fieldMapping`, and when that is absent falls back to its own default, `{ @id → href, title, description, image }`.
+The registry mapping is an *editing-time* input: it decides what the widget proposes for the selected `variation`. `expandListingBlocks` never reads a block config — it reads `block.fieldMapping`, and converts each result by exactly what is stored, so a listing carries its mapping in its own data:
 
-That fallback targets `href`, which suits `link`-shaped item types and not others. A `card`, for example, renders its link from `url`, so a listing of cards with no saved `fieldMapping` produces cards with no link at all.
+- **Picking the item type stores it.** The widget's default for that type (the registry mapping, kept to the sources the widget offers) is saved with the block, every entry `{ field, type }` with its conversion from the [mapping rule](./custom-blocks.md#which-fields-map-onto-which). Changing the item type stores the new type's default.
+- **There is no fallback.** A listing with no stored `fieldMapping`, or an entry without a `type`, makes `expandListingBlocks` throw, naming the listing: the renderer has no schema to work one out from.
+- **It is checked.** A block whose schema has a mapping widget must have a mapping, and every entry must name a source the widget offers, a field the item type has, and a conversion that gives what that field holds. The editor refuses to save one that doesn't, and the content check reports it.
 
-Two ways to end up with no saved mapping:
-
-- **Hand-authored content.** A listing block written directly into a distribution or fixture JSON never passes through the widget, so nothing is saved. Author `fieldMapping` explicitly.
-- **An untouched widget.** `FieldMappingWidget` *displays* `{ ...smartDefaults, ...saved }`, but only persists rows the editor actually changes. Accepting every proposed default without touching a row leaves `fieldMapping` empty — the sidebar shows one mapping while the page renders with another.
-
-If the item type's fields don't match the render-time fallback, set `fieldMapping` on the block rather than relying on the defaults shown in the sidebar.
+Content that never passes through the editor — a conversion, an import, a fixture — gets what the editor would have stored by running `plone-content field-mappings <content-dir> --schemas <schemas>` over it: the item type's default where there is no mapping, a conversion for every entry without one, and the address under `getURL`. A listing with no item type has no default and is reported.
 
 ## Combining Listings with Container Syncing
 

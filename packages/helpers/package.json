@@ -20,8 +20,11 @@
     "./blockSync.js": "./blockSync.js",
     "./blockText.js": "./blockText.js",
     "./buildBlockPathMap.js": "./buildBlockPathMap.js",
+    "./catalogAddress.js": "./catalogAddress.js",
+    "./mappingConversions.js": "./mappingConversions.js",
     "./conversionValidation.js": "./conversionValidation.js",
     "./copyFromTargetMapping.js": "./copyFromTargetMapping.js",
+    "./fieldMappingErrors.js": "./fieldMappingErrors.js",
     "./fieldRules.js": "./fieldRules.js",
     "./formDataValidation.js": "./formDataValidation.js",
     "./hydraSchemaContext.js": "./hydraSchemaContext.js",
@@ -31,6 +34,7 @@
     "./schemaValidation.js": "./schemaValidation.js",
     "./searchableText.js": "./searchableText.js",
     "./slateMerge.js": "./slateMerge.js",
+    "./storeFieldMappings.js": "./storeFieldMappings.js",
     "./slateStyles.js": "./slateStyles.js"
   },
   "files": [

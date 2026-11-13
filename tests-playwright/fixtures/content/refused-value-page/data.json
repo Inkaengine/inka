@@ -18,6 +18,20 @@
       ]
     },
     "rss-refused": {
+      "fieldMapping": {
+        "getURL": {
+          "field": "href",
+          "type": "link"
+        },
+        "title": {
+          "field": "title",
+          "type": "string"
+        },
+        "description": {
+          "field": "description",
+          "type": "textarea"
+        }
+      },
       "@type": "rssFeed",
       "feedUrl": "http://localhost:8888/rss-stub",
       "count": -1,

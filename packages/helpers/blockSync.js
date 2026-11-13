@@ -80,6 +80,8 @@ import {
   applySchemaDefaultsToBlockWithContext,
 } from './schemaValidation.js';
 import { PULL_FROM_KEY, getFieldType, getMappingTarget } from './copyFromTargetMapping.js';
+import { ADDRESS_SOURCE } from './catalogAddress.js';
+import { CATALOG_SOURCE_KINDS, conversionFor, isAccepted, sourceKind } from './mappingConversions.js';
 export { getFieldType, getMappingTarget } from './copyFromTargetMapping.js';
 
 // Conversion-graph logic lives in @volto-hydra/helpers/conversionValidation.js
@@ -91,8 +93,12 @@ export {
   shapeSignature,
   getConvertibleTypes,
   validateConversionRegistry,
+  widgetToTargetType,
+  fieldMappingProblems,
+  reservedFieldProblems,
 } from './conversionValidation.js';
 import {
+  widgetToTargetType,
   DEFAULT_TYPE_FIELDS,
   getConvertibleTypes,
   hasValidDefault,
@@ -896,7 +902,7 @@ export function inheritSchemaFrom(typeField, mappingField, defaultsField, typeFi
       // Check if current mapping is empty or has invalid target fields
       const hasMapping = Object.keys(effectiveMapping).length > 0;
       const hasInvalidTargets = Object.values(effectiveMapping).some(
-        (targetField) => targetField && !new Set(validTargetFields).has(targetField),
+        (mapping) => mapping && !new Set(validTargetFields).has(getMappingTarget(mapping)),
       );
 
       if (!hasMapping || hasInvalidTargets) {
@@ -1164,7 +1170,7 @@ export function hideParentOwnedFields() {
  * These are the standard fields returned by @querystring-search.
  */
 export const QUERY_RESULT_FIELDS = {
-  '@id': { title: 'URL', type: 'string' },
+  [ADDRESS_SOURCE]: { title: 'URL', type: 'string' },
   title: { title: 'Title', type: 'string' },
   description: { title: 'Description', type: 'string' },
   image: { title: 'Lead Image', type: 'image' },
@@ -1289,6 +1295,42 @@ export function isFieldParentClaimed(
 }
 
 export function computeSmartDefaults(sourceFields, targetSchema, declaredMappings) {
+  return withConversions(
+    proposeSmartDefaults(sourceFields, targetSchema, declaredMappings),
+    sourceFields,
+    targetSchema,
+  );
+}
+
+/**
+ * A mapping as it is stored on a listing (mappingConversions): every entry
+ * with its conversion (the one its field's widget calls for, or the one its
+ * source needs), since the listing renderer, which has no schema, converts by
+ * what is stored. An entry whose source can't become what its field holds is
+ * left out.
+ */
+function withConversions(mapping, sourceFields, targetSchema) {
+  const out = {};
+  for (const [source, entry] of Object.entries(mapping)) {
+    // Only what the mapping offers: a feed has fewer sources than a listing.
+    if (sourceFields && !sourceFields[source]) continue;
+    const field = getMappingTarget(entry);
+    const kind = sourceFields?.[source]
+      ? sourceKind(source, sourceFields[source])
+      : CATALOG_SOURCE_KINDS[source];
+    if (!kind) {
+      throw new Error(`Mapping source "${source}" is neither a declared source nor a catalog field.`);
+    }
+    const def = targetSchema.properties[field];
+    const declared = typeof entry === 'object' ? entry.type : undefined;
+    const conversion = declared !== undefined && isAccepted(kind, def, declared) ? declared : conversionFor(kind, def);
+    if (conversion === undefined) continue;
+    out[source] = { field, type: conversion };
+  }
+  return out;
+}
+
+function proposeSmartDefaults(sourceFields, targetSchema, declaredMappings) {
   if (!targetSchema?.properties) return {};
 
   // If declared mappings are provided, use them (merge @default + any source-specific)
@@ -1371,8 +1413,8 @@ export function computeSmartDefaults(sourceFields, targetSchema, declaredMapping
 
   // Map source fields to best matching target fields by type
   // @id (URL) → link field (with type: 'link' for conversion)
-  if (sourceFields['@id'] && firstLinkField && !usedTargets.has(firstLinkField)) {
-    mapping['@id'] = { field: firstLinkField, type: 'link' };
+  if (sourceFields[ADDRESS_SOURCE] && firstLinkField && !usedTargets.has(firstLinkField)) {
+    mapping[ADDRESS_SOURCE] = { field: firstLinkField, type: 'link' };
     usedTargets.add(firstLinkField);
   }
 
@@ -2089,32 +2131,6 @@ export function getBlockTypeChoices(options, blocksConfig, blockPathMap, blockId
 // allowlist so genuine mistakes — this block's own field names / fieldRules keys
 // (label, field, required, hidden, …) put in @default — still warn.
 /**
- * Validate fieldMappings on a block config. Logs warnings for invalid entries.
- * Call during INIT to catch configuration errors early.
- */
-export function validateFieldMappings(blockType, blockConfig) {
-  const fieldMappings = blockConfig?.fieldMappings;
-  if (!fieldMappings) return;
-
-  const defaultMapping = fieldMappings['@default'];
-  if (defaultMapping) {
-    const invalidKeys = Object.keys(defaultMapping).filter(
-      key => !DEFAULT_TYPE_FIELDS.has(key),
-    );
-    if (invalidKeys.length > 0) {
-      console.warn(
-        `[HYDRA] Block type "${blockType}" has fieldMappings['@default'] with ` +
-        `invalid keys: ${invalidKeys.join(', ')}. @default keys are a linked ` +
-        `content item's search-metadata field names (title, description, image, ` +
-        `Subject, created, …) — not this block's own field names. Use explicit ` +
-        `type-to-type mappings for those (e.g., fieldMappings: { otherType: { ... } }).`,
-      );
-    }
-  }
-}
-
-
-/**
  * Warn when `fieldRules` is written inside a schema instead of on the block's
  * `schemaEnhancer`, where it is the only place anything reads it.
  *
@@ -2125,7 +2141,7 @@ export function validateFieldMappings(blockType, blockConfig) {
  * mode, and its link field in search mode, with the rules that say otherwise
  * sitting in the config the whole time.
  *
- * Checked on every INIT beside validateFieldMappings, and inner item schemas
+ * Checked on every INIT, and inner item schemas
  * too (an object_list item's schema is a schema like any other).
  */
 export function validateFieldRulesPlacement(blockType, blockConfig) {
@@ -2224,8 +2240,10 @@ function findConversionPath(sourceType, targetType, blocksConfig) {
 function invertMapping(mapping) {
   if (!mapping) return {};
   const inverted = {};
-  for (const [sourceField, targetField] of Object.entries(mapping)) {
-    inverted[targetField] = sourceField;
+  for (const [sourceField, target] of Object.entries(mapping)) {
+    // A `{ field, type }` value names its field; read as a key it was the
+    // literal "[object Object]".
+    inverted[getMappingTarget(target)] = sourceField;
   }
   return inverted;
 }
@@ -2239,26 +2257,6 @@ function getResolvedSchema(blocksConfig, blockType, intl) {
   if (!cfg?.blockSchema) return null;
   if (typeof cfg.blockSchema !== 'function') return cfg.blockSchema;
   return cfg.blockSchema({ intl });
-}
-
-/**
- * Map a schema widget to a convertFieldValue targetType.
- * Returns null if no coercion is needed (pass-through).
- * @param {string} widget - The widget name from the schema field
- * @param {Object} fieldDef - The full field definition (to check mode, etc.)
- */
-export function widgetToTargetType(widget, fieldDef) {
-  if (widget === 'object_browser') {
-    // object_browser in image mode: array format [{ '@id': url, image_field?, image_scales? }]
-    if (fieldDef?.mode === 'image') return 'image_link';
-    return 'link';
-  }
-  // ImageWidget: string value + sibling image_field/image_scales fields on the block
-  if (widget === 'image') return 'image';
-  if (widget === 'url') return 'string';
-  if (widget === 'slate') return 'slate';
-  if (widget === 'textarea') return 'textarea';
-  return null;
 }
 
 /**
@@ -2670,7 +2668,12 @@ export function syncChildBlockTypes(formData, blockPathMap, blockId, oldBlockDat
     // Get the current block with the new variation and reset its fieldMapping
     const currentBlock = getBlockById(result, blockPathMap, blockId);
     if (currentBlock) {
-      const updatedBlock = { ...currentBlock, fieldMapping: defaultFieldMapping };
+      // Stored with each entry's conversion: the renderer can't derive one.
+      const newTypeSchema = getBlockTypeSchema(newType, intl, blocksConfig);
+      const updatedBlock = {
+        ...currentBlock,
+        fieldMapping: withConversions(defaultFieldMapping, undefined, newTypeSchema),
+      };
       result = updateBlockById(result, blockPathMap, blockId, updatedBlock);
     }
   }
