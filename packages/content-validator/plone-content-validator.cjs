@@ -24,7 +24,8 @@ const fs = require('fs');
 const path = require('path');
 // hydra's container API. Node require()s sync ESM, so a sync validator can use
 // the same enumeration the editor does instead of reading blocks_layout itself.
-const { getChildFields, getChildBlockEntries, isUnlabelledDefinition } = require('@volto-hydra/helpers');
+const { getChildFields, getChildBlockEntries, isUnlabelledDefinition, adoptTemplate } = require('@volto-hydra/helpers');
+const { validateTemplatePlaceholders } = require('@volto-hydra/helpers/formDataValidation.js');
 const { buildBlockPathMap, buildIdFieldMap, getResolvedSchema } = require('@volto-hydra/helpers/buildBlockPathMap.js');
 
 // Where an export keeps the site root: plone.exportimport's own name for it.
@@ -96,6 +97,16 @@ const UNDECLARED_EXEMPT = new Set([
   // content item's fields it exists to project.
   'required',
 ]);
+
+/**
+ * A template's empty slot: an `empty` naming the slot it keeps (inka#708). It is
+ * Inka's own block, which no schema declares and no region lists; a template
+ * stores it where a slot has nothing yet. An `empty` naming no slot is the
+ * editor's placeholder, which nothing should have stored.
+ */
+function isEmptySlot(block) {
+  return Boolean(block && block['@type'] === 'empty' && block.slotId);
+}
 
 /**
  * Every child of a container, across every region it has, in order.
@@ -1129,64 +1140,60 @@ function imageDimensions(file) {
       isUnlabelledDefinition(data, idFieldMap);
     if (!isDefinition) continue;
 
-    // Regions come from hydra's own container API, not from reading
-    // blocks_layout here. getChildFields enumerates a block's regions —
-    // blocks_layout regions AND object_list fields — and getChildBlockEntries
-    // returns a region's children in order, for either storage. They are what
-    // the editor's validateTemplatePlaceholders walks, so this gate and the
-    // save-time check see the same tree by construction rather than by two
-    // implementations agreeing.
-    //
-    // I hand-rolled this first, on the assumption that a sync checkIntegrity
-    // could not reach the ESM helpers. It can: Node require()s sync ESM.
-    const checkOrder = (entries, where) => {
-      const groups = new Map(); // slotId -> indexes
-      let lastSlotId = null;
-      entries.forEach(({ block }, i) => {
-        if (!block) return;
-        if (block.fixed === true) { lastSlotId = null; return; }
-        const slotId = block.slotId;
-        if (!slotId) return;
-        if (!groups.has(slotId)) groups.set(slotId, []);
-        groups.get(slotId).push(i);
-        if (lastSlotId !== null && lastSlotId !== slotId) {
-          fail(rel, 
-            `${rel}: slot groups "${lastSlotId}" and "${slotId}" sit next to each other in ${where} ` +
-            `with no fixed block between them — chrome is what marks where one slot ends, so a block ` +
-            `added here could belong to either. Mark the one that is chrome (a heading, usually) ` +
-            `fixed: true, or put a fixed block between them. Until then the EDITOR refuses to save ` +
-            `any page using this template, naming blocks the author cannot reach.`,
+    // The editor's own slot rules, by calling them: validateTemplatePlaceholders
+    // is what refuses the save, so this gate and the save cannot disagree. It
+    // reports what it found as data (`rule`, `slots`, `region`); the wording
+    // here is the gate's. A definition that does not name itself is labelled
+    // with its path first, as the editor does when it opens one.
+    const definition = isUnlabelledDefinition(data, idFieldMap) && data['@id']
+      ? adoptTemplate(data, new URL(data['@id'], 'http://x').pathname)
+      : data;
+    const { blocksErrors } = validateTemplatePlaceholders(definition, idFieldMap);
+    for (const { _layout: found } of Object.values(blocksErrors)) {
+      if (!found) continue;
+      const where = found.region === 'items' ? 'the page' : found.region;
+      if (found.rule === 'fixed-between-slots') {
+        const [before, after] = found.slots;
+        fail(rel,
+          `${rel}: slot groups "${before}" and "${after}" sit next to each other in ${where} ` +
+          `with no fixed block between them — chrome is what marks where one slot ends, so a block ` +
+          `added here could belong to either. Mark the one that is chrome (a heading, usually) ` +
+          `fixed: true, or put a fixed block between them. Until then the EDITOR refuses to save ` +
+          `any page using this template, naming blocks the author cannot reach.`,
+        );
+      } else if (found.rule === 'slot-contiguous') {
+        fail(rel,
+          `${rel}: the blocks of slot "${found.slots[0]}" are not contiguous in ${where} — ` +
+          `a slot's blocks must sit together, or the merge cannot tell which slot a block joins`,
+        );
+      } else if (found.rule === 'slot-in-one-place') {
+        const [first, second] = found.regions;
+        fail(rel,
+          `${rel}: the slot "${found.slots[0]}" is in both ${first} and ${second} — a slot is one ` +
+          `place in its template, so the merge puts its content in whichever it meets first. ` +
+          `Give one of them its own name.`,
+        );
+      }
+      // `unnamed-slot` is pass 2c-bis's to report, with what else is missing.
+    }
+
+    // A template region with nothing in it has lost its slot: a page's content
+    // for it has nowhere to go. A slot nobody has filled is an `empty` naming
+    // it (inka#708), which the editor shows as a place to add to.
+    const emptyRegions = (container, where) => {
+      for (const descriptor of getChildFields(container, idFieldMap, { allObjectLists: true })) {
+        const entries = getChildBlockEntries(container, descriptor);
+        if (!entries.length && !descriptor.isObjectList && container !== data) {
+          fail(rel,
+            `${rel}: ${where}'s region "${descriptor.region}" holds nothing, so it has no slot — ` +
+            `content for it on a page has nowhere to go. Store an empty slot there: ` +
+            `{ "@type": "empty", "slotId": "<its name>", "fixed": false }.`,
           );
         }
-        lastSlotId = slotId;
-      });
-      for (const [slotId, at] of groups) {
-        for (let i = 1; i < at.length; i++) {
-          if (at[i] !== at[i - 1] + 1) {
-            fail(rel, 
-              `${rel}: the blocks of slot "${slotId}" are not contiguous in ${where} — ` +
-              `a slot's blocks must sit together, or the merge cannot tell which slot a block joins`,
-            );
-            break;
-          }
-        }
+        for (const { id, block } of entries) emptyRegions(block, `${where} > ${id}`);
       }
     };
-
-    const seen = new Set();
-    const checkRegion = (container, where) => {
-      if (!container || typeof container !== 'object' || seen.has(container)) return;
-      seen.add(container);
-      const fields = getChildFields(container, idFieldMap, { allObjectLists: true });
-      for (const descriptor of fields) {
-        const entries = getChildBlockEntries(container, descriptor);
-        if (!entries.length) continue;
-        const label = fields.length > 1 ? `${where} (${descriptor.region})` : where;
-        checkOrder(entries, label);
-        for (const { id, block } of entries) checkRegion(block, `${where} > ${id}`);
-      }
-    };
-    checkRegion(data, 'the page');
+    emptyRegions(data, 'the template');
   }
 
   // Pass 2c-ter: an INSTANCE must agree with its template about what is chrome.
@@ -1505,6 +1512,8 @@ function checkBlockSchemas(source, fieldMap, { idFieldMap = null } = {}) {
       if (entry && entry.builtIn) {
         // Its fields are the admin's built-in schema's (fieldMapFromSchemas):
         // not checked here. Its children still are, below.
+      } else if (isEmptySlot(block)) {
+        // A template's empty slot (inka#708): Inka's own block, no schema's.
       } else if (!declared) {
         if (!unknown.has(type)) {
           unknown.add(type);
@@ -1880,6 +1889,7 @@ async function checkEditorRules(source, schemas, { exemptSlots = [], volto = loa
         : `${pathMap[info.parentId]?.blockType ?? info.parentId}.${info.region}`;
       if (
         !placementExempt &&
+        !isEmptySlot(blockData) &&
         !info.allowedSiblingTypesDerived &&
         Array.isArray(info.allowedSiblingTypes) &&
         !info.allowedSiblingTypes.includes(info.blockType)

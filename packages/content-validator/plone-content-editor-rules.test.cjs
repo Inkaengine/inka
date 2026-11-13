@@ -549,3 +549,31 @@ describe('checkFieldsetCoverage()', () => {
     assert.match(r.errors[0], /slider\.slides\.href/);
   });
 });
+
+// An `empty` naming a slot is a template's empty slot (inka#708): Inka's own
+// block, which no schema declares and no region lists, held only by a template.
+describe('a template stores an empty slot', () => {
+  const T = '/templates/t';
+  const items = [{
+    rel: 'content/templates/t',
+    data: {
+      '@id': T,
+      blocks: {
+        s: { ...section([['p', { '@type': 'slate', templateId: T, slotId: 'body', fixed: false }]]), templateId: T, slotId: 's', fixed: true, readOnly: true },
+        e: { '@type': 'empty', templateId: T, slotId: 'aside', fixed: false },
+      },
+      blocks_layout: { items: ['s', 'e'] },
+    },
+  }];
+
+  it('is not a misplaced block', async () => {
+    const r = await checkEditorRules(items, SCHEMAS);
+    assert.deepEqual(r.errors, []);
+  });
+
+  it('is not a block type missing from the schemas', () => {
+    const { checkBlockSchemas, fieldMapFromSchemas } = require('./plone-content-validator.cjs');
+    const r = checkBlockSchemas(items, fieldMapFromSchemas(SCHEMAS));
+    assert.deepEqual(r.warnings.filter((w) => /"empty"/.test(w)), []);
+  });
+});
