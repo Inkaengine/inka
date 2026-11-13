@@ -882,7 +882,7 @@ image: {
 
 // Non-content types: use explicit hub-type mappings (NOT @default).
 // All facet types map through checkboxFacet as a hub:
-selectFacet:  { fieldMappings: { checkboxFacet: { title: 'title', field: 'field', hidden: 'hidden' } } },
+selectFacet:  { fieldMappings: { checkboxFacet: { title: 'title', field: 'field' } } },
 checkboxFacet: { fieldMappings: { selectFacet: { /* ... */ }, daterangeFacet: { /* ... */ } } },
 ```
 
