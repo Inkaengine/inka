@@ -2487,6 +2487,12 @@ export function ensureEmptyBlockIfEmpty(
   // add a new one, and the new one never rendered as editable).
   if (containerConfig.vacatedSlotId && blockData.templateInstanceId) {
     blockData = { ...blockData, slotId: containerConfig.vacatedSlotId };
+  } else if (forcedLayout) {
+    // A forced layout with nothing in it: an empty template has one slot, the
+    // one its content goes to. The seed stands in for it, and a template block
+    // must name its slot (inka#708); locking the template stores it as the
+    // template's empty slot.
+    blockData = { ...blockData, slotId: 'default' };
   }
   const blocksObj = { ...parentBlock.blocks, [newBlockId]: blockData };
   const updatedParentBlock = setContainerItems(

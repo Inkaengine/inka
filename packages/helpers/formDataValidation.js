@@ -304,14 +304,33 @@ export function validateAndLog(formData, source, blockFieldTypes = {}) {
  *
  * @param {Array<{id: string, block: Object}>} entries - the region's ordered child blocks
  * @param {Object} blocksErrors - accumulator, keyed by block id
+ * @param {string} region - the region, for the report (`items`, `contentLayout.main`)
  */
-function validateRegionSlots(entries, blocksErrors) {
+function validateRegionSlots(entries, blocksErrors, region) {
   const slotGroups = new Map(); // slotId -> [{ blockId, index }]
   let lastSlotId = null;
 
   for (let i = 0; i < entries.length; i++) {
     const { id: blockId, block } = entries[i];
     const isFixed = block?.fixed === true;
+
+    // A template's block is matched to a page's by its slot. One that names
+    // none belongs nowhere: the merge drops it, or moves it to another region on
+    // every save (inka#708). Fixed blocks too, and the editor's placeholders.
+    if (block?.templateId && !block.slotId) {
+      blocksErrors[blockId] = {
+        _layout: {
+          rule: 'unnamed-slot',
+          region,
+          templateId: block.templateId,
+          title: 'Unnamed Slot',
+          message:
+            `This block belongs to the template ${block.templateId} but names no slot, so ` +
+            'pages using the template have nowhere to put it. Name its slot.',
+        },
+      };
+      continue;
+    }
 
     if (isFixed) {
       lastSlotId = null; // Reset - fixed block separates groups
@@ -331,6 +350,9 @@ function validateRegionSlots(entries, blocksErrors) {
     if (lastSlotId !== null && lastSlotId !== slotId) {
       blocksErrors[blockId] = {
         _layout: {
+          rule: 'fixed-between-slots',
+          slots: [lastSlotId, slotId],
+          region,
           title: 'Missing Fixed Block',
           message: `Slot groups "${lastSlotId}" and "${slotId}" must be separated by a fixed block.`,
         },
@@ -349,6 +371,9 @@ function validateRegionSlots(entries, blocksErrors) {
         if (!blocksErrors[blockId]) {
           blocksErrors[blockId] = {
             _layout: {
+              rule: 'slot-contiguous',
+              slots: [slotId],
+              region,
               title: 'Placeholder Position',
               message: `This slot block is not adjacent to others in the "${slotId}" group. Move this block or the previous one to make them contiguous.`,
             },
@@ -365,18 +390,30 @@ function validateRegionSlots(entries, blocksErrors) {
  * region. Walks region-aware via getChildFields + getChildBlockEntries, so a slot-grouping
  * violation in a footer region or inside a slider's `slides` is reported, not silently ignored.
  *
- * Rules (per region):
- * 1. Blocks with the same slotId must be adjacent (contiguous)
- * 2. Different slot groups must be separated by a fixed block
+ * Rules:
+ * 1. Blocks with the same slotId must be adjacent (contiguous), per region
+ * 2. Different slot groups must be separated by a fixed block, per region
+ * 3. A block of a template names its slot (ordinary page blocks have none)
+ * 4. A slot is in one region of its template instance, not two
  *
  * @param {Object} formData - Page data with blocks and blocks_layout
+ * Each error's `_layout` also says what was found, as data: `rule` (`unnamed-slot`,
+ * `fixed-between-slots`, `slot-contiguous`, `slot-in-one-place`), the `slots` and
+ * `region`(s) involved — for a caller that words its own report (the content check).
+ *
  * @returns {{ valid: boolean, blocksErrors: Object }} Validation result with Volto-compatible blocksErrors
  */
 export function validateTemplatePlaceholders(formData, idFieldMap = null) {
   const blocksErrors = {};
   const visited = new Set();
+  // A slot is one place in its template: per instance (or, on a template's own
+  // page, per template), the region each slot id was first seen in.
+  const slotRegions = new Map(); // instance -> Map(slotId -> region)
 
-  const visit = (container) => {
+  // `inherited`: the slots of the blocks this container is inside. A block's
+  // descendants take its slot (the membership rule), so a slot id repeated in a
+  // region inside the block that holds it is that one slot, not a second.
+  const visit = (container, where, inherited) => {
     if (!container || typeof container !== 'object' || visited.has(container)) {
       return;
     }
@@ -387,11 +424,37 @@ export function validateTemplatePlaceholders(formData, idFieldMap = null) {
     // then skip a slider's slides or a form's subblocks in silence.
     for (const field of getChildFields(container, idFieldMap, { allObjectLists: true })) {
       const entries = getChildBlockEntries(container, field);
-      validateRegionSlots(entries, blocksErrors);
-      for (const { block } of entries) visit(block);
+      const region = where ? `${where}.${field.region}` : field.region;
+      validateRegionSlots(entries, blocksErrors, region);
+      for (const { id: blockId, block } of entries) {
+        const instance = block?.templateId && (block.templateInstanceId || block.templateId);
+        if (instance && block.slotId && !blocksErrors[blockId] && !inherited.has(block.slotId)) {
+          if (!slotRegions.has(instance)) slotRegions.set(instance, new Map());
+          const seen = slotRegions.get(instance);
+          const first = seen.get(block.slotId);
+          if (first === undefined) seen.set(block.slotId, region);
+          else if (first !== region) {
+            blocksErrors[blockId] = {
+              _layout: {
+                rule: 'slot-in-one-place',
+                slots: [block.slotId],
+                regions: [first, region],
+                title: 'Slot In Two Places',
+                message:
+                  `The slot "${block.slotId}" is in both ${first} and ${region}. A slot is one place ` +
+                  'in its template: give this one its own name.',
+              },
+            };
+          }
+        }
+      }
+      for (const { block } of entries) {
+        const within = block?.slotId ? new Set([...inherited, block.slotId]) : inherited;
+        visit(block, `${block?.['@type'] ?? 'block'}`, within);
+      }
     }
   };
 
-  visit(formData);
+  visit(formData, '', new Set());
   return { valid: Object.keys(blocksErrors).length === 0, blocksErrors };
 }
