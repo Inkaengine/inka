@@ -94,6 +94,7 @@ export function validateBlocksAgainstSchemas(
       blockData,
       validateFieldsPerFieldset: FormValidation.validateFieldsPerFieldset,
       formatMessage,
+      blocksConfig,
     });
     if (Object.keys(errors).length > 0) {
       blocksErrors[blockId] = errors;

@@ -549,3 +549,49 @@ describe('checkFieldsetCoverage()', () => {
     assert.match(r.errors[0], /slider\.slides\.href/);
   });
 });
+
+/**
+ * checkReservedFields() also reports a field named `@id` below a block's own
+ * fields (in an object field, in an untyped list's items): Plone reads every
+ * `@id` in stored block data as a link, at any depth.
+ */
+describe('checkReservedFields() — @id at any depth', () => {
+  const { checkReservedFields } = require('./plone-content-validator.cjs');
+
+  it("reports a field named '@id' inside an object field, once", () => {
+    const r = checkReservedFields({
+      hero: { blockSchema: { properties: { cta: { widget: 'object', schema: { properties: { '@id': {} } } } } } },
+    });
+    assert.equal(r.errors.length, 1);
+    assert.match(r.errors[0], /hero\.cta\.@id/);
+  });
+
+  it("reports a top-level '@id' once, not twice", () => {
+    const r = checkReservedFields({ teaser: { blockSchema: { properties: { '@id': {} } } } });
+    assert.equal(r.errors.length, 1);
+  });
+});
+
+/**
+ * checkFieldMappings(): the same mapping check the editor refuses to load on,
+ * so CI fails before a frontend ships a mapping that doesn't make sense.
+ */
+describe('checkFieldMappings()', () => {
+  const { checkFieldMappings } = require('./plone-content-validator.cjs');
+  const props = (p) => ({ fieldsets: [{ id: 'default', title: 'Default', fields: Object.keys(p) }], properties: p });
+
+  it('passes mappings that make sense', () => {
+    const r = checkFieldMappings({
+      card: { fieldMappings: { '@default': { getURL: { field: 'url', type: 'link' }, title: 'title' } }, blockSchema: props({ title: { type: 'string' }, url: { widget: 'object_browser', mode: 'link' } }) },
+    });
+    assert.deepEqual(r.errors, []);
+  });
+
+  it("reports a mapping from '@id', naming getURL", () => {
+    const r = checkFieldMappings({
+      card: { fieldMappings: { '@default': { '@id': 'url' } }, blockSchema: props({ url: { widget: 'object_browser', mode: 'link' } }) },
+    });
+    assert.equal(r.errors.length, 1);
+    assert.match(r.errors[0], /getURL/);
+  });
+});

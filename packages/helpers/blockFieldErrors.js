@@ -8,8 +8,10 @@
  * against, and what it is handed, is one piece of code — the check refuses
  * what the save refuses (validateBlocks.parity.test.js).
  *
- * No imports: the content check loads this in a bare Node.
+ * Imports only its pure siblings: the content check loads this in a bare Node.
  */
+
+import { fieldMappingErrors } from './fieldMappingErrors.js';
 
 /**
  * The field types a fieldRules `error` is surfaced on. Volto picks a
@@ -78,9 +80,11 @@ export function withUnsetFieldsOmitted(blockData) {
  * @param {Object} args.blockData - the block as stored
  * @param {Function} args.validateFieldsPerFieldset - Volto's FormValidation.validateFieldsPerFieldset
  * @param {Function} args.formatMessage - intl.formatMessage
+ * @param {Object} args.blocksConfig - the block registry (a mapping's item type)
  * @returns {Object} fieldName → [messages]; empty when the block may be saved
  */
-export function blockFieldErrors({ schema, blockData, validateFieldsPerFieldset, formatMessage }) {
+export function blockFieldErrors({ schema, blockData, validateFieldsPerFieldset, formatMessage, blocksConfig }) {
+  if (!blocksConfig) throw new Error('blockFieldErrors needs the block registry (blocksConfig)');
   const errors = validateFieldsPerFieldset({
     schema,
     formData: withUnsetFieldsOmitted(blockData),
@@ -96,6 +100,11 @@ export function blockFieldErrors({ schema, blockData, validateFieldsPerFieldset,
     if (field?.hydraRuleError && blockData[fieldName] == null && !errors[fieldName]) {
       errors[fieldName] = [field.hydraRuleError];
     }
+  }
+  // A mapping widget's block always has a mapping, and a valid one: what is
+  // stored is all its renderer converts by (fieldMappingErrors).
+  for (const [fieldName, messages] of Object.entries(fieldMappingErrors({ schema, blockData, blocksConfig }))) {
+    errors[fieldName] = [...(errors[fieldName] || []), ...messages];
   }
   return errors;
 }

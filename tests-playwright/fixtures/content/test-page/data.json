@@ -111,13 +111,22 @@
           "headline": "Featured Items",
           "variation": "teaser",
           "fieldMapping": {
-            "@id": {
+            "getURL": {
               "field": "href",
               "type": "link"
             },
-            "title": "title",
-            "description": "description",
-            "image": "preview_image"
+            "title": {
+              "field": "title",
+              "type": "string"
+            },
+            "description": {
+              "field": "description",
+              "type": "textarea"
+            },
+            "image": {
+              "field": "preview_image",
+              "type": "image_link"
+            }
           },
           "querystring": {
             "query": [
@@ -170,13 +179,22 @@
       "headline": "Featured Items",
       "variation": "teaser",
       "fieldMapping": {
-        "@id": {
+        "getURL": {
           "field": "href",
           "type": "link"
         },
-        "title": "title",
-        "description": "description",
-        "image": "preview_image"
+        "title": {
+          "field": "title",
+          "type": "string"
+        },
+        "description": {
+          "field": "description",
+          "type": "textarea"
+        },
+        "image": {
+          "field": "preview_image",
+          "type": "image_link"
+        }
       },
       "querystring": {
         "query": [
@@ -198,7 +216,26 @@
       }
     },
     "block-10-listing-no-mapping": {
+      "fieldMapping": {
+        "getURL": {
+          "field": "href",
+          "type": "link"
+        },
+        "title": {
+          "field": "title",
+          "type": "string"
+        },
+        "description": {
+          "field": "description",
+          "type": "textarea"
+        },
+        "image": {
+          "field": "image",
+          "type": "image_link"
+        }
+      },
       "@type": "listing",
+      "variation": "summary",
       "headline": "No Mapping Listing",
       "querystring": {
         "query": [

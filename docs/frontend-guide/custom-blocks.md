@@ -855,7 +855,9 @@ Each key in `fieldMappings` is either a **specific block type name**, **\`@defau
 
 ### `@default` — the canonical content shape
 
-`@default` is a virtual type representing a linked content item's fields — anything a catalog **search** returns as metadata (`metadata_fields: '_all'`): `@id`, `title`, `description`, `image`, `Subject` (tags), `created`/`effective` dates, and so on. A block with `fieldMappings['@default']` is saying "I can be populated from a content item." The keys are content/metadata field names — not this block's own field names (e.g. `label`, `field`, `required` are not content metadata and are invalid).
+`@default` is a virtual type representing a linked content item's fields — what a catalog **search** returns: `getURL` (its address), `title`, `description`, `image`, `Subject` (tags), `created`/`effective` dates, and so on. A block with `fieldMappings['@default']` is saying "I can be populated from a content item." The keys are these catalog field names — not this block's own field names (e.g. `label`, `field`, `required` are not content metadata and are invalid).
+
+The address is `getURL`, not `@id`, though a result carries it as `@id`: Plone reads every `@id` in a block's stored data as a link, and a listing stores its mapping, so a mapping keyed `@id` couldn't be saved. A config that still maps from `@id` stops the editor loading, naming the entry; a stored mapping keyed `@id` makes the listing throw.
 
 ### Explicit type-to-type mappings
 
@@ -867,20 +869,20 @@ Use these when blocks share fields that aren't part of the `@default` set — fo
 // Content item types: use @default (canonical fields) + explicit cross-mappings
 teaser: {
     fieldMappings: {
-        '@default': { '@id': 'href', 'title': 'title', 'image': 'preview_image' },
+        '@default': { getURL: 'href', 'title': 'title', 'image': 'preview_image' },
         image: { 'href': 'href', 'alt': 'title', 'url': 'preview_image' },
     },
 },
 image: {
     fieldMappings: {
-        '@default': { '@id': 'href', 'title': 'alt', 'image': 'url' },
+        '@default': { getURL: 'href', 'title': 'alt', 'image': 'url' },
         teaser: { 'href': 'href', 'title': 'alt', 'preview_image': 'url' },
     },
 },
 
 // Non-content types: use explicit hub-type mappings (NOT @default).
 // All facet types map through checkboxFacet as a hub:
-selectFacet:  { fieldMappings: { checkboxFacet: { title: 'title', field: 'field', hidden: 'hidden' } } },
+selectFacet:  { fieldMappings: { checkboxFacet: { title: 'title', field: 'field' } } },
 checkboxFacet: { fieldMappings: { selectFacet: { /* ... */ }, daterangeFacet: { /* ... */ } } },
 ```
 
@@ -888,7 +890,7 @@ checkboxFacet: { fieldMappings: { selectFacet: { /* ... */ }, daterangeFacet: { 
 
 `@target` maps a **linked** content item's attributes onto this block's own fields — the generic version of the Volto teaser's "copy from target" button. It maps *source content attributes* (`title`, `description`, `image`, …) to *this block's fields*.
 
-The item is whichever the block's **source link field** points at, and that field is **declared, never guessed**: `'@source': 'href'` in an explicit `@target`, or — for a `@default` mapping — the field the target's `'@id'` is mapped to, which already says where the link lands. A block with several link fields and no declaration is an error: picking the first one in schema order is not a rule, and in a real site config it picked a hero's *video file* over its button link, and a button's `url: 'Link (legacy)'` over the `href` the author picks with.
+The item is whichever the block's **source link field** points at, and that field is **declared, never guessed**: `'@source': 'href'` in an explicit `@target`, or — for a `@default` mapping — the field the target's `getURL` is mapped to, which already says where the link lands. A block with several link fields and no declaration is an error: picking the first one in schema order is not a rule, and in a real site config it picked a hero's *video file* over its button link, and a button's `url: 'Link (legacy)'` over the `href` the author picks with.
 
 ### Javascript
 
@@ -907,7 +909,7 @@ button: {
 },
 ```
 
-It is **available by default** for a block with a link field and a `fieldMappings['@default']`: the `@default` mapping doubles as the `@target` one (`@id` aside, since that is the link itself). Declare `@target` to map differently; either way there is no per-block enhancer wiring. Each mapped field then shows a small **🔗 pull from linked** toggle in the sidebar (only when a target is selected).
+It is **available by default** for a block with a link field and a `fieldMappings['@default']`: the `@default` mapping doubles as the `@target` one (`getURL` aside, since that is the link itself). Declare `@target` to map differently; either way there is no per-block enhancer wiring. Each mapped field then shows a small **🔗 pull from linked** toggle in the sidebar (only when a target is selected).
 
 **A block SAYS which of its fields a link owns, in `_pullFrom`:**
 
@@ -996,7 +998,7 @@ cells: {
 
 The rule is evaluated in the same pass that applies field defaults (run on every edit): each typed item's target `@type` is re-resolved, and when it differs from the stored `@type` the item is **converted in place** via the bridge above. So moving a row to/from row 0 flips its cells between `tableHeaderCell` (a slate `value`) and `tableCell` (a `blocks` container), losslessly — no imperative "re-type the cells" code. Only meaningful on a **typed** object_list (a `typeField` item has an `@type` to rewrite); it settles in one pass (the target type re-resolves to itself once the item is in place).
 
-Each field's value is converted to the shape its destination widget expects (derived from the widget): strings copy across, an image field is assembled from the target's `image_scales` / `image_field`, multi-value fields (e.g. `Subject` → tags) pass through as-is.
+Each field's value is converted by the [mapping rule](#which-fields-map-onto-which): the conversion the entry names, else the one its destination field's widget calls for, else the one its source needs (a list into text is joined). An attribute of the linked page that isn't a catalog field takes its destination widget's.
 
 The pull is **snapshot-based** — there is no separate live fetch. When you pick or type a link, the url widget stores the target's **full** metadata onto the link field (the object browser already fetches every item with `metadata_fields: '_all'`, and the field's `selectedItemAttrs` keeps the whole canonical set), so the block carries its own source data. Every mapped field then pulls straight from that stored snapshot: **on page open** (all blocks fill at once) and again whenever you change the link.
 
@@ -1005,7 +1007,7 @@ Only an **internal** link is a pull source. An external URL has no catalog item 
 ### Conversion graph rules
 
 - Explicit `fieldMappings[typeName]` always creates a conversion edge.
-- `@default` only creates edges between types that both have valid `@default` mappings (keys from `{ @id, title, description, image }`). Types with non-canonical `@default` keys are ignored.
+- `@default` only creates edges between types that both have valid `@default` mappings (keys from the catalog fields above). A `@default` key that isn't one stops the editor loading.
 - Types without `fieldMappings` never appear in the "Convert to..." menu.
 - Transitive conversions use paths through intermediate types (e.g. hero → teaser → image).
 - Unmapped fields are kept in the data so converting back restores them.
@@ -1018,32 +1020,58 @@ The same conversion graph gives drag-and-drop (and paste) more valid destination
 
 The chooser popup survives only for the genuinely ambiguous case: a single block reachable to *several* target types, where you pick which one (cancelling leaves it untouched). Zero reachable types rejects the drop; multi-block selections are auto-only (every member must reach exactly one type). On mobile, conversion happens via cut → paste (drag/chevron move stays native-only). External-link and other type restrictions are unaffected; only the container's `allowedBlocks` gate is relaxed to "allowed or convertible".
 
+### Which fields map onto which
+
+One rule decides which source can fill which field, and with which conversion (`@volto-hydra/helpers/mappingConversions.js`). The mapping widget offers by it, the editor checks every config mapping against it when it loads, and the content check applies it to every stored listing mapping.
+
+A field's conversion is derived from its widget (`widgetToTargetType`: the one derivation converting a block, pulling from a linked page and storing a listing's mapping all use). Where that wouldn't give what the field holds, the source decides:
+
+<block type="slateTable" table.fixed table.celled>
+
+| Source | Can fill | Conversion |
+| --- | --- | --- |
+| text (`title`, `description`, a vocabulary column) | a text, textarea or slate field | `string`, `textarea`, `slate` |
+| the address (`getURL`) | a link field (`object_browser` link, `url`) | `link` |
+| the address | a text or textarea field | `string`, `textarea` |
+| an image (`image`) | an image or link field | `image_link` (its scales kept) |
+| a date (`created`, `effective`, …) | a date, text or textarea field | `string`, `textarea` |
+| a list (`Subject`) | a list field | `array` |
+| a list | a text, textarea or slate field (joined) | `string`, `textarea`, `slate` |
+| yes/no | a yes/no field | `boolean` |
+
+</block>
+
+Nothing maps onto a choice field (a result's value needn't be one of its tokens), a region, an object or a number. A `url` field holds the object-browser link list, `[{ "@id": url }]`, as the editor's url widget writes it, so it takes `link`; a field meant to hold a plain URL string is a plain string field.
+
 ### Mapping value format
 
-A mapping value is either a string (simple field rename) or `{ field, type }` (rename with type conversion):
+A value in a block config's `fieldMappings` is a field name, or `{ field, type }` to name a conversion the field's widget wouldn't call for (a list into text, an image into a link field). It is read with the schema, so the conversion of a plain field name is derived:
 
 ### Json
 
 ```json
 {
-    "@id": { "field": "href", "type": "link" },
+    "getURL": "href",
     "title": "title",
-    "description": "description",
-    "image": "preview_image"
+    "Subject": { "field": "title", "type": "string" },
+    "image": { "field": "url", "type": "image_link" }
 }
 ```
 
-When `type` is specified, the value is converted at runtime:
+A listing's stored `fieldMapping` is different: it is expanded where there is no schema, so **every entry is `{ field, type }`**, and `expandListingBlocks` refuses one without a type rather than passing its value through. The editor stores every entry that way.
 
 <block type="slateTable" table.fixed table.celled>
 
 | Type | Conversion |
 | --- | --- |
-| `string` | Arrays joined with `", "`; image objects resolved to URL string |
-| `link` | String wrapped as `[{ "@id": value }]` (Volto link format) |
-| `image` | Pass through (expects `{ "@id", image_field, image_scales }`) |
-| `array` | Non-arrays wrapped in `[value]` |
-| `(none)` | Copied as-is |
+| `string` | Text; a list joined with `", "`, slate as its text |
+| `textarea` | Text, slate as its text with line breaks |
+| `slate` | A slate value; text wrapped in a paragraph |
+| `link` | `[{ "@id": value }]` (the object-browser link list) |
+| `image_link` | `[{ "@id", image_field, image_scales }]` (an image, its scales kept) |
+| `image` | A plain image URL, for an image widget's value inside a block conversion |
+| `array` | A list; a lone value wrapped in `[value]` |
+| `boolean` | The value as it is |
 
 </block>
 
@@ -1051,12 +1079,22 @@ When `type` is specified, the value is converted at runtime:
 
 When a parent block has `mappingField` set in its `inheritSchemaFrom` recipe, the admin sidebar shows a widget that lets editors configure field mappings visually:
 
-- Shows the `@default` source fields (`@id`, `title`, `description`, `image`) on the left.
-- For each source field, lets the editor pick a field from the selected child type's schema.
-- Auto-detects the conversion `type` from the target field definition (e.g. `object_browser` with `mode=link` → `type: "link"`).
-- Saves the result as `fieldMapping` (singular) on the block data.
+- Shows the source fields on the left: the listing schema's `sourceFields` (each with a `type`: `string`, `image`, `date`, `array` or `boolean`) and the columns of the vocabulary it names, which map as text.
+- For each source, offers only the selected child type's fields it [can fill](#which-fields-map-onto-which).
+- Saves each entry as `{ field, type }`, with the conversion from the rule, as `fieldMapping` (singular) on the block data — also when the item type changes and the mapping is reset to that type's `@default`.
 
-The saved `fieldMapping` is read at render time by `expandListingBlocks` — no block registry access needed at render time.
+The saved `fieldMapping` is read at render time by `expandListingBlocks` — no block registry access needed at render time, which is why it carries every conversion.
+
+### Checked when the editor loads
+
+The editor refuses to load a frontend config whose mappings don't make sense, listing every problem (`[HYDRA] initBridge config error`); the content check runs the same checks in CI. A mapping is refused when:
+
+- its source or destination is a field the schemas don't have, or a `@default` source isn't a catalog field;
+- it writes onto an id, a type or a template key — `@id`, `@type`, Inka's own keys, or the `idField` / `typeField` of a list its block is an item of (a region path's too);
+- its conversion isn't one Inka has, or can't give what its field holds;
+- it maps from `@id` (the address is `getURL`), or a mapping widget offers a source of a type Inka can't convert.
+
+A block field may not be **named** `@id`, at any depth (in an object field, in a list's items): Plone reads every `@id` in stored block data as a link, so it would rewrite or refuse the value. A link keeps its `@id` inside the field's value, which is fine.
 
 ## Search text
 
@@ -1075,4 +1113,4 @@ const initBlocks = {
 };
 ```
 
-Content that never passes through the editor, such as an import, has no `searchableText` until it's saved. To fill it, run `plone-content search-text <content-dir> --schemas <schemas>` over the content before importing it.
+Content that never passes through the editor, such as an import, has no `searchableText` until it's saved. To fill it, run `plone-content search-text <content-dir> --schemas <schemas>` over the content before importing it. Run `plone-content field-mappings` too: a listing's stored mapping is the other thing the editor stores that an import doesn't have (see [Listings › Where the mapping lives](./listings.md#where-the-mapping-lives)).

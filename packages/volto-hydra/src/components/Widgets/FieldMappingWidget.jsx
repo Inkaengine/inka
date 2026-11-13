@@ -20,12 +20,12 @@ import { injectLazyLibs } from '@plone/volto/helpers/Loadable/Loadable';
 import {
   getBlockTypeSchema,
   computeSmartDefaults,
-  getFieldType,
   findTypeField,
 } from '../../utils/blockSync';
 import { useHydraSchemaContext } from '../../context/HydraSchemaContext';
 import { getBlockById } from '../../utils/blockPath';
 import { mergeVocabularySources } from '../../utils/fieldMappingSources';
+import { conversionFor, sourceKind } from '@volto-hydra/helpers/mappingConversions.js';
 
 /**
  * Get schema fields for a block type as options for a select
@@ -134,24 +134,27 @@ const FieldMappingWidget = (props) => {
   // when itemType changes, so we don't need a useEffect here
   const effectiveValue = { ...smartDefaults, ...filteredValue };
 
-  // Get available target fields from block schema
-  const targetFieldOptions = [
-    { value: '', label: '(none)' },
-    ...getBlockSchemaFields(targetType, intl, blocksConfig),
-  ];
+  // A source is offered only the fields it can be converted into
+  // (mappingConversions): a list never into a title, a date never into a link.
+  const schemaFields = getBlockSchemaFields(targetType, intl, blocksConfig);
+  const targetFieldOptionsFor = (sourceKey) => {
+    const kind = sourceKind(sourceKey, sourceFields[sourceKey]);
+    return [
+      { value: '', label: '(none)' },
+      ...schemaFields.filter(
+        (opt) => conversionFor(kind, targetSchema?.properties?.[opt.value]) !== undefined,
+      ),
+    ];
+  };
 
-  // Handle change for a specific source field
-  // Stores { field, type } for link/image target fields, plain string otherwise
+  // Stores the conversion the target's widget calls for (or the one the source
+  // needs), always: the listing renderer has no schema to work it out.
   const handleChange = (sourceKey, targetValue) => {
     const newValue = { ...value };
     if (targetValue) {
-      const fieldDef = targetSchema?.properties?.[targetValue];
-      const fieldType = getFieldType(fieldDef);
-      if (fieldType === 'link' || fieldType === 'image') {
-        newValue[sourceKey] = { field: targetValue, type: fieldType };
-      } else {
-        newValue[sourceKey] = targetValue;
-      }
+      const kind = sourceKind(sourceKey, sourceFields[sourceKey]);
+      const conversion = conversionFor(kind, targetSchema?.properties?.[targetValue]);
+      newValue[sourceKey] = { field: targetValue, type: conversion };
     } else {
       delete newValue[sourceKey];
     }
@@ -199,14 +202,14 @@ const FieldMappingWidget = (props) => {
               <td style={{ textAlign: 'center', verticalAlign: 'middle' }}>→</td>
               <td style={{ padding: '4px 8px' }}>
                 <Select
-                  value={targetFieldOptions.find(
+                  value={targetFieldOptionsFor(sourceKey).find(
                     (opt) => {
                       const mapping = effectiveValue?.[sourceKey];
                       const targetField = typeof mapping === 'string' ? mapping : mapping?.field;
                       return opt.value === targetField;
                     },
                   )}
-                  options={targetFieldOptions}
+                  options={targetFieldOptionsFor(sourceKey)}
                   onChange={(selected) =>
                     handleChange(sourceKey, selected?.value || '')
                   }

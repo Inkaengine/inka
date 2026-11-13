@@ -76,11 +76,31 @@ describe('computeSmartDefaults keeps the conversion a list needs', () => {
     expect(mapping.Subject).toEqual({ field: 'tags', type: 'array' });
   });
 
-  test('a link target still gets its conversion, and a plain field stays bare', () => {
+  // Proposed as the widget stores it: every entry with its conversion, which
+  // the listing renderer, having no schema, converts by.
+  test('every entry carries the conversion its field needs', () => {
     const mapping = computeSmartDefaults(QUERY_RESULT_FIELDS, target, {
-      '@default': { '@id': 'url', title: 'title' },
+      '@default': { getURL: 'url', title: 'title' },
     });
-    expect(mapping['@id']).toEqual({ field: 'url', type: 'link' });
-    expect(mapping.title).toBe('title');
+    expect(mapping.getURL).toEqual({ field: 'url', type: 'link' });
+    expect(mapping.title).toEqual({ field: 'title', type: 'string' });
+  });
+
+  // A feed offers fewer sources than a catalog listing (an RSS entry has no
+  // lead image): an entry for one it doesn't offer would be stored, and refused.
+  test("a declared entry for a source the mapping doesn't offer isn't proposed", () => {
+    const mapping = computeSmartDefaults(
+      { getURL: QUERY_RESULT_FIELDS.getURL, title: QUERY_RESULT_FIELDS.title },
+      target,
+      { '@default': { getURL: 'url', title: 'title', Subject: 'tags' } },
+    );
+    expect(Object.keys(mapping)).toEqual(['getURL', 'title']);
+  });
+
+  test("a declared entry the source can't become isn't proposed", () => {
+    const mapping = computeSmartDefaults(QUERY_RESULT_FIELDS, target, {
+      '@default': { Subject: 'url', title: 'title' },
+    });
+    expect(mapping).not.toHaveProperty('Subject');
   });
 });

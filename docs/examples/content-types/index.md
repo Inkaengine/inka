@@ -66,7 +66,7 @@ blocks-matched: |
 
 Every page is a content type — a Document, News Item, Event, Image or Link. The type decides which metadata a page carries and, if you choose, the layout it renders with. The samples below are live instances you can open and copy.
 
-<block type="listing" headlineTag="h2" variation="default" />
+<block type="listing" data-json='{"headlineTag":"h2","variation":"default","fieldMapping":{"getURL":{"field":"href","type":"link"},"title":{"field":"title","type":"string"},"description":{"field":"description","type":"textarea"}}}' />
 
 ## Page metadata
 

@@ -55,7 +55,7 @@ describe('plone-content --json', () => {
       ['b', 't'],
     );
     assert.equal(status, 1);
-    assert.deepEqual(Object.keys(report).sort(), ['chooser', 'fieldsets', 'reserved', 'rules', 'schema']);
+    assert.deepEqual(Object.keys(report).sort(), ['chooser', 'fieldsets', 'mappings', 'reserved', 'rules', 'schema']);
     assert.equal(report.schema.errors.length, 1);
     assert.match(report.schema.errors[0], /banner\.bogus/);
     assert.equal(report.rules.errors.length, 1);

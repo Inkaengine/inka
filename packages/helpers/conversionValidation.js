@@ -8,20 +8,10 @@
  * re-exports every name here; THIS file is the SSOT.
  */
 
-export const DEFAULT_TYPE_FIELDS = new Set([
-  '@id',
-  'title',
-  'description',
-  'image',
-  'hasPreviewImage',
-  'Subject',
-  'created',
-  'modified',
-  'effective',
-  'expires',
-  'start',
-  'end',
-]);
+import { ADDRESS_SOURCE, RETIRED_ADDRESS_SOURCE } from './catalogAddress.js';
+import { CATALOG_SOURCE_KINDS, SOURCE_TYPES, conversionFor, isAccepted, targetKind, widgetToTargetType } from './mappingConversions.js';
+
+export const DEFAULT_TYPE_FIELDS = new Set(Object.keys(CATALOG_SOURCE_KINDS));
 
 /**
  * Check if a block config has a valid @default mapping.
@@ -113,7 +103,7 @@ function isListingItemShaped(blockConfig) {
 /**
  * Validate the conversion graph across the WHOLE registry.
  *
- * validateFieldMappings() sees one block at a time, which makes it blind to the
+ * fieldMappingProblems() checks each mapping against the schemas it names; it is blind to the
  * two failures that actually strand authors — and both fail silently, because
  * the symptom is an absence: a dropdown that offers nothing.
  *
@@ -307,4 +297,330 @@ export function getConvertibleTypes(sourceType, blocksConfig, allowedTypes = nul
       type: blockType,
       title: blocksConfig[blockType]?.title || blockType,
     }));
+}
+
+// The one widget → conversion derivation lives with the mapping rule.
+export { widgetToTargetType } from './mappingConversions.js';
+
+/**
+ * Keys Inka writes on a block itself, never an author's field: a mapping may
+ * not write onto them. A list's own idField/typeField join them for the types
+ * that are its items.
+ */
+const INKA_BLOCK_KEYS = new Set([
+  '@id',
+  '@type',
+  '@uid',
+  'templateId',
+  'templateInstanceId',
+  'slotId',
+  'fixed',
+  'readOnly',
+  '_pullFrom',
+  'image_field',
+  'image_scales',
+  'blocks',
+  'blocks_layout',
+]);
+
+/** What each conversion `type` (convertFieldValue's targetType) produces. */
+const PRODUCES = {
+  string: 'text',
+  textarea: 'text',
+  image: 'text',
+  slate: 'slate',
+  link: 'links',
+  image_link: 'links',
+  array: 'list',
+  // Passed through unchanged: nothing to compare.
+  object: null,
+  number: null,
+  integer: null,
+  boolean: null,
+};
+
+const ACCEPTS_BY_TARGET = {
+  link: 'links',
+  image_link: 'links',
+  image: 'text',
+  string: 'text',
+  textarea: 'text',
+  slate: 'slate',
+};
+
+const isRegionDef = (def) =>
+  def?.widget === 'blocks_layout' || def?.widget === 'object_list';
+
+/** What a field holds, as a kind a conversion can be compared with, or null. */
+function acceptedKind(def) {
+  if (!def || isRegionDef(def)) return null;
+  const target = widgetToTargetType(def.widget, def);
+  if (target) return ACCEPTS_BY_TARGET[target];
+  if (def.type === 'string') return 'text';
+  if (def.type === 'array') return 'list';
+  return null;
+}
+
+/**
+ * The fields of the block types that have no schema: a slate block always
+ * stores its text in `value`. What the editor knows of them too.
+ */
+export const SCHEMALESS_BLOCK_FIELDS = {
+  slate: { value: { title: 'Text', type: 'array', widget: 'slate' } },
+  detachedSlate: { value: { title: 'Text', type: 'array', widget: 'slate' } },
+};
+
+/** A block config's schema properties. A schema that is a function is called with no data. */
+function propertiesOf(blockConfig, type) {
+  if (!blockConfig?.blockSchema && SCHEMALESS_BLOCK_FIELDS[type]) return SCHEMALESS_BLOCK_FIELDS[type];
+  const schema = blockConfig?.blockSchema;
+  const resolved =
+    typeof schema === 'function'
+      ? schema({
+          formData: {},
+          data: {},
+          intl: { formatMessage: (message) => message?.defaultMessage ?? message?.id },
+        })
+      : schema;
+  return resolved?.properties || {};
+}
+
+/**
+ * The field a mapping names on `type`, or null: a field, a `/`-path through
+ * `widget: 'object'` fields, or a region path `<region>/<type|*>/<field>` onto
+ * that region's children.
+ */
+function fieldAt(type, path, blocksConfig) {
+  const segments = path.split('/');
+  const properties = propertiesOf(blocksConfig[type], type);
+  if (segments.length === 3 && isRegionDef(properties[segments[0]])) {
+    const [region, childType, field] = segments;
+    const allowed = properties[region].allowedBlocks || null;
+    const candidates = childType === '*' ? allowed || [] : [childType];
+    for (const candidate of candidates) {
+      if (allowed && !allowed.includes(candidate)) continue;
+      const def = propertiesOf(blocksConfig[candidate], candidate)[field];
+      if (def) return def;
+    }
+    return null;
+  }
+  let props = properties;
+  for (let i = 0; i < segments.length; i += 1) {
+    const def = props?.[segments[i]];
+    if (!def) return null;
+    if (i === segments.length - 1) return def;
+    if (def.widget !== 'object' || !def.schema) return null;
+    props = def.schema.properties;
+  }
+  return null;
+}
+
+/** For each type, the id and type fields of the lists it is an item of. */
+function listKeysByItemType(blocksConfig) {
+  const keys = {};
+  const visit = (properties) => {
+    for (const def of Object.values(properties || {})) {
+      if (def?.widget === 'object_list') {
+        for (const itemType of def.allowedBlocks || []) {
+          keys[itemType] = keys[itemType] || new Set();
+          if (def.idField) keys[itemType].add(def.idField);
+          if (def.typeField) keys[itemType].add(def.typeField);
+        }
+      }
+      if (def?.widget === 'object' && def.schema) visit(def.schema.properties);
+    }
+  };
+  for (const config of Object.values(blocksConfig)) visit(propertiesOf(config));
+  return keys;
+}
+
+const renamedAddressMessage = (where) =>
+  `${where}: the address is mapped from "${ADDRESS_SOURCE}" now, not "${RETIRED_ADDRESS_SOURCE}". ` +
+  `Plone reads every "${RETIRED_ADDRESS_SOURCE}" in a block as a link, so a stored mapping keyed by it can't be saved. Rename the key to "${ADDRESS_SOURCE}".`;
+
+/**
+ * Every fieldMappings entry in the registry that doesn't make sense against the
+ * schemas it names. An empty list means they all do.
+ *
+ * Each mapping, `source: target` or `source: { field, type }`, is checked for:
+ *
+ *   bad-mapping          it names no field.
+ *   unknown-source       a `@default` / `@target` source that isn't a catalog
+ *                        field (DEFAULT_TYPE_FIELDS); a type-to-type source the
+ *                        other type has no field for.
+ *   unknown-destination  the block has no such field (or region path).
+ *   id-destination       it writes onto `@id`, `@type`, one of Inka's own keys,
+ *                        or the idField / typeField of a list the block is an
+ *                        item of: an id is never content.
+ *   unknown-type         its `type` is no conversion Inka has.
+ *   type-mismatch        its `type` produces something the field can't hold
+ *                        (a link onto a text field, slate onto a textarea).
+ *
+ * Pure, so the editor runs it when the frontend's config arrives (and refuses
+ * to load on any) and the content check runs it in CI.
+ *
+ * @param {Object} blocksConfig - the full block registry
+ * @returns {Array<{rule: string, types: string[], message: string}>}
+ */
+export function fieldMappingProblems(blocksConfig) {
+  const problems = [];
+  const listKeys = listKeysByItemType(blocksConfig || {});
+  const report = (rule, type, message) => problems.push({ rule, types: [type], message });
+
+  // A mapping widget's sourceFields are what the editor offers to map from;
+  // they're stored as the listing's mapping keys, so `@id` is out there too.
+  const visitWidgets = (type, properties, where) => {
+    for (const [name, def] of Object.entries(properties || {})) {
+      if (def?.widget === 'field_mapping' && def.sourceFields && RETIRED_ADDRESS_SOURCE in def.sourceFields) {
+        report('unknown-source', type, renamedAddressMessage(`${where}.${name}.sourceFields['${RETIRED_ADDRESS_SOURCE}']`));
+      }
+      for (const [source, sourceDef] of Object.entries(def?.widget === 'field_mapping' ? def.sourceFields || {} : {})) {
+        if (source !== ADDRESS_SOURCE && !SOURCE_TYPES.includes(sourceDef?.type)) {
+          report('unknown-type', type, `${where}.${name}.sourceFields['${source}'] has type ${JSON.stringify(sourceDef?.type)}; a source's type is one Inka converts (${SOURCE_TYPES.join(', ')}).`);
+        }
+      }
+      if (def?.widget === 'object' && def.schema) visitWidgets(type, def.schema.properties, `${where}.${name}`);
+    }
+  };
+  for (const [type, config] of Object.entries(blocksConfig || {})) {
+    visitWidgets(type, propertiesOf(config), type);
+  }
+
+  for (const [type, config] of Object.entries(blocksConfig || {})) {
+    const mappings = config?.fieldMappings;
+    if (!mappings) continue;
+    const reserved = new Set([...INKA_BLOCK_KEYS, ...(listKeys[type] || [])]);
+
+    for (const [from, mapping] of Object.entries(mappings)) {
+      const isCatalog = from === '@default' || from === '@target';
+      const where = `${type}.fieldMappings['${from}']`;
+      if (!isCatalog && !blocksConfig[from]) continue; // validateConversionRegistry's unknown-target
+      for (const [source, value] of Object.entries(mapping || {})) {
+        if (from === '@target' && source === '@source') continue; // names the link, not a field
+        const field = typeof value === 'string' ? value : value?.field;
+        const conversion = typeof value === 'object' && value ? value.type : undefined;
+        if (typeof field !== 'string' || field === '') {
+          report('bad-mapping', type, `${where}['${source}'] names no field: ${JSON.stringify(value)}. Write a field name, or { field, type }.`);
+          continue;
+        }
+        // A value↔container bridge (convertValueContainer): on the value block,
+        // keyed by the container, { <own field>: '<container region>/<type>/<field>' }.
+        const segments = field.split('/');
+        if (
+          !isCatalog &&
+          segments.length === 3 &&
+          !isRegionDef(propertiesOf(config)[segments[0]]) &&
+          isRegionDef(propertiesOf(blocksConfig[from], from)[segments[0]])
+        ) {
+          if (!fieldAt(type, source, blocksConfig)) {
+            report('unknown-destination', type, `${where}['${source}'] bridges "${type}" field "${source}", which it doesn't have.`);
+          }
+          if (!fieldAt(from, field, blocksConfig)) {
+            report('unknown-source', type, `${where}['${source}'] bridges to "${field}" on "${from}", which no child it allows has.`);
+          }
+          continue;
+        }
+        if (isCatalog && source === RETIRED_ADDRESS_SOURCE) {
+          report('unknown-source', type, renamedAddressMessage(`${where}['${source}']`));
+        } else if (from === '@default' && !DEFAULT_TYPE_FIELDS.has(source)) {
+          report('unknown-source', type, `${where}['${source}']: "${source}" is not a catalog field. A ${from} source is a linked item's field (${[...DEFAULT_TYPE_FIELDS].join(', ')}).`);
+        }
+        if (!isCatalog && !DEFAULT_TYPE_FIELDS.has(source) && !fieldAt(from, source, blocksConfig)) {
+          report('unknown-source', type, `${where}['${source}']: block type "${from}" has no field "${source}".`);
+        }
+        // A region path names the block's own region first (a table cell's
+        // list is called `blocks`), so only a plain field is checked here.
+        const isRegionPath =
+          field.split('/').length === 3 && isRegionDef(propertiesOf(config)[field.split('/')[0]]);
+        if (!isRegionPath && reserved.has(field.split('/')[0])) {
+          report('id-destination', type, `${where}['${source}'] writes onto "${field}", which is Inka's (an id, a type, or a template mark), never content.`);
+          continue;
+        }
+        // Onto each child a region path makes: never its id or type.
+        if (isRegionPath) {
+          const [regionName, , childField] = field.split('/');
+          const region = propertiesOf(config)[regionName];
+          if (INKA_BLOCK_KEYS.has(childField) || childField === region.idField || childField === region.typeField) {
+            report('id-destination', type, `${where}['${source}'] writes onto "${field}", the id or type of each item in "${regionName}", never content.`);
+            continue;
+          }
+        }
+        const def = fieldAt(type, field, blocksConfig);
+        if (!def) {
+          report('unknown-destination', type, `${where}['${source}'] writes onto "${field}", but block type "${type}" has no such field.`);
+          continue;
+        }
+        if (conversion !== undefined && !(conversion in PRODUCES)) {
+          report('unknown-type', type, `${where}['${source}'] converts with type "${conversion}", which is not one Inka has (${Object.keys(PRODUCES).join(', ')}).`);
+          continue;
+        }
+        // A catalog source's kind is known: the rule the mapping widget offers
+        // by decides. An entry with no `type` is given the one the rule records
+        // (on a listing, and when pulled); one with a type must name one that
+        // gives what the field holds.
+        if (isCatalog) {
+          const kind = CATALOG_SOURCE_KINDS[source];
+          // Not a catalog field: reported above for @default; for @target, an
+          // attribute of the linked page, whose kind isn't known.
+          if (!kind) continue;
+          const fits = conversion !== undefined ? isAccepted(kind, def, conversion) : conversionFor(kind, def) !== undefined;
+          if (!fits) {
+            const how = conversion !== undefined ? `converted as ${conversion}` : 'by any conversion';
+            const fix = conversionFor(kind, def);
+            const instead = fix !== undefined ? ` Write { field: '${field}', type: '${fix}' }.` : ` A ${kind} can't become what "${field}" holds.`;
+            report('type-mismatch', type, `${where}['${source}'] puts a ${kind} ${how} into "${field}" (${targetKind(def) ?? 'not a mapping target'}).${instead}`);
+          }
+          continue;
+        }
+        if (conversion === undefined) continue;
+        if (!(conversion in PRODUCES)) {
+          report('unknown-type', type, `${where}['${source}'] converts with type "${conversion}", which is not one Inka has (${Object.keys(PRODUCES).join(', ')}).`);
+          continue;
+        }
+        const produced = PRODUCES[conversion];
+        const accepted = acceptedKind(def);
+        if (produced && accepted && produced !== accepted) {
+          report('type-mismatch', type, `${where}['${source}'] converts to ${conversion} (${produced}), but "${field}" holds ${accepted}.`);
+        }
+      }
+    }
+  }
+  return problems;
+}
+
+/**
+ * Every block field NAMED `@id`, at any depth (a block's fields, an object
+ * field's, an untyped object list's items). Plone reads every `@id` in stored
+ * block data as a link: a string that names a page is rewritten to that page's
+ * resolveuid, and anything else crashes the save. A link keeps its `@id`
+ * inside the field's value, which is fine; a field may not be called that.
+ *
+ * @param {Object} blocksConfig - the full block registry
+ * @returns {Array<{rule: string, types: string[], nested: boolean, message: string}>}
+ *   `nested` is false for one of the block's own fields.
+ */
+export function reservedFieldProblems(blocksConfig) {
+  const problems = [];
+  const visit = (type, properties, where) => {
+    for (const [name, def] of Object.entries(properties || {})) {
+      if (name === '@id') {
+        problems.push({
+          rule: 'reserved-field',
+          types: [type],
+          nested: where !== type,
+          message: `${where}.@id: a field can't be named "@id". Plone reads every "@id" in a block as a link, so it rewrites or refuses what this field holds. Give the field another name.`,
+        });
+      }
+      if (def?.widget === 'object' && def.schema) {
+        visit(type, def.schema.properties, `${where}.${name}`);
+      }
+      if (def?.widget === 'object_list' && def.schema) {
+        visit(type, def.schema.properties, `${where}.${name}[]`);
+      }
+    }
+  };
+  for (const [type, config] of Object.entries(blocksConfig || {})) {
+    visit(type, propertiesOf(config), type);
+  }
+  return problems;
 }

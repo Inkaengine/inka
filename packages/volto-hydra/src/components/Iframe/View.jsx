@@ -365,7 +365,8 @@ import {
   getConversionMap,
   convertBlockType,
   reshapeContainerBlock,
-  validateFieldMappings,
+  fieldMappingProblems,
+  reservedFieldProblems,
   validateFieldRulesPlacement,
   reportDisallowedSlateNodes,
   completeFrontendSchema,
@@ -434,8 +435,16 @@ const SCHEMA_KEEPS_ADMIN_FORM = new Set([
 const validateFrontendConfig = (options, mergedBlocksConfig) => {
   const errors = [];
 
-  // Future validations can be added here as needed
-  // Frontend developers control what's allowed where via allowedBlocks
+  // fieldMappings must make sense against the schemas they name: a mapping onto
+  // a field that doesn't exist, onto an id, or with a conversion the field
+  // can't hold is refused here, when the config arrives, not found later as
+  // missing links on a published page or a save the CMS crashes on.
+  for (const problem of [
+    ...reservedFieldProblems(mergedBlocksConfig),
+    ...fieldMappingProblems(mergedBlocksConfig),
+  ]) {
+    errors.push(`${problem.rule}: ${problem.message}`);
+  }
 
   if (errors.length > 0) {
     throw new Error(`[HYDRA] initBridge config error:\n- ${errors.join('\n- ')}`);
@@ -4128,8 +4137,6 @@ const Iframe = (props) => {
               // inner schemas — on every INIT, overrides included (see
               // completeFrontendSchema).
               completeFrontendSchema(blockConfig?.blockSchema);
-              // Validate fieldMappings: warn about invalid @default keys
-              validateFieldMappings(blockType, blockConfig);
               // And fieldRules written in a schema, where nothing reads them.
               validateFieldRulesPlacement(blockType, blockConfig);
             });
