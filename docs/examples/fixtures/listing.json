@@ -1,4 +1,22 @@
 {
+  "fieldMapping": {
+    "getURL": {
+      "field": "href",
+      "type": "link"
+    },
+    "title": {
+      "field": "title",
+      "type": "string"
+    },
+    "description": {
+      "field": "description",
+      "type": "textarea"
+    },
+    "image": {
+      "field": "image",
+      "type": "image_link"
+    }
+  },
   "@type": "listing",
   "variation": "summary",
   "querystring": {

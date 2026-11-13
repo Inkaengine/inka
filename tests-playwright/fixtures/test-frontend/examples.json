@@ -359,6 +359,24 @@
         ],
         "sort_on": "effective",
         "sort_order": "descending"
+      },
+      "fieldMapping": {
+        "getURL": {
+          "field": "href",
+          "type": "link"
+        },
+        "title": {
+          "field": "title",
+          "type": "string"
+        },
+        "description": {
+          "field": "description",
+          "type": "textarea"
+        },
+        "image": {
+          "field": "image",
+          "type": "image_link"
+        }
       }
     },
     "ex-search": {
@@ -396,6 +414,24 @@
                 ]
               }
             ]
+          },
+          "fieldMapping": {
+            "getURL": {
+              "field": "href",
+              "type": "link"
+            },
+            "title": {
+              "field": "title",
+              "type": "string"
+            },
+            "description": {
+              "field": "description",
+              "type": "textarea"
+            },
+            "image": {
+              "field": "image",
+              "type": "image_link"
+            }
           }
         }
       },
