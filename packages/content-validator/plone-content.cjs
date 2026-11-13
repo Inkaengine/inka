@@ -34,7 +34,7 @@
 
 const path = require('path');
 const fs = require('fs');
-const { validate, checkIntegrity, checkBlockSchemas, checkEditorRules, checkChooserGroups, checkReservedFields, fieldMapFromSchemas, idFieldMapFor, loadSchemas, formatReport } = require('./plone-content-validator.cjs');
+const { validate, checkIntegrity, checkBlockSchemas, checkEditorRules, checkChooserGroups, checkFieldsetCoverage, checkReservedFields, fieldMapFromSchemas, idFieldMapFor, loadSchemas, formatReport } = require('./plone-content-validator.cjs');
 
 function usage() {
   console.error(
@@ -175,6 +175,15 @@ if (cmd === 'schema' || (cmd === 'all' && (schemas || fieldsPath))) {
     report.chooser = chooser;
     console.log(formatReport('chooser', chooser));
     if (chooser.errors.length) hasErrors = true;
+
+    // Also config, not content: a field no fieldset lists is invisible in the
+    // editor, so nobody can see it, change it, or tell whether anything still
+    // reads it.
+    console.log('');
+    const fieldsets = checkFieldsetCoverage(schemas);
+    report.fieldsets = fieldsets;
+    console.log(formatReport('fieldsets', fieldsets));
+    if (fieldsets.errors.length) hasErrors = true;
 
     console.log('');
     const reserved = checkReservedFields(schemas);

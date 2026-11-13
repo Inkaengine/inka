@@ -467,3 +467,85 @@ describe('checkReservedFields()', () => {
     assert.deepEqual(r.errors, []);
   });
 });
+
+/**
+ * checkFieldsetCoverage(): a field a schema declares but no fieldset lists is
+ * invisible in the editor. Nobody can see it, nobody can fix it, and nothing
+ * says whether anything still reads it — which is how a button kept a dead
+ * `url` field, and nine published pages rendered `<a href="#">` CTAs, for as
+ * long as the field was declared (pretagov-site#106, frontend#27).
+ *
+ * Keeping a field out of the UI on purpose is declared ON the field, so the
+ * reason sits where the field is:
+ *   - `mode: 'hidden'`  — Volto's Field returns null, and the field stays in
+ *     the schema, so a stored value is still declared. The one for config an
+ *     author should not edit.
+ *   - a schemaEnhancer's `fieldRules: { f: false }` removes the field from the
+ *     resolved schema altogether, so a value stored in it then reads as
+ *     undeclared. Only for a field that stores nothing.
+ */
+describe('checkFieldsetCoverage()', () => {
+  const { checkFieldsetCoverage } = require('./plone-content-validator.cjs');
+  const block = (properties, fieldsets) => ({
+    hero: { group: 'common', blockSchema: { fieldsets, properties } },
+  });
+
+  it('passes when every field a fieldset lists is declared and vice versa', () => {
+    const r = checkFieldsetCoverage(block(
+      { title: { type: 'string' }, url: { widget: 'url' } },
+      [{ id: 'default', title: 'Default', fields: ['title', 'url'] }],
+    ));
+    assert.deepEqual(r.errors, []);
+  });
+
+  it('reports a declared field no fieldset lists', () => {
+    const r = checkFieldsetCoverage(block(
+      { title: { type: 'string' }, url: { widget: 'url' } },
+      [{ id: 'default', title: 'Default', fields: ['title'] }],
+    ));
+    assert.equal(r.errors.length, 1);
+    assert.match(r.errors[0], /hero\.url/);
+    assert.match(r.errors[0], /no fieldset lists it/);
+    assert.match(r.errors[0], /mode: 'hidden'/);
+  });
+
+  it("accepts a field kept out of the UI with mode: 'hidden'", () => {
+    const r = checkFieldsetCoverage(block(
+      { title: { type: 'string' }, send_email: { type: 'boolean', mode: 'hidden' } },
+      [{ id: 'default', title: 'Default', fields: ['title', 'send_email'] }],
+    ));
+    assert.deepEqual(r.errors, []);
+  });
+
+  // A region is where child blocks live, not a sidebar field: the canvas edits
+  // it. Exempt by widget, not by a list of field names.
+  it('exempts regions', () => {
+    const r = checkFieldsetCoverage(block(
+      { title: { type: 'string' }, items: { widget: 'blocks_layout' }, slides: { widget: 'object_list', idField: '@id' } },
+      [{ id: 'default', title: 'Default', fields: ['title'] }],
+    ));
+    assert.deepEqual(r.errors, []);
+  });
+
+  // Declaring no fieldsets hides nothing — Volto renders what it is given — so
+  // the rule has nothing to say. Six of this site's own object_list item
+  // schemas are written that way.
+  it('says nothing about a schema that declares no fieldsets', () => {
+    const r = checkFieldsetCoverage(block({ title: { type: 'string' }, url: { widget: 'url' } }, undefined));
+    assert.deepEqual(r.errors, []);
+  });
+
+  it('checks a nested item schema that declares its own fieldsets', () => {
+    const r = checkFieldsetCoverage({
+      slider: { group: 'common', blockSchema: {
+        fieldsets: [{ id: 'default', title: 'Default', fields: ['slides'] }],
+        properties: { slides: { widget: 'object_list', idField: '@id', schema: {
+          fieldsets: [{ id: 'default', title: 'Slide', fields: ['title'] }],
+          properties: { title: { type: 'string' }, href: { widget: 'object_browser' } },
+        } } },
+      } },
+    });
+    assert.equal(r.errors.length, 1);
+    assert.match(r.errors[0], /slider\.slides\.href/);
+  });
+});
