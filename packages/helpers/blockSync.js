@@ -3045,18 +3045,43 @@ export function deleteBlocks(formData, blockPathMap, blockIds, options = {}) {
     );
     out = deleteBlockFromContainer(out, map, blockId, containerConfig);
     map = buildBlockPathMap(out, blocksConfig, intl);
-    // Say which slot the block leaves empty. If this empties the region, the
-    // placeholder re-seeded there stands in for that slot — and the re-seed can't
-    // know it, it sees only a region with nothing in it.
-    emptiedContainers.push(
-      blockData?.slotId
-        ? { ...containerConfig, vacatedSlotId: blockData.slotId }
-        : containerConfig,
-    );
+    emptiedContainers.push(leftBehind(containerConfig, blockData));
     deleted.push(blockId);
   }
   const settled = settleBlockStructure(out, map, { emptiedContainers }, options);
   return { ...settled, deleted };
+}
+
+/**
+ * The region a block leaves, saying which slot it held there. If this empties
+ * the region, the placeholder re-seeded there stands in for that slot — and the
+ * re-seed can't know it, it sees only a region with nothing in it (inka#708).
+ * The one place a delete and a move say what they leave behind.
+ *
+ * @param {Object} containerConfig - the region the block was in
+ * @param {Object} [block] - the block, as it was there
+ * @returns {Object} the region, with `vacatedSlotId` when the block held a slot
+ */
+export function leftBehind(containerConfig, block) {
+  return block?.slotId ? { ...containerConfig, vacatedSlotId: block.slotId } : containerConfig;
+}
+
+/**
+ * The regions a move takes its blocks out of, for settleBlockStructure's
+ * `emptiedContainers`: the source region, unless the blocks stay in it. A move
+ * between two regions of ONE container (a layout's hero to its main) leaves a
+ * region too, which comparing parents alone missed.
+ *
+ * @param {Object|null} sourceConfig - the region the moved blocks came from
+ * @param {Object} targetConfig - the region they went to
+ * @param {Object} [movedBlock] - the first moved block, as it was in its source
+ * @returns {Object[]}
+ */
+export function emptiedByMove(sourceConfig, targetConfig, movedBlock) {
+  if (!sourceConfig) return [];
+  const same =
+    sourceConfig.parentId === targetConfig?.parentId && sourceConfig.region === targetConfig?.region;
+  return same ? [] : [leftBehind(sourceConfig, movedBlock)];
 }
 
 /**

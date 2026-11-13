@@ -354,6 +354,7 @@ import {
   applyBlockDefaultsWithContext,
   applyMembershipWhereLanded,
   settleBlockStructure,
+  emptiedByMove,
   deleteBlocks,
   canInsertBesideBlock,
   createSchemaEnhancerFromRecipe,
@@ -2200,10 +2201,12 @@ const Iframe = (props) => {
     const firstBlockId = blocksToMove[0];
     const sourceParentId = currentBlockPathMap[firstBlockId]?.parentId || null;
 
-    // Get source container config BEFORE the move (needed for ensureEmptyBlockIfEmpty)
-    const sourceContainerConfig = sourceParentId !== targetParentId && sourceParentId
+    // The region the blocks come out of, and the first one as it was there,
+    // BEFORE the move: what it leaves behind is decided after (emptiedByMove).
+    const sourceContainerConfig = sourceParentId
       ? getContainerFieldConfig(firstBlockId, currentBlockPathMap, currentFormData, blocksConfig, intl)
       : null;
+    const firstBlockAsItWas = getBlockById(currentFormData, currentBlockPathMap, firstBlockId);
 
     // Resolve each block against the target container's allowedBlocks:
     // native fit, or convertible (auto when one target type; a single-block
@@ -2320,16 +2323,20 @@ const Iframe = (props) => {
       // THEN a re-seed of the region it came out of. settleBlockStructure
       // fixes that order in one place so the drag path and the chooser's
       // ask-first drop cannot disagree about it again.
+      const movedPathMap = buildBlockPathMap(newFormData, config.blocks.blocksConfig, intl);
       const settledMove = settleBlockStructure(
         newFormData,
-        buildBlockPathMap(newFormData, config.blocks.blocksConfig, intl),
+        movedPathMap,
         {
           landed: blocksToMove,
           replacedPlaceholders: replaceTargetId ? [replaceTargetId] : [],
-          emptiedContainers:
-            sourceParentId !== targetParentId && sourceContainerConfig
-              ? [sourceContainerConfig]
-              : [],
+          // The region the blocks left — another container's, or another
+          // region of the same one — with the slot they held there.
+          emptiedContainers: emptiedByMove(
+            sourceContainerConfig,
+            getContainerFieldConfig(firstBlockId, movedPathMap, newFormData, blocksConfig, intl),
+            firstBlockAsItWas,
+          ),
         },
         {
           blocksConfig,
