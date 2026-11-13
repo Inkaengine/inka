@@ -1104,12 +1104,15 @@ const Iframe = (props) => {
 
   // What the pane is given: the compared page with every block read-only, so
   // it can be read and inspected but not changed. Read-only is a property of a
-  // block, so "a page nobody may edit" needs no new kind of frame.
+  // block, so "a page nobody may edit" needs no new kind of frame. The page is
+  // a block too: a field is locked by the block that owns it, so the page's
+  // own fields (its title, drawn inside a block) need the page locked as well.
   const compareReadOnlyContent = useMemo(
     () =>
       compareContent
         ? {
             ...compareContent,
+            readOnly: true,
             blocks: withAllBlocksReadOnly(
               compareContent.blocks,
               buildIdFieldMap(config.blocks.blocksConfig, intl),
