@@ -662,6 +662,23 @@ export class Bridge {
   }
 
   /**
+   * Whether a field can't be edited: the lock of the block that OWNS the field,
+   * not of the block drawing it. A locked template block may draw the page's
+   * own `/title`; the page isn't locked, so neither is its title. A field
+   * named relative to another block (`../x`) is that block's. With no field
+   * name, the block's own lock.
+   *
+   * @param {string|null} fieldName - The field path as the frontend names it
+   * @param {string} blockUid - The block drawing the field
+   * @returns {boolean}
+   */
+  isFieldReadonly(fieldName, blockUid) {
+    return this.isBlockReadonly(
+      fieldName ? this.resolveFieldPath(fieldName, blockUid).blockId : blockUid,
+    );
+  }
+
+  /**
    * Parse a hydra comment string into attributes and selectors.
    * Format: "hydra attr=value attr attr=value(selector) /"
    *
@@ -1362,11 +1379,13 @@ export class Bridge {
    */
   collectBlockFields(blockElement, attrName, processor) {
     const blockUid = blockElement.getAttribute('data-block-uid');
-
-    // Check if block is marked readonly (registry, block data, or DOM attribute)
-    if (blockUid && this.isBlockReadonly(blockUid)) {
-      return {};
-    }
+    const collect = processor;
+    // Each field by its own lock (isFieldReadonly): a locked block's own fields
+    // are skipped, a page field it draws is not.
+    processor = (el, name, results) => {
+      if (blockUid && this.isFieldReadonly(name, blockUid)) return;
+      collect(el, name, results);
+    };
 
     const results = {};
 
@@ -5524,12 +5543,14 @@ export class Bridge {
         // Using relative coordinates ensures focus()/scroll doesn't invalidate the position
         // Also store the target for field detection
         // Inside readonly blocks, ignore editable/linkable/media fields (they're from query results, not editable)
-        const clickedEditableField = isInsideReadonly ? null : event.target.closest('[data-edit-text]');
-        const editableField = clickedEditableField || (isInsideReadonly ? null : blockElement.querySelector('[data-edit-text]'));
-
-        // Detect clicked linkable and media fields (ignored inside readonly blocks)
-        const clickedLinkableField = isInsideReadonly ? null : event.target.closest('[data-edit-link]');
-        const clickedMediaField = isInsideReadonly ? null : event.target.closest('[data-edit-media]');
+        // A field is judged by its own lock (isFieldReadonly), so a page field
+        // drawn in a locked block is still editable.
+        const editableAt = (attr) => {
+          const field = event.target.closest('[data-block-readonly]') ? null : event.target.closest(`[${attr}]`);
+          return field && !this.isFieldReadonly(field.getAttribute(attr), blockUid) ? field : null;
+        };
+        const clickedEditableField = editableAt('data-edit-text');
+        const editableField = clickedEditableField || this.getOwnFirstEditableField(blockElement);
 
         // Clicking a data-edit-text element starts INLINE text editing, so prevent
         // the element's OWN default action. A data-edit-text submit button would
@@ -5540,7 +5561,7 @@ export class Bridge {
           event.preventDefault();
         }
 
-        this.recordClickPosition(event, editableField, !!isInsideReadonly);
+        this.recordClickPosition(event, editableField, editableAt);
         // Cancel any pending initial-selection from waitForStable —
         // user click takes priority over automatic block restoration
         if (this._pendingInitialSelectTimer) {
@@ -5595,9 +5616,7 @@ export class Bridge {
           typeof matchMedia === 'function' &&
           matchMedia('(pointer: coarse)').matches;
         const alreadySelected = blockUid === this.selectedBlockUid;
-        const hasOwnText =
-          !this.isBlockReadonly(blockUid) &&
-          this.getOwnEditableFields(blockElement).length > 0;
+        const hasOwnText = this.getOwnEditableFields(blockElement).length > 0;
         const enterTextMode = hasOwnText && (!coarsePointer || alreadySelected);
         this.editMode = enterTextMode ? 'text' : 'block';
         this.selectBlock(blockElement, { fromUserClick: true });
@@ -7455,8 +7474,8 @@ export class Bridge {
         || null;
       const fieldName = container?.getAttribute?.('data-edit-text') || null;
 
-      // Skip error for readonly blocks - they don't need selection sync
-      if (blockUid && this.isBlockReadonly(blockUid)) {
+      // Skip error for readonly fields - they don't need selection sync
+      if (blockUid && this.isFieldReadonly(fieldName, blockUid)) {
         return null;
       }
 
@@ -7560,14 +7579,13 @@ export class Bridge {
     // Get blockUid from the element - don't rely on this.selectedBlockUid as it may not be set yet
     const blockUid = blockElement.getAttribute('data-block-uid');
 
-    // If block is readonly, remove contenteditable from all its editable fields
+    // In a readonly block, a field that is itself readonly loses contenteditable.
     if (blockUid && this.isBlockReadonly(blockUid)) {
-      const editableFields = blockElement.querySelectorAll('[data-edit-text][contenteditable="true"]');
-      editableFields.forEach((field) => {
-        field.removeAttribute('contenteditable');
+      blockElement.querySelectorAll('[data-edit-text][contenteditable="true"]').forEach((field) => {
+        if (this.isFieldReadonly(field.getAttribute('data-edit-text'), blockUid)) {
+          field.removeAttribute('contenteditable');
+        }
       });
-      log(`restoreContentEditableOnFields called from ${caller}: block ${blockUid} is readonly, removed contenteditable`);
-      return;
     }
 
     // For multi-element blocks, collect fields from ALL elements with this UID
@@ -9542,8 +9560,7 @@ export class Bridge {
     // the document-level keyboard blocker receives key events. Without focus
     // in the iframe, keydown events go to the parent page instead.
     if (!isTemplateInstance) {
-      const isReadonly = this.isBlockReadonly(blockUid);
-      const hasEditableFields = !isReadonly && this.getOwnEditableFields(blockElement).length > 0;
+      const hasEditableFields = this.getOwnEditableFields(blockElement).length > 0;
       // "No editable fields" is true of a CONTAINER whose text all belongs to
       // its children — a codeExample's labels and code live on its tabs, not on
       // the wrapper. Focusing the wrapper then rips the caret out of the field
@@ -9693,8 +9710,7 @@ export class Bridge {
     // - Non-editable blocks (no contenteditable field)
     // - Block mode (contenteditable not set)
     {
-      const isReadonly = this.isBlockReadonly(blockUid);
-      const hasEditableFields = !isReadonly && this.getOwnEditableFields(blockElement).length > 0;
+      const hasEditableFields = this.getOwnEditableFields(blockElement).length > 0;
       const needsImmediateSend = isTemplateInstance || isBlockMode || !hasEditableFields;
       if (needsImmediateSend && this._pendingBlockSelected) {
         const pending = this._pendingBlockSelected;
@@ -9900,14 +9916,13 @@ export class Bridge {
    * @param {HTMLElement|null} editableField - The text field the click resolved
    *   to, or null when the click wasn't on one (the target is still recorded,
    *   for field detection).
-   * @param {boolean} isInsideReadonly - Inside a readonly block (listing items
-   *   and friends) linkable/media fields come from query results, not editable
-   *   content, so they are ignored.
+   * @param {Function} editableAt - (attr) => the clicked field carrying `attr`
+   *   that can be edited, or null. A locked field (a listing item's, a locked
+   *   template block's own) is not recorded.
    */
-  recordClickPosition(event, editableField, isInsideReadonly = false) {
+  recordClickPosition(event, editableField, editableAt) {
     const rect = editableField?.getBoundingClientRect();
-    const fieldAttr = (attr) =>
-      (isInsideReadonly ? null : event.target.closest(`[${attr}]`)?.getAttribute(attr)) || null;
+    const fieldAttr = (attr) => editableAt(attr)?.getAttribute(attr) || null;
     this.lastClickPosition = {
       ...(editableField && {
         relativeX: event.clientX - rect.left,
@@ -9964,7 +9979,8 @@ export class Bridge {
 
     // Readonly blocks (listing items and friends) render query results, not
     // editable content — same exclusion the plain-click path applies.
-    if (event.target.closest('[data-block-readonly]') || this.isBlockReadonly(ownerUid)) return;
+    if (event.target.closest('[data-block-readonly]')
+      || this.isFieldReadonly(field.getAttribute('data-edit-text'), ownerUid)) return;
 
     // Touch: the first tap on a not-yet-selected block selects it without a
     // caret, so iOS word-select and long-press multi-select have a clean
@@ -12059,8 +12075,8 @@ export class Bridge {
       editableField = this.getOwnFirstEditableField(elementOrBlock);
     }
 
-    // Skip making readonly blocks editable
-    if (blockUid && this.isBlockReadonly(blockUid)) {
+    // Skip making readonly fields editable
+    if (blockUid && this.isFieldReadonly(editableField?.getAttribute('data-edit-text'), blockUid)) {
       return;
     }
 
