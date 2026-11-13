@@ -384,3 +384,86 @@ describe('a required block field left empty', () => {
     expect(run('something').blocksErrors).toEqual({});
   });
 });
+
+// Plone's block deserializer calls `.startswith` on every truthy `@id` in every
+// block, so a link whose `@id` isn't a string ends the whole save with a 500
+// ("'dict' object has no attribute 'startswith'") naming no block. A production
+// author got that toast nine saves running. The editor refuses it first, on the
+// block that holds it, whether or not the author can edit that block: the server
+// refuses it either way.
+describe('a link the CMS cannot store', () => {
+  const cfg = {
+    card: {
+      id: 'card',
+      title: 'Card',
+      blockSchema: {
+        fieldsets: [{ id: 'default', title: 'Default', fields: ['title', 'url'] }],
+        properties: {
+          title: { title: 'Title', type: 'string' },
+          url: { title: 'Link', widget: 'object_browser', mode: 'link' },
+        },
+        required: [],
+      },
+    },
+    grid: {
+      id: 'grid',
+      title: 'Grid',
+      blockSchema: {
+        fieldsets: [{ id: 'default', title: 'Default', fields: ['items'] }],
+        properties: { items: { title: 'Items', widget: 'blocks_layout', allowedBlocks: ['card'] } },
+        required: [],
+      },
+    },
+  };
+  const badLink = [{ '@id': { '@id': '/events/hub', title: 'Hub' } }];
+  const run = (formData) =>
+    validateBlocksAgainstSchemas(formData, { blocksConfig: cfg, intl: { formatMessage }, formatMessage });
+
+  test("refuses the save on the block holding it, naming the link's field", () => {
+    const { blocksErrors, fieldTitles } = run({
+      blocks: { c1: { '@type': 'card', title: 'Hubs', url: badLink } },
+      blocks_layout: { items: ['c1'] },
+    });
+    expect(Object.keys(blocksErrors)).toEqual(['c1']);
+    expect(blocksErrors.c1.url.join(' ')).toMatch(/can't be saved/);
+    expect(fieldTitles.c1.url).toBe('Link');
+  });
+
+  test('inside a container, the card is named, not the grid', () => {
+    const { blocksErrors } = run({
+      blocks: {
+        g1: {
+          '@type': 'grid',
+          blocks: { c1: { '@type': 'card', title: 'Hubs', url: badLink } },
+          blocks_layout: { items: ['c1'] },
+        },
+      },
+      blocks_layout: { items: ['g1'] },
+    });
+    expect(Object.keys(blocksErrors)).toEqual(['c1']);
+  });
+
+  test("on a template-owned (readOnly) block too: the server refuses it all the same", () => {
+    const { blocksErrors } = run({
+      blocks: { c1: { '@type': 'card', readOnly: true, title: 'Hubs', url: badLink } },
+      blocks_layout: { items: ['c1'] },
+    });
+    expect(Object.keys(blocksErrors)).toEqual(['c1']);
+  });
+
+  test('on a block type with no schema here, named by its own key', () => {
+    const { blocksErrors } = run({
+      blocks: { x1: { '@type': 'unknownToThisEditor', href: badLink } },
+      blocks_layout: { items: ['x1'] },
+    });
+    expect(Object.keys(blocksErrors.x1 || {})).toEqual(['href']);
+  });
+
+  test('a stored link is fine', () => {
+    const { blocksErrors } = run({
+      blocks: { c1: { '@type': 'card', title: 'Hubs', url: [{ '@id': '/events/hub', title: 'Hub' }] } },
+      blocks_layout: { items: ['c1'] },
+    });
+    expect(blocksErrors).toEqual({});
+  });
+});

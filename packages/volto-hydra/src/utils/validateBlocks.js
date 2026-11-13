@@ -18,14 +18,22 @@
  */
 import { FormValidation } from '@plone/volto/helpers';
 
-import { blockFieldErrors } from '@volto-hydra/helpers/blockFieldErrors.js';
+import { getChildFields } from '@volto-hydra/helpers';
+import {
+  blockFieldErrors,
+  unstorableLinkFields,
+} from '@volto-hydra/helpers/blockFieldErrors.js';
 
-import { buildBlockPathMap, getBlockById } from './blockPath';
+import { buildBlockPathMap, buildIdFieldMap, getBlockById } from './blockPath';
 import { resolveEffectiveBlockSchema } from './blockSync';
 
 // The page itself is validated against the PAGE schema by the form; it is in the
 // path map as the root, and has no block schema of its own.
 const PAGE_BLOCK = '_page';
+
+/** What the author is told about a link the CMS can't store. */
+export const UNSTORABLE_LINK_MESSAGE =
+  "This link can't be saved: the editor holds it in a form the site can't store. Set the link again, or clear it.";
 
 /**
  * @param {Object} formData - the whole page's form data
@@ -52,9 +60,23 @@ export function validateBlocksAgainstSchemas(
     return { blocksErrors, fieldTitles, blockPathMap: {} };
 
   const blockPathMap = buildBlockPathMap(formData, blocksConfig, intl);
+  const idFieldMap = buildIdFieldMap(blocksConfig, intl);
 
   for (const blockId of Object.keys(blockPathMap || {})) {
     if (blockId === PAGE_BLOCK) continue;
+
+    const blockData = getBlockById(formData, blockPathMap, blockId);
+    if (!blockData) continue;
+
+    // A link the CMS can't store refuses the save here, on EVERY block —
+    // readOnly or not, with a schema here or not — because the server refuses
+    // it on every block: Plone's deserializer calls `.startswith` on each `@id`
+    // in a block, and anything but a string ends the whole save with a 500 that
+    // names no block ("'dict' object has no attribute 'startswith'").
+    const badLinks = unstorableLinkFields(
+      blockData,
+      getChildFields(blockData, idFieldMap, { allObjectLists: true }),
+    );
 
     const schema = resolveEffectiveBlockSchema(
       blockId,
@@ -63,10 +85,20 @@ export function validateBlocksAgainstSchemas(
       blocksConfig,
       intl,
     );
-    if (!schema?.properties) continue;
-
-    const blockData = getBlockById(formData, blockPathMap, blockId);
-    if (!blockData) continue;
+    const linkErrors = Object.fromEntries(
+      badLinks.map((field) => [field, [UNSTORABLE_LINK_MESSAGE]]),
+    );
+    const report = (errors) => {
+      if (Object.keys(errors).length === 0) return;
+      blocksErrors[blockId] = errors;
+      fieldTitles[blockId] = Object.fromEntries(
+        Object.keys(errors).map((field) => [field, schema?.properties?.[field]?.title || field]),
+      );
+    };
+    if (!schema?.properties) {
+      report(linkErrors);
+      continue;
+    }
 
     // A template-owned block is readOnly: the author is shown static values
     // rather than widgets and cannot change a single field on it. Validating it
@@ -84,7 +116,10 @@ export function validateBlocksAgainstSchemas(
     // `fixed` alone is NOT enough to skip. A fixed-but-editable block is the
     // page's own: the merge keeps all of its fields, so its values are the
     // author's to correct and must still be enforced.
-    if (blockData.readOnly === true) continue;
+    if (blockData.readOnly === true) {
+      report(linkErrors);
+      continue;
+    }
 
     // The same step the offline content check runs (@volto-hydra/helpers/blockFieldErrors.js):
     // Volto's validators, with cleared ('') fields read as unset, and a rule's
@@ -95,12 +130,7 @@ export function validateBlocksAgainstSchemas(
       validateFieldsPerFieldset: FormValidation.validateFieldsPerFieldset,
       formatMessage,
     });
-    if (Object.keys(errors).length > 0) {
-      blocksErrors[blockId] = errors;
-      fieldTitles[blockId] = Object.fromEntries(
-        Object.keys(errors).map((field) => [field, schema.properties[field]?.title || field]),
-      );
-    }
+    report({ ...errors, ...linkErrors });
   }
 
   return { blocksErrors, fieldTitles, blockPathMap };
