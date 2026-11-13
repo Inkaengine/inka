@@ -2830,11 +2830,14 @@ export function applyMembershipWhereLanded(formData, blockPathMap, blockId, opti
     // as adding a block at this position. At a page's own level the position
     // rules above decide alone: a drop beside a template's outer anchor is out.
     const besideId = insertAfter ? layoutItems[position - 1] : layoutItems[position];
-    updatedBlockData = inheritTemplateMembership(
-      updatedBlockData,
-      siblings[besideId] || parentBlock,
-      { inheritFixed: !!parentBlock?.templateInstanceId },
-    );
+    const beside = siblings[besideId] || parentBlock;
+    // An `empty` placeholder stands in for the author's own content in a region
+    // of the template (#700 locks it with its block): a block put in its place
+    // joins the template as that content, not fixed and read-only like the
+    // placeholder, or no page could edit it (inka#705).
+    updatedBlockData = inheritTemplateMembership(updatedBlockData, beside, {
+      inheritFixed: !!parentBlock?.templateInstanceId && beside?.['@type'] !== 'empty',
+    });
   }
   // Rule 4: the block's contents go where it went, in its slot.
   const withContents = withDescendantMembership(

@@ -59,6 +59,16 @@ describe('@lock', () => {
     assert.equal((await lockOf(admin)).locked, false);
   });
 
+  // inka#705: a save while locked stored the lock it reported into the page's
+  // data, so the page showed itself locked after its holder let it go.
+  it('is not part of the page: a save while locked leaves it unlocked once let go', async () => {
+    const admin = tokenFor('admin');
+    await call('POST', `${PAGE}/@lock`, admin);
+    assert.equal((await call('PATCH', PAGE, admin, { title: 'Test Page' })).status, 200);
+    await call('DELETE', `${PAGE}/@lock`, admin);
+    assert.equal((await lockOf(admin)).locked, false);
+  });
+
   it('shows another user the lock, and who holds it', async () => {
     const holder = tokenFor('holder');
     const other = tokenFor('other');
