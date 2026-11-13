@@ -23,6 +23,10 @@ const highlightIcon = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 2
 
 // Block icons hoisted to named consts so a docs literalinclude of a block
 // definition reads `icon: <name>Icon`, not a wall of inline SVG.
+
+// The fields every search facet has, which a conversion between facets maps.
+const FACET_BASE_FIELDS = { title: 'title', field: 'field' };
+
 export const sharedBlocksConfig = {
     // A labelled admonition box (note / tip / warning / important). The level is
     // the block's `variation`; the body is a slate value. Mirrors the myst
@@ -2036,20 +2040,34 @@ export const sharedBlocksConfig = {
             },
         },
     },
-    // No schema: the title and description blocks are windows onto the PAGE's
-    // own fields, and the admin's schema for them carries the field and its
-    // canvas placeholder. A schema sent here would replace it.
+    // The title and description blocks are windows onto the PAGE's own fields:
+    // each schema names that field, and its placeholder is the canvas's hint.
+    // Inka's admin declares no blocks of its own, so the frontend says this.
     title: {
       id: 'title',
       title: 'Title',
       group: 'text',
       restricted: true,
+      blockSchema: {
+        fieldsets: [{ id: 'default', title: 'Default', fields: ['title'] }],
+        properties: {
+          title: { title: 'Title', type: 'string', placeholder: 'Type the title…' },
+        },
+        required: [],
+      },
     },
     description: {
       id: 'description',
       title: 'Description',
       group: 'text',
       restricted: true,
+      blockSchema: {
+        fieldsets: [{ id: 'default', title: 'Default', fields: ['description'] }],
+        properties: {
+          description: { title: 'Description', type: 'string', widget: 'textarea', placeholder: 'Add a description…' },
+        },
+        required: [],
+      },
     },
     leadimage: {
       id: 'leadimage',
@@ -2310,10 +2328,19 @@ export const sharedBlocksConfig = {
     // Search facet types. Copied from docs/examples/block-definitions.json, which
     // is what the docs example frontends load — these four lived only there, so
     // any frontend using THIS registry reported them as unregistered.
+    //
+    // A facet converts to another through checkboxFacet: the mappings carry the
+    // fields every facet has (a mapping makes the edge; fields of the same name
+    // carry across unmapped anyway, `hidden` among them).
     checkboxFacet: {
         id: 'checkboxFacet',
         title: 'Checkboxes',
         restricted: true,
+        fieldMappings: {
+            selectFacet: FACET_BASE_FIELDS,
+            daterangeFacet: FACET_BASE_FIELDS,
+            toggleFacet: FACET_BASE_FIELDS,
+        },
         blockSchema: {
             fieldsets: [{ id: 'default', title: 'Default', fields: ['title', 'field', 'multiple', 'hidden'] }],
             properties: {
@@ -2329,6 +2356,7 @@ export const sharedBlocksConfig = {
         id: 'selectFacet',
         title: 'Select',
         restricted: true,
+        fieldMappings: { checkboxFacet: FACET_BASE_FIELDS },
         blockSchema: {
             fieldsets: [{ id: 'default', title: 'Default', fields: ['title', 'field', 'hidden'] }],
             properties: {
@@ -2343,6 +2371,7 @@ export const sharedBlocksConfig = {
         id: 'daterangeFacet',
         title: 'Date range',
         restricted: true,
+        fieldMappings: { checkboxFacet: FACET_BASE_FIELDS },
         blockSchema: {
             fieldsets: [{ id: 'default', title: 'Default', fields: ['title', 'field', 'hidden'] }],
             properties: {
@@ -2357,6 +2386,7 @@ export const sharedBlocksConfig = {
         id: 'toggleFacet',
         title: 'Toggle',
         restricted: true,
+        fieldMappings: { checkboxFacet: FACET_BASE_FIELDS },
         blockSchema: {
             fieldsets: [{ id: 'default', title: 'Default', fields: ['title', 'field', 'hidden'] }],
             properties: {

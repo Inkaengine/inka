@@ -210,6 +210,37 @@ describe('fieldMappingProblems', () => {
     expect(rulesOf(fieldMappingProblems(r))).toEqual(['unknown-source:card']);
   });
 
+  // Inka can't know a site's catalog: a site adds metadata columns (a file's
+  // type, a page count). A mapping widget's sourceFields is where the frontend
+  // says which it has, and of what kind; @default may then read them.
+  describe('a catalog field a mapping widget declares', () => {
+    const withListing = (sourceFields) => {
+      const r = registry();
+      r.listing = schema({
+        fieldMapping: { title: 'Field mapping', widget: 'field_mapping', sourceFields },
+      });
+      return r;
+    };
+
+    test('is a @default source', () => {
+      const r = withListing({ mime_type: { title: 'File type', type: 'string' } });
+      r.card.fieldMappings['@default'].mime_type = { field: 'tag', type: 'string' };
+      expect(fieldMappingProblems(r)).toEqual([]);
+    });
+
+    test('converts as the kind it is declared', () => {
+      const r = withListing({ pages: { title: 'Pages', type: 'array' } });
+      r.card.fieldMappings['@default'].pages = { field: 'url', type: 'link' };
+      expect(rulesOf(fieldMappingProblems(r))).toEqual(['type-mismatch:card']);
+    });
+
+    test('a source no widget declares still is not one', () => {
+      const r = withListing({ mime_type: { title: 'File type', type: 'string' } });
+      r.card.fieldMappings['@default'].Type = { field: 'tag', type: 'string' };
+      expect(rulesOf(fieldMappingProblems(r))).toEqual(['unknown-source:card']);
+    });
+  });
+
   test("a type-to-type source the other type doesn't have", () => {
     const r = registry();
     r.contentBlock.fieldMappings.card.link = 'linkUrl';

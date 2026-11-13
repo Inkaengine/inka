@@ -9,18 +9,48 @@
  */
 
 import { ADDRESS_SOURCE, RETIRED_ADDRESS_SOURCE } from './catalogAddress.js';
-import { CATALOG_SOURCE_KINDS, SOURCE_TYPES, conversionFor, isAccepted, targetKind, widgetToTargetType } from './mappingConversions.js';
+import { CATALOG_SOURCE_KINDS, SOURCE_TYPES, conversionFor, isAccepted, sourceKind, targetKind, widgetToTargetType } from './mappingConversions.js';
 
 export const DEFAULT_TYPE_FIELDS = new Set(Object.keys(CATALOG_SOURCE_KINDS));
 
 /**
- * Check if a block config has a valid @default mapping.
- * Valid means all keys are from the canonical @default field set.
+ * The catalog fields a registry's `@default` mappings may read, each with its
+ * kind: Inka's standard ones, and every source a mapping widget declares in its
+ * `sourceFields`. Inka can't know a site's catalog (a site adds metadata
+ * columns: a file's type, a page count); the frontend says which it has there.
+ * A declared source of a type Inka has no conversion for is left out (and
+ * reported by fieldMappingProblems).
+ *
+ * @param {Object} blocksConfig - the full block registry
+ * @returns {Object} source → kind
  */
-export function hasValidDefault(blockConfig) {
+export function catalogSourceKinds(blocksConfig) {
+  const kinds = { ...CATALOG_SOURCE_KINDS };
+  const visit = (properties) => {
+    for (const def of Object.values(properties || {})) {
+      if (def?.widget === 'field_mapping') {
+        for (const [source, sourceDef] of Object.entries(def.sourceFields || {})) {
+          if (source !== ADDRESS_SOURCE && !SOURCE_TYPES.includes(sourceDef?.type)) continue;
+          if (source === RETIRED_ADDRESS_SOURCE || source in kinds) continue;
+          kinds[source] = sourceKind(source, sourceDef);
+        }
+      }
+      if (def?.widget === 'object' && def.schema) visit(def.schema.properties);
+    }
+  };
+  for (const [type, config] of Object.entries(blocksConfig || {})) visit(propertiesOf(config, type));
+  return kinds;
+}
+
+/**
+ * Check if a block config has a valid @default mapping.
+ * Valid means all keys are catalog fields (catalogSourceKinds).
+ */
+export function hasValidDefault(blockConfig, catalogKinds) {
+  if (!catalogKinds) throw new Error('hasValidDefault needs the registry\'s catalogSourceKinds');
   const defaultMapping = blockConfig?.fieldMappings?.['@default'];
   if (!defaultMapping) return false;
-  return Object.keys(defaultMapping).every(key => DEFAULT_TYPE_FIELDS.has(key));
+  return Object.keys(defaultMapping).every(key => key in catalogKinds);
 }
 
 /**
@@ -256,6 +286,7 @@ export function getConvertibleTypes(sourceType, blocksConfig, allowedTypes = nul
   const sourceConfig = blocksConfig[sourceType];
   if (!sourceConfig?.fieldMappings) return [];
 
+  const catalogKinds = catalogSourceKinds(blocksConfig);
   // BFS to find all reachable types through the conversion graph
   const reachable = new Set();
   const queue = [sourceType];
@@ -278,8 +309,8 @@ export function getConvertibleTypes(sourceType, blocksConfig, allowedTypes = nul
 
       // @default: only if BOTH types have valid @default (canonical keys)
       if (blockConfig.fieldMappings['@default'] &&
-          hasValidDefault(blockConfig) &&
-          hasValidDefault(blocksConfig[currentType])) {
+          hasValidDefault(blockConfig, catalogKinds) &&
+          hasValidDefault(blocksConfig[currentType], catalogKinds)) {
         reachable.add(blockType);
         visited.add(blockType);
         queue.push(blockType);
@@ -466,6 +497,7 @@ export function fieldMappingProblems(blocksConfig) {
   const problems = [];
   const listKeys = listKeysByItemType(blocksConfig || {});
   const report = (rule, type, message) => problems.push({ rule, types: [type], message });
+  const catalogKinds = catalogSourceKinds(blocksConfig);
 
   // A mapping widget's sourceFields are what the editor offers to map from;
   // they're stored as the listing's mapping keys, so `@id` is out there too.
@@ -522,10 +554,10 @@ export function fieldMappingProblems(blocksConfig) {
         }
         if (isCatalog && source === RETIRED_ADDRESS_SOURCE) {
           report('unknown-source', type, renamedAddressMessage(`${where}['${source}']`));
-        } else if (from === '@default' && !DEFAULT_TYPE_FIELDS.has(source)) {
-          report('unknown-source', type, `${where}['${source}']: "${source}" is not a catalog field. A ${from} source is a linked item's field (${[...DEFAULT_TYPE_FIELDS].join(', ')}).`);
+        } else if (from === '@default' && !(source in catalogKinds)) {
+          report('unknown-source', type, `${where}['${source}']: "${source}" is not a catalog field. A ${from} source is a linked item's field (${Object.keys(catalogKinds).join(', ')}); a site's own catalog field is declared in a mapping widget's sourceFields.`);
         }
-        if (!isCatalog && !DEFAULT_TYPE_FIELDS.has(source) && !fieldAt(from, source, blocksConfig)) {
+        if (!isCatalog && !(source in catalogKinds) && !fieldAt(from, source, blocksConfig)) {
           report('unknown-source', type, `${where}['${source}']: block type "${from}" has no field "${source}".`);
         }
         // A region path names the block's own region first (a table cell's
@@ -559,7 +591,7 @@ export function fieldMappingProblems(blocksConfig) {
         // (on a listing, and when pulled); one with a type must name one that
         // gives what the field holds.
         if (isCatalog) {
-          const kind = CATALOG_SOURCE_KINDS[source];
+          const kind = catalogKinds[source];
           // Not a catalog field: reported above for @default; for @target, an
           // attribute of the linked page, whose kind isn't known.
           if (!kind) continue;
