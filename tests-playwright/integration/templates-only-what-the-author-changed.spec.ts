@@ -418,7 +418,7 @@ test.describe("a page's own field drawn in a locked template block", () => {
     await helper.navigateToEdit(path.replace(/^\/_test_data/, ''));
     const writes = recordWrites(page, URLS.mockApi);
 
-    const title = helper.getIframe().locator('[data-block-uid="t"] [data-edit-text="/title"]');
+    const title = await helper.getEditorLocator('t', '/title');
     await expect(title).toHaveText('Old name');
     await title.click();
     await expect(title, 'the page title is editable while its template stays locked').toHaveAttribute('contenteditable', 'true');
