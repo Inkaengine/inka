@@ -44,7 +44,7 @@ test.describe('a template is written only by its own commit', () => {
     expect(templateWrites(writes), 'no template is written by a page save').toEqual([]);
   });
 
-  test("a template's commit writes it once, and the page save after it doesn't again", async ({ page, urls }) => {
+  test("a template's lock writes nothing; the page save after it writes it, once", async ({ page, urls }) => {
     const helper = new AdminUIHelper(page);
     await helper.login();
     await helper.navigateToEdit('/template-test-page');
@@ -56,12 +56,12 @@ test.describe('a template is written only by its own commit', () => {
     await helper.moveCursorToEnd(header);
     await header.pressSequentially(' changed', { delay: 10 });
     await helper.lockTemplate(headerBlockId, 'commit');
-    await expect.poll(() => templateWrites(writes).length, { message: 'the commit writes the template' }).toBe(1);
+    expect(templateWrites(writes), 'locking writes nothing').toEqual([]);
 
     await helper.saveContent();
     await expect.poll(() => writes.filter((w) => w.path.endsWith('/template-test-page')).length,
       { message: 'the page itself is saved' }).toBeGreaterThanOrEqual(1);
-    expect(templateWrites(writes), 'the page save writes no template').toHaveLength(1);
+    expect(templateWrites(writes), 'the page save writes the template, once').toHaveLength(1);
   });
 });
 
@@ -137,7 +137,35 @@ async function lockOf(path: string, token: string) {
 }
 
 test.describe('unlocking a template locks it on the site, as editing a page does', () => {
-  test('unlocking takes its lock, and the save that commits it lets it go', async ({ page }) => {
+  test('unlocking again before the page is saved keeps the edit, and the lock', async ({ page }) => {
+    // The edit lives in the editor until the page save writes it, so unlocking
+    // again must not fetch the template afresh over it.
+    const helper = new AdminUIHelper(page);
+    await helper.login();
+    const { template, page: path } = await freshTemplatePage(helper.authToken);
+    await helper.navigateToEdit(path);
+
+    const { blockId: head } = await helper.waitForBlockByContent('Its own heading');
+    await helper.unlockTemplate(head);
+    const editor = await helper.enterEditMode(head);
+    await helper.moveCursorToEnd(editor);
+    await editor.pressSequentially(' changed', { delay: 10 });
+    await helper.lockTemplate(head, 'commit');
+
+    await helper.unlockTemplate(head);
+    await expect(helper.getIframe().locator(`[data-block-uid="${head}"]`)).toContainText('Its own heading changed');
+    // Unchanged since this unlock, so it locks without asking; the earlier edit
+    // is still to be written, so the site lock is kept for the page save.
+    const toggle = page.locator('.quanta-toolbar .template-lock-toggle');
+    await toggle.click();
+    await expect(toggle).toHaveAttribute('aria-pressed', 'false');
+    expect((await lockOf(template, helper.authToken))?.locked, 'still locked on the site').toBe(true);
+    await helper.saveContent();
+    await expect.poll(async () => JSON.stringify((await stored(template, helper.authToken)).blocks), { message: 'the edit is stored' })
+      .toContain('Its own heading changed');
+  });
+
+  test('unlocking takes its lock, and the page save that writes it lets it go', async ({ page }) => {
     const helper = new AdminUIHelper(page);
     await helper.login();
     const { template, page: path } = await freshTemplatePage(helper.authToken);
@@ -151,7 +179,9 @@ test.describe('unlocking a template locks it on the site, as editing a page does
     await helper.moveCursorToEnd(editor);
     await editor.pressSequentially(' changed', { delay: 10 });
     await helper.lockTemplate(head, 'commit');
-    await expect.poll(async () => (await lockOf(template, helper.authToken))?.locked, { message: 'committing lets it go' }).toBe(false);
+    expect((await lockOf(template, helper.authToken))?.locked, 'locked here with a change to write, it stays locked on the site').toBe(true);
+    await helper.saveContent();
+    await expect.poll(async () => (await lockOf(template, helper.authToken))?.locked, { message: 'the page save lets it go' }).toBe(false);
   });
 
   for (const how of ['unchanged', 'reset'] as const) {
@@ -208,6 +238,27 @@ test.describe('unlocking a template locks it on the site, as editing a page does
     await expect.poll(async () => (await lockOf(template, helper.authToken))?.locked, { message: 'leaving the editor lets it go' }).toBe(false);
   });
 
+  test("cancelling the page's edit after locking a changed template writes nothing, and lets its lock go", async ({ page }) => {
+    // "Change on all pages" keeps the edit for the page save; without one, the
+    // edit goes with the page's and the template is as it was.
+    const helper = new AdminUIHelper(page);
+    await helper.login();
+    const { template, page: path } = await freshTemplatePage(helper.authToken);
+    await helper.navigateToEdit(path);
+
+    const { blockId: head } = await helper.waitForBlockByContent('Its own heading');
+    await helper.unlockTemplate(head);
+    const editor = await helper.enterEditMode(head);
+    await helper.moveCursorToEnd(editor);
+    await editor.pressSequentially(' changed', { delay: 10 });
+    await helper.lockTemplate(head, 'commit');
+
+    await page.getByRole('navigation', { name: 'Toolbar' }).getByRole('button', { name: 'Cancel' }).click();
+    await expect(page).not.toHaveURL(/\/edit$/);
+    await expect.poll(async () => (await lockOf(template, helper.authToken))?.locked, { message: 'leaving the editor lets it go' }).toBe(false);
+    expect(JSON.stringify((await stored(template, helper.authToken)).blocks), 'the template is as it was').not.toContain('Its own heading changed');
+  });
+
   test('a template someone else has unlocked can not be unlocked, and says who has it', async ({ page }) => {
     const helper = new AdminUIHelper(page);
     await helper.login();
@@ -250,6 +301,7 @@ test.describe("a commit stores the author's change and nothing the editor made",
     await helper.moveCursorToEnd(editor);
     await editor.pressSequentially(' changed', { delay: 10 });
     await helper.lockTemplate(head, 'commit');
+    await helper.saveContent();
 
     await expect.poll(async () => JSON.stringify((await stored(template, helper.authToken)).blocks), { message: 'the edit is stored' })
       .toContain('Its own heading changed');
@@ -279,6 +331,7 @@ test.describe("a block the author adds in a template's empty region", () => {
     await helper.waitForBlockSelectedInAdmin('s');
     await helper.addBlockViaSidebar('Blocks', 'Text');
     await helper.lockTemplate(head, 'commit');
+    await helper.saveContent();
 
     await expect.poll(async () => {
       const saved = await stored(template, helper.authToken);
@@ -444,7 +497,7 @@ test.describe("a page's own field drawn in a locked template block", () => {
  * unlocked, to edit further.
  */
 test.describe('removing a slot from a template asks first', () => {
-  test('Keep editing saves nothing and leaves it unlocked; Remove saves it', async ({ page, urls }) => {
+  test('Keep editing leaves it unlocked; Remove locks it, and the page save writes it', async ({ page, urls }) => {
     const helper = new AdminUIHelper(page);
     await helper.login();
     const { page: path } = await freshTemplatePage(helper.authToken, { emptySection: true });
@@ -481,6 +534,8 @@ test.describe('removing a slot from a template asks first', () => {
     await expect(ask).toContainText('aside-body');
     await page.getByRole('button', { name: 'Remove' }).click();
     await expect(toggle).toHaveAttribute('aria-pressed', 'false', { timeout: 10000 });
-    expect(templateWrites(writes), 'the template is saved, once').toHaveLength(1);
+    expect(templateWrites(writes), 'locking writes nothing').toEqual([]);
+    await helper.saveContent();
+    expect(templateWrites(writes), 'the page save writes the template, once').toHaveLength(1);
   });
 });
