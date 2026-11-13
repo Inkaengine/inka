@@ -1,0 +1,1 @@
+A list (object_list) whose item has an id that isn't a string, whatever the list's idField, refuses the save on its container, naming the list: the item can't be found by that id to be opened or checked.

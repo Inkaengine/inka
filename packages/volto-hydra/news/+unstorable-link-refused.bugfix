@@ -1,0 +1,1 @@
+A link whose address isn't text (`{ "@id": { ... } }`) no longer reaches Plone, which crashed the whole save with "'dict' object has no attribute 'startswith'". The save is refused in the editor, naming the block and its field, on every block including template-owned ones.

@@ -99,3 +99,95 @@ export function blockFieldErrors({ schema, blockData, validateFieldsPerFieldset,
   }
   return errors;
 }
+
+/**
+ * Whether `value` is a link Plone's block deserializer can't store.
+ *
+ * plone.restapi walks every object in every block (`ResolveUIDDeserializerBase`)
+ * and turns each truthy `@id`, and each `{ '@type': 'URL', value }`, into a uid
+ * with `path2uid`, which calls `.startswith` on it. Anything but a string ends
+ * the WHOLE save with a 500 ("'dict' object has no attribute 'startswith'"),
+ * naming no block. So the editor refuses it first, and names the field.
+ */
+function isUnstorableLink(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+  if (value['@id'] && typeof value['@id'] !== 'string') return true;
+  return value['@type'] === 'URL' && !!value.value && typeof value.value !== 'string';
+}
+
+/**
+ * The object_list regions named in `childFields` (the descriptors
+ * `getChildFields` gives), by their `/`-path, each with its idField.
+ */
+function listRegionsOf(childFields) {
+  return new Map(
+    childFields
+      .filter((f) => f.isObjectList)
+      .map((f) => [[...(f.regionPath || []), f.region].join('/'), f.idField]),
+  );
+}
+
+/** The value at a `/`-path in `data`. */
+function valueAtPath(data, path) {
+  return path.split('/').reduce((node, key) => node?.[key], data);
+}
+
+/**
+ * The block's own top-level fields holding a link the CMS can't store.
+ *
+ * A child block's fields are the child's: `blocks`/`blocks_layout` are skipped at
+ * any depth, and so is each object_list region named in `childFields`, so each
+ * bad link is reported on the block that holds it. The block itself is checked
+ * too: an object_list item keyed by `@id` holds its id there, and Plone walks it
+ * like any other `@id`.
+ *
+ * @param {Object} blockData
+ * @param {Array<{ isObjectList?: boolean, region: string, regionPath?: string[] }>} [childFields]
+ * @returns {string[]} field names, in the block's key order
+ */
+export function unstorableLinkFields(blockData, childFields = []) {
+  const listRegions = listRegionsOf(childFields);
+  const holdsOne = (value, path) => {
+    if (Array.isArray(value)) return value.some((item) => holdsOne(item, path));
+    if (!value || typeof value !== 'object') return false;
+    if (isUnstorableLink(value)) return true;
+    return Object.entries(value).some(([key, child]) => {
+      if (key === 'blocks' || key === 'blocks_layout') return false;
+      const childPath = path ? `${path}/${key}` : key;
+      if (listRegions.has(childPath)) return false;
+      return holdsOne(child, childPath);
+    });
+  };
+  const ownIdBad = isUnstorableLink(blockData);
+  return Object.keys(blockData || {}).filter((key) => {
+    if (key === '@id' && ownIdBad) return true;
+    if (key === 'blocks' || key === 'blocks_layout' || listRegions.has(key)) return false;
+    const value = blockData[key];
+    return isUnstorableLink(value) || holdsOne(value, key);
+  });
+}
+
+/**
+ * The block's top-level fields holding an object_list with an item whose id
+ * (the list's idField, whatever it is called) isn't a string.
+ *
+ * Items are found, moved and merged by that id, so it must be a string. An item
+ * whose id isn't one can't be found by it, and so can't be checked or opened as
+ * a block of its own: its container reports the list instead.
+ *
+ * @param {Object} blockData
+ * @param {Array<{ isObjectList?: boolean, region: string, regionPath?: string[], idField?: string }>} [childFields]
+ * @returns {string[]} field names, in the block's key order
+ */
+export function badItemIdFields(blockData, childFields = []) {
+  const bad = new Set();
+  for (const [path, idField] of listRegionsOf(childFields)) {
+    if (!idField) continue;
+    const items = valueAtPath(blockData, path);
+    if (!Array.isArray(items)) continue;
+    if (items.some((item) => typeof item?.[idField] !== 'string')) {
+      bad.add(path.split('/')[0]);
+    }
+  }
+  return Object.keys(blockData || {}).filter((key) => bad.has(key));
+}
