@@ -2721,6 +2721,30 @@ export function syncChildBlockTypes(formData, blockPathMap, blockId, oldBlockDat
 }
 
 /**
+ * A block placed in a container that picks its children's item type takes
+ * that type, as the container's type picker gives it to the blocks already
+ * there (syncChildBlockTypes): a listing added or moved into a card grid lists
+ * cards, and stores the card mapping. A block with no type field of its own
+ * is left to the container's region rules.
+ *
+ * @returns {Object} formData (unchanged object identity when nothing changed)
+ */
+export function takeContainerItemType(formData, blockPathMap, blockId, blocksConfig, intl) {
+  const entry = blockPathMap?.[blockId];
+  if (!entry?.parentId || !entry.region) return formData;
+  const parent = getBlockById(formData, blockPathMap, entry.parentId);
+  const regionDef = parent && getResolvedSchema(blocksConfig, parent['@type'], intl)?.properties?.[entry.region];
+  const containerType = regionDef?.itemTypeField && parent[regionDef.itemTypeField];
+  if (!containerType) return formData;
+  const block = getBlockById(formData, blockPathMap, blockId);
+  const typeField = block && findTypeField(blocksConfig?.[block['@type']], intl);
+  if (!typeField || block[typeField] === containerType) return formData;
+  const updated = { ...block, [typeField]: containerType };
+  const out = updateBlockById(formData, blockPathMap, blockId, updated);
+  return syncChildBlockTypes(out, blockPathMap, blockId, block, updated, blocksConfig, intl);
+}
+
+/**
  * A block's template membership, from where it LANDED — the ONE rule for every
  * author placement: add, paste and move (drag and drop, cut and paste). Read
  * docs/architecture.md "Template membership" before changing it; the code and
@@ -2974,6 +2998,11 @@ export function settleBlockStructure(formData, blockPathMap, what, options) {
   };
 
   for (const blockId of landed) {
+    const typed = takeContainerItemType(out, map, blockId, blocksConfig, intl);
+    if (typed !== out) {
+      out = typed;
+      remap();
+    }
     const next = applyMembershipWhereLanded(out, map, blockId, {
       blocksConfig,
       intl,

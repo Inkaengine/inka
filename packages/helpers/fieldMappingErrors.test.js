@@ -23,6 +23,7 @@ const listingSchema = {
   },
 };
 const blocksConfig = {
+  listing: { blockSchema: listingSchema },
   card: {
     blockSchema: {
       properties: {
@@ -82,6 +83,20 @@ describe('fieldMappingErrors', () => {
     };
     const blockData = { '@type': 'listing', variation: 'card', fieldMapping: { Creator: { field: 'title', type: 'string' } } };
     expect(fieldMappingErrors({ schema, blockData, blocksConfig })).toEqual({});
+  });
+
+  // In a container that picks the item type, the parent controls `variation`
+  // and the effective schema drops it; the block still stores it.
+  test("the item type is found when the effective schema hides its field", () => {
+    const { variation, ...rest } = listingSchema.properties;
+    const config = { ...blocksConfig, listing: { blockSchema: listingSchema } };
+    expect(
+      fieldMappingErrors({
+        schema: { properties: rest },
+        blockData: { '@type': 'listing', variation: 'card', fieldMapping: { title: { field: 'title', type: 'string' } } },
+        blocksConfig: config,
+      }),
+    ).toEqual({});
   });
 
   test('a block with no mapping widget has none to check', () => {

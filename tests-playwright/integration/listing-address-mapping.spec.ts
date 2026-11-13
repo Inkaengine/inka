@@ -120,5 +120,45 @@ test.describe('a listing saves its result address as getURL', () => {
       expect(entry).toEqual({ field: expect.any(String), type: expect.any(String) });
     }
   });
+
+  // A listing added to a container that picks its item type takes the
+  // container's type and stores that type's mapping, as the type picker gives
+  // it to the listings already there. Else it stored none, and the save
+  // refused it.
+  test('a listing added into a grid saves the grid\'s item type and its mapping', async ({ page }) => {
+    const helper = new AdminUIHelper(page);
+    const saves = captureSaves(page);
+    await helper.login();
+    await helper.navigateToEdit('/test-page');
+    await helper.clickBlockInIframe('manual-teaser');
+    await helper.waitForSidebarOpen();
+    await helper.openSidebarTab('Block');
+    // Give the grid an item type, through its own settings in the sidebar.
+    const gridSection = page
+      .locator('.parent-block-section')
+      .filter({ has: page.locator('.parent-nav', { hasText: /Grid/ }) })
+      .first();
+    await gridSection.locator('.react-select__control').first().click();
+    await page.locator('.react-select__menu .react-select__option', { hasText: /^Teaser$/ }).click();
+    await expect(gridSection.locator('text=Teaser Defaults')).toBeVisible();
+
+    await helper.clickBlockInIframe('manual-teaser');
+    await helper.clickAddBlockButton();
+    await helper.selectBlockType('listing');
+
+    await helper.saveContent();
+    await expect
+      .poll(() => saves.length, { message: 'the page was saved', timeout: 10000 })
+      .toBeGreaterThan(0);
+    const grid = saves[saves.length - 1]['block-8-grid'];
+    const added = Object.entries(grid.blocks).filter(
+      ([id, b]: [string, any]) => b['@type'] === 'listing' && id !== 'listing-in-grid',
+    );
+    expect(added, 'the added listing was saved').toHaveLength(1);
+    const listing = added[0][1] as any;
+    expect(grid.variation).toBe('teaser');
+    expect(listing.variation).toBe('teaser');
+    expect(listing.fieldMapping.getURL).toEqual({ field: 'href', type: 'link' });
+  });
 });
 

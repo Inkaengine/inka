@@ -17,21 +17,25 @@ import { isAccepted, conversionFor, sourceKind } from './mappingConversions.js';
 const MISSING =
   'This block has no field mapping, so its results have nothing to show. Pick its item type again to set one.';
 
-/** The item type the mapping maps onto: the field the block picks it with. */
-function itemTypeOf(schema, blockData) {
-  const typeField = Object.keys(schema.properties).find(
-    (name) => schema.properties[name]?.filterConvertibleFrom,
-  );
-  return typeField ? blockData[typeField] : undefined;
-}
-
-function itemProperties(blocksConfig, itemType) {
-  const schema = blocksConfig?.[itemType]?.blockSchema;
+function propertiesOf(blocksConfig, type) {
+  const schema = blocksConfig?.[type]?.blockSchema;
   const resolved =
     typeof schema === 'function'
       ? schema({ formData: {}, data: {}, intl: { formatMessage: (m) => m?.defaultMessage ?? m?.id } })
       : schema;
   return resolved?.properties;
+}
+
+/**
+ * The item type the mapping maps onto: the field the block picks it with,
+ * read from the block type's own schema. In a container that picks the type,
+ * the parent controls that field and the effective schema drops it; the block
+ * still stores it.
+ */
+function itemTypeOf(blocksConfig, blockData) {
+  const props = propertiesOf(blocksConfig, blockData?.['@type']) || {};
+  const typeField = Object.keys(props).find((name) => props[name]?.filterConvertibleFrom);
+  return typeField ? blockData[typeField] : undefined;
 }
 
 /**
@@ -51,8 +55,8 @@ export function fieldMappingErrors({ schema, blockData, blocksConfig }) {
       errors[name] = [MISSING];
       continue;
     }
-    const itemType = itemTypeOf(schema, blockData);
-    const itemProps = itemProperties(blocksConfig, itemType);
+    const itemType = itemTypeOf(blocksConfig, blockData);
+    const itemProps = propertiesOf(blocksConfig, itemType);
     if (!itemProps) {
       errors[name] = [`This block's item type, ${JSON.stringify(itemType)}, has no fields to map onto.`];
       continue;
