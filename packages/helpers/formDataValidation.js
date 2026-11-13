@@ -394,7 +394,8 @@ function validateRegionSlots(entries, blocksErrors, region) {
  * 1. Blocks with the same slotId must be adjacent (contiguous), per region
  * 2. Different slot groups must be separated by a fixed block, per region
  * 3. A block of a template names its slot (ordinary page blocks have none)
- * 4. A slot is in one region of its template instance, not two
+ * 4. A slot is in one region of its template instance, not two — at every depth: a
+ *    block and a block inside it never share one
  *
  * @param {Object} formData - Page data with blocks and blocks_layout
  * Each error's `_layout` also says what was found, as data: `rule` (`unnamed-slot`,
@@ -410,10 +411,7 @@ export function validateTemplatePlaceholders(formData, idFieldMap = null) {
   // page, per template), the region each slot id was first seen in.
   const slotRegions = new Map(); // instance -> Map(slotId -> region)
 
-  // `inherited`: the slots of the blocks this container is inside. A block's
-  // descendants take its slot (the membership rule), so a slot id repeated in a
-  // region inside the block that holds it is that one slot, not a second.
-  const visit = (container, where, inherited) => {
+  const visit = (container, where) => {
     if (!container || typeof container !== 'object' || visited.has(container)) {
       return;
     }
@@ -428,7 +426,7 @@ export function validateTemplatePlaceholders(formData, idFieldMap = null) {
       validateRegionSlots(entries, blocksErrors, region);
       for (const { id: blockId, block } of entries) {
         const instance = block?.templateId && (block.templateInstanceId || block.templateId);
-        if (instance && block.slotId && !blocksErrors[blockId] && !inherited.has(block.slotId)) {
+        if (instance && block.slotId && !blocksErrors[blockId]) {
           if (!slotRegions.has(instance)) slotRegions.set(instance, new Map());
           const seen = slotRegions.get(instance);
           const first = seen.get(block.slotId);
@@ -448,13 +446,10 @@ export function validateTemplatePlaceholders(formData, idFieldMap = null) {
           }
         }
       }
-      for (const { block } of entries) {
-        const within = block?.slotId ? new Set([...inherited, block.slotId]) : inherited;
-        visit(block, `${block?.['@type'] ?? 'block'}`, within);
-      }
+      for (const { block } of entries) visit(block, `${block?.['@type'] ?? 'block'}`);
     }
   };
 
-  visit(formData, '', new Set());
+  visit(formData, '');
   return { valid: Object.keys(blocksErrors).length === 0, blocksErrors };
 }

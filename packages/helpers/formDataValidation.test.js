@@ -178,10 +178,11 @@ describe('validateTemplatePlaceholders — every template block names its own sl
     expect(message).toMatch(/sidebar/);
   });
 
-  // A block's descendants take its slot (the membership rule, docs/architecture.md
-  // "Template membership"): a hero search in slot `hero` holds its suggestions in
-  // slot `hero` too. That is one slot, not two.
-  test("a block's own regions share its slot", () => {
+  // A slot is one place at every depth: a block and a block inside it never
+  // share one. (They did — a hero search and its suggestions both `hero` — and a
+  // commit then found the fixed block as content of its own slot, and nested it
+  // in itself forever.)
+  test("a block's regions have slots of their own, not the block's", () => {
     const formData = {
       blocks: {
         layout: {
@@ -198,7 +199,8 @@ describe('validateTemplatePlaceholders — every template block names its own sl
       },
       blocks_layout: { items: ['layout'] },
     };
-    expect(validateTemplatePlaceholders(formData).blocksErrors).toEqual({});
+    const { blocksErrors } = validateTemplatePlaceholders(formData);
+    expect(blocksErrors.t1?._layout?.message).toMatch(/"hero"/);
   });
 
   test('the same slot id in two different templates is two slots', () => {

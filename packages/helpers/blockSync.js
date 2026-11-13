@@ -40,7 +40,7 @@
 import { getInjectedBlocksConfig, getSlateStyleGlobals, getSlateVocabulary } from './injectedVoltoConfig.js';
 import { normalizeSlateFields, undefinedSlateTypes } from './slateStyles.js';
 import { getContainerFieldConfig, getBlockByPath, getBlockTypeSchema, getBlockById, updateBlockById,
-  deleteBlockFromContainer, ensureEmptyBlockIfEmpty, removeReplacedPlaceholder, getChildBlockIds, getChildField, getChildBlockIdsInField, convertValueContainer, convertContainerBlock, getContainerRegionDescriptors, insertBlockInContainer, parseRegionPath, expandValueIntoRegion, collapseRegionToValue, inheritTemplateMembership } from './blockPath.js';
+  deleteBlockFromContainer, ensureEmptyBlockIfEmpty, removeReplacedPlaceholder, getChildBlockIds, getChildField, getChildBlockIdsInField, convertValueContainer, convertContainerBlock, getContainerRegionDescriptors, insertBlockInContainer, parseRegionPath, expandValueIntoRegion, collapseRegionToValue, inheritTemplateMembership, regionSlotId } from './blockPath.js';
 import { addableSiblingTypes, buildBlockPathMap, buildIdFieldMap, PAGE_BLOCK_UID } from './buildBlockPathMap.js';
 import { isObjectListRegion, regionIdField } from './regionWidgets.js';
 import {
@@ -2880,9 +2880,11 @@ function landingOf(formData, blockPathMap, blockId, blocksConfig, intl) {
 
 /**
  * Give a placed block's descendants the membership the block now has — its
- * template, instance, SLOT, fixed and readOnly (every block of a template has a
- * slot, nested ones too: docs/frontend-guide/templates.md). Leaving a template
- * takes them out with it.
+ * template, instance, fixed and readOnly. Every block of a template has a slot,
+ * nested ones too, but never the block's: a slot is one place at every depth
+ * (inka#708), so each region is a slot of its own (regionSlotId). Open blocks in
+ * a region share it; a fixed one, matched by its slot, gets one of its own
+ * (`<region slot>-<n>`). Leaving a template takes them out with it.
  *
  * Only descendants that went with the block: no membership, or the block's
  * previous instance (`fromInstanceId`). One belonging to another instance — a
@@ -2897,6 +2899,8 @@ function withDescendantMembership(block, fromInstanceId, idFieldMap) {
   for (const field of getChildFields(block, idFieldMap, { allObjectLists: true })) {
     const entries = getChildBlockEntries(out, field);
     let changed = false;
+    const regionSlot = joined && block.slotId ? regionSlotId(block.slotId, field.region) : null;
+    let fixedInRegion = 0;
     const next = entries.map(({ id, block: child }) => {
       const own = child?.templateInstanceId ?? null;
       if (!child || (own !== null && own !== fromInstanceId)) return { id, block: child };
@@ -2905,9 +2909,10 @@ function withDescendantMembership(block, fromInstanceId, idFieldMap) {
       );
       const member = joined
         ? Object.fromEntries(
-            MEMBERSHIP_FIELDS.filter((key) => block[key] !== undefined).map((key) => [key, block[key]]),
+            MEMBERSHIP_FIELDS.filter((key) => key !== 'slotId' && block[key] !== undefined).map((key) => [key, block[key]]),
           )
         : {};
+      if (regionSlot) member.slotId = member.fixed ? `${regionSlot}-${(fixedInRegion += 1)}` : regionSlot;
       const placed = withDescendantMembership({ ...rest, ...member }, fromInstanceId, idFieldMap);
       if (JSON.stringify(placed) === JSON.stringify(child)) return { id, block: child };
       changed = true;
