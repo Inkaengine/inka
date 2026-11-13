@@ -1692,6 +1692,71 @@ function checkChooserGroups(schemas) {
 }
 
 /**
+ * Every field a schema declares must be listed by one of its fieldsets.
+ *
+ * A fieldset is what the editor renders: a field in none of them exists in the
+ * data and nowhere in the UI, so an author cannot see it, cannot change it,
+ * and gets no hint whether anything still reads it. A site kept a button's
+ * dead `url` that way — declared, listed nowhere, read by nothing — and nine
+ * published pages rendered `<a href="#">` CTAs for as long as it was there.
+ *
+ * Keeping a field out of the UI on purpose is declared ON the field, so the
+ * reason lives where the field does:
+ *
+ *   - `mode: 'hidden'` — Volto's Field returns null for it, and the field
+ *     stays in the schema and its fieldset, so a value stored in it is still
+ *     declared. This is the one for config an author should not edit.
+ *   - a schemaEnhancer's `fieldRules: { f: false }` drops the field from the
+ *     resolved schema altogether. A value stored in such a field then reads as
+ *     undeclared, so this is only for a field that stores nothing.
+ *
+ * Two things are not reported. A REGION is not a sidebar field — the canvas
+ * edits it — so it is exempt by its widget rather than by a list of names. And
+ * a schema that declares NO fieldsets hides nothing (Volto renders what it is
+ * given), so there is nothing to say about one; object_list item schemas are
+ * often written that way.
+ *
+ * A pass over the config, like checkChooserGroups: one report per field, not
+ * one per page.
+ */
+function checkFieldsetCoverage(schemas) {
+  const errors = [];
+  let fields = 0;
+
+  // The same test as helpers/regionWidgets.js `isRegionField`, inlined because
+  // that is an ES module and this package is CommonJS (pass 2 inlines the
+  // object_list half of it too).
+  const isRegion = (def) =>
+    def?.widget === 'blocks_layout' || (def?.widget === 'object_list' && def.subBlocks !== false);
+
+  const walk = (schema, where) => {
+    if (!schema || !schema.properties) return;
+    const fieldsets = schema.fieldsets;
+    const listed = Array.isArray(fieldsets)
+      ? new Set(fieldsets.flatMap((f) => f?.fields || []))
+      : null;
+    for (const [field, def] of Object.entries(schema.properties)) {
+      fields += 1;
+      if (listed && !listed.has(field) && !isRegion(def) && def?.mode !== 'hidden') {
+        errors.push(
+          `  ${where}.${field}: declared, but no fieldset lists it — the editor renders ` +
+            `fieldsets, so the field is invisible: nobody can see it, change it, or tell ` +
+            `whether anything still reads it. List it, or keep it out of the UI on purpose ` +
+            `with \`mode: 'hidden'\` (the field stays declared, so a stored value stays valid)`,
+        );
+      }
+      if (def?.schema) walk(def.schema, `${where}.${field}`);
+    }
+  };
+
+  for (const [type, def] of Object.entries(schemas || {})) {
+    if (!def || typeof def !== 'object' || type.startsWith('_') || !def.blockSchema) continue;
+    walk(def.blockSchema, type);
+  }
+  return { errors, warnings: [], stats: { fields, unlisted: errors.length } };
+}
+
+/**
  * No block schema may declare a field named for template membership, or for
  * the bookkeeping Inka keeps on every block (BLOCK_BOOKKEEPING_KEYS).
  *
@@ -2041,4 +2106,4 @@ function checkExport(contentDir, { schemas = null, allowMissingBlobs = false } =
   return { errors: [...shape.errors, ...content.errors], warnings: [...shape.warnings, ...content.warnings] };
 }
 
-module.exports = { validate, checkIntegrity, checkBlockSchemas, checkContent, checkExport, idFieldMapFor, checkEditorRules, checkChooserGroups, checkReservedFields, fieldMapFromSchemas, loadSchemas, formatReport, UNDECLARED_EXEMPT };
+module.exports = { validate, checkIntegrity, checkBlockSchemas, checkContent, checkExport, idFieldMapFor, checkEditorRules, checkChooserGroups, checkFieldsetCoverage, checkReservedFields, fieldMapFromSchemas, loadSchemas, formatReport, UNDECLARED_EXEMPT };
