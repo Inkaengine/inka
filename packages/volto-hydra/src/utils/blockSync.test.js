@@ -15,37 +15,12 @@ import {
   applyBlockDefaultsWithContext,
   createSchemaEnhancerFromRecipe,
   getConversionMap,
-  validateFieldMappings,
   validateFieldRulesPlacement,
   getBlockTypeChoices,
   hideParentOwnedFields,
   completeFrontendSchema,
 } from './blockSync';
 import config from '@plone/volto/registry';
-
-describe('validateFieldMappings — @default accepts any search-metadata field', () => {
-  const warnFor = (mapping) => {
-    const spy = vi.spyOn(console, 'warn').mockImplementation(() => {});
-    validateFieldMappings('blk', { fieldMappings: { '@default': mapping } });
-    const warned = spy.mock.calls.length > 0;
-    spy.mockRestore();
-    return warned;
-  };
-
-  test('canonical fields do not warn', () => {
-    expect(warnFor({ '@id': 'href', title: 'title', description: 'desc', image: 'img' })).toBe(false);
-  });
-
-  test('other search-metadata fields (tags, dates) do not warn', () => {
-    // @default keys are whatever a catalog search returns as metadata — not just
-    // the canonical four. Subject/created/effective must be accepted.
-    expect(warnFor({ title: 'heading', Subject: 'tags', created: 'createdOn', effective: 'publishedOn' })).toBe(false);
-  });
-
-  test('block-field names (fieldRules keys) still warn — the guardrail', () => {
-    expect(warnFor({ title: 'title', label: 'x', required: 'y' })).toBe(true);
-  });
-});
 
 /**
  * getBlockTypeChoices computes the type/convert picker's options. Its

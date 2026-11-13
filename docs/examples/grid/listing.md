@@ -41,9 +41,9 @@ blocks-tagged: |
 
 <block type="gridBlock">
 
-<block type="listing" data-json='{"headlineTag":"h2","variation":"default","querystring":{"limit":"7","query":[{"i":"path","o":"plone.app.querystring.operation.string.absolutePath","v":"/docs/examples/grid"}],"sort_order":"ascending"}}' />
+<block type="listing" data-json='{"headlineTag":"h2","variation":"default","querystring":{"limit":"7","query":[{"i":"path","o":"plone.app.querystring.operation.string.absolutePath","v":"/docs/examples/grid"}],"sort_order":"ascending"},"fieldMapping":{"getURL":{"field":"href","type":"link"},"title":{"field":"title","type":"string"},"description":{"field":"description","type":"textarea"}}}' />
 
-<block type="listing" data-json='{"headlineTag":"h2","variation":"default","querystring":{"limit":"7","query":[{"i":"path","o":"plone.app.querystring.operation.string.absolutePath","v":"/docs/examples/grid"}],"sort_on":"getId","sort_order":"descending","sort_order_boolean":true}}' />
+<block type="listing" data-json='{"headlineTag":"h2","variation":"default","querystring":{"limit":"7","query":[{"i":"path","o":"plone.app.querystring.operation.string.absolutePath","v":"/docs/examples/grid"}],"sort_on":"getId","sort_order":"descending","sort_order_boolean":true},"fieldMapping":{"getURL":{"field":"href","type":"link"},"title":{"field":"title","type":"string"},"description":{"field":"description","type":"textarea"}}}' />
 
 A manual block placed after the listings. The listings fill the earlier pages, so reaching this block requires paging the grid — the editor must page forward to reveal it when it is selected.
 

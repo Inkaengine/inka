@@ -26,6 +26,7 @@ const path = require('path');
 // the same enumeration the editor does instead of reading blocks_layout itself.
 const { getChildFields, getChildBlockEntries, isUnlabelledDefinition } = require('@volto-hydra/helpers');
 const { buildBlockPathMap, buildIdFieldMap, getResolvedSchema } = require('@volto-hydra/helpers/buildBlockPathMap.js');
+const { fieldMappingProblems, reservedFieldProblems } = require('@volto-hydra/helpers/conversionValidation.js');
 
 // Where an export keeps the site root: plone.exportimport's own name for it.
 const SITE_ROOT = 'plone_site_root';
@@ -1780,7 +1781,30 @@ function checkReservedFields(schemas) {
       }
     }
   }
+  // `@id` below the block's own fields too: Plone reads it as a link at any
+  // depth (the block's own `@id` is reported above).
+  for (const problem of reservedFieldProblems(blockConfigs(schemas))) {
+    if (problem.nested) errors.push(`  ${problem.message}`);
+  }
   return { errors, warnings: [], stats: { blocks: Object.keys(schemas || {}).length, reserved: errors.length } };
+}
+
+/** The entries of a loaded schemas file that are block configs. */
+function blockConfigs(schemas) {
+  return Object.fromEntries(
+    Object.entries(schemas || {}).filter(
+      ([type, def]) => def && typeof def === 'object' && !type.startsWith('_') && def.blockSchema,
+    ),
+  );
+}
+
+/**
+ * A block config's fieldMappings that don't make sense against the schemas
+ * they name: the check the editor refuses to load on, run in CI first.
+ */
+function checkFieldMappings(schemas) {
+  const errors = fieldMappingProblems(blockConfigs(schemas)).map((p) => `  ${p.rule}: ${p.message}`);
+  return { errors, warnings: [], stats: { blocks: Object.keys(schemas || {}).length, mappings: errors.length } };
 }
 
 /**
@@ -1986,6 +2010,7 @@ async function checkEditorRules(source, schemas, { exemptSlots = [], volto = loa
           blockData,
           validateFieldsPerFieldset: volto.validateFieldsPerFieldset,
           formatMessage: formatVoltoMessage,
+          blocksConfig: schemas,
         });
         for (const [field, messages] of Object.entries(refused)) {
           for (const message of messages) {
@@ -2051,6 +2076,8 @@ function formatReport(title, result) {
     lines.push(
       `Reserved: ${result.stats.blocks} block types, ${result.stats.reserved} fields named for a key Inka reserves`,
     );
+  } else if (title === 'mappings') {
+    lines.push(`Mappings: ${result.stats.blocks} block types, ${result.stats.mappings} field mappings that don't make sense`);
   } else if (title === 'validate') {
     lines.push(`Content export OK: ${result.stats.dataFiles} data files, ${result.stats.blobFiles} blob files`);
   } else {
@@ -2172,4 +2199,4 @@ function checkExport(contentDir, { schemas = null, allowMissingBlobs = false } =
   return { errors: [...shape.errors, ...content.errors], warnings: [...shape.warnings, ...content.warnings] };
 }
 
-module.exports = { validate, checkIntegrity, checkBlockSchemas, checkContent, checkExport, idFieldMapFor, checkEditorRules, checkChooserGroups, checkFieldsetCoverage, checkReservedFields, fieldMapFromSchemas, loadSchemas, formatReport, UNDECLARED_EXEMPT };
+module.exports = { validate, checkIntegrity, checkBlockSchemas, checkContent, checkExport, idFieldMapFor, checkEditorRules, checkChooserGroups, checkFieldsetCoverage, checkReservedFields, checkFieldMappings, fieldMapFromSchemas, loadSchemas, formatReport, UNDECLARED_EXEMPT };

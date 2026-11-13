@@ -177,7 +177,7 @@ export const sharedBlocksConfig = {
             '@default': {
                 'title': 'heading',
                 'description': 'subheading',
-                '@id': 'buttonLink',
+                getURL: 'buttonLink',
                 'image': 'image',
             },
             teaser: {
@@ -368,7 +368,7 @@ export const sharedBlocksConfig = {
             // string as `[{ '@id': string }]` to match the object_browser
             // shape produced by manual authoring.
             '@default': {
-                '@id': { field: 'href', type: 'link' },
+                getURL: { field: 'href', type: 'link' },
                 'title': 'label',
             },
         },
@@ -438,7 +438,7 @@ export const sharedBlocksConfig = {
         mostUsed: true,
         restricted: true, // Only used inside slider's typed object_list
         fieldMappings: {
-            '@default': { '@id': 'href', 'title': 'title', 'description': 'description', 'image': 'preview_image' },
+            '@default': { getURL: 'href', 'title': 'title', 'description': 'description', 'image': 'preview_image' },
             image: { 'href': 'href', 'alt': 'title', 'url': 'preview_image' },
         },
         // No childBlockConfig needed — installChildBlockEnhancers auto-applies
@@ -892,7 +892,7 @@ export const sharedBlocksConfig = {
                     widget: 'field_mapping',
                     description: 'Map query result fields to item block fields',
                     sourceFields: {
-                        '@id': { title: 'URL', type: 'string' },
+                        getURL: { title: 'URL', type: 'string' },
                         title: { title: 'Title', type: 'string' },
                         description: { title: 'Description', type: 'string' },
                         image: { title: 'Lead Image', type: 'image' },
@@ -960,6 +960,14 @@ export const sharedBlocksConfig = {
                     fieldType: 'relation',
                 },
                 variation: { title: 'Item Type', widget: 'blockTypeSelect', filterConvertibleFrom: '@default', default: 'summary' },
+                // The mapping's sources: each related item's catalog fields (relatedItemsFetcher). The item type's default
+                // is stored with the block when the type is picked, as a
+                // listing's is: the renderer converts by what is stored.
+                fieldMapping: {
+                    title: 'Field mapping',
+                    widget: 'field_mapping',
+                    sourceFields: { getURL: { title: 'URL', type: 'string' }, title: { title: 'Title', type: 'string' }, description: { title: 'Description', type: 'string' }, image: { title: 'Lead Image', type: 'image' } },
+                },
             },
         },
         schemaEnhancer: {
@@ -1012,6 +1020,14 @@ export const sharedBlocksConfig = {
                 },
                 searchUrl: { title: 'Search page URL', widget: 'url' },
                 variation: { title: 'Item Type', widget: 'blockTypeSelect', filterConvertibleFrom: '@default', default: 'default' },
+                // The mapping's sources: each shortcut's search link and value (searchShortcutsFetcher). The item type's default
+                // is stored with the block when the type is picked, as a
+                // listing's is: the renderer converts by what is stored.
+                fieldMapping: {
+                    title: 'Field mapping',
+                    widget: 'field_mapping',
+                    sourceFields: { getURL: { title: 'URL', type: 'string' }, title: { title: 'Title', type: 'string' } },
+                },
             },
         },
         schemaEnhancer: {
@@ -1028,6 +1044,14 @@ export const sharedBlocksConfig = {
                 feedUrl: { title: 'Feed URL', widget: 'url' },
                 count: { title: 'Max items', type: 'number', default: 6 },
                 variation: { title: 'Item Type', widget: 'blockTypeSelect', filterConvertibleFrom: '@default', default: 'summary' },
+                // The mapping's sources: an entry's link, title and description (rssFetcher). The item type's default
+                // is stored with the block when the type is picked, as a
+                // listing's is: the renderer converts by what is stored.
+                fieldMapping: {
+                    title: 'Field mapping',
+                    widget: 'field_mapping',
+                    sourceFields: { getURL: { title: 'URL', type: 'string' }, title: { title: 'Title', type: 'string' }, description: { title: 'Description', type: 'string' } },
+                },
             },
         },
         schemaEnhancer: {
@@ -1058,7 +1082,7 @@ export const sharedBlocksConfig = {
     summary: {
         restricted: true,
         fieldMappings: {
-            '@default': { '@id': 'href', 'title': 'title', 'description': 'description', 'image': 'image' },
+            '@default': { getURL: 'href', 'title': 'title', 'description': 'description', 'image': { field: 'image', type: 'image_link' } },
         },
         blockSchema: {
             properties: {
@@ -1073,7 +1097,7 @@ export const sharedBlocksConfig = {
     default: {
         restricted: true,
         fieldMappings: {
-            '@default': { '@id': 'href', 'title': 'title', 'description': 'description' },
+            '@default': { getURL: 'href', 'title': 'title', 'description': 'description' },
         },
         blockSchema: {
             properties: {
@@ -1157,7 +1181,7 @@ export const sharedBlocksConfig = {
         // A frontend's fieldMappings REPLACE the admin's (mergeFrontendBlock),
         // so the admin's conversion from an image is listed here too.
         fieldMappings: {
-            '@default': { '@id': 'href', 'title': 'title', 'description': 'description', 'image': 'preview_image' },
+            '@default': { getURL: 'href', 'title': 'title', 'description': 'description', 'image': 'preview_image' },
             image: { 'href': 'href', 'alt': 'title', 'url': 'preview_image' },
         },
         title: 'Teaser',
@@ -1290,7 +1314,7 @@ export const sharedBlocksConfig = {
         // A frontend's fieldMappings REPLACE the admin's (mergeFrontendBlock),
         // so the admin's conversion from a teaser is listed here too.
         fieldMappings: {
-            '@default': { '@id': 'href', 'title': 'alt', 'image': 'url' },
+            '@default': { getURL: 'href', 'title': 'alt', 'image': 'url' },
             teaser: { 'href': 'href', 'title': 'alt', 'preview_image': 'url' },
         },
     },

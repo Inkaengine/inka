@@ -47,7 +47,7 @@ const snapshot = {
 const teaser = {
   id: 'teaser',
   fieldMappings: {
-    '@default': { '@id': 'href', title: 'title', description: 'description' },
+    '@default': { getURL: 'href', title: 'title', description: 'description' },
   },
   blockSchema: {
     properties: {
@@ -59,7 +59,7 @@ const teaser = {
 };
 
 describe('the source link is declared, not sniffed', () => {
-  it("takes the source from @default's '@id' entry", () => {
+  it("takes the source from @default's getURL entry", () => {
     expect(getSourceField(teaser)).toBe('href');
   });
 
@@ -357,7 +357,7 @@ describe('applyCopyFromTargetToSchema stamps the DECLARED source', () => {
     // the pull could not have worked even pointed correctly.
     const cfg = {
       id: 'button',
-      fieldMappings: { '@default': { '@id': { field: 'href', type: 'link' }, title: 'title' } },
+      fieldMappings: { '@default': { getURL: { field: 'href', type: 'link' }, title: 'title' } },
       blockSchema: {
         properties: {
           url: { title: 'Link (legacy)', widget: 'url' },

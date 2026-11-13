@@ -35,7 +35,7 @@ Renders entries from an external RSS feed. Its items are fetched at render time 
 
 ## Live example
 
-<block type="rssFeed" feedUrl="https://pypi.org/rss/project/plone/releases.xml" variation="default" />
+<block type="rssFeed" data-json='{"feedUrl":"https://pypi.org/rss/project/plone/releases.xml","variation":"default","fieldMapping":{"getURL":{"field":"href","type":"link"},"title":{"field":"title","type":"string"},"description":{"field":"description","type":"textarea"}}}' />
 
 <fields templateId="/inka-templates/block-reference-layout" templateInstanceId="tpl-inst-rssFeed" fixed=false readOnly=false>
 

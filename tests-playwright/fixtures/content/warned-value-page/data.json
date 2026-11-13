@@ -8,7 +8,7 @@
       "@type": "slate",
       "value": [{ "type": "p", "children": [{ "text": "The feed below asks for more items than is wise. That is advice, not a refusal: the page should still save." }] }]
     },
-    "rss-warned": { "@type": "rssFeed", "feedUrl": "http://localhost:8888/rss-stub", "count": 500, "variation": "summary" }
+    "rss-warned": { "fieldMapping": {"getURL": {"field": "href", "type": "link"}, "title": {"field": "title", "type": "string"}, "description": {"field": "description", "type": "textarea"}}, "@type": "rssFeed", "feedUrl": "http://localhost:8888/rss-stub", "count": 500, "variation": "summary" }
   },
   "blocks_layout": { "items": ["intro-1", "rss-warned"] }
 }

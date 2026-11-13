@@ -214,3 +214,19 @@ describe('applySchemaDefaultsToBlock — a slate field defaults to an empty para
     expect(a.content[0]).not.toBe(b.content[0]);
   });
 });
+
+// A field mapping's values name their target field either bare or as
+// `{ field, type }` (the form the mapping widget always stores): the allowed
+// targets are field names, so each value is judged by the field it names.
+describe('isValidValue — a mapping whose targets are limited (additionalProperties.enum)', () => {
+  const def = { additionalProperties: { enum: ['title', 'href'] }, propertyNames: { enum: ['title', 'getURL'] } };
+
+  test('a value naming its conversion is judged by its field', () => {
+    expect(isValidValue({ getURL: { field: 'href', type: 'link' }, title: 'title' }, def)).toBe(true);
+  });
+
+  test('a target outside the list is still refused, either form', () => {
+    expect(isValidValue({ getURL: { field: 'nope', type: 'link' } }, def)).toBe(false);
+    expect(isValidValue({ title: 'nope' }, def)).toBe(false);
+  });
+});

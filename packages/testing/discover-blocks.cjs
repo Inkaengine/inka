@@ -761,12 +761,6 @@ function unauthorableSlateStyles(nodes, seen = new Set()) {
   return seen;
 }
 
-// The conversions expandListingBlocks knows (convertFieldValue). A `type` outside
-// this set is a no-op: the raw catalog value reaches the item untouched, which is
-// how a mapping can look right and render nothing.
-const KNOWN_MAPPING_TYPES = new Set([
-  'string', 'textarea', 'slate', 'link', 'image', 'image_link', 'array',
-]);
 
 // A listing's `fieldMapping` is the only thing that decides what its results
 // carry, and every part of it can be wrong in a way nothing else notices: a
@@ -807,6 +801,19 @@ async function loadMappingVocabularies(apiUrl, blocksConfig) {
   }
 }
 
+// What can be mapped onto what, and how: the rule the mapping widget offers by
+// and the editor checks config with (Node require()s sync ESM).
+const { ADDRESS_SOURCE, RETIRED_ADDRESS_SOURCE } = require('@volto-hydra/helpers/catalogAddress.js');
+const {
+  CATALOG_SOURCE_KINDS,
+  conversionFor,
+  isAccepted,
+  sourceKind,
+  targetKind,
+} = require('@volto-hydra/helpers/mappingConversions.js');
+// What expandListingBlocks sets on every item it makes, and Plone's link key.
+const ITEM_IDENTITY_KEYS = new Set(['@uid', '@type', '@id', 'readOnly']);
+
 function collectFieldMappingIssues(blockData, blockSchema, blocksConfig, issues) {
   const mapping = blockData?.fieldMapping;
   if (!mapping || typeof mapping !== 'object' || Array.isArray(mapping)) return;
@@ -826,9 +833,25 @@ function collectFieldMappingIssues(blockData, blockSchema, blocksConfig, issues)
   for (const [source, entry] of Object.entries(mapping)) {
     const target = typeof entry === 'string' ? entry : entry?.field;
     const type = typeof entry === 'object' ? entry?.type : undefined;
+    // The address is mapped from `getURL`; a mapping keyed `@id` is content
+    // that wasn't migrated, and the listing renderer refuses it.
+    if (source === RETIRED_ADDRESS_SOURCE) {
+      issues.push(
+        `fieldMapping "${source}": the address is mapped from "${ADDRESS_SOURCE}" — migrate this key. ` +
+          `Plone reads every "${source}" in a block as a link, and the listing refuses to render it.`,
+      );
+      continue;
+    }
 
     if (!target) {
       issues.push(`fieldMapping "${source}": no target field — the value goes nowhere.`);
+      continue;
+    }
+    if (ITEM_IDENTITY_KEYS.has(target)) {
+      issues.push(
+        `fieldMapping "${source}" → "${target}": that's each item's id or type (expandListingBlocks sets it), ` +
+          `so the mapping would overwrite what makes the item — map onto a content field.`,
+      );
       continue;
     }
     const vocabularyName = mappingDef?.vocabulary?.['@id'];
@@ -846,24 +869,30 @@ function collectFieldMappingIssues(blockData, blockSchema, blocksConfig, issues)
           `nobody can create or repair this mapping in the editor.`,
       );
     }
-    // `href` is where expandListingBlocks puts a result's own address. It is a
-    // convention of the expansion, not a field an author edits, so no item
-    // schema declares it — and it must not read as a missing target.
-    if (itemProps && target !== 'href' && !itemProps[target]) {
+    if (!itemProps) continue;
+    const targetDef = itemProps[target];
+    if (!targetDef) {
       issues.push(
         `fieldMapping "${source}" → "${target}": the ${itemType} block has no such field, so the value is dropped.`,
       );
+      continue;
     }
-    if (type && !KNOWN_MAPPING_TYPES.has(type)) {
+    // What each result's value becomes in the item: the widget would only have
+    // offered a target the source converts into, with that conversion.
+    const kind = sourceFields?.[source]
+      ? sourceKind(source, sourceFields[source])
+      : offeredByVocabulary
+        ? 'text'
+        : CATALOG_SOURCE_KINDS[source];
+    if (!kind) continue; // reported above: not a source the sidebar offers
+    // The renderer converts as stored, and refuses an entry that stores none.
+    if (!isAccepted(kind, targetDef, type)) {
+      const fix = conversionFor(kind, targetDef);
+      const how = type !== undefined ? `converted as "${type}"` : 'with no conversion stored';
       issues.push(
-        `fieldMapping "${source}": unknown conversion "${type}" — the raw value is passed through unconverted.`,
-      );
-    }
-    const targetType = itemProps?.[target]?.type;
-    if (targetType === 'array' && type === 'string') {
-      issues.push(
-        `fieldMapping "${source}" → "${target}": "${target}" is a LIST but the mapping converts to a string, ` +
-          `which joins the values into one — use type "array".`,
+        `fieldMapping "${source}" → "${target}": puts a ${kind} ${how} into a ${targetKind(targetDef) ?? 'field nothing maps onto'}, ` +
+          `so every item holds a value its field can't — ` +
+          (fix === undefined ? `map it onto another field.` : `use { field: "${target}", type: "${fix}" }.`),
       );
     }
   }

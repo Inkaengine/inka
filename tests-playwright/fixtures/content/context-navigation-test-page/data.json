@@ -44,8 +44,14 @@
           "@type": "listing",
           "variation": "navItem",
           "fieldMapping": {
-            "@id": { "field": "href", "type": "link" },
-            "title": { "field": "label" }
+            "getURL": {
+              "field": "href",
+              "type": "link"
+            },
+            "title": {
+              "field": "label",
+              "type": "string"
+            }
           },
           "querystring": {
             "query": [
@@ -77,8 +83,14 @@
           "@type": "listing",
           "variation": "navItem",
           "fieldMapping": {
-            "@id": { "field": "href", "type": "link" },
-            "title": { "field": "label" }
+            "getURL": {
+              "field": "href",
+              "type": "link"
+            },
+            "title": {
+              "field": "label",
+              "type": "string"
+            }
           },
           "querystring": {
             "query": [
@@ -112,8 +124,14 @@
           "@type": "listing",
           "variation": "navItem",
           "fieldMapping": {
-            "@id": { "field": "href", "type": "link" },
-            "title": { "field": "label" }
+            "getURL": {
+              "field": "href",
+              "type": "link"
+            },
+            "title": {
+              "field": "label",
+              "type": "string"
+            }
           },
           "querystring": {
             "query": [
