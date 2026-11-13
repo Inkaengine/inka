@@ -44,6 +44,7 @@ import rememberedFrontendUrl from './utils/getRememberedFrontendUrl';
 import getSavedURLs, { getURlsFromEnv } from './utils/getSavedURLs';
 import getCurrentFrontendPublicUrl from './utils/getCurrentFrontendPublicUrl';
 import publicUrlSync from './middleware/publicUrlSync';
+import saveFailureMessage from './middleware/saveFailureMessage';
 import {
   getAllowedBlocksList,
   subscribeToAllowedBlocksListChanges,
@@ -201,6 +202,8 @@ const applyConfig = (config) => {
   config.settings.storeExtenders = [
     ...(config.settings.storeExtenders || []),
     (stack) => [...stack, publicUrlSync],
+    // A save the CMS crashed on says so in the author's words, not Python's.
+    (stack) => [...stack, saveFailureMessage],
   ];
   if (typeof window !== 'undefined') {
     // Boot value: pick the frontend the editor was last viewing (cookie
