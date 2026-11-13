@@ -108,3 +108,41 @@ describe('a commit keeps a slot that is empty', () => {
     });
   });
 });
+
+/**
+ * With the template unlocked, a block the author puts in one of its empty slots
+ * is the template's: the slot's content until a page fills it (inka#708, as
+ * #709 made a block added in an empty region). An empty slot is no content, so
+ * the commit takes the author's block in its place.
+ */
+describe('filling an empty slot of an unlocked template', () => {
+  const withEmptySlot = {
+    ...template,
+    blocks: {
+      layout: {
+        ...template.blocks.layout,
+        blocks: { ...template.blocks.layout.blocks, links: { '@type': 'empty', templateId: T, slotId: 'links', fixed: false } },
+        blocks_layout: { ...template.blocks.layout.blocks_layout, leftSidebar: ['links'] },
+      },
+    },
+  };
+
+  test("the commit stores the author's block in the slot's place", async () => {
+    const page = pageWith(MAIN_FIRST, { '@type': 'slate', ...member, slotId: 'links', fixed: false, value: [{ type: 'p', children: [{ text: 'A link' }] }] });
+    let n = 0;
+    const { merged } = await mergeInstanceIntoTemplate(withEmptySlot, page, I, { idFieldMap: {}, uuidGenerator: () => `u${++n}` });
+    const layout = Object.values(merged.blocks).find((b) => b['@type'] === 'contentLayout');
+    const left = layout.blocks_layout.leftSidebar.map((id) => layout.blocks[id]);
+    expect(left.map((b) => [b['@type'], b.slotId])).toEqual([['slate', 'links']]);
+  });
+
+  // The editor's page holds the template's empty slot: the admin's merge puts it there.
+  test('an untouched empty slot stays as it is', async () => {
+    let n = 0;
+    const untouched = pageWith(MAIN_FIRST, { '@type': 'empty', ...member, slotId: 'links', fixed: false });
+    const { merged } = await mergeInstanceIntoTemplate(withEmptySlot, untouched, I, { idFieldMap: {}, uuidGenerator: () => `u${++n}` });
+    const layout = Object.values(merged.blocks).find((b) => b['@type'] === 'contentLayout');
+    const left = layout.blocks_layout.leftSidebar.map((id) => layout.blocks[id]);
+    expect(left.map((b) => [b['@type'], b.slotId])).toEqual([['empty', 'links']]);
+  });
+});

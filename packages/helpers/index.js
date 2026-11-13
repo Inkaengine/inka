@@ -4264,7 +4264,12 @@ function fillRegionEntries(entries, templateState, options) {
       slotId === ctx.leftoverSlotId
         ? ctx.leftovers.splice(0).map((entry) => ({ ...entry, orphaned: true }))
         : [];
-    const content = [...leftovers, ...(ctx.pendingContent.get(slotId) || [])];
+    // An `empty` is never content: what a document holds for a slot when that is
+    // only its empty slot (inka#708) is nothing, so the slot's own block goes in
+    // — and a commit takes the author's block in an empty slot's place.
+    const content = [...leftovers, ...(ctx.pendingContent.get(slotId) || [])].filter(
+      ({ block }) => block?.['@type'] !== 'empty',
+    );
     ctx.pendingContent.delete(slotId);
 
     if (content.length === 0) {
