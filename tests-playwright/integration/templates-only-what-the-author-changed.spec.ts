@@ -375,3 +375,59 @@ test.describe('a drop goes only where it is allowed, and where its indicator can
     await expect.poll(() => blockOrder(iframe), { message: 'nothing moved' }).toEqual(before);
   });
 });
+
+test.describe("a page's own field drawn in a locked template block", () => {
+  // inka#705's context: a layout's hero holds the page's title. The title block
+  // is the template's, locked; the title it shows is the page's own field. An
+  // editor who only wanted to rename the page had to unlock the template every
+  // page uses to do it.
+  test('is edited without unlocking the template', async ({ page }) => {
+    const helper = new AdminUIHelper(page);
+    await helper.login();
+    const post = async (folder: string, body: object) => {
+      const response = await fetch(`${URLS.mockApi}${folder}`, {
+        method: 'POST',
+        headers: { Accept: 'application/json', 'Content-Type': 'application/json', Authorization: `Bearer ${helper.authToken}` },
+        body: JSON.stringify(body),
+      });
+      expect(response.status).toBe(201);
+      return new URL((await response.json())['@id']).pathname;
+    };
+    const id = `titled-template-${randomUUID()}`;
+    const templatePath = `/_test_data/templates/${id}`;
+    const template = await post('/_test_data/templates', {
+      '@type': 'Document', id, title: 'A titled template',
+      blocks: {
+        heading: { '@type': 'title', templateId: templatePath, slotId: 'heading', fixed: true, readOnly: true },
+        body: { '@type': 'slate', templateId: templatePath, slotId: 'default',
+          value: [{ type: 'p', children: [{ text: 'Its slot' }] }], plaintext: 'Its slot' },
+      },
+      blocks_layout: { items: ['heading', 'body'] },
+    });
+    const instance = `instance-${randomUUID()}`;
+    const path = await post('/_test_data', {
+      '@type': 'Document', id: `titled-page-${randomUUID()}`, title: 'Old name',
+      blocks: {
+        t: { '@type': 'title', templateId: template, templateInstanceId: instance, slotId: 'heading', fixed: true, readOnly: true },
+        b: { '@type': 'slate', templateId: template, templateInstanceId: instance, slotId: 'default',
+          value: [{ type: 'p', children: [{ text: 'Page text' }] }], plaintext: 'Page text' },
+      },
+      blocks_layout: { items: ['t', 'b'] },
+    });
+    // navigateToEdit adds the test-content prefix itself.
+    await helper.navigateToEdit(path.replace(/^\/_test_data/, ''));
+    const writes = recordWrites(page, URLS.mockApi);
+
+    const title = await helper.getEditorLocator('t', '/title');
+    await expect(title).toHaveText('Old name');
+    await title.click();
+    await expect(title, 'the page title is editable while its template stays locked').toHaveAttribute('contenteditable', 'true');
+    await helper.moveCursorToEnd(title);
+    await title.pressSequentially(' renamed', { delay: 10 });
+    await helper.saveContent();
+
+    await expect.poll(async () => (await stored(path, helper.authToken)).title, { message: 'the page is renamed' }).toBe('Old name renamed');
+    expect(templateWrites(writes), 'the template is not written').toEqual([]);
+    expect((await lockOf(template, helper.authToken))?.locked, 'the template was never unlocked').toBeFalsy();
+  });
+});
