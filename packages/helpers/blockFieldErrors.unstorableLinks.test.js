@@ -67,4 +67,37 @@ describe('unstorableLinkFields', () => {
     // Without being told it's a region, the list is just a field holding the bad link.
     expect(unstorableLinkFields(list)).toEqual(['slides']);
   });
+
+  // An object_list keyed by `@id` (idField) stores each item's id there, and
+  // Plone walks it like any other `@id`. An id that isn't a string (an object
+  // spread over it) crashes the save just the same, so the item reports it.
+  test("an item whose own @id (its idField) isn't a string is unstorable", () => {
+    const item = { '@id': { '@id': 'https://example.com/' }, url: [{ '@id': 'https://example.com/' }] };
+    expect(unstorableLinkFields(item)).toEqual(['@id']);
+  });
+
+  test("an item's string id is fine", () => {
+    expect(unstorableLinkFields({ '@id': 'social-linkedin', url: [{ '@id': 'https://example.com/' }] })).toEqual([]);
+  });
+
+  // An item whose id is an object can't be found by its id, so it may never be
+  // checked as a block of its own: its container reports the region instead.
+  test("a list region holding an item whose idField @id isn't a string is reported on the container", () => {
+    const footer = {
+      '@type': 'footer',
+      social: [
+        { '@id': 'social-linkedin', url: [{ '@id': 'https://example.com/' }] },
+        { '@id': { '@id': 'https://example.com/' }, url: [{ '@id': 'https://example.com/' }] },
+      ],
+    };
+    const childFields = [{ isObjectList: true, region: 'social', idField: '@id' }];
+    expect(unstorableLinkFields(footer, childFields)).toEqual(['social']);
+  });
+
+  test('a list keyed by another idField keeps its items to themselves', () => {
+    const form = { '@type': 'form', subblocks: [{ field_id: 'f1', '@id': { x: 1 } }] };
+    const childFields = [{ isObjectList: true, region: 'subblocks', idField: 'field_id' }];
+    // The item's stray @id is the item's own problem, reported when it is checked.
+    expect(unstorableLinkFields(form, childFields)).toEqual([]);
+  });
 });

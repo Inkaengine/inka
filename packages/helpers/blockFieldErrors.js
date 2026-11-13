@@ -128,11 +128,17 @@ function isUnstorableLink(value) {
  * @returns {string[]} field names, in the block's key order
  */
 export function unstorableLinkFields(blockData, childFields = []) {
-  const listRegions = new Set(
+  const listRegions = new Map(
     childFields
       .filter((f) => f.isObjectList)
-      .map((f) => [...(f.regionPath || []), f.region].join('/')),
+      .map((f) => [[...(f.regionPath || []), f.region].join('/'), f.idField]),
   );
+  // A list keyed by `@id` whose item has an id that isn't a string: the item
+  // can't be found by that id to be checked itself, so its container says so.
+  const listHoldsBadId = (path, value) =>
+    listRegions.get(path) === '@id' &&
+    Array.isArray(value) &&
+    value.some((item) => isUnstorableLink(item));
   const holdsOne = (value, path) => {
     if (Array.isArray(value)) return value.some((item) => holdsOne(item, path));
     if (!value || typeof value !== 'object') return false;
@@ -140,13 +146,19 @@ export function unstorableLinkFields(blockData, childFields = []) {
     return Object.entries(value).some(([key, child]) => {
       if (key === 'blocks' || key === 'blocks_layout') return false;
       const childPath = path ? `${path}/${key}` : key;
-      if (listRegions.has(childPath)) return false;
+      if (listRegions.has(childPath)) return listHoldsBadId(childPath, child);
       return holdsOne(child, childPath);
     });
   };
+  // The block itself is an object Plone walks: an object_list item keyed by
+  // `@id` (its idField) holds its id there, and an id that isn't a string —
+  // an object spread over it — crashes the save like any other `@id`.
+  const ownIdBad = isUnstorableLink(blockData);
   return Object.keys(blockData || {}).filter((key) => {
-    if (key === 'blocks' || key === 'blocks_layout' || listRegions.has(key)) return false;
+    if (key === '@id' && ownIdBad) return true;
+    if (key === 'blocks' || key === 'blocks_layout') return false;
     const value = blockData[key];
+    if (listRegions.has(key)) return listHoldsBadId(key, value);
     return isUnstorableLink(value) || holdsOne(value, key);
   });
 }
