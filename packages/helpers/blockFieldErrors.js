@@ -116,29 +116,37 @@ function isUnstorableLink(value) {
 }
 
 /**
+ * The object_list regions named in `childFields` (the descriptors
+ * `getChildFields` gives), by their `/`-path, each with its idField.
+ */
+function listRegionsOf(childFields) {
+  return new Map(
+    childFields
+      .filter((f) => f.isObjectList)
+      .map((f) => [[...(f.regionPath || []), f.region].join('/'), f.idField]),
+  );
+}
+
+/** The value at a `/`-path in `data`. */
+function valueAtPath(data, path) {
+  return path.split('/').reduce((node, key) => node?.[key], data);
+}
+
+/**
  * The block's own top-level fields holding a link the CMS can't store.
  *
  * A child block's fields are the child's: `blocks`/`blocks_layout` are skipped at
- * any depth, and so is each object_list region named in `childFields` (the
- * descriptors `getChildFields` gives), so each bad link is reported on the block
- * that holds it.
+ * any depth, and so is each object_list region named in `childFields`, so each
+ * bad link is reported on the block that holds it. The block itself is checked
+ * too: an object_list item keyed by `@id` holds its id there, and Plone walks it
+ * like any other `@id`.
  *
  * @param {Object} blockData
  * @param {Array<{ isObjectList?: boolean, region: string, regionPath?: string[] }>} [childFields]
  * @returns {string[]} field names, in the block's key order
  */
 export function unstorableLinkFields(blockData, childFields = []) {
-  const listRegions = new Map(
-    childFields
-      .filter((f) => f.isObjectList)
-      .map((f) => [[...(f.regionPath || []), f.region].join('/'), f.idField]),
-  );
-  // A list keyed by `@id` whose item has an id that isn't a string: the item
-  // can't be found by that id to be checked itself, so its container says so.
-  const listHoldsBadId = (path, value) =>
-    listRegions.get(path) === '@id' &&
-    Array.isArray(value) &&
-    value.some((item) => isUnstorableLink(item));
+  const listRegions = listRegionsOf(childFields);
   const holdsOne = (value, path) => {
     if (Array.isArray(value)) return value.some((item) => holdsOne(item, path));
     if (!value || typeof value !== 'object') return false;
@@ -146,19 +154,40 @@ export function unstorableLinkFields(blockData, childFields = []) {
     return Object.entries(value).some(([key, child]) => {
       if (key === 'blocks' || key === 'blocks_layout') return false;
       const childPath = path ? `${path}/${key}` : key;
-      if (listRegions.has(childPath)) return listHoldsBadId(childPath, child);
+      if (listRegions.has(childPath)) return false;
       return holdsOne(child, childPath);
     });
   };
-  // The block itself is an object Plone walks: an object_list item keyed by
-  // `@id` (its idField) holds its id there, and an id that isn't a string —
-  // an object spread over it — crashes the save like any other `@id`.
   const ownIdBad = isUnstorableLink(blockData);
   return Object.keys(blockData || {}).filter((key) => {
     if (key === '@id' && ownIdBad) return true;
-    if (key === 'blocks' || key === 'blocks_layout') return false;
+    if (key === 'blocks' || key === 'blocks_layout' || listRegions.has(key)) return false;
     const value = blockData[key];
-    if (listRegions.has(key)) return listHoldsBadId(key, value);
     return isUnstorableLink(value) || holdsOne(value, key);
   });
+}
+
+/**
+ * The block's top-level fields holding an object_list with an item whose id
+ * (the list's idField, whatever it is called) isn't a string.
+ *
+ * Items are found, moved and merged by that id, so it must be a string. An item
+ * whose id isn't one can't be found by it, and so can't be checked or opened as
+ * a block of its own: its container reports the list instead.
+ *
+ * @param {Object} blockData
+ * @param {Array<{ isObjectList?: boolean, region: string, regionPath?: string[], idField?: string }>} [childFields]
+ * @returns {string[]} field names, in the block's key order
+ */
+export function badItemIdFields(blockData, childFields = []) {
+  const bad = new Set();
+  for (const [path, idField] of listRegionsOf(childFields)) {
+    if (!idField) continue;
+    const items = valueAtPath(blockData, path);
+    if (!Array.isArray(items)) continue;
+    if (items.some((item) => typeof item?.[idField] !== 'string')) {
+      bad.add(path.split('/')[0]);
+    }
+  }
+  return Object.keys(blockData || {}).filter((key) => bad.has(key));
 }

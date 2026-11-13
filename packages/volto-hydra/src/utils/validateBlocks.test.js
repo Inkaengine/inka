@@ -467,3 +467,42 @@ describe('a link the CMS cannot store', () => {
     expect(blocksErrors).toEqual({});
   });
 });
+
+// A list item is found by its id (the list's idField), so it must be a string.
+// One that isn't can't be opened as a block, so the save names its container.
+describe("a list item whose id isn't a string", () => {
+  const cfg = {
+    linkBar: {
+      id: 'linkBar',
+      title: 'Link bar',
+      blockSchema: {
+        fieldsets: [{ id: 'default', title: 'Default', fields: ['links'] }],
+        properties: {
+          links: {
+            title: 'Links',
+            widget: 'object_list',
+            idField: 'key',
+            schema: { fieldsets: [{ id: 'default', title: 'Default', fields: ['label'] }], properties: { label: { title: 'Label', type: 'string' } }, required: [] },
+          },
+        },
+        required: [],
+      },
+    },
+  };
+  const run = (links) =>
+    validateBlocksAgainstSchemas(
+      { blocks: { b1: { '@type': 'linkBar', links } }, blocks_layout: { items: ['b1'] } },
+      { blocksConfig: cfg, intl: { formatMessage }, formatMessage },
+    );
+
+  test('refuses the save on the container, naming the list', () => {
+    const { blocksErrors, fieldTitles } = run([{ key: 'k1', label: 'One' }, { key: { k: 2 }, label: 'Two' }]);
+    expect(Object.keys(blocksErrors)).toEqual(['b1']);
+    expect(blocksErrors.b1.links.join(' ')).toMatch(/id/);
+    expect(fieldTitles.b1.links).toBe('Links');
+  });
+
+  test('string ids are fine', () => {
+    expect(run([{ key: 'k1', label: 'One' }]).blocksErrors).toEqual({});
+  });
+});

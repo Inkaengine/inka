@@ -20,6 +20,7 @@ import { FormValidation } from '@plone/volto/helpers';
 
 import { getChildFields } from '@volto-hydra/helpers';
 import {
+  badItemIdFields,
   blockFieldErrors,
   unstorableLinkFields,
 } from '@volto-hydra/helpers/blockFieldErrors.js';
@@ -34,6 +35,10 @@ const PAGE_BLOCK = '_page';
 /** What the author is told about a link the CMS can't store. */
 export const UNSTORABLE_LINK_MESSAGE =
   "This link can't be saved: the editor holds it in a form the site can't store. Set the link again, or clear it.";
+
+/** What the author is told about a list holding an item whose id isn't a string. */
+export const BAD_ITEM_ID_MESSAGE =
+  "An item in this list has a broken id, so it can't be saved. Remove that item and add it again.";
 
 /**
  * @param {Object} formData - the whole page's form data
@@ -73,10 +78,12 @@ export function validateBlocksAgainstSchemas(
     // it on every block: Plone's deserializer calls `.startswith` on each `@id`
     // in a block, and anything but a string ends the whole save with a 500 that
     // names no block ("'dict' object has no attribute 'startswith'").
-    const badLinks = unstorableLinkFields(
-      blockData,
-      getChildFields(blockData, idFieldMap, { allObjectLists: true }),
-    );
+    const childFields = getChildFields(blockData, idFieldMap, { allObjectLists: true });
+    const badLinks = unstorableLinkFields(blockData, childFields);
+    // A list item is found by its id (the list's idField, whatever it is
+    // called), so the id must be a string. One that isn't can't be found to be
+    // opened, so its container reports the list.
+    const badItemIds = badItemIdFields(blockData, childFields);
 
     const schema = resolveEffectiveBlockSchema(
       blockId,
@@ -85,9 +92,11 @@ export function validateBlocksAgainstSchemas(
       blocksConfig,
       intl,
     );
-    const linkErrors = Object.fromEntries(
-      badLinks.map((field) => [field, [UNSTORABLE_LINK_MESSAGE]]),
-    );
+    const linkErrors = {};
+    for (const field of badLinks) linkErrors[field] = [UNSTORABLE_LINK_MESSAGE];
+    for (const field of badItemIds) {
+      linkErrors[field] = [...(linkErrors[field] || []), BAD_ITEM_ID_MESSAGE];
+    }
     const report = (errors) => {
       if (Object.keys(errors).length === 0) return;
       blocksErrors[blockId] = errors;

@@ -12,7 +12,7 @@
  */
 import { describe, expect, test } from 'vitest';
 
-import { unstorableLinkFields } from './blockFieldErrors.js';
+import { badItemIdFields, unstorableLinkFields } from './blockFieldErrors.js';
 
 describe('unstorableLinkFields', () => {
   test('a link whose @id is an object is unstorable', () => {
@@ -79,25 +79,45 @@ describe('unstorableLinkFields', () => {
   test("an item's string id is fine", () => {
     expect(unstorableLinkFields({ '@id': 'social-linkedin', url: [{ '@id': 'https://example.com/' }] })).toEqual([]);
   });
+});
 
-  // An item whose id is an object can't be found by its id, so it may never be
-  // checked as a block of its own: its container reports the region instead.
-  test("a list region holding an item whose idField @id isn't a string is reported on the container", () => {
-    const footer = {
-      '@type': 'footer',
-      social: [
-        { '@id': 'social-linkedin', url: [{ '@id': 'https://example.com/' }] },
-        { '@id': { '@id': 'https://example.com/' }, url: [{ '@id': 'https://example.com/' }] },
-      ],
-    };
-    const childFields = [{ isObjectList: true, region: 'social', idField: '@id' }];
-    expect(unstorableLinkFields(footer, childFields)).toEqual(['social']);
+/**
+ * An object_list item is found, moved and merged by its id (the list's
+ * idField), so the id must be a string, whatever the idField is called. An
+ * item whose id isn't one can't be found by it, so it can't be checked or
+ * opened as a block of its own: its container reports the list.
+ */
+describe('badItemIdFields', () => {
+  const footer = (items) => ({ '@type': 'footer', social: items });
+  const social = [{ isObjectList: true, region: 'social', idField: '@id' }];
+
+  test("a list keyed by @id with an item whose id isn't a string", () => {
+    expect(badItemIdFields(footer([
+      { '@id': 'social-linkedin', url: [] },
+      { '@id': { '@id': 'https://example.com/' }, url: [] },
+    ]), social)).toEqual(['social']);
   });
 
-  test('a list keyed by another idField keeps its items to themselves', () => {
-    const form = { '@type': 'form', subblocks: [{ field_id: 'f1', '@id': { x: 1 } }] };
-    const childFields = [{ isObjectList: true, region: 'subblocks', idField: 'field_id' }];
-    // The item's stray @id is the item's own problem, reported when it is checked.
-    expect(unstorableLinkFields(form, childFields)).toEqual([]);
+  test.each([
+    ['field_id', { field_id: { id: 'f1' } }],
+    ['key', { key: 7 }],
+    ['key', { key: ['k1'] }],
+  ])("a list keyed by %s with an item whose id isn't a string", (idField, item) => {
+    const block = { '@type': 'b', items: [item] };
+    expect(badItemIdFields(block, [{ isObjectList: true, region: 'items', idField }])).toEqual(['items']);
+  });
+
+  test('inside an object field, named by the top-level field', () => {
+    const table = { '@type': 'table', table: { rows: [{ key: { k: 1 } }] } };
+    const fields = [{ isObjectList: true, region: 'rows', regionPath: ['table'], idField: 'key' }];
+    expect(badItemIdFields(table, fields)).toEqual(['table']);
+  });
+
+  test('string ids are fine, whatever the idField', () => {
+    const block = { '@type': 'b', social: [{ '@id': 's1' }], subblocks: [{ field_id: 'f1' }] };
+    expect(badItemIdFields(block, [
+      { isObjectList: true, region: 'social', idField: '@id' },
+      { isObjectList: true, region: 'subblocks', idField: 'field_id' },
+    ])).toEqual([]);
   });
 });
