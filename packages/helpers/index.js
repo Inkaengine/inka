@@ -1833,6 +1833,9 @@ function _slateNodeDiffersOnlyInText(p, n) {
  */
 export function getImageUrl(value, apiUrl = '') {
   if (!value) return '';
+  // A list (the object-browser / `image_link` shape): its first element is
+  // read like any other value, a catalog brain's scales included.
+  if (Array.isArray(value)) return getImageUrl(value[0], apiUrl);
 
   // Catalog brain with image_scales
   if (value.image_scales && value.image_field) {
@@ -1855,7 +1858,7 @@ export function getImageUrl(value, apiUrl = '') {
   if (value.image_scales === null || value.image_field === '') return '';
 
   // Extract URL from various formats
-  let url = Array.isArray(value) ? value[0]?.['@id'] : value?.['@id'] || value;
+  let url = value?.['@id'] || value;
   if (typeof url !== 'string') return '';
 
   // Add @@images/image for content paths without a scale URL
