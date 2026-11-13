@@ -494,7 +494,7 @@ A container region can never be truly empty. When its last child is deleted, Ink
 
 So the simplest way to never deal with empty placeholders in a region is to give it a `defaultBlockType` (or a single-entry `allowedBlocks`). Otherwise your frontend must render `empty`.
 
-Empty blocks are stripped before saving. Render them as empty space; Inka puts a '+' button in the middle for the user to pick a real type in place. You may style the space — a ghost outline, a faint fill — but put nothing in it an author could take for content: no text, no editable field, no form control. Block sanity checks this for every region it can empty.
+Empty blocks are stripped when a page is saved. (A template keeps one that names a slot: its [empty slot](./templates.md#template-concepts), which a visitor's page never receives.) Render them as empty space; Inka puts a '+' button in the middle for the user to pick a real type in place. You may style the space — a ghost outline, a faint fill — but put nothing in it an author could take for content: no text, no editable field, no form control. Block sanity checks this for every region it can empty.
 
 To give that '+' your own look, render a button inside the empty block and mark it `data-block-add="button"`. Inka then draws no '+' of its own, and clicking your button opens the block chooser beside it to fill the empty in place, as the '+' would. Your button is yours to draw as you like — an icon, a ghost, a label such as "Add a question" — and is the one thing in an empty block that may hold text.
 
@@ -538,7 +538,7 @@ This is the one case where `"empty"` is a **configured** default rather than the
 
 - **Passive seed** (region loaded, or its last child deleted): Inka seeds a bare `@type: "empty"` placeholder — nothing renders. `defaultBlockType` wins over the single-`allowedBlocks` auto-fill, so the region genuinely shows empty.
 - **The '+' (active add / fill)**: inserts a real block from `allowedBlocks` (converting the empty placeholder **in place**), never another `empty`. The add path reads `allowedBlocks`, not `defaultBlockType` — so a single-entry `allowedBlocks` fills straight to that type with no chooser.
-- **\`"empty"\` is never in \`allowedBlocks\`** — it isn't a type an editor opts into; it's the "region is empty" state. On save the placeholder is stripped, so a genuinely-empty region persists with no blocks.
+- **\`"empty"\` is never in \`allowedBlocks\`** — it isn't a type an editor opts into; it's the "region is empty" state. On a page's save the placeholder is stripped, so a genuinely-empty region persists with no blocks. A template keeps an empty slot instead, so the slot keeps its place.
 
 Use this for optional site chrome — e.g. a header announcement that is usually absent but can hold a single global alert when needed. (Because the seed is `"empty"`, the frontend must render `empty` as a selectable slot — see below.)
 
