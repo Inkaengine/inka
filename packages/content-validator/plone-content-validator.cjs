@@ -825,6 +825,22 @@ function imageDimensions(file) {
             );
             continue;
           }
+          // Then the widget's own shape. A string Plone WOULD resolve (a field
+          // named url, href or preview_image) or one that needs no resolving (a
+          // plain path) gets past the resolution check above, and is still the
+          // wrong shape for a widget whose value is an array of media objects.
+          // Disjoint from the check just above, which is about an OBJECT that
+          // holds no reference; this one is about a string where a list belongs.
+          // An empty string is simply no image.
+          if (ARRAY_SHAPED_WIDGETS.has(def.widget) && typeof v === 'string' && v !== '') {
+            stats.linksBroken += 1;
+            fail(rel,
+              `  ${rel}: block ${bid} (${block['@type']}) field "${field}" holds "${v}" as a bare ` +
+                `string, but its ${def.widget} widget stores an array of link/media objects — ` +
+                `store it as [{ "@id": "…", "image_field": "image" }]`,
+            );
+            continue;
+          }
           // Every reference the field holds, in whichever shape it stores it.
           for (const ref of refStrings(v)) {
             const where = `  ${rel}: block ${bid} (${block['@type']}) ${field}`;
@@ -1627,6 +1643,20 @@ const REFERENCE_WIDGETS = new Set(['object_browser', 'url', 'image']);
 // `@id` whatever the field is called; a bare uid string in any other field
 // reaches the frontend unresolved.
 const PLONE_RESOLVES_BY_NAME = new Set(['url', 'href', 'preview_image']);
+
+// The widgets whose value IS an array of link/media objects: an image or file
+// widget stores image-scale dicts, so a bare string is the wrong SHAPE there
+// whatever it points at -- the widget cannot edit it, a save may not round-trip
+// it, and the restapi resolving the string (in a field named url, href or
+// preview_image) only hides that.
+//
+// `object_browser` is deliberately NOT here. Volto stores it both ways: an
+// array for a teaser's href, a plain string for its own image block's url
+// (mode: 'link'). Which one a given field wants is the consumer's convention,
+// not something this validator can know, so a consumer that wants every
+// object_browser field to hold an array enforces that itself (pretagov-site's
+// scripts/validate-content-schemas.mjs, ARRAY_WIDGETS).
+const ARRAY_SHAPED_WIDGETS = new Set(['image', 'file']);
 
 /**
  * Every block stored under a container, at any depth — the ONE place the

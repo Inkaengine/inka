@@ -1383,15 +1383,35 @@ describe('plone-content-validator checkIntegrity()', () => {
       }
     });
 
-    it('passes the same uid as an @id, in a field Plone resolves by name, or as a path', () => {
+    it('passes the same uid as an @id, however deep the array', () => {
       for (const block of [
         { '@type': 'banner', image: { '@id': 'resolveuid/pageauid1234567' } },
         { '@type': 'banner', image: [{ '@id': '../resolveuid/pageauid1234567' }] },
+      ]) {
+        assert.deepEqual(check(block), [], JSON.stringify(block));
+      }
+    });
+
+    // An `image`/`file` widget's value IS an array of media objects, so a bare
+    // string is the wrong SHAPE whether or not Plone would resolve it. These
+    // three used to pass: Plone resolves a bare string in a field named url,
+    // href or preview_image, and a path needs no resolving at all, so the
+    // resolution check above has nothing to say about them. They still reach
+    // the frontend as a value the widget cannot edit and the next save may not
+    // round-trip -- and, pointed at their own page, they recursed in the mock
+    // (inka#707). The shape is the widget's business, so it is checked here
+    // rather than only in a consumer's own deploy gate.
+    it('FAILS on a bare string in an image/file widget, resolvable or not', () => {
+      for (const block of [
         { '@type': 'banner', preview_image: 'resolveuid/pageauid1234567' },
         { '@type': 'image', url: 'resolveuid/pageauid1234567' },
         { '@type': 'banner', image: '/page-a' },
       ]) {
-        assert.deepEqual(check(block), [], JSON.stringify(block));
+        const errors = check(block);
+        assert.ok(
+          errors.some((e) => e.includes('stores an array')),
+          `${JSON.stringify(block)} should fail the widget-shape check:\n${errors.join('\n')}`,
+        );
       }
     });
 
@@ -1408,6 +1428,10 @@ describe('plone-content-validator checkIntegrity()', () => {
 
     it('passes an image field left empty, as an empty list', () => {
       assert.deepEqual(check({ '@type': 'banner', image: [] }), []);
+    });
+
+    it('still accepts an empty string: the field simply holds no image', () => {
+      assert.deepEqual(check({ '@type': 'image', url: '' }), []);
     });
   });
 
