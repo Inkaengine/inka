@@ -146,6 +146,8 @@ Per-block options (most are passed through to Volto's block config):
 
 A page's title and description are its own fields, not block data. A frontend that draws them as blocks on the canvas declares a block for each whose schema names that page field; its placeholder is the hint an author sees on an empty one:
 
+### Js
+
 ```js
 blocks: {
   title: {
@@ -869,6 +871,8 @@ Each key in `fieldMappings` is either a **specific block type name**, **\`@defau
 `@default` is a virtual type representing a linked content item's fields — what a catalog **search** returns: `getURL` (its address), `title`, `description`, `image`, `Subject` (tags), `created`/`effective` dates, and so on. A block with `fieldMappings['@default']` is saying "I can be populated from a content item." The keys are these catalog field names — not this block's own field names (e.g. `label`, `field`, `required` are not content metadata and are invalid).
 
 Inka knows the catalog fields every Plone site has: `getURL`, `title`, `description`, `image`, `hasPreviewImage`, `Subject`, `created`, `modified`, `effective`, `expires`, `start` and `end`. It can't know your site's own: a site adds metadata columns (a file's type, a page count). Declare those where your mapping widget offers its sources, in its `sourceFields`, with the type of value they hold; a `@default` key may then name them, and that type decides how they convert:
+
+### Js
 
 ```js
 fieldMapping: {
