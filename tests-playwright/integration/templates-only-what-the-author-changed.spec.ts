@@ -88,8 +88,11 @@ async function freshTemplatePage(token: string, { emptySection = false, framed =
         value: [{ type: 'p', children: [{ text: 'Its own heading' }] }], plaintext: 'Its own heading' },
       body: { '@type': 'slate', templateId: `/_test_data/templates/${id}`, slotId: 'default',
         value: [{ type: 'p', children: [{ text: 'Its slot' }] }], plaintext: 'Its slot' },
+      // A locked section with nothing in it yet: its one slot, empty, as a
+      // template stores a slot nobody has filled (inka#708). A page stores none.
       ...(emptySection && { aside: { '@type': 'section', templateId: `/_test_data/templates/${id}`, slotId: 'aside', fixed: true, readOnly: true,
-        blocks: {}, blocks_layout: { items: [] } } }),
+        blocks: { 'aside-slot': { '@type': 'empty', templateId: `/_test_data/templates/${id}`, slotId: 'aside-body', fixed: false } },
+        blocks_layout: { items: ['aside-slot'] } } }),
       // A locked section holding a fixed heading of its own, as a layout's hero holds its title.
       ...(framed && { frame: { '@type': 'section', templateId: `/_test_data/templates/${id}`, slotId: 'frame', fixed: true, readOnly: true,
         blocks: { framed: { '@type': 'slate', templateId: `/_test_data/templates/${id}`, slotId: 'framed', fixed: true, readOnly: true,
@@ -234,6 +237,7 @@ async function stored(path: string, token: string) {
 test.describe("a commit stores the author's change and nothing the editor made", () => {
   // Case 2: an empty region of a locked block is given an `empty` placeholder
   // in the editor (#700). A commit stored them as the template's own blocks.
+  // A template's own empty slot is the one `empty` it keeps (inka#708).
   test('the placeholders in empty regions are not stored', async ({ page }) => {
     const helper = new AdminUIHelper(page);
     await helper.login();
@@ -250,9 +254,10 @@ test.describe("a commit stores the author's change and nothing the editor made",
     await expect.poll(async () => JSON.stringify((await stored(template, helper.authToken)).blocks), { message: 'the edit is stored' })
       .toContain('Its own heading changed');
     const saved = await stored(template, helper.authToken);
-    expect(JSON.stringify(saved), 'no placeholder is stored').not.toContain('"@type":"empty"');
     const aside = Object.values(saved.blocks).find((b: any) => b['@type'] === 'section') as any;
-    expect(aside.blocks_layout.items, 'the empty region is stored empty').toEqual([]);
+    const kept = aside.blocks_layout.items.map((id: string) => [aside.blocks[id]['@type'], aside.blocks[id].slotId]);
+    expect(kept, "the section keeps its empty slot, and nothing the editor made").toEqual([['empty', 'aside-body']]);
+    expect(JSON.stringify(saved).match(/"@type":"empty"/g), 'no other placeholder is stored').toHaveLength(1);
   });
 });
 
@@ -429,5 +434,53 @@ test.describe("a page's own field drawn in a locked template block", () => {
     await expect.poll(async () => (await stored(path, helper.authToken)).title, { message: 'the page is renamed' }).toBe('Old name renamed');
     expect(templateWrites(writes), 'the template is not written').toEqual([]);
     expect((await lockOf(template, helper.authToken))?.locked, 'the template was never unlocked').toBeFalsy();
+  });
+});
+
+/**
+ * inka#708: a template that loses a slot leaves pages using it with content the
+ * merge has nowhere to put. Nothing records which pages use which slots, so
+ * removing one asks first, and saying no leaves the template unsaved and
+ * unlocked, to edit further.
+ */
+test.describe('removing a slot from a template asks first', () => {
+  test('Keep editing saves nothing and leaves it unlocked; Remove saves it', async ({ page, urls }) => {
+    const helper = new AdminUIHelper(page);
+    await helper.login();
+    const { page: path } = await freshTemplatePage(helper.authToken, { emptySection: true });
+    await helper.navigateToEdit(path);
+    const writes = recordWrites(page, urls.mockApi);
+
+    const { blockId: head } = await helper.waitForBlockByContent('Its own heading');
+    await helper.unlockTemplate(head);
+    // Emptying a slot keeps it: the placeholder left behind names it. What takes
+    // a slot out is taking out the block that holds it: the locked section and
+    // its slot, `aside-body`.
+    await page.evaluate(() => {
+      document.dispatchEvent(new CustomEvent('hydra-delete-blocks', { detail: { blockIds: ['s'] } }));
+    });
+    await expect(helper.getIframe().locator('[data-block-uid="s"]')).toHaveCount(0);
+
+    const toggle = page.locator('.quanta-toolbar .template-lock-toggle');
+    const commit = async () => {
+      await helper.clickBlockInIframe(head);
+      await expect(toggle).toHaveAttribute('aria-pressed', 'true');
+      await toggle.click();
+      await page.locator('.template-lock-modal .template-commit').click();
+    };
+    const ask = page.getByTestId('slot-removal-confirm');
+
+    await commit();
+    await expect(ask).toContainText('aside-body');
+    await page.getByRole('button', { name: 'Keep editing' }).click();
+    await expect(ask).toHaveCount(0);
+    await expect(toggle).toHaveAttribute('aria-pressed', 'true');
+    expect(templateWrites(writes), 'nothing is saved').toEqual([]);
+
+    await commit();
+    await expect(ask).toContainText('aside-body');
+    await page.getByRole('button', { name: 'Remove' }).click();
+    await expect(toggle).toHaveAttribute('aria-pressed', 'false', { timeout: 10000 });
+    expect(templateWrites(writes), 'the template is saved, once').toHaveLength(1);
   });
 });

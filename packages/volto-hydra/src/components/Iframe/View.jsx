@@ -346,7 +346,7 @@ import { heldImages, onImageHeld } from '../../utils/pendingImages';
 import { withImageMetadata } from '../../utils/imageMetadata';
 import { installStyleMenuPreviewCss } from '../../utils/styleMenuPreviewCss';
 import { adoptTemplate, canContainAll, getBlockAddability, getChildBlockEntries, setBlockType, clearBlockType } from '@volto-hydra/helpers';
-import { mergeTemplatesIntoPage, instanceContent, mergeInstanceIntoTemplate } from '@volto-hydra/helpers/mergeTemplates.js';
+import { mergeTemplatesIntoPage, instanceContent, mergeInstanceIntoTemplate, removedSlots } from '@volto-hydra/helpers/mergeTemplates.js';
 import {
   applySchemaDefaultsToFormData,
   previewSchemaDefaultConversions,
@@ -851,6 +851,9 @@ const Iframe = (props) => {
   // @type changed, we surface it here and wait for a confirm.
   //   { conversions: [{ blockId, from, to }], onConfirm: () => void }
   const [convertConfirm, setConvertConfirm] = useState(null);
+  // "Remove these slots?" before a commit drops a slot pages may use (inka#708):
+  // { slots, templateId, resolve(yes) }.
+  const [slotRemovalConfirm, setSlotRemovalConfirm] = useState(null);
   const multiSelectedRef = useRef(multiSelected);
   multiSelectedRef.current = multiSelected;
   // The multi-selection hydra.js last reported or was sent, so the sync below
@@ -1916,6 +1919,19 @@ const Iframe = (props) => {
             keepUnlocked = true;
             toast.error(<Toast error title="This template can't be saved" content={reasons.join('; ')} />);
             return;
+          }
+          // A slot the new version no longer has may hold content on pages
+          // using the template, which the merge would then have nowhere to put.
+          // Nothing records which pages use which slots, so ask (inka#708).
+          const removed = removedSlots(template, updatedTemplate, idFieldMap);
+          if (removed.length) {
+            const yes = await new Promise((resolve) =>
+              setSlotRemovalConfirm({ slots: removed, templateId, resolve }),
+            );
+            if (!yes) {
+              keepUnlocked = true;
+              return;
+            }
           }
           templateCacheRef.current[templateId] = updatedTemplate;
           // "Change on all pages": persist the template document immediately.
@@ -6015,6 +6031,40 @@ const Iframe = (props) => {
           const cb = convertConfirm?.onConfirm;
           setConvertConfirm(null);
           if (cb) cb();
+        }}
+      />
+      {/* "Remove these slots?" — a commit that drops a slot pages may use. */}
+      <Confirm
+        open={!!slotRemovalConfirm}
+        header={
+          slotRemovalConfirm?.slots.length === 1 ? 'Remove a slot?' : 'Remove slots?'
+        }
+        content={
+          slotRemovalConfirm ? (
+            <div className="content" data-testid="slot-removal-confirm">
+              <p>
+                This change removes{' '}
+                {slotRemovalConfirm.slots.map((slotId, i) => (
+                  <React.Fragment key={slotId}>
+                    {i > 0 && ', '}
+                    <strong>{slotId}</strong>
+                  </React.Fragment>
+                ))}{' '}
+                from {slotRemovalConfirm.templateId}. Pages using it may have content
+                there, which would have nowhere to go. Inka can't tell which pages.
+              </p>
+            </div>
+          ) : null
+        }
+        confirmButton="Remove"
+        cancelButton="Keep editing"
+        onCancel={() => {
+          slotRemovalConfirm?.resolve(false);
+          setSlotRemovalConfirm(null);
+        }}
+        onConfirm={() => {
+          slotRemovalConfirm?.resolve(true);
+          setSlotRemovalConfirm(null);
         }}
       />
       {/* Slash menu — appears under the field in the iframe where "/" was typed */}
