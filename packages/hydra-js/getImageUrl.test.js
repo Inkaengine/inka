@@ -77,3 +77,17 @@ describe('getImageUrl', () => {
     );
   });
 });
+
+// A listing maps a result's image as `image_link`: the catalog brain inside a
+// list, its scales with it. The first element is read as a brain too, not just
+// for its `@id` (the page's address, which is no image).
+describe('getImageUrl — a brain inside a list', () => {
+  it('resolves the scale, not the page address', () => {
+    const brain = {
+      '@id': `${API}/news/a`,
+      image_field: 'image',
+      image_scales: { image: [{ download: '@@images/image-800-abc.jpeg' }] },
+    };
+    expect(getImageUrl([brain], API)).toBe(`${API}/news/a/@@images/image-800-abc.jpeg`);
+  });
+});

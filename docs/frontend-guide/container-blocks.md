@@ -594,12 +594,12 @@ blocks: {
     },
     teaser: {
         fieldMappings: {
-            '@default': { '@id': 'href', 'title': 'title', 'image': 'preview_image' },
+            '@default': { getURL: 'href', 'title': 'title', 'image': 'preview_image' },
         },
     },
     image: {
         fieldMappings: {
-            '@default': { '@id': 'href', 'title': 'alt', 'image': 'url' },
+            '@default': { getURL: 'href', 'title': 'alt', 'image': 'url' },
         },
     },
 }

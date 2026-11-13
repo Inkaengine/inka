@@ -602,7 +602,7 @@ config.settings.additionalToolbarComponents = {
       };
     },
     fieldMappings: {
-      '@default': { '@id': 'href', 'title': 'alt', 'image': 'url' },
+      '@default': { getURL: 'href', 'title': 'alt', 'image': 'url' },
       // Converting from teaser block
       teaser: { 'href': 'href', 'title': 'alt', 'preview_image': 'url' },
     },
@@ -626,7 +626,7 @@ config.settings.additionalToolbarComponents = {
       required: [],
     }),
     fieldMappings: {
-      '@default': { '@id': 'href', 'title': 'title', 'description': 'description' },
+      '@default': { getURL: 'href', 'title': 'title', 'description': 'description' },
     },
   };
 
@@ -649,7 +649,7 @@ config.settings.additionalToolbarComponents = {
       required: [],
     }),
     fieldMappings: {
-      '@default': { '@id': 'href', 'title': 'title', 'description': 'description', 'image': 'image' },
+      '@default': { getURL: 'href', 'title': 'title', 'description': 'description', 'image': 'image' },
     },
   };
 
@@ -657,7 +657,7 @@ config.settings.additionalToolbarComponents = {
   config.blocks.blocksConfig.teaser = {
     ...config.blocks.blocksConfig.teaser,
     fieldMappings: {
-      '@default': { '@id': 'href', 'title': 'title', 'description': 'description', 'image': 'preview_image' },
+      '@default': { getURL: 'href', 'title': 'title', 'description': 'description', 'image': 'preview_image' },
       // Converting from image block
       image: { 'href': 'href', 'alt': 'title', 'url': 'preview_image' },
     },
@@ -672,10 +672,13 @@ config.settings.additionalToolbarComponents = {
     vocabulary: { '@id': 'plone.app.vocabularies.MetadataFields' },
   };
   // Facet field mappings — explicit type-to-type using checkboxFacet as hub.
-  // All facet types share the same core fields (title, field, hidden).
   // @default is NOT used here because these fields are facet-specific,
-  // not from the canonical @default type (@id, title, description, image).
-  const facetBaseFields = { title: 'title', field: 'field', hidden: 'hidden' };
+  // not from the catalog's (getURL, title, description, image).
+  // Only the fields every facet schema has: a frontend that sends its own
+  // facet schemas keeps these mappings, and the editor refuses to load one
+  // naming a field its schemas lack. Fields of the same name carry across a
+  // conversion unmapped anyway (`hidden` among them); a mapping makes the edge.
+  const facetBaseFields = { title: 'title', field: 'field' };
   const facetHubMappings = {
     selectFacet: facetBaseFields,
     daterangeFacet: facetBaseFields,

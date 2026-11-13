@@ -54,10 +54,22 @@
           "@type": "listing",
           "variation": "teaser",
           "fieldMapping": {
-            "@id": { "field": "href", "type": "link" },
-            "title": "title",
-            "description": "description",
-            "image": "preview_image"
+            "getURL": {
+              "field": "href",
+              "type": "link"
+            },
+            "title": {
+              "field": "title",
+              "type": "string"
+            },
+            "description": {
+              "field": "description",
+              "type": "textarea"
+            },
+            "image": {
+              "field": "preview_image",
+              "type": "image_link"
+            }
           },
           "querystring": {
             "query": [

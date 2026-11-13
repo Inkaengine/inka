@@ -23,7 +23,7 @@ function ContextNavigationBlock({ block, blocks }) {
 function NavItem({ block }) {
   // Both manual and listing-synth items share shape: `href` is the
   // object_browser array `[{ '@id': string }]` (the listing variation's
-  // fieldMappings.@default maps `@id` → `href` via type='link'). `label`
+  // fieldMappings.@default maps `getURL` → `href` via type='link'). `label`
   // is a string. `_level` is set by the parent ContextNavigationBlock
   // after computing minDepth across all sibling hrefs.
   const here = window.location.pathname.replace(/\/edit$/, '');

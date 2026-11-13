@@ -176,19 +176,15 @@ test.describe('Block Sync - Listing Block Item Type', () => {
     const menu = page.locator('.react-select__menu');
     await menu.waitFor({ state: 'visible', timeout: 3000 });
 
-    // Verify all teaser block fields are available as options
-    // Teaser has: href (Target), title (Title), head_title (Head title),
-    // description (Description), preview_image (Image override)
-    // React Select options are divs with class react-select__option
-    const options = menu.locator('.react-select__option');
-    // Should have at least 6 options: (none), Target, Title, Head title, Description, Image override
-    await expect(options).toHaveCount(9); // All teaser properties + (none)
-
-    // Verify specific teaser fields are present
-    await expect(menu.locator('.react-select__option:has-text("(none)")')).toBeVisible();
-    await expect(menu.locator('.react-select__option:has-text("Target")')).toBeVisible();
-    await expect(menu.locator('.react-select__option:has-text("Description")')).toBeVisible();
-    await expect(menu.locator('.react-select__option:has-text("Image override")')).toBeVisible();
+    // The teaser's fields an address converts into (mappingConversions): its
+    // link, or its text fields. Not its image, nor its yes/no settings.
+    await expect(menu.locator('.react-select__option')).toHaveText([
+      '(none)',
+      'Target',
+      'Title',
+      'Kicker',
+      'Description',
+    ]);
 
     // Close dropdown by clicking elsewhere (not Escape, which deselects the block)
     await mappingTable.locator('th', { hasText: 'Source' }).click();
@@ -236,8 +232,10 @@ test.describe('Block Sync - Listing Block Item Type', () => {
     // Verify "Target" (teaser-specific) is NOT present
     await expect(menu.locator('.react-select__option:has-text("Target")')).not.toBeVisible();
 
-    // Verify image block has its url field (widget: 'image'), titled "Image" by the frontend's schema
-    await expect(menu.locator('.react-select__option', { hasText: /^Image$/ })).toBeVisible();
+    // The image block's link field ("Link to") is offered for the address;
+    // its image field isn't: an address can't become an image.
+    await expect(menu.locator('.react-select__option', { hasText: /^Link to$/ })).toBeVisible();
+    await expect(menu.locator('.react-select__option', { hasText: /^Image$/ })).toHaveCount(0);
 
     // Close dropdown by clicking elsewhere
     await mappingTable.locator('th', { hasText: 'Source' }).click();

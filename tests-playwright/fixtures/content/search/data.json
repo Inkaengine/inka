@@ -28,9 +28,18 @@
           "@type": "listing",
           "variation": "default",
           "fieldMapping": {
-            "@id": { "field": "href", "type": "link" },
-            "title": "title",
-            "description": "description"
+            "getURL": {
+              "field": "href",
+              "type": "link"
+            },
+            "title": {
+              "field": "title",
+              "type": "string"
+            },
+            "description": {
+              "field": "description",
+              "type": "textarea"
+            }
           },
           "querystring": {
             "query": [

@@ -8,6 +8,7 @@
  *                                              everything the editor would refuse or rewrite
  *   plone-content all      [<content-dir>]   — validate + check (+ schema with --schemas)
  *   plone-content search-text [<content-dir>] --schemas <schemas.json>
+ *   plone-content field-mappings [<content-dir>] --schemas <schemas.json>
  *                                            — writes each block's searchableText into the
  *                                              content, as the editor does on save: for
  *                                              content that doesn't pass through the editor
@@ -34,11 +35,11 @@
 
 const path = require('path');
 const fs = require('fs');
-const { validate, checkIntegrity, checkBlockSchemas, checkEditorRules, checkChooserGroups, checkFieldsetCoverage, checkReservedFields, fieldMapFromSchemas, idFieldMapFor, loadSchemas, formatReport } = require('./plone-content-validator.cjs');
+const { validate, checkIntegrity, checkBlockSchemas, checkEditorRules, checkChooserGroups, checkFieldsetCoverage, checkReservedFields, checkFieldMappings, fieldMapFromSchemas, idFieldMapFor, loadSchemas, formatReport } = require('./plone-content-validator.cjs');
 
 function usage() {
   console.error(
-    'Usage: plone-content <validate|check|schema|all|search-text> [<content-dir>] ' +
+    'Usage: plone-content <validate|check|schema|all|search-text|field-mappings> [<content-dir>] ' +
       '[--schemas <schemas.json>] [--exempt-slot <slot>]... [--json <report.json>] [--allow-missing-blobs]',
   );
   process.exit(2);
@@ -72,7 +73,33 @@ const schemas = schemasPath ? await loadSchemas(schemasPath) : null;
 const [cmd, dirArg] = argv;
 // Anything left over is a flag this CLI does not know: ignoring it would run a
 // different check from the one asked for.
-if (!cmd || !['validate', 'check', 'schema', 'all', 'search-text'].includes(cmd) || argv.length > 2) usage();
+if (!cmd || !['validate', 'check', 'schema', 'all', 'search-text', 'field-mappings'].includes(cmd) || argv.length > 2) usage();
+// What the editor stores on a block with a mapping widget, for content that
+// doesn't pass through it: the widget's default where there is none, every
+// entry with its conversion, the address under getURL. Only pages it changes
+// are written.
+if (cmd === 'field-mappings') {
+  if (!schemas) {
+    console.error('field-mappings needs --schemas <schemas.json>');
+    process.exit(2);
+  }
+  const { withFieldMappings } = require('@volto-hydra/helpers/storeFieldMappings.js');
+  const intl = { formatMessage: (m) => m?.defaultMessage || '' };
+  const contentRoot = path.resolve(dirArg || 'content');
+  let pages = 0;
+  for (const entry of fs.readdirSync(contentRoot, { withFileTypes: true })) {
+    const file = path.join(contentRoot, entry.name, 'data.json');
+    if (!entry.isDirectory() || !fs.existsSync(file)) continue;
+    const page = JSON.parse(fs.readFileSync(file, 'utf8'));
+    if (!page.blocks) continue;
+    const written = withFieldMappings(page, schemas, intl);
+    if (written === page) continue;
+    fs.writeFileSync(file, `${JSON.stringify(written, null, 2)}\n`);
+    pages += 1;
+  }
+  console.log(`field-mappings: ${pages} page(s) written`);
+  return;
+}
 if (cmd === 'search-text') {
   if (!schemas) {
     console.error('search-text needs --schemas <schemas.json>');
@@ -190,6 +217,14 @@ if (cmd === 'schema' || (cmd === 'all' && (schemas || fieldsPath))) {
     report.reserved = reserved;
     console.log(formatReport('reserved', reserved));
     if (reserved.errors.length) hasErrors = true;
+
+    // Mappings the editor refuses to load on: a source or destination the
+    // schemas don't have, a conversion that can't fill the field, an `@id`.
+    console.log('');
+    const mappings = checkFieldMappings(schemas);
+    report.mappings = mappings;
+    console.log(formatReport('mappings', mappings));
+    if (mappings.errors.length) hasErrors = true;
   }
 }
 
