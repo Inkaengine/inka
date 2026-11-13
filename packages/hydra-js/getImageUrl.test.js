@@ -84,12 +84,10 @@ describe('getImageUrl', () => {
 describe('getImageUrl — a brain inside a list', () => {
   it('resolves the scale, not the page address', () => {
     const brain = {
-      '@id': 'http://localhost:8888/news/a',
+      '@id': `${API}/news/a`,
       image_field: 'image',
       image_scales: { image: [{ download: '@@images/image-800-abc.jpeg' }] },
     };
-    expect(getImageUrl([brain], 'http://localhost:8888')).toBe(
-      'http://localhost:8888/news/a/@@images/image-800-abc.jpeg',
-    );
+    expect(getImageUrl([brain], API)).toBe(`${API}/news/a/@@images/image-800-abc.jpeg`);
   });
 });
