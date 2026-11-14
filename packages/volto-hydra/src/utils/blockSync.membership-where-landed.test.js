@@ -199,6 +199,24 @@ describe("a moved container's children follow its membership", () => {
     }
   });
 
+  // A slot is one place at every depth (inka#708): the children are in the
+  // container's region, a slot of its own named from the container's — never
+  // the container's slot, or the merge finds the container as content of its
+  // own slot. Open children share the region's slot (a fixed one, matched by
+  // its slot, gets one of its own: allowed-layouts.spec.ts, the forced footer).
+  test("its children's region is a slot of its own, not the container's", () => {
+    const before = pageWith(['top', 'tpl-a', 'moved', 'tpl-b', 'bottom'], grid({
+      c1: { '@type': 'slate' },
+      c2: { '@type': 'slate' },
+    }));
+    const joined = runWith(before).blocks.moved;
+    expect(joined.slotId).toBeTruthy();
+    expect([joined.blocks.c1.slotId, joined.blocks.c2.slotId]).toEqual([
+      `${joined.slotId}-items`,
+      `${joined.slotId}-items`,
+    ]);
+  });
+
   test('moved OUT of a template instance, its children leave it too', () => {
     const before = pageWith(['moved', 'top', 'tpl-a', 'tpl-b', 'bottom'], grid(
       { c1: { '@type': 'slate', templateId: 't', templateInstanceId: 'i1' } },

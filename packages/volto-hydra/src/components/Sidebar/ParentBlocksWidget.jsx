@@ -734,6 +734,13 @@ const ParentBlockSection = ({
         const formContent = (
           <HydraSchemaProvider value={{ blockPathMap, currentBlockId: blockId, formData, blocksConfig: config.blocks?.blocksConfig, liveBlockDataRef, onChangeBlock }}>
             <BlockDataForm
+              // A template rule's refusal is about this block's slot, so it is
+              // shown on its Slot ID, where it is fixed.
+              errors={
+                blocksErrors?.[blockId]?._layout
+                  ? { [blockId]: { slotId: [blocksErrors[blockId]._layout.message] } }
+                  : {}
+              }
               schema={templateBlockSchema}
               onChangeField={(fieldId, value) => {
                 const newBlockData = cloneDeep(blockData);

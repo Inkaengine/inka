@@ -1959,13 +1959,16 @@ describe('plone-content-validator template slot arrangement', () => {
     }, ['title', 'lead-intro'])), []);
   });
 
+  // The editor's rules (which this gate calls) report the split as the slot
+  // meeting another with no fixed block between: one error per block, so the
+  // second half of `body` is named once, not also as "not contiguous".
   it('reports one slot split by another', () => {
     const errs = slotErrors(definition({
       a1: { '@type': 'slate', slotId: 'body', fixed: false },
       gap: { '@type': 'slate', slotId: 'aside', fixed: false },
       a2: { '@type': 'slate', slotId: 'body', fixed: false },
     }, ['a1', 'gap', 'a2']));
-    assert.ok(errs.some((e) => /not contiguous/.test(e)), errs.join('\n'));
+    assert.ok(errs.some((e) => e.includes('"aside"') && e.includes('"body"')), errs.join('\n'));
   });
 });
 
@@ -2023,5 +2026,48 @@ describe('template slot arrangement covers every region', () => {
       blocks: {}, blocks_layout: { items: [] },
     }));
     assert.ok(r.some((e) => e.includes('"alpha"') && e.includes('"beta"')), r.join('\n') || '(no error raised)');
+  });
+});
+
+/**
+ * inka#708: the content check holds a template to the editor's own slot rules,
+ * by calling them (validateTemplatePlaceholders) rather than a copy. A slot is
+ * one place, so the same slot id in two regions is an error; a template keeps
+ * an empty slot as an `empty` naming it, and a region with nothing at all has
+ * lost its slot.
+ */
+describe('a template keeps every slot, once', () => {
+  const T = '/templates/band';
+  const layout = (blocks, blocksLayout) => [{
+    rel: '/templates/band',
+    data: {
+      '@id': T, '@type': 'Document', id: 'band', UID: 'banduid000000000',
+      blocks: {
+        layout: {
+          '@type': 'contentLayout', templateId: T, slotId: 'layout', fixed: true, readOnly: true,
+          blocks, blocks_layout: blocksLayout,
+        },
+      },
+      blocks_layout: { items: ['layout'] },
+    },
+  }];
+  const slot = (slotId, type = 'slate') => ({ '@type': type, templateId: T, slotId, fixed: false, readOnly: false });
+  const errorsOf = (items) => checkIntegrity(items).errors;
+
+  it('reports one slot in two regions, naming both', () => {
+    const errs = errorsOf(layout({ m: slot('default'), s: slot('default') }, { main: ['m'], sidebar: ['s'] }));
+    assert.ok(
+      errs.some((e) => e.includes('"default"') && /main/.test(e) && /sidebar/.test(e)),
+      errs.join('\n') || '(no error raised)',
+    );
+  });
+
+  it('accepts an empty slot: an `empty` naming its slot', () => {
+    assert.deepEqual(errorsOf(layout({ m: slot('default'), l: slot('links', 'empty') }, { main: ['m'], links: ['l'] })), []);
+  });
+
+  it('reports a region of the template with nothing in it: its slot is gone', () => {
+    const errs = errorsOf(layout({ m: slot('default') }, { main: ['m'], links: [] }));
+    assert.ok(errs.some((e) => /links/.test(e) && /empty slot/.test(e)), errs.join('\n') || '(no error raised)');
   });
 });
