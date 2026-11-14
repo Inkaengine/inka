@@ -114,9 +114,12 @@ function regionFields(blocksConfig) {
  * @returns {Array<{parentType: string, field: string, pagePath: string, blockId: string}>}
  */
 function buildEmptyRegionCases(blocksConfig, blocks) {
-  // Prefer an example on an ordinary page: a template's blocks are locked, so
-  // an editor can't empty their regions and the case would only be skipped.
-  const isTemplated = (b) => !!(b.blockData?.templateId || b.blockData?.readOnly || /\/templates\//.test(b.pagePath));
+  // Prefer an example an editor can empty: a template's locked blocks can't be,
+  // so the case would only be skipped. A block in a template's open slot carries
+  // the template's id but is the page's own, emptied like any other block.
+  const isLocked = (b) => !!(b.blockData?.readOnly || /\/templates\//.test(b.pagePath));
+  // A page holding template content at all, open slots included.
+  const isTemplated = (b) => !!(b.blockData?.templateId || isLocked(b));
   // Then an example with blocks in THIS region: a container may draw only some
   // of its regions (a layout whose setting picks the left or the right
   // sidebar), and one that has content in a region draws it. Emptying a region
@@ -127,7 +130,7 @@ function buildEmptyRegionCases(blocksConfig, blocks) {
     const items = Array.isArray(list) ? list : list?.items;
     return Array.isArray(items) && items.length > 0;
   };
-  const rank = (b, field) => (isTemplated(b) ? 0 : 2) + (holds(b, field) ? 1 : 0);
+  const rank = (b, field) => (isLocked(b) ? 0 : 2) + (holds(b, field) ? 1 : 0);
   const cases = [];
   for (const { parentType, field } of regionFields(blocksConfig)) {
     let example;
