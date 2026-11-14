@@ -123,18 +123,28 @@
       "plaintext": "This is a standalone block after the template"
     },
     "old-grp": {
-      "@type": "convGroupSrc",
+      "@type": "gridBlock",
       "templateId": "resolveuid/test-layout-template-uid",
       "templateInstanceId": "tpl-instance-1",
       "slotId": "primary",
       "fixed": false,
       "blocks": {
         "old-grp-child": {
-          "@type": "convTargetA",
-          "title": "Old group child",
+          "@type": "slate",
           "templateId": "resolveuid/test-layout-template-uid",
           "templateInstanceId": "tpl-instance-1",
-          "slotId": "primary"
+          "slotId": "primary",
+          "value": [
+            {
+              "type": "p",
+              "children": [
+                {
+                  "text": "Old group child"
+                }
+              ]
+            }
+          ],
+          "plaintext": "Old group child"
         }
       },
       "blocks_layout": {

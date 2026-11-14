@@ -372,8 +372,8 @@ export function registerAgentApi(live) {
 
     /**
      * Unlock the template a block belongs to, as its lock icon does: its
-     * locked blocks become editable, and lockTemplates saves them to the
-     * template. Resolves to the template instance id, or null for a block that
+     * locked blocks become editable; lockTemplates checks them, and the
+     * page save writes them to the template. Resolves to the template instance id, or null for a block that
      * belongs to no template.
      */
     async unlockTemplateOf(id) {

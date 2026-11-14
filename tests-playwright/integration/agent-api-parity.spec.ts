@@ -151,7 +151,7 @@ test.describe('Agent API parity with the editor', () => {
     expect(await templateSlots(agentPage), 'the template by the agent').toEqual(await templateSlots(page));
   });
 
-  test('"Change on all pages": unlock, remove the footer, lock', async ({ page, browser, urls }) => {
+  test('"Change on all pages": unlock, remove the footer, lock, save the page', async ({ page, browser, urls }) => {
     const person = await editing(page);
     const { blockId: footer } = await person.waitForBlockByContent('Template Footer - From Template');
     await person.unlockTemplate('template-header');
@@ -159,15 +159,19 @@ test.describe('Agent API parity with the editor', () => {
     await person.waitForBlockSelectedInAdmin(footer);
     await page.evaluate((id) => document.dispatchEvent(new CustomEvent('hydra-delete-blocks', { detail: { blockIds: [id] } })), footer);
     await person.lockTemplate('template-header', 'commit');
+    // Locking checks the template; the page save writes it.
+    await person.saveContent();
     await expect.poll(async () => shape(await stored(urls.mockApi, page, TEMPLATE)).some((b: any) => b.slot === 'footer')).toBe(false);
 
     const agentPage = await browser.newPage();
     await editing(agentPage);
+    const { version: agentVersion } = await agent(agentPage, (a) => a.getPage());
     await agent(agentPage, (a) => a.unlockTemplateOf('template-header'));
     const agentFooter = await agent(agentPage, (a) => Object.entries(a.getPage().formData.blocks as Record<string, any>)
       .find(([, b]) => b.slotId === 'footer')![0]);
     await agent(agentPage, (a, id) => a.remove(id), agentFooter);
     expect(await agent(agentPage, (a) => a.lockTemplates())).toEqual([TEMPLATE]);
+    await agent(agentPage, (a, v) => a.save({ expectedVersion: v }), agentVersion);
 
     expect(shape(await stored(urls.mockApi, agentPage, TEMPLATE))).toEqual(shape(await stored(urls.mockApi, page, TEMPLATE)));
   });
