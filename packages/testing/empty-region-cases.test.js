@@ -77,11 +77,21 @@ describe('which example a region is emptied on', () => {
     expect(caseFor([layout('left-one', { leftSidebar: ['nav'] })], 'rightSidebar')).toMatchObject({ blockId: 'left-one' });
   });
 
-  test('an ordinary page still wins over a template holding blocks there', () => {
+  test("an ordinary page still wins over a template's locked block holding blocks there", () => {
     const blocks = [
-      { ...layout('templated', { rightSidebar: ['aside'] }), blockData: { templateId: '/t', blocks_layout: { rightSidebar: ['aside'] } } },
+      { ...layout('templated', { rightSidebar: ['aside'] }), blockData: { templateId: '/t', readOnly: true, blocks_layout: { rightSidebar: ['aside'] } } },
       layout('plain', {}),
     ];
     expect(caseFor(blocks, 'rightSidebar')).toMatchObject({ blockId: 'plain' });
+  });
+
+  test("a block in a template's open slot is the page's own, so one holding blocks there wins", () => {
+    // A page's content in a slot carries the template's id, but it isn't
+    // locked: an editor empties its regions like any other block's.
+    const blocks = [
+      { ...layout('in-slot', { rightSidebar: ['aside'] }), blockData: { templateId: '/t', slotId: 'example', fixed: false, readOnly: false, blocks_layout: { rightSidebar: ['aside'] } } },
+      layout('plain', {}),
+    ];
+    expect(caseFor(blocks, 'rightSidebar')).toMatchObject({ blockId: 'in-slot' });
   });
 });
