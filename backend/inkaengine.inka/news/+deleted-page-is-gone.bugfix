@@ -1,0 +1,1 @@
+A page a content deploy deletes now answers 404. It used to redirect to its parent, which hid that the page was gone. A move still redirects to the new address, and a site sends a deleted page elsewhere with `redirects.json`. @djay

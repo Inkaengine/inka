@@ -315,7 +315,7 @@ def run_delta(
     except ValueError as exc:
         raise DeltaRefused(str(exc)) from exc
     # The layout's own redirects: classify only makes redirects for the moves
-    # and deletes it finds. A base built from live has no redirects.json, and
+    # it finds. A base built from live has no redirects.json, and
     # then every one is new; apply_redirects keeps any live already has.
     base_redirects_file = layout_prev / "redirects.json"
     plan.redirects += layout_redirects(

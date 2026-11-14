@@ -1829,6 +1829,7 @@ async function checkEditorRules(source, schemas, { exemptSlots = [], volto = loa
   const { normalizeSlateFields } = await import('@volto-hydra/helpers/slateStyles.js');
   const { createFieldRulesEnhancer } = await import('@volto-hydra/helpers/fieldRules.js');
   const { blockFieldErrors, registerRuleErrorValidators } = await import('@volto-hydra/helpers/blockFieldErrors.js');
+  const { mergeTemplatesIntoPage } = await import('@volto-hydra/helpers/mergeTemplates.js');
   if (volto) registerRuleErrorValidators(volto.config);
   // A schemas file carries schemaEnhancer RECIPES (plain data), and
   // buildBlockPathMap runs only enhancer FUNCTIONS — in the admin, blockSync
@@ -1876,9 +1877,69 @@ async function checkEditorRules(source, schemas, { exemptSlots = [], volto = loa
       _page: { ...withRules._page, blockSchema: { ...pageSchema, properties: { items: region } } },
     };
   };
-  for (const { rel, data } of onDisk ? walkData(source) : source) {
+  // Every page is checked as the editor opens it: merged into the layout its
+  // region forces (`allowedLayouts`) and into every template it uses, by the
+  // editor's own merge. A page never saved in the editor stores only its own
+  // blocks, marked with the slot each fills (a title for the layout's `hero`);
+  // a page saved in it stores the merged shape. Both are what a site holds,
+  // and only the merge puts either where the editor shows it.
+  const documents = onDisk ? [...walkData(source)] : source;
+  const byTemplateId = new Map(); // a document's path and resolveuid -> its data
+  for (const { data } of documents) {
+    if (!data) continue;
+    if (typeof data['@id'] === 'string') byTemplateId.set(new URL(data['@id'], 'http://x').pathname.replace(/\/+$/, ''), data);
+    if (data.UID) byTemplateId.set(`resolveuid/${data.UID}`, data);
+  }
+  const loadTemplate = async (templateId) => {
+    const key = templateId.startsWith('resolveuid/')
+      ? templateId
+      : new URL(templateId, 'http://x').pathname.replace(/\/+$/, '');
+    const template = byTemplateId.get(key);
+    if (!template) throw new Error(`template ${templateId} is not in the content being checked`);
+    return template;
+  };
+  const idFieldMap = idFieldMapFor(withRules);
+  const preloadedTemplates = {}; // the merge fills it: each template is loaded once
+  // The ids of every block a document stores, at any depth. The merge keeps
+  // those; a block it brings in from a template has an id the document never
+  // stored. That block is checked once, on the template it came from, and on
+  // the page only counts towards its region's maxLength.
+  const storedIds = (container, ids = new Set()) => {
+    for (const { id, block } of childEntries(container, idFieldMap)) {
+      ids.add(id);
+      storedIds(block, ids);
+    }
+    return ids;
+  };
+  // Mints the ids of blocks new to the page; the merge derives a template's
+  // blocks' ids itself, so this is only asked for an instance's.
+  let minted = 0;
+  const uuidGenerator = () => `minted-${(minted += 1)}`;
+  for (const { rel, data: stored } of documents) {
     stats.items += 1;
-    if (!data || !data.blocks) continue;
+    if (!stored || !stored.blocks) continue;
+    let data;
+    try {
+      ({ merged: data } = await mergeTemplatesIntoPage(stored, {
+        loadTemplate,
+        preloadedTemplates,
+        pageBlocksFields: pageSchema.properties || {},
+        uuidGenerator,
+        idFieldMap,
+        // As the editor opens a document to edit it: a template's own page is
+        // its definition, never merged against itself.
+        skipOwnTemplate: true,
+      }));
+    } catch (error) {
+      const missing = /^Template "(.+)" not found/.exec(error.message);
+      if (!missing) throw error;
+      errors.push(
+        `  ${rel}: uses the template ${missing[1]}, which is not in the content being checked — ` +
+          `the editor cannot open the page, so its rules were not checked`,
+      );
+      continue;
+    }
+    const own = storedIds(stored);
     const pathMap = buildBlockPathMap(data, schemasFor(data));
     // A template's own blocks: in the editor, editing the template unlocks them
     // (inheritFixed in blockPath.js), so their values are checked here too,
@@ -1892,16 +1953,27 @@ async function checkEditorRules(source, schemas, { exemptSlots = [], volto = loa
       // instance's blocks in the editor, it is not content) — its blocks are
       // checked where they actually live.
       if (!Array.isArray(info.path)) continue;
-      stats.blocks += 1;
       const blockData = info.path.reduce((node, key) => (node == null ? node : node[key]), data);
+      const where = info.parentId === '_page'
+        ? `the page's ${info.region}`
+        : `${pathMap[info.parentId]?.blockType ?? info.parentId}.${info.region}`;
+      const countTowardsMax = () => {
+        // Per container INSTANCE: two blocks of the same type each have their
+        // own region, and its own limit.
+        const key = `${info.parentId}\u0000${info.region}`;
+        const [count] = regionCounts.get(key) || [0];
+        regionCounts.set(key, [count + 1, info.maxSiblings, where]);
+      };
+      if (!own.has(uid)) {
+        if (typeof info.maxSiblings === 'number') countTowardsMax();
+        continue;
+      }
+      stats.blocks += 1;
       // A block in an exempt template slot is deliberately placed where the
       // editor would not put it (an example on a documentation page): its
       // PLACEMENT is not checked, and it does not count against maxLength.
       // Every other rule below still applies to it.
       const placementExempt = Boolean(blockData && exempt.has(blockData.slotId));
-      const where = info.parentId === '_page'
-        ? `the page's ${info.region}`
-        : `${pathMap[info.parentId]?.blockType ?? info.parentId}.${info.region}`;
       if (
         !placementExempt &&
         !info.allowedSiblingTypesDerived &&
@@ -1958,13 +2030,7 @@ async function checkEditorRules(source, schemas, { exemptSlots = [], volto = loa
           warnings.push(`  ${rel}: a "${info.blockType}" block (${uid}), ${field}: ${def.hydraRuleWarning}`);
         }
       }
-      if (typeof info.maxSiblings === 'number' && !placementExempt) {
-        // Per container INSTANCE: two blocks of the same type each have their
-        // own region, and its own limit.
-        const key = `${info.parentId}\u0000${info.region}`;
-        const [count] = regionCounts.get(key) || [0];
-        regionCounts.set(key, [count + 1, info.maxSiblings, where]);
-      }
+      if (typeof info.maxSiblings === 'number' && !placementExempt) countTowardsMax();
     }
     for (const [count, max, where] of regionCounts.values()) {
       if (count <= max) continue;
