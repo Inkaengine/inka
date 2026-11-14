@@ -23,6 +23,10 @@ const highlightIcon = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 2
 
 // Block icons hoisted to named consts so a docs literalinclude of a block
 // definition reads `icon: <name>Icon`, not a wall of inline SVG.
+
+// The fields every search facet has, which a conversion between facets maps.
+const FACET_BASE_FIELDS = { title: 'title', field: 'field' };
+
 export const sharedBlocksConfig = {
     // A labelled admonition box (note / tip / warning / important). The level is
     // the block's `variation`; the body is a slate value. Mirrors the myst
@@ -749,7 +753,7 @@ export const sharedBlocksConfig = {
             required: [],
         },
     },
-    video: { id: 'video', title: 'Video', group: 'common', blockSchema: { properties: {
+    video: { id: 'video', title: 'Video', group: 'common', mostUsed: true, blockSchema: { properties: {
         url: { title: 'Video URL', widget: 'url' },
         preview_image: { title: 'Preview image URL', widget: 'url' },
         align: { title: 'Alignment', widget: 'align' },
@@ -1080,6 +1084,8 @@ export const sharedBlocksConfig = {
     },
     // Listing item types — restricted child blocks, only usable inside listing containers
     summary: {
+        title: 'Summary',
+        group: 'common',
         restricted: true,
         fieldMappings: {
             '@default': { getURL: 'href', 'title': 'title', 'description': 'description', 'image': { field: 'image', type: 'image_link' } },
@@ -1095,6 +1101,8 @@ export const sharedBlocksConfig = {
         },
     },
     default: {
+        title: 'Default',
+        group: 'common',
         restricted: true,
         fieldMappings: {
             '@default': { getURL: 'href', 'title': 'title', 'description': 'description' },
@@ -1133,6 +1141,8 @@ export const sharedBlocksConfig = {
     },
     gridBlock: {
         id: 'gridBlock',
+        title: 'Grid',
+        mostUsed: true,
         // The chooser group, stated: a block's group is never made up.
         group: 'common',
         // Match Volto core's grid (allowedBlocks: ['image','listing','slate','teaser']).
@@ -1151,6 +1161,8 @@ export const sharedBlocksConfig = {
                     widget: 'blocks_layout',
                     itemTypeField: 'variation',  // sync trigger
                     allowedBlocks: ['slate', 'image', 'listing', 'teaser'],
+                    // A grid row holds at most four, as Volto's grid does.
+                    maxLength: 4,
                 },
                 variation: {
                     title: 'Item Type',
@@ -1175,6 +1187,7 @@ export const sharedBlocksConfig = {
     // for teasers via inheritSchemaFrom.parentControlled.teaser.
     teaser: {
         id: 'teaser',
+        mostUsed: true,
         // A listing renders each result as this type, so it must declare how a
         // result's fields land on it — that mapping is also what makes it
         // selectable in the Item Type widget (filterConvertibleFrom: '@default').
@@ -1243,6 +1256,7 @@ export const sharedBlocksConfig = {
     // Image block: parents declare claims via inheritSchemaFrom.parentControlled.image.
     image: {
         id: 'image',
+        mostUsed: true,
         // The chooser group, stated: a block's group is never made up.
         group: 'common',
         title: 'Image',
@@ -2036,28 +2050,49 @@ export const sharedBlocksConfig = {
             },
         },
     },
-    // No schema: the title and description blocks are windows onto the PAGE's
-    // own fields, and the admin's schema for them carries the field and its
-    // canvas placeholder. A schema sent here would replace it.
+    // The title and description blocks are windows onto the PAGE's own fields:
+    // each schema names that field, and its placeholder is the canvas's hint.
+    // Inka's admin declares no blocks of its own, so the frontend says this.
     title: {
       id: 'title',
       title: 'Title',
       group: 'text',
       restricted: true,
+      blockSchema: {
+        fieldsets: [{ id: 'default', title: 'Default', fields: ['title'] }],
+        properties: {
+          title: { title: 'Title', type: 'string', placeholder: 'Type the title…' },
+        },
+        required: [],
+      },
     },
     description: {
       id: 'description',
       title: 'Description',
       group: 'text',
       restricted: true,
+      blockSchema: {
+        fieldsets: [{ id: 'default', title: 'Default', fields: ['description'] }],
+        properties: {
+          description: { title: 'Description', type: 'string', widget: 'textarea', placeholder: 'Add a description…' },
+        },
+        required: [],
+      },
     },
     leadimage: {
       id: 'leadimage',
       title: 'Lead image',
       group: 'media',
       restricted: true,
-      blockSchema: { fieldsets: [], properties: {
-          align: { title: 'Alignment', widget: 'align' },}, required: [] },
+      // Its one field in a fieldset: a form draws only the fields its
+      // fieldsets list, and Volto's draws none at all without one (it read
+      // the first fieldset's id and threw). The admin's own lead image editor
+      // drew this sidebar until the admin stopped registering the block.
+      blockSchema: {
+        fieldsets: [{ id: 'default', title: 'Default', fields: ['align'] }],
+        properties: { align: { title: 'Alignment', widget: 'align' } },
+        required: [],
+      },
     },
     // Which page date field to show — the block's own setting.
     dateField: {
@@ -2310,10 +2345,20 @@ export const sharedBlocksConfig = {
     // Search facet types. Copied from docs/examples/block-definitions.json, which
     // is what the docs example frontends load — these four lived only there, so
     // any frontend using THIS registry reported them as unregistered.
+    //
+    // A facet converts to another through checkboxFacet: the mappings carry the
+    // fields every facet has (a mapping makes the edge; fields of the same name
+    // carry across unmapped anyway, `hidden` among them).
     checkboxFacet: {
         id: 'checkboxFacet',
         title: 'Checkboxes',
+        group: 'common',
         restricted: true,
+        fieldMappings: {
+            selectFacet: FACET_BASE_FIELDS,
+            daterangeFacet: FACET_BASE_FIELDS,
+            toggleFacet: FACET_BASE_FIELDS,
+        },
         blockSchema: {
             fieldsets: [{ id: 'default', title: 'Default', fields: ['title', 'field', 'multiple', 'hidden'] }],
             properties: {
@@ -2328,7 +2373,9 @@ export const sharedBlocksConfig = {
     selectFacet: {
         id: 'selectFacet',
         title: 'Select',
+        group: 'common',
         restricted: true,
+        fieldMappings: { checkboxFacet: FACET_BASE_FIELDS },
         blockSchema: {
             fieldsets: [{ id: 'default', title: 'Default', fields: ['title', 'field', 'hidden'] }],
             properties: {
@@ -2342,7 +2389,9 @@ export const sharedBlocksConfig = {
     daterangeFacet: {
         id: 'daterangeFacet',
         title: 'Date range',
+        group: 'common',
         restricted: true,
+        fieldMappings: { checkboxFacet: FACET_BASE_FIELDS },
         blockSchema: {
             fieldsets: [{ id: 'default', title: 'Default', fields: ['title', 'field', 'hidden'] }],
             properties: {
@@ -2356,7 +2405,9 @@ export const sharedBlocksConfig = {
     toggleFacet: {
         id: 'toggleFacet',
         title: 'Toggle',
+        group: 'common',
         restricted: true,
+        fieldMappings: { checkboxFacet: FACET_BASE_FIELDS },
         blockSchema: {
             fieldsets: [{ id: 'default', title: 'Default', fields: ['title', 'field', 'hidden'] }],
             properties: {

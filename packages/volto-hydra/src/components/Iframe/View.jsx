@@ -341,6 +341,7 @@ import slateTransforms from '../../utils/slateTransforms';
 import OpenObjectBrowser from './OpenObjectBrowser';
 import SyncedSlateToolbar from '../Toolbar/SyncedSlateToolbar';
 import { getBlockTypeSchema } from '../../utils/blockPath';
+import { copyTranslationBlocks } from '../../utils/copyTranslationBlocks';
 import { removeReplacedPlaceholder, buildBlockPathMap, buildIdFieldMap, stripBlockPathMapForPostMessage, getBlockByPath, getBlockById, updateBlockById, getChildBlockIds, getContainerFieldConfig, getSelectAfterDelete, insertBlockInContainer, deleteBlockFromContainer, mutateBlockInContainer, ensureEmptyBlockIfEmpty, ensureAllContainersHaveBlocks, initializeContainerBlock, moveBlockBetweenContainers, reorderBlocksInContainer, getAllContainerFields, insertTableColumn, deleteTableColumn, removeTemplateInstance, getContainerItems, getResolvedSchema, getCommonAncestor, wrapBlocksInContainer, unwrapContainer, getEmptyBlockType, getContainerRegionDescriptors, inheritTemplateMembershipDeep, freshNestedInstances } from '../../utils/blockPath';
 import { mergeAnchorsIntoContent } from '../../utils/linkableAnchors';
 import { heldImages, onImageHeld } from '../../utils/pendingImages';
@@ -4589,6 +4590,14 @@ const Iframe = (props) => {
             // Store prepared formData with empty blocks already added
             formData: formWithDefaults,
             blockPathMap: initialBlockPathMap,
+            // A translation just created by Add has none of the original's
+            // blocks: its editor copies them in, now that the frontend has said
+            // what they are (copyTranslationBlocks). Add sends the original in
+            // the navigation to this editor and only there, so editing the
+            // translation later never copies over the translator's work. (Not
+            // "the page has no blocks": the Add form seeds an empty text block
+            // into a page with none, and saves it.)
+            copyTranslationFrom: history.location.state?.copyTranslationFrom || null,
           };
           // Trigger the sync effect to fetch templates (if any) and merge
           setTemplateSyncTrigger(prev => prev + 1);
@@ -4782,10 +4791,26 @@ const Iframe = (props) => {
       return;
     }
 
+    // A new translation: the original's blocks, copied in before the
+    // template merge (see INIT, copyTranslationFrom). Its blocks replace the
+    // page's own; any template they bring in is loaded by the merge.
+    const withTranslationCopy = async (formData, copyFrom, api) => {
+      if (!copyFrom) return formData;
+      const original = await api.get(copyFrom);
+      const { blocks, items } = copyTranslationBlocks(
+        original, config.blocks.blocksConfig, intl, uuid,
+      );
+      return {
+        ...formData,
+        blocks,
+        blocks_layout: { ...formData.blocks_layout, items },
+      };
+    };
+
     // INITIAL_DATA sending - consolidated to this ONE place
     // Handles: no templates, templates loading, templates already cached
     if (pendingInitialDataRef.current) {
-      const { source, origin, formData: preparedFormData, blockPathMap: preparedBlockPathMap } = pendingInitialDataRef.current;
+      const { source, origin, formData: preparedFormData, blockPathMap: preparedBlockPathMap, copyTranslationFrom } = pendingInitialDataRef.current;
       const templateIds = getUniqueTemplateIds(preparedFormData);
       const unloadedTemplates = templateIds.filter(id => templateCacheRef.current[id] === undefined);
 
@@ -4817,8 +4842,10 @@ const Iframe = (props) => {
             return template;
           };
 
+          const pageFormData = await withTranslationCopy(preparedFormData, copyTranslationFrom, api);
+
           // Merge templates with forced layouts
-          const { merged: mergedFormData } = await mergeTemplatesIntoPage(preparedFormData, {
+          const { merged: mergedFormData } = await mergeTemplatesIntoPage(pageFormData, {
             loadTemplate,
             preloadedTemplates: templateCacheRef.current,
             pageBlocksFields,
@@ -4900,7 +4927,8 @@ const Iframe = (props) => {
           return;
         }
 
-        const { source, origin, formData: baseFormData } = pendingInitialDataRef.current;
+        const { source, origin, formData: preparedFormData, copyTranslationFrom } = pendingInitialDataRef.current;
+        const baseFormData = await withTranslationCopy(preparedFormData, copyTranslationFrom, api);
         const toolbarButtons = config.settings.slate?.toolbarButtons || [];
 
         // Update template cache

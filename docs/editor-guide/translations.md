@@ -47,7 +47,7 @@ Open **Manage translations** from the toolbar's **More** menu. It lists every la
 
 There are two ways a page gets a translation:
 
-- **Translate it.** In **Manage translations**, use the translate link next to a language that has none yet. Inka creates the translation in that language's tree, linked to the original, with a copy of the original's blocks to translate from, and opens it in the editor. Folders and images can be translated too; a translated image gets a file of its own.
+- **Translate it.** In **Manage translations**, use the translate link next to a language that has none yet. Inka creates the translation in that language's tree, linked to the original, and opens it in the editor with a copy of the original's blocks to translate from. The copy is saved when you save the page. Folders and images can be translated too; a translated image gets a file of its own.
 - **Link an existing page.** When both pages were written separately, use **Link** next to the language and pick the page. The two become translations of each other, both ways. **Unlink** separates them again.
 
 ## Fields shared between languages

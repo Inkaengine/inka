@@ -102,7 +102,9 @@ Defaults and side effects:
 
 ### `blocks` — block type registry
 
-Defines or overrides individual block types. Each key is the block type name (matching what appears in `allowedBlocks` and `@type` on saved blocks).
+Defines the block types your frontend renders. Each key is the block type name (matching what appears in `allowedBlocks` and `@type` on saved blocks).
+
+Inka's admin registers only two blocks itself: `slate` (the rich text every region's text is written in) and `listing`. Every other block your content uses — a title, an image, a teaser, a table of contents, a search and its facets — is yours to declare here, with its `title`, `group` and `blockSchema`. The editor knows nothing else.
 
 ### Js
 
@@ -116,7 +118,7 @@ blocks: {
     mostUsed: true,
     blockSchema: { properties: { /* fields */ } },
   },
-  toc: {                             // override a built-in block
+  listing: {                         // override a built-in block
     blockSchema: { /* YOUR fields — see "Overriding a built-in block" */ },
   },
 }
@@ -138,21 +140,30 @@ Per-block options (most are passed through to Volto's block config):
 - **\`fieldMappings\`** — block-to-block conversion rules. See [Block conversion and fieldMappings](#block-conversion-and-fieldmappings) below.
 - **\`schemaEnhancer\`** — recipe-based schema modifier; supports `fieldRules`, `inheritSchemaFrom`, etc. See [Schema Enhancers](#schema-enhancers).
 
-`page` and `blocks` interact via name lookup: a region's `allowedBlocks: ['slate', 'slider']` references keys of the `blocks` registry. You can use one without the other — `page` alone restricts placement of built-in blocks; `blocks` alone registers custom types and gets a default `blocks_layout` region accepting everything.
+`page` and `blocks` interact via name lookup: a region's `allowedBlocks: ['slate', 'slider']` references keys of the `blocks` registry. You can use one without the other — `page` alone places only the two built-in blocks; `blocks` alone registers custom types and gets a default `blocks_layout` region accepting everything.
 
-### Overriding a built-in block
+### Title and description blocks
 
-Your frontend is the thing that renders, so it decides what an author can set. Give a built-in block a `blockSchema` and **your schema is the whole schema**: the sidebar shows your fields and nothing else.
+A page's title and description are its own fields, not block data. A frontend that draws them as blocks on the canvas declares a block for each whose schema names that page field; its placeholder is the hint an author sees on an empty one:
 
 ### Js
 
 ```js
 blocks: {
-  toc: {
+  title: {
+    id: 'title', title: 'Title', group: 'text', restricted: true,
     blockSchema: {
-      fieldsets: [{ id: 'default', title: 'Default', fields: ['levels'] }],
+      fieldsets: [{ id: 'default', title: 'Default', fields: ['title'] }],
+      properties: { title: { title: 'Title', type: 'string', placeholder: 'Type the title…' } },
+      required: [],
+    },
+  },
+  description: {
+    id: 'description', title: 'Description', group: 'text', restricted: true,
+    blockSchema: {
+      fieldsets: [{ id: 'default', title: 'Default', fields: ['description'] }],
       properties: {
-        levels: { title: 'Heading levels', type: 'array', items: { choices: [['h2', 'Heading 2']] } },
+        description: { title: 'Description', type: 'string', widget: 'textarea', placeholder: 'Add a description…' },
       },
       required: [],
     },
@@ -160,7 +171,9 @@ blocks: {
 }
 ```
 
-That sidebar offers `levels`. It does not offer the admin's `hide_title`, `ordered`, `title` or `variation`, because your frontend never said it renders them.
+### Overriding a built-in block
+
+The built-in blocks are `slate` and `listing`. Your frontend is the thing that renders, so it decides what an author can set. Give one a `blockSchema` and **your schema is the whole schema**: the sidebar shows your fields and nothing else — a listing's, for one, is in [Listings](./listings.md).
 
 This is deliberate: before, the admin's fields were merged in and its edit component kept rendering the sidebar, so an author was offered settings the frontend could not honour — they ticked a box and the page did not change.
 
@@ -173,7 +186,7 @@ An entry for a block the admin already has applies key by key:
 - **Any other key** (`title`, `group`, `fieldMappings`, `allowedBlocks`…) — replaces that key. Send every `fieldMappings` source type you want, including the admin's own conversions.
 - **A key you don't send** — the admin's value stands: a built-in block keeps its name, group and schema.
 
-Don't send an empty `blockSchema` just to register a built-in block: it replaces the admin's (for `title` and `description`, the page field and its placeholder). An entry carrying only rules adds them:
+Don't send an empty `blockSchema` just to register a built-in block: it replaces the admin's. An entry carrying only rules adds them:
 
 ### Js
 
@@ -856,6 +869,23 @@ Each key in `fieldMappings` is either a **specific block type name**, **\`@defau
 ### `@default` — the canonical content shape
 
 `@default` is a virtual type representing a linked content item's fields — what a catalog **search** returns: `getURL` (its address), `title`, `description`, `image`, `Subject` (tags), `created`/`effective` dates, and so on. A block with `fieldMappings['@default']` is saying "I can be populated from a content item." The keys are these catalog field names — not this block's own field names (e.g. `label`, `field`, `required` are not content metadata and are invalid).
+
+Inka knows the catalog fields every Plone site has: `getURL`, `title`, `description`, `image`, `hasPreviewImage`, `Subject`, `created`, `modified`, `effective`, `expires`, `start` and `end`. It can't know your site's own: a site adds metadata columns (a file's type, a page count). Declare those where your mapping widget offers its sources, in its `sourceFields`, with the type of value they hold; a `@default` key may then name them, and that type decides how they convert:
+
+### Js
+
+```js
+fieldMapping: {
+  widget: 'field_mapping',
+  sourceFields: {
+    getURL: { title: 'Address', type: 'string' },
+    title: { title: 'Title', type: 'string' },
+    mime_type: { title: 'File type', type: 'string' },   // the site's own column
+  },
+},
+```
+
+A `@default` key that is neither stops the editor loading, naming it.
 
 The address is `getURL`, not `@id`, though a result carries it as `@id`: Plone reads every `@id` in a block's stored data as a link, and a listing stores its mapping, so a mapping keyed `@id` couldn't be saved. A config that still maps from `@id` stops the editor loading, naming the entry; a stored mapping keyed `@id` makes the listing throw.
 

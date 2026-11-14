@@ -89,6 +89,7 @@ export { getFieldType, getMappingTarget } from './copyFromTargetMapping.js';
 // directly). Re-exported here for backward compat; that module is the SSOT.
 export {
   DEFAULT_TYPE_FIELDS,
+  catalogSourceKinds,
   hasValidDefault,
   shapeSignature,
   getConvertibleTypes,
@@ -100,6 +101,7 @@ export {
 import {
   widgetToTargetType,
   DEFAULT_TYPE_FIELDS,
+  catalogSourceKinds,
   getConvertibleTypes,
   hasValidDefault,
 } from './conversionValidation.js';
@@ -2192,6 +2194,7 @@ export function getConversionMap(blocksConfig) {
  */
 function findConversionPath(sourceType, targetType, blocksConfig) {
   if (sourceType === targetType) return [sourceType];
+  const catalogKinds = catalogSourceKinds(blocksConfig);
 
   // BFS to find path, prioritizing direct mappings over default
   const queue = [[sourceType]];
@@ -2212,8 +2215,8 @@ function findConversionPath(sourceType, targetType, blocksConfig) {
       if (blockConfig.fieldMappings[currentType]) {
         directTargets.push(blockType);
       } else if (blockConfig.fieldMappings['@default'] &&
-                 hasValidDefault(blockConfig) &&
-                 hasValidDefault(blocksConfig[currentType])) {
+                 hasValidDefault(blockConfig, catalogKinds) &&
+                 hasValidDefault(blocksConfig[currentType], catalogKinds)) {
         defaultTargets.push(blockType);
       }
     }
