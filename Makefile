@@ -157,7 +157,7 @@ ci-acceptance-test: ## Run cypress tests in headless mode for CI
 # Next.js
 .PHONY: example-nextjs-admin
 example-nextjs-admin: ## Starts Volto, allowing reloading of the add-on during development
-	RAZZLE_DEFAULT_IFRAME_URL=http://localhost:3002 pnpm start
+	RAZZLE_DEFAULT_IFRAME_URL=http://localhost:3002 RAZZLE_TEMPLATES_PATH=/templates RAZZLE_TEMPLATE_TYPE=Template pnpm start
 
 .PHONY: example-nextjs-frontend
 example-nextjs-frontend: ## Starts nextjs example frontend
@@ -166,7 +166,7 @@ example-nextjs-frontend: ## Starts nextjs example frontend
 # Nuxt
 .PHONY: example-nextjs-admin
 example-nuxt-admin:
-	RAZZLE_DEFAULT_IFRAME_URL=http://localhost:3002 pnpm start
+	RAZZLE_DEFAULT_IFRAME_URL=http://localhost:3002 RAZZLE_TEMPLATES_PATH=/templates RAZZLE_TEMPLATE_TYPE=Template pnpm start
 
 .PHONY: example-nuxt-frontend
 example-nuxt-frontend: ## Starts nuxt example frontend

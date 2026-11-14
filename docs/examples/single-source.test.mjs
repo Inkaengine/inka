@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeAll } from 'vitest';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
-import { readTree, schemaRegistryFromBlockDefinitions } from '../../lib/markdown-mount.mjs';
+import { readTree, schemaRegistryFromBlockDefinitions } from '../../packages/blockmd/markdown-mount.mjs';
 import { sharedBlocksConfig } from '../../tests-playwright/fixtures/shared-block-schemas.js';
 
 // Every block example page carries the block-reference-layout template. Find
@@ -25,7 +25,9 @@ const codeExamples = (page, slotId) =>
 
 let examplePages;
 beforeAll(() => {
-  const { items } = readTree(DOCS, { schemaFor });
+  // Inka's docs use Plone's own types, folderish as Plone makes them.
+  const isFolderish = (type) => !['Image', 'File', 'Link', 'Collection'].includes(type);
+  const { items } = readTree(DOCS, { schemaFor, isFolderish });
   examplePages = [...items].filter(([id, p]) => id.startsWith('/examples/') && usesTemplate(p));
 });
 

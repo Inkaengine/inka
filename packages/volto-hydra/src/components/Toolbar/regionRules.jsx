@@ -1,6 +1,6 @@
 import React from 'react';
 import { useHydraSchemaContext } from '../../context';
-import { isStyleAllowed } from '../../../../hydra-js/slateStyles.js';
+import { isStyleAllowed } from '@volto-hydra/helpers/slateStyles.js';
 
 /**
  * The slate rules of the region the block being edited sits in.

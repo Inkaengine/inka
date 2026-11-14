@@ -28,12 +28,7 @@ import Toast from '@plone/volto/components/manage/Toast/Toast';
 import { Form } from '@plone/volto/components/manage/Form';
 
 import { getBaseUrl, flattenToAppURL } from '@plone/volto/helpers/Url/Url';
-import {
-  cloneBlocksForTranslation,
-  withFieldsReadOnly,
-  sourceFingerprint,
-} from '@volto-hydra/helpers';
-import { buildIdFieldMap, getBlockTypeSchema } from '../../../../../utils/blockPath';
+import { withFieldsReadOnly } from '@volto-hydra/helpers';
 import {
   getBlocksFieldname,
   getBlocksLayoutFieldname,
@@ -185,9 +180,17 @@ class Add extends Component {
       const newContent = nextProps.content;
       const hasBlockEditor = !!newContent?.blocks_layout;
       const newUrl = flattenToAppURL(newContent['@id']);
+      // A translation opens its editor told which page to copy the blocks
+      // from: it was created without them (see render). Only this first
+      // navigation carries it, so editing a translation later never copies
+      // over the translator's work.
+      const translationObject = this.props.location?.state?.translationObject;
       this.props.history.push(
         this.props.returnUrl ||
           (hasBlockEditor ? `${newUrl}/edit` : newUrl),
+        hasBlockEditor && translationObject?.['@id']
+          ? { copyTranslationFrom: flattenToAppURL(translationObject['@id']) }
+          : undefined,
       );
     }
 
@@ -332,39 +335,18 @@ class Add extends Component {
         });
       }
 
-      // Copy the original's blocks for the translator to work on.
-      //
-      // HYDRA: through the container API, so a container's CHILDREN are copied
-      // under new ids too. Volto's own loop renames only what blocks_layout
-      // lists, which leaves every nested block sharing its id with the block it
-      // was copied from — and a uid that names a block on two pages breaks
-      // selection, inline editing and the bridge, all of which address blocks
-      // by uid. Each copy keeps `@canonical`, the id it came from.
+      // A translation is created with NO blocks. The original's blocks are
+      // copied in by the editor that opens next (copyTranslationFrom, below):
+      // copying needs each block type's definition (new ids for its regions,
+      // a fingerprint of the fields a translator rewrites) and the definitions
+      // come from the frontend, which connects in the editor, not on this
+      // form. Saving them here saved blocks the admin had not been told about:
+      // the page's search text could not be read from them (#634), and their
+      // fingerprints were quietly left out. Nothing is lost by waiting: the
+      // translator does the translating in the editor, and saves it there.
       if (translationObject && blocksFieldname && blocksLayoutFieldname) {
-        const copied = cloneBlocksForTranslation(
-          translationObject[blocksFieldname],
-          translationObject[blocksLayoutFieldname]?.items || [],
-          uuid,
-          buildIdFieldMap(config.blocks.blocksConfig, this.props.intl),
-          // What each copy was made FROM, so the editor can later be told which
-          // blocks the original has moved on from. A type with no schema here
-          // records nothing rather than a fingerprint over fields we cannot
-          // tell apart.
-          (sourceBlock, id, type) => {
-            const schema = getBlockTypeSchema(
-              type,
-              this.props.intl,
-              config.blocks.blocksConfig,
-            );
-            return schema ? sourceFingerprint(sourceBlock, schema) : null;
-          },
-        );
-        initialBlocks = copied.blocks;
-        initialBlocksLayout = copied.layout;
-        // Volto's copy also stamps each block's own `block` key with its uid.
-        for (const [uid, block] of Object.entries(initialBlocks)) {
-          block.block = uid;
-        }
+        initialBlocks = {};
+        initialBlocksLayout = [];
       }
 
       const languageIndependentFields = translationObject
@@ -407,19 +389,27 @@ class Add extends Component {
             type={this.props.type}
             formData={
               this.props.location?.state?.initialFormData || {
-                ...(blocksFieldname && {
-                  [blocksFieldname]:
+                // Only blocks the type itself starts with. With none, the
+                // fields are left out, so the form doesn't seed its empty-page
+                // block into a page that isn't made yet: the page is created
+                // empty, and the editor fills it when it opens, as it does any
+                // empty page or region.
+                ...(blocksFieldname &&
+                  blocksLayoutFieldname &&
+                  !isEmpty(
                     initialBlocks ||
-                    this.props.schema.properties[blocksFieldname]?.default,
-                }),
-                ...(blocksLayoutFieldname && {
-                  [blocksLayoutFieldname]: {
-                    items:
-                      initialBlocksLayout ||
-                      this.props.schema.properties[blocksLayoutFieldname]
-                        ?.default?.items,
-                  },
-                }),
+                      this.props.schema.properties[blocksFieldname]?.default,
+                  ) && {
+                    [blocksFieldname]:
+                      initialBlocks ||
+                      this.props.schema.properties[blocksFieldname]?.default,
+                    [blocksLayoutFieldname]: {
+                      items:
+                        initialBlocksLayout ||
+                        this.props.schema.properties[blocksLayoutFieldname]
+                          ?.default?.items,
+                    },
+                  }),
                 // Copy the Language Independent Fields values from the to-be translated content
                 // into the default values of the translated content Add form.
                 ...lifData(),

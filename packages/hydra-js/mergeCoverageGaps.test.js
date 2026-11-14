@@ -31,6 +31,7 @@ describe('gap #2 — object_list slot placeholder filled from user content', () 
     };
     const result = expandEveryContainer(['s1', 's2'], {
       blocks: pageBlocks, templates: { '/t/slider': template }, templateState: {}, allowedLayouts: ['/t/slider'],
+      idFieldMap: { slider: { slides: '@id' } },
     });
     const slider = result.find((b) => b['@type'] === 'slider');
     expect(slider).toBeDefined();

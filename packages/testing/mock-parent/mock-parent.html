@@ -1,0 +1,1279 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Mock Parent Window - Hydra Format Testing</title>
+  <style>
+    /* Mirror Volto's iframe-host layout (packages/volto-hydra/src/components/Iframe/styles.css):
+       body is a flex column that fills the viewport with overflow:hidden,
+       and the iframe-container/iframe expand to fill it. This stops the
+       parent page from being scrollable — without it, Playwright's
+       auto-scroll-to-target on Firefox would shift the iframe in the
+       viewport AFTER the admin had already placed overlays at the
+       pre-scroll position, causing a 29px outline-vs-block mismatch. */
+    html, body {
+      height: 100vh;
+      margin: 0;
+      overflow: hidden;
+    }
+    body {
+      font-family: Arial, sans-serif;
+      padding: 20px;
+      box-sizing: border-box;
+      display: flex;
+      flex-direction: column;
+    }
+    h1 {
+      font-size: 20px;
+      margin: 0 0 10px;
+      flex-shrink: 0;
+    }
+    body > p {
+      flex-shrink: 0;
+      margin: 0 0 10px;
+    }
+    #iframe-container {
+      border: 2px solid #ccc;
+      margin-top: 20px;
+      flex: 1;
+      min-height: 0;
+      overflow: hidden;
+      display: flex;
+    }
+    iframe {
+      width: 100%;
+      height: 100%;
+      border: none;
+    }
+    /* Log overlays the bottom of the viewport so it doesn't push the
+       iframe up. It scrolls within itself. pointer-events: none so
+       it doesn't intercept clicks on iframe content underneath
+       (mock-hero-block's buttonText sits near the bottom of the
+       iframe content area and would otherwise be unclickable). */
+    #log {
+      position: fixed;
+      left: 20px;
+      right: 20px;
+      bottom: 20px;
+      padding: 10px;
+      background: #f0f0f0;
+      font-family: monospace;
+      font-size: 12px;
+      max-height: 200px;
+      overflow-y: auto;
+      z-index: 500;
+      opacity: 0.92;
+      pointer-events: none;
+    }
+    .log-entry {
+      margin: 2px 0;
+    }
+    .log-sent {
+      color: blue;
+    }
+    .log-received {
+      color: green;
+    }
+    /* Block UI overlays - minimal versions for testing */
+    .quanta-toolbar {
+      position: fixed;
+      background: #007eb1;
+      padding: 4px 8px;
+      border-radius: 4px;
+      display: none;
+      z-index: 1000;
+    }
+    .volto-hydra-block-outline {
+      position: fixed;
+      border: 2px solid #007eb1;
+      pointer-events: none;
+      display: none;
+      z-index: 999;
+    }
+    .volto-hydra-add-button {
+      position: fixed;
+      background: rgba(200, 200, 200, 0.5);   /* View.jsx */
+      color: #666;
+      width: 30px;          /* View.jsx: const buttonWidth = 30 */
+      height: 30px;         /* View.jsx: const buttonHeight = 30 */
+      border-radius: 50%;
+      display: none;
+      z-index: 10;          /* View.jsx zIndex: 10, not 1000 */
+      text-align: center;
+      line-height: 30px;
+    }
+  </style>
+</head>
+<body>
+  <h1>Mock Parent Window - Testing Hydra Format Protocol</h1>
+  <p>This page mocks the Admin UI parent window to test iframe formatting without Volto.</p>
+
+  <!-- Block UI overlays -->
+  <div class="quanta-toolbar" id="quanta-toolbar">Toolbar</div>
+  <div class="volto-hydra-block-outline" id="block-outline"></div>
+  <div class="volto-hydra-add-button" id="add-button">+</div>
+
+  <div id="iframe-container"></div>
+
+  <div id="log">
+    <div class="log-entry"><span style="font-weight: bold">Message Log:</strong></div>
+  </div>
+
+  <script type="module">
+    import { buildBlockPathMap, buildIdFieldMap } from '/inka-mock-parent/build-block-path-map.js';
+    import { mergeTemplatesIntoPage } from '/inka-mock-parent/merge-templates.js';
+    import { mergeFrontendBlock } from '/inka-mock-parent/merge-frontend-block.js';
+    import {
+      getAllContainerFields,
+      getChildBlockIds,
+      getChildBlockIdsInField,
+      ensureEmptyBlockIfEmpty,
+      stripBlockPathMapForPostMessage,
+    } from '/inka-mock-parent/block-path.js';
+    import { deleteBlocks } from '/inka-mock-parent/block-sync.js';
+    import { getAtPath } from '/inka-mock-parent/helpers.js';
+
+    /**
+     * The block path map as the admin posts it: without the functions a
+     * resolved schema can carry (an enhancer), which postMessage can't clone.
+     * Posting one raw threw DataCloneError and the bridge never connected (inka#652).
+     */
+    const postableBlockPathMap = (formData) =>
+      stripBlockPathMapForPostMessage(buildBlockPathMap(formData, mockBlocksConfig));
+
+    // Configure iframe frontend from ?frontend= URL param. The default is the
+    // origin THIS page is served from — vite injects it (see vite.config.js), and
+    // it is also just window.location.origin, since the mock parent and the test
+    // frontend are the same server. It used to be a literal localhost:8889, so a
+    // run on an overridden port (HYDRA_TEST_FRONTEND_PORT) framed a dead server
+    // unless the caller remembered ?frontend=.
+    const params = new URLSearchParams(window.location.search);
+    const frontendOrigin =
+      params.get('frontend') || window._frontendOrigin || window.location.origin;
+    const contentName = params.get('content'); // e.g., 'examples' loads /examples.json
+    const apiPath = params.get('api_path'); // e.g., '/block/toc-block' loads from API
+    // Frame the iframe at a specific frontend route independent of where the
+    // content comes from. A ?content= fixture otherwise always frames the default
+    // path; the quickstart nuxt starter serves its snippet at its own route, so
+    // the test needs to point the iframe there while still loading card.json.
+    const contentPathParam = params.get('content_path');
+    const adminOrigin = window.location.origin;
+
+    // Derive API origin from api_path param if present, otherwise default
+    // Same lesson as the frontend origin above: ports are overridable
+    // (HYDRA_MOCK_API_PORT), so the fallback comes from the vite-injected
+    // _apiOrigin — a literal 8888 sent every overridden run to a dead port
+    // ("Failed to load API content", no #previewIframe, whole-suite failures).
+    const apiOrigin = apiPath
+      ? new URL(apiPath).origin
+      : (window._apiOrigin || 'http://localhost:8888');
+
+    // Derive content path from api_path (e.g. "http://localhost:8891/blog" → "/blog")
+    // Falls back to /_test_data/test-page for hydra's own test content
+    const contentPath = contentPathParam || (apiPath ? new URL(apiPath).pathname : '/_test_data/test-page');
+
+    // Create iframe dynamically so name is set BEFORE the browsing context is created.
+    // Setting iframe.name after the element is in the DOM doesn't propagate to contentWindow.name.
+    function createIframe() {
+      const previewIframe = document.createElement('iframe');
+      previewIframe.id = 'previewIframe';
+      previewIframe.name = `hydra-edit:${adminOrigin}`;
+      previewIframe.src = `${frontendOrigin}${contentPath}?_edit=true&_admin_origin=${adminOrigin}&_api_origin=${apiOrigin}&_hydra_debug=1`;
+      document.getElementById('iframe-container').appendChild(previewIframe);
+    }
+
+    // Create iframe immediately if no content to fetch, otherwise after load
+    if (!contentName && !apiPath) {
+      createIframe();
+    }
+
+    console.log('[MOCK_PARENT] Loaded');
+
+    // NOTE: No addNodeIds here — hydra.js adds nodeIds to all slate fields
+    // when it receives FORM_DATA, so the mock parent (acting as admin) should
+    // send plain Slate JSON without nodeIds, just like the real admin does.
+
+    // Track which block keys arrived via frontend INIT vs. live in this
+    // baseline. Sanity discovery uses this to ignore mock-parent's test
+    // fixtures (hero, slate, mock-*) when checking that every frontend-
+    // registered block type has a content example.
+    const frontendBlockKeys = new Set();
+    // cssClasses of the style menu the frontend declares at INIT (#295).
+    const styleMenuClasses = new Set();
+
+    // The block types the real admin has built in (Volto core's blocksConfig +
+    // volto-hydra's index.js). A frontend entry for one of these ADDS to the
+    // admin's block, so it needs no title or group of its own; one for any
+    // other type is a new block and must bring both (mergeFrontendBlock).
+    // The baseline below stands in for only some of them.
+    const ADMIN_BUILT_IN_BLOCK_TYPES = new Set([
+      'checkboxFacet', 'daterangeFacet', 'default', 'description', 'gridBlock',
+      'html', 'image', 'leadimage', 'listing', 'maps', 'search', 'selectFacet',
+      'slate', 'slateTable', 'summary', 'teaser', 'title', 'toc', 'toggleFacet',
+      'video',
+    ]);
+
+    // blocksConfig for schema-driven buildBlockPathMap (no Volto deps)
+    const mockBlocksConfig = {
+      _page: {
+        schema: () => ({
+          // `title` / `description` are the PAGE's own metadata, annotated by the
+          // title/description blocks as `data-edit-text="/title"` and
+          // `"/description"`. They have to be declared here for the same reason a
+          // block's fields do: getFieldType resolves a `/`-scoped name against the
+          // page schema, and an undeclared field is never made contenteditable.
+          properties: {
+            items: { widget: 'blocks_layout' },
+            title: { title: 'Title', type: 'string' },
+            description: { title: 'Description', type: 'string' },
+            // …and the rest of the page's own fields, for the same reason. In
+            // the real admin these come from the CONTENT TYPE schema (View.jsx
+            // extractBlockFieldTypes: "page-level field types from content type
+            // schema … accessed via /fieldName"), so a Plone News Item just HAS
+            // `effective` and a dateField block can edit it. The mock parent
+            // stands in for the admin here, so it has to supply them itself —
+            // a frontend cannot, since its INIT `page` schema declares BLOCKS
+            // FIELDS and the admin turns every entry there into a region.
+            effective: { title: 'Publication date', type: 'string' },
+            created: { title: 'Created', type: 'string' },
+            modified: { title: 'Modified', type: 'string' },
+            start: { title: 'Start', type: 'string' },
+            end: { title: 'End', type: 'string' },
+            location: { title: 'Location', type: 'string' },
+            contact_name: { title: 'Contact name', type: 'string' },
+            contact_phone: { title: 'Contact phone', type: 'string' },
+          },
+        }),
+      },
+      slate: {
+        id: 'slate',
+        // Mirrors the real admin (volto-hydra index.js): a new text block starts
+        // as one empty paragraph. A frontend's config arrives as JSON and can't
+        // carry this function, so without the mirror a region refilled with a
+        // text block gets a bare {"@type":"slate"} the admin never makes.
+        initialValue: ({ value }) => ({
+          ...value,
+          value: value.value || [{ type: 'p', children: [{ text: '' }] }],
+        }),
+        blockSchema: {
+          properties: {
+            value: { widget: 'slate' },
+            // Mirrors the real admin's slate schema factory (#335): the
+            // permanent fragment id a frontend renders on the block. Without
+            // the mirror, any fixture storing an anchor is flagged as an
+            // undeclared field by block-sanity's stray-field check.
+            anchor: { title: 'Anchor', type: 'string' },
+          },
+        },
+      },
+      hero: {
+        id: 'hero',
+        blockSchema: {
+          properties: {
+            heading: { type: 'string' },
+            subheading: { type: 'string', widget: 'textarea' },
+            buttonText: { type: 'string' },
+            description: { widget: 'slate' },
+          },
+        },
+      },
+      image: { id: 'image', blockSchema: { properties: {} } },
+      columns: {
+        id: 'columns',
+        blockSchema: {
+          properties: {
+            columns: { widget: 'blocks_layout', allowedBlocks: ['column'] },
+          },
+        },
+      },
+      column: {
+        id: 'column',
+        blockSchema: {
+          properties: {
+            items: { widget: 'blocks_layout' },
+          },
+        },
+      },
+      // Test-only generic section — accepts any block type (no allowedBlocks restriction).
+      // Used by container UX tests: wrap, unwrap, edge-drag, convert.
+      section: {
+        id: 'section',
+        blockSchema: {
+          properties: {
+            items: { widget: 'blocks_layout' },
+          },
+        },
+      },
+      slateTable: {
+        id: 'slateTable',
+        addMode: 'table',
+        blockSchema: {
+          properties: {
+            table: {
+              widget: 'object',
+              schema: {
+                properties: {
+                  rows: {
+                    widget: 'object_list',
+                    idField: 'key',
+                    addMode: 'table',
+                    schema: {
+                      properties: {
+                        cells: {
+                          widget: 'object_list',
+                          idField: 'key',
+                          schema: {
+                            properties: {
+                              value: { widget: 'slate' },
+                            },
+                          },
+                        },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    };
+
+    // Simple Slate transformation without needing full Slate library
+    // This manually creates the expected structure for testing
+    function applySlateTransform(value, selection, format, action) {
+      const result = JSON.parse(JSON.stringify(value)); // Deep clone
+      console.log('[MOCK_PARENT] applySlateTransform entry:', { value: JSON.stringify(value), selection: JSON.stringify(selection), format, action });
+
+      if (!selection || !result[0] || !result[0].children) {
+        console.log('[MOCK_PARENT] applySlateTransform: early return (no selection/result/children)');
+        return result;
+      }
+
+      const paragraph = result[0];
+      const anchor = selection.anchor;
+      const focus = selection.focus;
+
+      // Get selection bounds
+      const start = Math.min(anchor.offset, focus.offset);
+      const end = Math.max(anchor.offset, focus.offset);
+      console.log('[MOCK_PARENT] applySlateTransform:', { start, end, anchorPath: JSON.stringify(anchor.path), focusPath: JSON.stringify(focus.path) });
+
+      // Get the text from first child (assuming simple structure for now)
+      const textNode = paragraph.children[0];
+      // Ctrl+B with nothing selected in an EMPTY paragraph (its one leaf has no
+      // text) formats what is typed next, as the admin does. Only then: this
+      // mock reads the first leaf alone, so an empty first leaf in front of an
+      // inline (after a format) is not the paragraph's text, and formatting it
+      // would wipe what follows.
+      const emptyParagraph =
+        paragraph.children.length === 1 && textNode?.text === '' && start === end;
+      if (!textNode || (!textNode.text && !emptyParagraph)) {
+        console.log('[MOCK_PARENT] applySlateTransform: early return (no textNode or no text)', { textNode: JSON.stringify(textNode) });
+        return result;
+      }
+
+      const originalText = textNode.text;
+      console.log('[MOCK_PARENT] applySlateTransform:', { originalText, collapsed: start === end });
+
+      // Handle collapsed selection (prospective formatting):
+      // Insert an empty inline element at the cursor position so subsequent
+      // typing goes into the formatted span.
+      if (start === end) {
+        const before = originalText.substring(0, start);
+        const after = originalText.substring(start);
+        // Slate normalization: text nodes must surround inline elements.
+        // The inline holds a zero-width space, as the admin's does
+        // (SyncedSlateToolbar / elementEditor utils): it keeps the empty inline
+        // from being normalized away, and gives the frontend a text node of its
+        // own inside it for the caret — the one the author types into.
+        paragraph.children = [
+          { text: before },
+          { type: format, children: [{ text: '\u200B' }] },
+          { text: after },
+        ];
+        return result;
+      }
+
+      // Split into three parts: before, selected, after
+      const before = originalText.substring(0, start);
+      const selected = originalText.substring(start, end);
+      const after = originalText.substring(end);
+
+      // Build new children array with Slate normalization:
+      // inline elements must have text nodes before and after them.
+      const newChildren = [];
+
+      // Always add text before inline (empty if no content before selection)
+      newChildren.push({ text: before });
+
+      // Wrap selected text in format element
+      if (selected) {
+        newChildren.push({
+          type: format,
+          children: [{ text: selected }]
+        });
+      }
+
+      // Always add text after inline (empty if no content after selection)
+      newChildren.push({ text: after });
+
+      paragraph.children = newChildren;
+
+      // Add nodeIds to the result
+      // No addNodeIds needed — hydra.js adds them when it receives FORM_DATA.
+      return result;
+    }
+
+    function applySlateDelete(value, selection) {
+      if (!selection || !value[0]) return value;
+      // For a non-collapsed selection, replace all content with empty text.
+      // This is a simplified mock — real Slate handles partial deletes, but
+      // for testing buffer replay we just need the content to be cleared.
+      // No addNodeIds needed — hydra.js adds them when it receives FORM_DATA.
+      const result = JSON.parse(JSON.stringify(value));
+      const paragraph = result[0];
+      paragraph.children = [{ text: '' }];
+      return result;
+    }
+
+    // Mock form data — loaded from ?content= JSON file or hardcoded default
+    let mockFormData;
+
+    // Default inline form data for existing mock parent tests
+    const defaultFormData = {
+      // Same rule as apiOrigin above: the API port is overridable, so a literal
+      // 8888 here handed the frontend a page whose own @id pointed at a dead
+      // server on any overridden run — INIT never completed and discovery
+      // reported "returned no schemas".
+      '@id': `${apiOrigin}/_test_data/test-page`,
+      '@type': 'Document',
+      title: 'Mock Test Page',
+      blocks: {
+        'mock-block-1': {
+          '@type': 'slate',
+          value: [
+            {
+              type: 'p',
+              children: [
+                {
+                  text: 'Text to format',
+                },
+              ],
+            },
+          ],
+        },
+        'mock-text-block': {
+          '@type': 'slate',
+          value: [{ type: 'p', children: [{ text: 'Simple text field' }] }],
+        },
+        // A slate that is EMPTY from the start — no ZWS, no text — for the
+        // empty-slate typing test. Typing must land inside <p data-node-id>,
+        // not leak to the contenteditable wrapper (empty-slate-typing.spec.ts).
+        'mock-empty-slate': {
+          '@type': 'slate',
+          value: [{ type: 'p', children: [{ text: '' }] }],
+        },
+        'mock-multi-field-block': {
+          '@type': 'hero',
+          heading: 'Block Title',
+          subheading: 'Subtitle text',
+          buttonText: 'Click',
+          description: [
+            {
+              type: 'p',
+              children: [
+                {
+                  text: 'Block description with slate',
+                },
+              ],
+            },
+          ],
+        },
+        'mock-textarea-block': {
+          '@type': 'slate',
+          value: [{ type: 'p', children: [{ text: 'First line of textarea' }] }],
+        },
+        'mock-image-block': {
+          '@type': 'image',
+          url: 'https://example.com/test.jpg',
+          alt: 'Test image',
+        },
+        'mock-hero-block': {
+          '@type': 'hero',
+          heading: 'Simple text field',
+          subheading: 'Textarea content',
+          buttonText: 'Click me',
+          description: [
+            {
+              type: 'p',
+              children: [{ text: 'Hero description' }],
+            },
+          ],
+        },
+        // Columns container with two columns, each containing a slate block
+        // Uses shared blocks dict format: all child blocks in mock-columns.blocks,
+        // layout fields (columns) reference them by ID.
+        'mock-columns': {
+          '@type': 'columns',
+          blocks: {
+            'mock-col-1': {
+              '@type': 'column',
+              blocks: {
+                'mock-col1-slate': {
+                  '@type': 'slate',
+                  value: [{ type: 'p', children: [{ text: 'Column 1 text' }] }],
+                },
+              },
+              blocks_layout: { items: ['mock-col1-slate'] },
+            },
+            'mock-col-2': {
+              '@type': 'column',
+              blocks: {
+                'mock-col2-slate': {
+                  '@type': 'slate',
+                  value: [{ type: 'p', children: [{ text: 'Column 2 text' }] }],
+                },
+              },
+              blocks_layout: { items: ['mock-col2-slate'] },
+            },
+          },
+          blocks_layout: { columns: ['mock-col-1', 'mock-col-2'] },
+        },
+        // slateTable: 2x2 grid for table-mode navigation tests
+        // Uses the existing slateTable renderer format: table.rows[].cells[]
+        // with .key as block UID, data-block-add="bottom" on rows, "right" on cells
+        'mock-table': {
+          '@type': 'slateTable',
+          table: {
+            rows: [
+              {
+                key: 'mock-row-1',
+                cells: [
+                  {
+                    key: 'mock-cell-1a',
+                    type: 'data',
+                    value: [{ type: 'p', children: [{ text: 'Cell 1A' }] }],
+                  },
+                  {
+                    key: 'mock-cell-1b',
+                    type: 'data',
+                    value: [{ type: 'p', children: [{ text: 'Cell 1B' }] }],
+                  },
+                ],
+              },
+              {
+                key: 'mock-row-2',
+                cells: [
+                  {
+                    key: 'mock-cell-2a',
+                    type: 'data',
+                    value: [{ type: 'p', children: [{ text: 'Cell 2A' }] }],
+                  },
+                  {
+                    key: 'mock-cell-2b',
+                    type: 'data',
+                    value: [{ type: 'p', children: [{ text: 'Cell 2B' }] }],
+                  },
+                ],
+              },
+            ],
+          },
+        },
+        // codeExample block with a real <pre data-edit-text="code"> code
+        // field (type: string, registered via the tabs object-list schema).
+        // Lets replayKeys.spec.ts exercise replayOneKey's <pre> Enter/Tab
+        // handling against a real registered field, not a faked one.
+        'mock-code-block': {
+          '@type': 'codeExample',
+          tabs: [
+            { '@id': 'mock-code-tab', label: 'JavaScript', language: 'javascript', code: 'line1' },
+          ],
+        },
+        // form block — renders a real <button class="form-submit"
+        // data-edit-text="submit_label"> (submit_label is type: string),
+        // for replayKeys.spec.ts's <button> Space test.
+        'mock-form-block': {
+          '@type': 'form',
+          submit_label: 'Click',
+        },
+      },
+      blocks_layout: {
+        // mock-hero-block is intentionally last — block-navigation.spec.ts:180
+        // ("ArrowDown at end of last block stays in same block") relies on it.
+        // mock-empty-slate sits between code and form deliberately: block-navigation
+        // asserts the contiguous chain block-1 → text-block → multi-field-block
+        // (ArrowUp/ArrowDown edge navigation), so the empty-slate block must NOT
+        // break those adjacencies. code-block/form-block have no navigation
+        // adjacency assertions, so it's a safe home that keeps it out of the way.
+        items: ['mock-block-1', 'mock-text-block', 'mock-multi-field-block', 'mock-textarea-block', 'mock-image-block', 'mock-columns', 'mock-table', 'mock-code-block', 'mock-empty-slate', 'mock-form-block', 'mock-hero-block'],
+      },
+    };
+
+    // Load content: fetch from ?content= JSON file, ?api_path= API path, or use default
+    if (contentName) {
+      fetch(`/${contentName}.json`)
+        .then(res => res.json())
+        .then(data => {
+          mockFormData = data;
+          console.log(`[MOCK_PARENT] Loaded content from /${contentName}.json`);
+          createIframe();
+        });
+    } else if (apiPath) {
+      console.log(`[MOCK_PARENT] Fetching content from API: ${apiPath}`);
+      fetch(apiPath, { headers: { Accept: 'application/json' } })
+        .then(res => {
+          if (!res.ok) throw new Error(`API fetch failed: ${res.status} ${res.statusText}`);
+          return res.json();
+        })
+        .then(data => {
+          mockFormData = data;
+          console.log(`[MOCK_PARENT] Loaded content from API: ${apiPath} (${Object.keys(data.blocks || {}).length} blocks)`);
+          createIframe();
+        })
+        .catch(err => {
+          console.error(`[MOCK_PARENT] Failed to load API content: ${err.message}`);
+        });
+    } else {
+      mockFormData = defaultFormData;
+    }
+
+    // --- Template / forced-layout merge (parity with the real admin) ---------
+    // View.jsx runs mergeTemplatesIntoPage before it posts INITIAL_DATA, with the
+    // comment "Always call mergeTemplatesIntoPage - it handles all cases". That is
+    // what stamps a forced layout's blocks onto the page and mints each one's
+    // templateInstanceId — the id template edit mode unlocks by.
+    //
+    // Skipping it here posted the raw API JSON, so a page with a forced region (a
+    // site footer, a global announcement) reached the bridge WITHOUT its chrome:
+    // the frontend still rendered the footer (frontends expand templates
+    // themselves), but the bridge had no block for it — nothing to resolve,
+    // select, or unlock. Every mock-parent test then asserted against a data model
+    // the real editor never has.
+    const templateCache = {};
+    async function loadTemplate(templateId) {
+      if (templateCache[templateId]) return templateCache[templateId];
+      // A templateId is a content path ('/inka-templates/site-footer'), a resolveuid
+      // ref, or a full URL — normalise to a path on the API, as the test frontend
+      // does for its own expansion.
+      const url = templateId.startsWith('http')
+        ? new URL(templateId).pathname
+        : `/${templateId.replace(/^\//, '')}`;
+      const res = await fetch(`${apiOrigin}${url}`, { headers: { Accept: 'application/json' } });
+      if (!res.ok) {
+        throw new Error(`[MOCK_PARENT] template ${templateId} → ${res.status} ${res.statusText}`);
+      }
+      templateCache[templateId] = await res.json();
+      return templateCache[templateId];
+    }
+
+    // Hardcoded responses are no longer needed - we use real Slate transformations
+
+    // Message log
+    const logEl = document.getElementById('log');
+    function logMessage(direction, type, data) {
+      const entry = document.createElement('div');
+      entry.className = `log-entry log-${direction}`;
+      entry.textContent = `[${direction.toUpperCase()}] ${type}: ${JSON.stringify(data)}`;
+      logEl.appendChild(entry);
+      logEl.scrollTop = logEl.scrollHeight;
+    }
+
+    // Listen for messages from iframe (async to support delayed transforms)
+    window.addEventListener('message', async (event) => {
+      // Only handle messages from our iframe
+      if (event.source !== document.getElementById('previewIframe').contentWindow) {
+        return;
+      }
+
+      const message = event.data;
+      console.log('[MOCK_PARENT] Received message:', message);
+      logMessage('received', message.type, message);
+
+      // Handle different message types
+      switch (message.type) {
+        case 'INIT': {
+          // New INIT message format from hydra.js
+          // Merge frontend's blocksConfig (sent via bridge, just like View.jsx does).
+          // Track which keys came from the frontend so consumers (e.g. sanity
+          // discovery) can distinguish frontend-registered types from
+          // mock-parent's own test baseline (slate, hero, columns…).
+          console.log('[MOCK_PARENT] Received INIT message:', message);
+          if (message.blocks) {
+            for (const blockType of Object.keys(message.blocks)) {
+              frontendBlockKeys.add(blockType);
+            }
+            for (const [blockType, blockDef] of Object.entries(message.blocks)) {
+              // The connected frontend's schema is authoritative for the blocks it
+              // registers, so it OVERRIDES the admin's own baseline fixtures.
+              // Otherwise a baseline block sharing a type name shadows the real
+              // frontend schema — e.g. the baseline `hero` fixture carries an extra
+              // slate `description` (for inline-editing tests) that a real frontend
+              // hero doesn't have, so block-sanity would validate against a field
+              // the frontend never renders. Each frontend sends its own hero (the
+              // mock test-frontend's `sharedBlocksConfig` hero keeps `description`),
+              // and baseline-only types (mock-*) are left untouched since the
+              // frontend simply doesn't send them.
+              //
+              // Applied key by key, exactly as the admin does (mergeFrontendBlock):
+              // a schema the frontend sends replaces the baseline's, keys it does
+              // not send keep the baseline's, and an enhancer chains. A slate entry
+              // carrying only `fieldRules` therefore keeps slate's `value` field.
+              mockBlocksConfig[blockType] = mergeFrontendBlock(
+                blockType,
+                mockBlocksConfig[blockType] ??
+                  (ADMIN_BUILT_IN_BLOCK_TYPES.has(blockType) ? { id: blockType } : undefined),
+                blockDef,
+              ).entry;
+            }
+          }
+
+          // The frontend's page schema (INIT `page`) declares the page's blocks
+          // fields and any layouts forced on them — the same input the admin
+          // passes as pageBlocksFields. A frontend that sends none has nothing to
+          // merge, so its page data is used exactly as fetched.
+          // The frontend's page schema when it sends one, otherwise the mock
+          // parent's own `_page` — the same default buildBlockPathMap already
+          // uses, so a frontend that declares no page schema still gets its
+          // `items` region merged (the admin reads its registered _page for
+          // exactly this reason).
+          const pageBlocksFields =
+            message.page?.schema?.properties || mockBlocksConfig._page.schema().properties;
+          {
+            const menu = message.voltoConfig?.settings?.slate?.styleMenu;
+            for (const d of [
+              ...(menu?.blockStyles || []),
+              ...(menu?.inlineStyles || []),
+            ]) {
+              if (d?.cssClass) styleMenuClasses.add(d.cssClass);
+            }
+          }
+          if (message.page?.schema?.properties) {
+            // Adopt the frontend's page schema, exactly as the admin does: it is
+            // what tells buildBlockPathMap which regions exist (a property with
+            // widget 'blocks_layout' maps to formData.blocks_layout[<name>]), so
+            // without it the merged footer/announcement blocks land in the data
+            // but never in the path map — present on screen, unresolvable to the
+            // bridge. Merged per field so the baseline's own page metadata
+            // (title/description, annotated as `/title` and `/description`)
+            // survives a frontend that only declares its blocks fields.
+            const baseline = mockBlocksConfig._page.schema().properties;
+            const properties = { ...baseline };
+            for (const [field, def] of Object.entries(pageBlocksFields)) {
+              properties[field] = { ...baseline[field], ...def };
+            }
+            mockBlocksConfig._page = { schema: () => ({ properties }) };
+          }
+
+          // Merge UNCONDITIONALLY, exactly as View.jsx does ("Always call
+          // mergeTemplatesIntoPage — it handles all cases"). It is a no-op for a
+          // page with no templates, and gating it on the frontend sending a page
+          // schema would leave such a frontend's template definitions unstamped.
+          const { merged } = await mergeTemplatesIntoPage(mockFormData, {
+            loadTemplate,
+            preloadedTemplates: templateCache,
+            pageBlocksFields,
+            idFieldMap: buildIdFieldMap(mockBlocksConfig),
+            // Same as the admin's INITIAL_DATA merge: this document is being
+            // opened to edit, so it is never merged against its own template.
+            skipOwnTemplate: true,
+          });
+          mockFormData = merged;
+
+          const blockPathMap = postableBlockPathMap(mockFormData);
+
+          const response = {
+            type: 'INITIAL_DATA',
+            data: mockFormData,
+            blockPathMap,
+
+            slateConfig: {
+              hotkeys: {
+                'mod+b': { type: 'inline', format: 'strong' },
+                'mod+i': { type: 'inline', format: 'em' },
+                'mod+u': { type: 'inline', format: 'u' },
+                'mod+s': { type: 'inline', format: 'del' },
+              },
+              toolbarButtons: [],
+              buttonConfigs: {
+                'bold': {
+                  format: 'strong',
+                  svg: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"><path d="M15.6 10.79c.97-.67 1.65-1.77 1.65-2.79 0-2.26-1.75-4-4-4H7v14h7.04c2.09 0 3.71-1.7 3.71-3.79 0-1.52-.86-2.82-2.15-3.42zM10 6.5h3c.83 0 1.5.67 1.5 1.5s-.67 1.5-1.5 1.5h-3v-3zm3.5 9H10v-3h3.5c.83 0 1.5.67 1.5 1.5s-.67 1.5-1.5 1.5z"/></svg>',
+                  title: 'Bold',
+                  testId: 'bold-button',
+                },
+              },
+            },
+          };
+          console.log('[MOCK_PARENT] Sending INITIAL_DATA with blockPathMap:', response);
+          event.source.postMessage(response, event.origin);
+          logMessage('sent', 'INITIAL_DATA', response.data);
+
+          // Auto-select the first block after a short delay to allow hydra.js to initialize
+          setTimeout(() => {
+            const firstBlockId = mockFormData.blocks_layout.items[0];
+            if (firstBlockId) {
+              console.log('[MOCK_PARENT] Auto-selecting first block:', firstBlockId);
+
+              event.source.postMessage(
+                {
+                  type: 'SELECT_BLOCK',
+                  uid: firstBlockId,
+                  data: mockFormData,
+                  blockPathMap: blockPathMap,
+                },
+                event.origin,
+              );
+              logMessage('sent', 'SELECT_BLOCK', { uid: firstBlockId });
+            }
+          }, 100);
+          break;
+        }
+
+        case 'GET_INITIAL_DATA': {
+          // Legacy handler for backwards compatibility
+          console.log('[MOCK_PARENT] Received legacy GET_INITIAL_DATA');
+
+          const blockPathMap = postableBlockPathMap(mockFormData);
+
+          const response = {
+            type: 'INITIAL_DATA',
+            data: mockFormData,
+            blockPathMap,
+
+            slateConfig: {
+              hotkeys: {
+                'mod+b': { type: 'inline', format: 'strong' },
+                'mod+i': { type: 'inline', format: 'em' },
+                'mod+u': { type: 'inline', format: 'u' },
+                'mod+s': { type: 'inline', format: 'del' },
+              },
+              toolbarButtons: [],
+              buttonConfigs: {
+                'bold': {
+                  format: 'strong',
+                  svg: '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"><path d="M15.6 10.79c.97-.67 1.65-1.77 1.65-2.79 0-2.26-1.75-4-4-4H7v14h7.04c2.09 0 3.71-1.7 3.71-3.79 0-1.52-.86-2.82-2.15-3.42zM10 6.5h3c.83 0 1.5.67 1.5 1.5s-.67 1.5-1.5 1.5h-3v-3zm3.5 9H10v-3h3.5c.83 0 1.5.67 1.5 1.5s-.67 1.5-1.5 1.5z"/></svg>',
+                  title: 'Bold',
+                  testId: 'bold-button',
+                },
+              },
+            },
+          };
+          console.log('[MOCK_PARENT] Sending INITIAL_DATA:', response);
+          event.source.postMessage(response, event.origin);
+          logMessage('sent', 'INITIAL_DATA', response.data);
+
+          setTimeout(() => {
+            const firstBlockId = mockFormData.blocks_layout.items[0];
+            if (firstBlockId) {
+              event.source.postMessage(
+                {
+                  type: 'SELECT_BLOCK',
+                  uid: firstBlockId,
+                  data: mockFormData,
+                  blockPathMap: blockPathMap,
+                },
+                event.origin,
+              );
+              logMessage('sent', 'SELECT_BLOCK', { uid: firstBlockId });
+            }
+          }, 100);
+          break;
+        }
+
+        case 'SLATE_TRANSFORM_REQUEST': {
+          const { blockId, transformType, format, selection, requestId, fieldName, data } = message;
+          console.log('[MOCK_PARENT] Processing SLATE_TRANSFORM_REQUEST:', { blockId, transformType, format, selection, requestId });
+
+          // Simulate slow transform with configurable delay
+          const transformDelay = window.mockTransformDelay || 0;
+          const processTransform = async () => {
+            if (transformDelay > 0) {
+              console.log(`[MOCK_PARENT] Simulating slow transform with ${transformDelay}ms delay`);
+              await new Promise(resolve => setTimeout(resolve, transformDelay));
+            }
+
+            // Update mockFormData from the message data (includes latest text)
+            if (data) {
+              mockFormData = data;
+            }
+
+            // Get current value from the correct field
+            const block = mockFormData.blocks[blockId];
+            const currentValue = block[fieldName] || block.value;
+
+            console.log('[MOCK_PARENT] Applying Slate transformation:', {
+              transformType,
+              format,
+              selection: JSON.stringify(selection),
+              currentValue: JSON.stringify(currentValue)
+            });
+
+            // Apply the Slate transformation
+            let updatedValue = currentValue;
+            // Toggling a format OFF with the caret inside it (collapsed, in an
+            // inline of that format): the admin (SyncedSlateToolbar
+            // applyInlineFormat) moves the caret to the start of the text leaf
+            // after the inline — Slate keeps one there — and, when that leaf is
+            // empty, gives it a zero-width space as toggling on gives the new
+            // inline one. Mirror that.
+            let exitSelection = null;
+            const anchorPath = selection?.anchor?.path;
+            const collapsedSel = selection &&
+              selection.anchor.offset === selection.focus.offset &&
+              JSON.stringify(selection.anchor.path) === JSON.stringify(selection.focus.path);
+            if (transformType === 'format' && format && collapsedSel && anchorPath?.length === 3 &&
+                currentValue?.[0]?.children?.[anchorPath[1]]?.type === format) {
+              updatedValue = JSON.parse(JSON.stringify(currentValue));
+              const children = updatedValue[0].children;
+              const inlineIdx = anchorPath[1];
+              if (typeof children[inlineIdx + 1]?.text !== 'string') {
+                children.splice(inlineIdx + 1, 0, { text: '\u200B' });
+              } else if (children[inlineIdx + 1].text === '') {
+                children[inlineIdx + 1] = { ...children[inlineIdx + 1], text: '\u200B' };
+              }
+              exitSelection = {
+                anchor: { path: [0, inlineIdx + 1], offset: 0 },
+                focus: { path: [0, inlineIdx + 1], offset: 0 },
+              };
+            } else if (transformType === 'format' && format) {
+              updatedValue = applySlateTransform(currentValue, selection, format, transformType);
+            } else if (transformType === 'delete') {
+              updatedValue = applySlateDelete(currentValue, selection);
+            }
+
+            console.log('[MOCK_PARENT] Transformation result:', JSON.stringify(updatedValue));
+
+            // Update the block in mockFormData
+            mockFormData.blocks[blockId] = {
+              ...mockFormData.blocks[blockId],
+              [fieldName || 'value']: updatedValue,
+            };
+
+            // Compute transformedSelection based on the transform result.
+            // After a transform, the Slate tree structure changes, so the original
+            // selection paths are invalid. We need to compute new paths.
+            let transformedSelection = selection;
+            if (exitSelection) {
+              transformedSelection = exitSelection;
+            } else if (transformType === 'delete') {
+              // After delete, content is empty — cursor at start of first node
+              transformedSelection = {
+                anchor: { path: [0, 0], offset: 0 },
+                focus: { path: [0, 0], offset: 0 },
+              };
+            } else if (transformType === 'format') {
+              // After format, text may have moved into an inline element.
+              // Find the inline element in the updated value and adjust paths.
+              const block = mockFormData.blocks[blockId];
+              const val = block[fieldName] || block.value;
+              if (val && val[0] && val[0].children) {
+                const inlineIdx = val[0].children.findIndex(c => c.type === format);
+                if (inlineIdx >= 0) {
+                  const inlineChild = val[0].children[inlineIdx];
+                  const textLen = inlineChild.children?.[0]?.text?.length || 0;
+                  if (selection && selection.anchor.offset === selection.focus.offset
+                      && JSON.stringify(selection.anchor.path) === JSON.stringify(selection.focus.path)) {
+                    // Collapsed selection (prospective formatting) — cursor inside inline
+                    transformedSelection = {
+                      anchor: { path: [0, inlineIdx, 0], offset: 0 },
+                      focus: { path: [0, inlineIdx, 0], offset: 0 },
+                    };
+                  } else {
+                    // Non-collapsed selection — select all text inside the inline
+                    transformedSelection = {
+                      anchor: { path: [0, inlineIdx, 0], offset: 0 },
+                      focus: { path: [0, inlineIdx, 0], offset: textLen },
+                    };
+                  }
+                }
+              }
+            }
+
+            // Send FORM_DATA with formatRequestId so hydra.js knows to unblock
+            const response = {
+              type: 'FORM_DATA',
+              data: mockFormData,
+              blockPathMap: postableBlockPathMap(mockFormData),
+  
+              formatRequestId: requestId,
+              transformedSelection,
+            };
+            // A transform that left the data alone (toggling off at the end of a
+            // line): the admin sends skipRender (View.jsx skipRenderOnSend) — the
+            // frontend has nothing to redraw, only the caret to move.
+            if (JSON.stringify(updatedValue) === JSON.stringify(currentValue)) {
+              response.skipRender = true;
+            }
+            console.log('[MOCK_PARENT] Sending FORM_DATA with formatRequestId:', response);
+            event.source.postMessage(response, event.origin);
+            logMessage('sent', 'FORM_DATA', { blockId, formatRequestId: requestId });
+
+            // Optionally send a duplicate FORM_DATA after a delay to simulate
+            // the real admin's Redux-triggered re-render cascade.
+            if (window.mockDuplicateFormData) {
+              setTimeout(() => {
+                const dupeResponse = {
+                  type: 'FORM_DATA',
+                  data: mockFormData,
+                  blockPathMap: postableBlockPathMap(mockFormData),
+      
+                };
+                event.source.postMessage(dupeResponse, event.origin);
+                console.log('[MOCK_PARENT] Sent duplicate FORM_DATA (Redux echo)');
+              }, 50);
+            }
+          };
+
+          // Execute the async transform (with optional delay) - await to ensure delay happens
+          await processTransform();
+          break;
+        }
+
+        case 'SELECT_BLOCK':
+        case 'FORM_DATA': {
+          // Just log these for now
+          console.log('[MOCK_PARENT] Received but not handling:', message.type);
+          break;
+        }
+
+        case 'INLINE_EDIT_DATA': {
+          // Handle text changes from non-Slate blocks
+          console.log('[MOCK_PARENT] Received INLINE_EDIT_DATA:', message);
+          // Update mockFormData with the changes
+          mockFormData = message.data;
+          logMessage('RECEIVED', 'INLINE_EDIT_DATA', message);
+
+          // Optionally echo FORM_DATA back (like real admin does).
+          // Real admin has a React render cycle before sending, so use setTimeout.
+          if (window.mockEchoFormData) {
+            const echoData = JSON.parse(JSON.stringify(mockFormData));
+            const delay = window.mockEchoDelay !== undefined ? window.mockEchoDelay : 10;
+            const sendEcho = () => {
+              const iframe = document.getElementById('previewIframe');
+              iframe.contentWindow.postMessage({
+                type: 'FORM_DATA',
+                data: echoData,
+                blockPathMap: postableBlockPathMap(mockFormData),
+    
+              }, '*');
+              console.log('[MOCK_PARENT] Echoed FORM_DATA back');
+            };
+            if (delay === 0) {
+              sendEcho();
+            } else {
+              setTimeout(sendEcho, delay);
+            }
+          }
+          break;
+        }
+
+        case 'BLOCK_SELECTED': {
+          // Track the last selected block for test assertions
+          window.mockParent.lastSelectedBlockUid = message.blockUid;
+          // The whole message, so a test can assert what the bridge reports
+          // about the block (e.g. hasEmbed) and not just which one it is.
+          window.mockParent.lastBlockSelectedMessage = message;
+          // ...and keyed by block, because BLOCK_SELECTED also arrives from the
+          // scroll handler for whatever is in view: a test asking about the
+          // block it just clicked would otherwise read a later message about a
+          // different one.
+          window.mockParent.blockSelectedByUid =
+            window.mockParent.blockSelectedByUid || {};
+          window.mockParent.blockSelectedByUid[message.blockUid] = message;
+          // Position the block UI overlays based on rect from iframe
+          const { rect, blockUid } = message;
+          if (rect) {
+            const iframe = document.getElementById('previewIframe');
+            const iframeRect = iframe.getBoundingClientRect();
+
+            // Position overlays relative to iframe position
+            const toolbar = document.getElementById('quanta-toolbar');
+            const outline = document.getElementById('block-outline');
+            const addButton = document.getElementById('add-button');
+
+            // Toolbar above block
+            toolbar.style.left = `${iframeRect.left + rect.left}px`;
+            toolbar.style.top = `${iframeRect.top + rect.top - 30}px`;
+            toolbar.style.display = 'block';
+
+            // Outline around block
+            outline.style.left = `${iframeRect.left + rect.left}px`;
+            outline.style.top = `${iframeRect.top + rect.top}px`;
+            outline.style.width = `${rect.width}px`;
+            outline.style.height = `${rect.height}px`;
+            outline.style.display = 'block';
+
+            // Add button — same placement rule as the real parent
+            // (View.jsx), which picks by addDirection rather than always
+            // sitting below and centred:
+            //   right  -> 8px to the RIGHT of the block, at its top
+            //   bottom -> 8px BELOW the block, aligned to its RIGHT edge
+            // The mock used to centre it horizontally in both cases, which put
+            // it over the middle of whatever followed — a position the real
+            // admin never uses. NOT reproduced: the canvas-edge clamps that
+            // pull the button back inside the block near the viewport edges.
+            const ADD_SIZE = 30;
+            const isRight = message.addDirection === 'right';
+            let addLeft;
+            let addTop;
+            if (isRight) {
+              addLeft = iframeRect.left + rect.left + rect.width + 8;
+              addTop = iframeRect.top + rect.top;
+            } else {
+              addLeft = iframeRect.left + rect.left + rect.width - ADD_SIZE;
+              addTop = iframeRect.top + rect.top + rect.height + 8;
+            }
+
+            // Canvas-edge clamps, ported from View.jsx. Without them the button
+            // escapes the canvas whenever a block ends at its edge — on a phone
+            // that lands on the bottom toolbar, over Save/Cancel. Pull it back
+            // INSIDE the block instead.
+            const iframeRight = iframeRect.left + iframeRect.width;
+            if (addLeft + ADD_SIZE > iframeRight) {
+              addLeft = iframeRect.left + rect.left + rect.width - ADD_SIZE - 8;
+            }
+            if (isRight) {
+              // A right-add pulled in for lack of room was only constrained
+              // horizontally, so it stays at the block's TOP-right.
+              addTop = iframeRect.top + rect.top;
+            }
+            const iframeBottom = iframeRect.top + iframeRect.height;
+            if (addTop + ADD_SIZE > iframeBottom) {
+              addTop = iframeRect.top + rect.top + rect.height - ADD_SIZE - 8;
+            }
+            if (addTop < iframeRect.top) {
+              addTop = iframeRect.top + 8;
+            }
+
+            addButton.style.left = `${addLeft}px`;
+            addButton.style.top = `${addTop}px`;
+            addButton.style.display = 'block';
+
+            console.log('[MOCK_PARENT] Positioned overlays for block:', blockUid, 'rect:', rect);
+          }
+          break;
+        }
+
+        case 'HIDE_BLOCK_UI': {
+          // Mirror the real parent (View.jsx: setBlockUI(null)): hide the
+          // outline, toolbar and add button without deselecting the block.
+          //
+          // The mock parent used to fall through to "Unknown message type",
+          // so overlays it had positioned on BLOCK_SELECTED stayed on screen
+          // after hydra asked for them to go away. The add button sits under
+          // the block and overlaps whatever follows, so Playwright clicks on
+          // real content intermittently failed with
+          //   <div id="add-button" class="volto-hydra-add-button">+</div>
+          //   intercepts pointer events
+          // — a harness artefact that looked exactly like a product bug.
+          for (const id of ['quanta-toolbar', 'block-outline', 'add-button']) {
+            const el = document.getElementById(id);
+            if (el) el.style.display = 'none';
+          }
+          console.log('[MOCK_PARENT] Hid block UI overlays');
+          break;
+        }
+
+        default: {
+          console.log('[MOCK_PARENT] Unknown message type:', message.type);
+        }
+      }
+    });
+
+    console.log('[MOCK_PARENT] Message listener registered');
+
+    // Make mock parent available to tests
+    window.mockParent = {
+      getFormData: () => mockFormData,
+      getBlocksConfig: () => mockBlocksConfig,
+      // The style menu the FRONTEND declared at INIT. block-sanity asks whether
+      // stored `styleName` content could have been authored, and only the
+      // frontend knows which styles it offers — the alternative is a hardcoded
+      // list that is wrong for every frontend but one.
+      getStyleMenuClasses: () => Array.from(styleMenuClasses),
+      getFrontendBlockKeys: () => Array.from(frontendBlockKeys),
+      getBlock: (blockId) => mockFormData.blocks[blockId],
+      buildBlockPathMap: () => postableBlockPathMap(mockFormData),
+      setTransformDelay: (delay) => { window.mockTransformDelay = delay; },
+      setEchoFormData: (enabled) => { window.mockEchoFormData = enabled; },
+      setDuplicateFormData: (enabled) => { window.mockDuplicateFormData = enabled; },
+      // The regions of a block ('_page' for the page's own), as the admin lists
+      // them — the container fields its sidebar and add-button work from.
+      listRegions: (blockId) => {
+        const map = postableBlockPathMap(mockFormData);
+        return getAllContainerFields(blockId, map, mockFormData, mockBlocksConfig)
+          .filter((f) => !f.isTemplateInstance)
+          .map((f) => ({ region: f.region, defaultBlockType: f.defaultBlockType ?? null }));
+      },
+      // Empty one region the way an editor does: select everything in it and
+      // delete — the admin's own deleteBlocks, which then seeds what an empty
+      // region gets (its default block type, or an `empty` placeholder).
+      // Returns the uids now in the region, or why an editor can't empty it: a
+      // template block that is read-only or fixed in place can't be deleted (a
+      // page's forced layout block, say — the page's content sits inside it).
+      emptyRegion: (blockId, region) => {
+        const map = postableBlockPathMap(mockFormData);
+        const send = (formData) => {
+          const blockPathMap = postableBlockPathMap(formData);
+          mockFormData = formData;
+          document.getElementById('previewIframe').contentWindow.postMessage(
+            { type: 'FORM_DATA', data: formData, blockPathMap }, '*',
+          );
+          return { seeded: inRegion(blockPathMap).map((uid) => ({ uid, type: blockPathMap[uid]?.blockType ?? null })) };
+        };
+        // The region's blocks. A template's first-level blocks hang off a
+        // virtual instance in the map (path null, never drawn), so take the
+        // instance's children in its place — the blocks an editor selects.
+        const inRegion = (m) => getChildBlockIdsInField(blockId, region, m).flatMap(
+          (uid) => (m[uid].isTemplateInstance ? getChildBlockIds(uid, m) : [uid]),
+        );
+        const children = inRegion(map);
+        if (children.length === 0) {
+          // Already empty: the admin seeds it on load (View.jsx INITIAL_DATA);
+          // this page never had it seeded, as the mock parent doesn't run the
+          // load's Volto-bound half. Seed it the same way.
+          const formData = ensureEmptyBlockIfEmpty(
+            mockFormData, { parentId: blockId }, map, () => crypto.randomUUID(), mockBlocksConfig,
+          );
+          return send(formData);
+        }
+        const { formData, deleted } = deleteBlocks(mockFormData, map, children, {
+          blocksConfig: mockBlocksConfig,
+          uuidGenerator: () => crypto.randomUUID(),
+          templateEditMode: null,
+        });
+        const kept = children.filter((uid) => !deleted.includes(uid));
+        if (kept.length) return { skipped: `holds template block(s) an editor can't delete: ${kept.join(', ')}` };
+        return send(formData);
+      },
+      // Change a block's fields (found by uid anywhere, nested included) and send
+      // the page to the frontend, as an edit in the sidebar would.
+      updateBlock: (blockId, fields) => {
+        const map = postableBlockPathMap(mockFormData);
+        if (!map[blockId]) throw new Error(`updateBlock: no block ${blockId}`);
+        const formData = JSON.parse(JSON.stringify(mockFormData));
+        Object.assign(getAtPath(formData, map[blockId].path), fields);
+        mockFormData = formData;
+        document.getElementById('previewIframe').contentWindow.postMessage(
+          { type: 'FORM_DATA', data: formData, blockPathMap: postableBlockPathMap(formData) }, '*',
+        );
+      },
+      // Select a specific block by sending SELECT_BLOCK + FORM_DATA to iframe
+      selectBlock: (blockId) => {
+        const iframe = document.getElementById('previewIframe');
+        if (!iframe?.contentWindow) return;
+        const blockPathMap = postableBlockPathMap(mockFormData);
+        iframe.contentWindow.postMessage({
+          type: 'SELECT_BLOCK',
+          uid: blockId,
+          data: mockFormData,
+          blockPathMap,
+        }, '*');
+        console.log('[MOCK_PARENT] selectBlock:', blockId);
+      },
+    };
+  </script>
+</body>
+</html>

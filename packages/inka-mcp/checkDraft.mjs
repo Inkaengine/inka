@@ -11,10 +11,9 @@
  * brings is refused: a problem the page already had is not the agent's to fix
  * before it may change anything else.
  */
-import validator from '../../lib/plone-content-validator.cjs';
-import { buildIdFieldMap } from '../hydra-js/buildBlockPathMap.js';
+import validator from '@inka/content-validator';
 
-const { checkIntegrity, checkBlockSchemas, fieldMapFromSchemas } = validator;
+const { checkContent } = validator;
 
 /** The change would leave the page invalid: what the validator says, one line each. */
 export class DraftInvalid extends Error {}
@@ -38,20 +37,47 @@ async function onSite({ kind, value }, site) {
   return (await site.search({ uid: value, limit: 1 })).total > 0;
 }
 
+/**
+ * A finding as the agent is told it. A field holding a file where a reference
+ * goes says where the file goes instead. A stray field (one the block's schema does
+ * not declare) that a field of the block holds by that name — `styles`' `align`
+ * written as the block's own — says where it belongs, so the agent puts it
+ * there instead of guessing again.
+ */
+function told({ message, blockType, field, noReference }, { path, blocksConfig }) {
+  // A file's data where an image or link goes (inka#702): its own goes up first.
+  if (noReference) {
+    return `${message}. For an image or file of your own, stage it (stage_media, or ask_for_files for the person's own) and put its "media" id here.`;
+  }
+  if (!field) return message;
+  const homes = whereItBelongs(blocksConfig, blockType, field);
+  return homes.length ? `${path}: ${blockType} has no field "${field}" — it is ${homes.join(' or ')}` : message;
+}
+
+/**
+ * Where a field a block's schema does not declare belongs, when a field of the
+ * block that is an object of fields declares one by that name: `align` on a
+ * teaser is `styles.align`. Empty when nothing does.
+ */
+export function whereItBelongs(blocksConfig, blockType, field) {
+  return Object.entries(blocksConfig[blockType]?.blockSchema?.properties ?? {})
+    .filter(([, facts]) => facts.widget === 'object' && facts.schema?.properties?.[field])
+    .map(([name]) => `${name}.${field}`);
+}
+
 /** What the validator finds wrong with `data`, the page at `path`. */
 async function problems(data, { path, blocksConfig, templates, site, held }) {
-  const idFieldMap = buildIdFieldMap(blocksConfig, { formatMessage: (m) => m?.defaultMessage || '' });
   const items = [{ rel: path, data: { ...data, '@id': path } }, ...templates];
-  const integrity = checkIntegrity(items, { schemasFor: () => blocksConfig, idFieldMap, elsewhere: true, held });
+  const checked = checkContent(items, { schemas: blocksConfig, elsewhere: true, held });
+  // Only the page's own problems: the templates are checked for what the page
+  // needs of them. Each finding names its item as data; how a line begins is
+  // up to the pass that wrote it (a stray field's leads with the field).
+  const own = ({ rel }) => rel === path;
   const missing = [];
-  for (const reference of integrity.elsewhere) {
-    if (!(await onSite(reference, site))) missing.push(reference.message);
+  for (const reference of checked.elsewhere.filter(own)) {
+    if (!(await onSite(reference, site))) missing.push(reference.message.trim());
   }
-  const schemas = checkBlockSchemas([items[0]], fieldMapFromSchemas(blocksConfig), { idFieldMap });
-  return [...integrity.errors, ...missing, ...schemas.errors]
-    // Only the page's own problems: the templates are checked for what the page needs of them.
-    .filter((line) => line.trim().startsWith(`${path}:`))
-    .map((line) => line.trim());
+  return [...checked.findings.filter(own).map((finding) => told(finding, { path, blocksConfig })), ...missing];
 }
 
 /**

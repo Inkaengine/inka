@@ -145,7 +145,7 @@ properties: {
     items: {
         widget: 'blocks_layout',
         allowedBlocks: ['slate', 'image'],
-        allowedStyles: ['p', 'h2', 'h3', 'ul', 'ol', 'li', 'strong', 'em'],
+        allowedStyles: ['p', 'h2', 'h3', 'ul', 'ol', 'li', 'strong', 'em', 'a'],
         disallowedStyles: ['blockquote'],
         // Leaf marks, for plugins that use Editor.addMark. Rarely needed.
         allowedMarks: null,
@@ -154,7 +154,7 @@ properties: {
 }
 ```
 
-`allowedStyles` names element types, which covers block-level formats (`p`, `h2`, `ul`, `li`) **and** inline ones — volto-slate models bold and italic as inline *elements* (`strong`, `em`, `del`, `sub`, `sup`, `u`, `code`), so one list matches what the toolbar actually toggles. `link` is structural rather than styling: leaving it out of `allowedStyles` keeps it, because dropping one loses its href and an allow-list is not a request to do that. To refuse links, for text that is meant to stay plain, name it by its HTML name: `disallowedStyles: ['a']`. The link button goes from the toolbar, on the canvas and in the sidebar, a hotkey a site has added for links does nothing, a pasted link arrives as its words, and a stored link unwraps when the page loads, keeping its words and losing its href. The sidebar's toolbar offers the same buttons and styles as the canvas's. Its editor is Volto's own, though, so a refused style that gets in there anyway (pasted, say) shows there until the save, which removes it. There is no markdown shortcut for a link, and a typed or pasted URL stays text.
+`allowedStyles` names element types, which covers block-level formats (`p`, `h2`, `ul`, `li`) **and** inline ones — volto-slate models bold and italic as inline *elements* (`strong`, `em`, `del`, `sub`, `sup`, `u`, `code`), so one list matches what the toolbar actually toggles. Rules name a style by its HTML name, which is slate's type too except for the link: volto-slate stores one as `link`, and a rule names it `a`. A link is a style like any other, its url being its setting, so an allow-list keeps links only by naming `a`, and `allowedStyles: ['p']` is plain text. A region that refuses links, by leaving `a` out of its allow-list or naming it in `disallowedStyles`, loses the link button from the toolbar, on the canvas and in the sidebar; a hotkey a site has added for links does nothing, a pasted link arrives as its words, and a stored link unwraps when the page loads, keeping its words and losing its href. The sidebar's toolbar offers the same buttons and styles as the canvas's. Its editor is Volto's own, though, so a refused style that gets in there anyway (pasted, say) shows there until the save, which removes it. There is no markdown shortcut for a link, and a typed or pasted URL stays text.
 
 ### A design system's own styles
 
@@ -373,7 +373,7 @@ A block's schema uses the same format as a [Volto block schema](https://6.docs.p
 | `widget` | Storage | Key fields |
 | --- | --- | --- |
 | `blocks_layout` | children are ids in the parent's shared `blocks` dict; this field's name is a region key under `blocks_layout` | `allowedBlocks`, `maxLength`, `allowedTemplates`, `allowedStyles` / `disallowedStyles` / `allowedMarks` / `disallowedMarks` ([slate styles](#restricting-slate-styles-per-region)) |
-| `object_list` | inline array on the field itself | `idField` (default `@id`), `schema` (item schema), `allowedBlocks` + `typeField` (typed items), `defaultBlockType`, `maxLength`, `addMode: 'table'`, `subBlocks` (default `true`; see below) |
+| `object_list` | inline array on the field itself | `idField` (required for a region — the field each item's id is kept in, such as `@id`, `key` or `field_id`; none is assumed, and a region without one throws), `schema` (item schema), `allowedBlocks` + `typeField` (typed items), `defaultBlockType`, `maxLength`, `addMode: 'table'`, `subBlocks` (default `true`; see below) |
 | `object` | groups sub-fields under one key; sub-fields (plain OR the two container widgets above) nest inside | `schema` (the nested properties) |
 
 </block>
@@ -494,7 +494,9 @@ A container region can never be truly empty. When its last child is deleted, Ink
 
 So the simplest way to never deal with empty placeholders in a region is to give it a `defaultBlockType` (or a single-entry `allowedBlocks`). Otherwise your frontend must render `empty`.
 
-Empty blocks are stripped before saving. Render them as empty space; Inka puts a '+' button in the middle for the user to pick a real type in place. You can override the look of that '+' by rendering something inside the empty block and adding `data-block-add="button"` to it.
+Empty blocks are stripped when a page is saved. (A template keeps one that names a slot: its [empty slot](./templates.md#template-concepts), which a visitor's page never receives.) Render them as empty space; Inka puts a '+' button in the middle for the user to pick a real type in place. You may style the space — a ghost outline, a faint fill — but put nothing in it an author could take for content: no text, no editable field, no form control. Block sanity checks this for every region it can empty.
+
+To give that '+' your own look, render a button inside the empty block and mark it `data-block-add="button"`. Inka then draws no '+' of its own, and clicking your button opens the block chooser beside it to fill the empty in place, as the '+' would. Your button is yours to draw as you like — an icon, a ghost, a label such as "Add a question" — and is the one thing in an empty block that may hold text.
 
 ### Starting a region with set children — `default`
 
@@ -515,6 +517,8 @@ results: {
 
 The same works for an `object_list`. Without a `default`, a region starts with, and is refilled with, one child of its `defaultBlockType`, as described above. An author's own children are never replaced: the default only fills a region that is empty.
 
+A page's own blocks fields are regions too, so a page added in the editor starts with exactly what these rules give each field. Inka adds no blocks of its own, such as a title: if your page's layout shows the title, it appears once.
+
 ### Making a region empty by default — `defaultBlockType: "empty"`
 
 The rules above mean a region with a `defaultBlockType`, or a single-entry `allowedBlocks`, is *never* empty — it always seeds a block of that type. To declare a region that should sit **empty until an editor adds something**, while still restricting **what** they can add, set **\`defaultBlockType: "empty"\`** and do **not** list `"empty"` in `allowedBlocks`:
@@ -534,7 +538,7 @@ This is the one case where `"empty"` is a **configured** default rather than the
 
 - **Passive seed** (region loaded, or its last child deleted): Inka seeds a bare `@type: "empty"` placeholder — nothing renders. `defaultBlockType` wins over the single-`allowedBlocks` auto-fill, so the region genuinely shows empty.
 - **The '+' (active add / fill)**: inserts a real block from `allowedBlocks` (converting the empty placeholder **in place**), never another `empty`. The add path reads `allowedBlocks`, not `defaultBlockType` — so a single-entry `allowedBlocks` fills straight to that type with no chooser.
-- **\`"empty"\` is never in \`allowedBlocks\`** — it isn't a type an editor opts into; it's the "region is empty" state. On save the placeholder is stripped, so a genuinely-empty region persists with no blocks.
+- **\`"empty"\` is never in \`allowedBlocks\`** — it isn't a type an editor opts into; it's the "region is empty" state. On a page's save the placeholder is stripped, so a genuinely-empty region persists with no blocks. A template keeps an empty slot instead, so the slot keeps its place.
 
 Use this for optional site chrome — e.g. a header announcement that is usually absent but can hold a single global alert when needed. (Because the seed is `"empty"`, the frontend must render `empty` as a selectable slot — see below.)
 
@@ -590,12 +594,12 @@ blocks: {
     },
     teaser: {
         fieldMappings: {
-            '@default': { '@id': 'href', 'title': 'title', 'image': 'preview_image' },
+            '@default': { getURL: 'href', 'title': 'title', 'image': 'preview_image' },
         },
     },
     image: {
         fieldMappings: {
-            '@default': { '@id': 'href', 'title': 'alt', 'image': 'url' },
+            '@default': { getURL: 'href', 'title': 'alt', 'image': 'url' },
         },
     },
 }

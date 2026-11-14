@@ -4,7 +4,8 @@
   "description": "Provides a method to initialize a bridge which enables communication between Volt Hydra and your frontend",
   "private": true,
   "exports": {
-    ".": "./hydra.src.js"
+    ".": "./hydra.src.js",
+    "./mergeFrontendBlock.js": "./mergeFrontendBlock.js"
   },
   "scripts": {
     "build": "esbuild hydra.src.js --bundle --format=esm --outfile=hydra.js --sourcemap",
@@ -15,6 +16,7 @@
   "author": "",
   "license": "MIT",
   "devDependencies": {
+    "@jest/globals": "^30.0.0",
     "esbuild": "^0.28.0",
     "jest": "^30.0.0",
     "jest-environment-node": "^30.0.0",

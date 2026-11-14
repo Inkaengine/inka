@@ -134,19 +134,25 @@ Editing a template changes its **definition** — the change will appear on **ev
 
 </block>
 
+## Making a template
+
+Select a block, open its `⋯` menu and choose **Make Template**. The block becomes the start of a new template, unlocked so you can add to it. Give it a **Name**, and choose its **Save Location** if it shouldn't go in your site's usual templates folder: a template can be saved in any folder the site lets you add templates to. If you pick one that doesn't take them, it says so and keeps the location you had. Lock it when you're done; it is created when you save the page.
+
+A template is saved as its own kind of page, a **Template**. Site search leaves templates out, and so do search engines: they are templates, not pages for visitors to find on their own.
+
 ## Editing content inside a template
 
 A template's own (fixed) blocks are **locked** by default — you can edit *this page's* content, but not the template. To change the template itself, **unlock** it: select one of its blocks and click the 🔒 on its **sidebar bar** ("Template: *name*"), on the block's **block toolbar**, or **Edit template** in the bar's `⋯` menu. The 🔒 becomes 🔓, and the template's blocks — plus its Name / Save Location — become editable.
 
 Unlocking one template unlocks only *that* template. The rest of the page stays editable as normal, and you can **unlock several templates at once** and edit them together.
 
-**Locking is where your template edits commit.** When you lock a template you choose:
+**Locking is where you decide what happens to your template edits**, and where they are checked: a problem, such as two slots with the same name, stops the lock and takes you to the block at fault. When you lock a template you choose:
 
-- **Change on all pages** — save your edits to the template's locked blocks; every page using it picks them up. What you write in its editable blocks and its slots stays this page's.
+- **Change on all pages** — keep your edits to the template's locked blocks; when you save the page, the template is saved with them and every page using it picks them up. What you write in its editable blocks and its slots stays this page's.
 - **Reset changes** — discard the edits and revert the template to its saved version. Only the template reverts; any page content you edited while it was unlocked stays.
 - **Cancel** — keep editing (stay unlocked).
 
-Templates are saved when you **lock** them, not when you save the page. If you save the page while a template is still unlocked, you're prompted to lock it first.
+Templates are saved when you **save the page**, and only the ones you changed. A page can't be saved with a template still unlocked: you're prompted to lock it first. While you have a template unlocked, and until you save the page, nobody else can unlock it.
 
 <block type="image">
 

@@ -31,8 +31,8 @@ import {
 import { expelAllowedTypes, findOnlyEmptyChildUid } from './containerOps.js';
 import { acceptableAt } from './conversionMap.js';
 import { collectLinkableAnchors } from './linkableAnchors.js';
-import { isStyleAllowed } from './slateStyles.js';
-import { isRegionField } from './regionWidgets.js';
+import { isStyleAllowed } from '@volto-hydra/helpers/slateStyles.js';
+import { isRegionField } from '@volto-hydra/helpers/regionWidgets.js';
 
 /**
  * Has the frontend drawn the slate value it was given? `dom` is the DOM read
@@ -662,6 +662,35 @@ export class Bridge {
   }
 
   /**
+   * Whether a field can't be edited: the lock of the block that OWNS the field,
+   * not of the block drawing it. A locked template block may draw the page's
+   * own `/title`; the page isn't locked, so neither is its title. A field
+   * named relative to another block (`../x`) is that block's. With no field
+   * name, the block's own lock.
+   *
+   * @param {string|null} fieldName - The field path as the frontend names it
+   * @param {string} blockUid - The block drawing the field
+   * @returns {boolean}
+   */
+  /**
+   * The field carrying `attr` that a click on `target` landed in, if it can be
+   * edited: not inside a frontend's own `data-block-readonly`, and not locked
+   * by its owning block (isFieldReadonly), so a page field drawn in a locked
+   * block still counts.
+   */
+  clickedFieldAt(target, attr, blockUid) {
+    if (target.closest('[data-block-readonly]')) return null;
+    const field = target.closest(`[${attr}]`);
+    return field && !this.isFieldReadonly(field.getAttribute(attr), blockUid) ? field : null;
+  }
+
+  isFieldReadonly(fieldName, blockUid) {
+    return this.isBlockReadonly(
+      fieldName ? this.resolveFieldPath(fieldName, blockUid).blockId : blockUid,
+    );
+  }
+
+  /**
    * Parse a hydra comment string into attributes and selectors.
    * Format: "hydra attr=value attr attr=value(selector) /"
    *
@@ -1082,7 +1111,7 @@ export class Bridge {
    *
    * A frontend annotates the element it renders. A design system's script then
    * often turns that element into a shell around the control it builds for
-   * itself: the NSW accordion empties its `.nsw-accordion__title`, puts a
+   * itself: an accordion empties its `.ds-accordion__title`, puts a
    * `<button>` inside it, and binds both the toggle and `aria-expanded` to that
    * button. A person clicking the title hits the button — the event starts
    * there and bubbles outward — but `shell.click()` starts at the shell and
@@ -1362,11 +1391,13 @@ export class Bridge {
    */
   collectBlockFields(blockElement, attrName, processor) {
     const blockUid = blockElement.getAttribute('data-block-uid');
-
-    // Check if block is marked readonly (registry, block data, or DOM attribute)
-    if (blockUid && this.isBlockReadonly(blockUid)) {
-      return {};
-    }
+    const collect = processor;
+    // Each field by its own lock (isFieldReadonly): a locked block's own fields
+    // are skipped, a page field it draws is not.
+    processor = (el, name, results) => {
+      if (blockUid && this.isFieldReadonly(name, blockUid)) return;
+      collect(el, name, results);
+    };
 
     const results = {};
 
@@ -1572,6 +1603,19 @@ export class Bridge {
     return depth % 2 === 0 ? 'bottom' : 'right';
   }
 
+  /**
+   * The add button a frontend draws inside an empty placeholder, if it draws
+   * one: an element marked data-block-add="button" (docs: Empty Blocks). Only
+   * an empty block has one; on any other block the attribute means nothing.
+   */
+  ownAddButton(blockElement) {
+    const uid = blockElement?.getAttribute('data-block-uid');
+    if (!uid || this.getBlockType(uid) !== 'empty') return null;
+    const button = blockElement.querySelector('[data-block-add="button"]');
+    // It must be this block's own, not one inside a nested block.
+    return button && button.closest('[data-block-uid]') === blockElement ? button : null;
+  }
+
   getAddDirection(blockElement) {
     const blockUid = blockElement.getAttribute('data-block-uid');
 
@@ -1590,6 +1634,14 @@ export class Bridge {
     // place. Without this, a seeded empty (no defaultBlockType + multiple allowedBlocks) is
     // stranded with no + and no way to be typed.
     if (!addability.canInsertAfter && !addability.canReplace) {
+      return 'hidden';
+    }
+
+    // An empty placeholder that draws its own add button (an element marked
+    // data-block-add="button", docs: Empty Blocks) gets no '+' from the admin:
+    // the frontend's button is the '+', and clicking it opens the chooser
+    // (blockClickHandler).
+    if (this.ownAddButton(blockElement)) {
       return 'hidden';
     }
 
@@ -5283,6 +5335,23 @@ export class Bridge {
         }
         return;
       }
+      // A frontend's own add button in an empty placeholder: select the empty
+      // and ask the admin to fill it, as its '+' would.
+      const ownAdd = event.target.closest('[data-block-add="button"]');
+      const ownAddBlock = ownAdd?.closest('[data-block-uid]');
+      if (ownAddBlock && this.ownAddButton(ownAddBlock) === ownAdd) {
+        event.preventDefault();
+        event.stopPropagation();
+        const blockUid = ownAddBlock.getAttribute('data-block-uid');
+        log('blockClickHandler: own add button for empty', blockUid);
+        this.selectBlock(ownAddBlock);
+        this.sendMessageToParent({
+          type: 'ADD_BLOCK',
+          blockUid,
+          rect: ownAdd.getBoundingClientRect().toJSON(),
+        });
+        return;
+      }
       log('blockClickHandler: event target:', event.target.tagName, event.target.className);
       log('blockClickHandler: _isDragging:', this._isDragging, '_navigatingToBlock:', this._navigatingToBlock);
 
@@ -5486,12 +5555,10 @@ export class Bridge {
         // Using relative coordinates ensures focus()/scroll doesn't invalidate the position
         // Also store the target for field detection
         // Inside readonly blocks, ignore editable/linkable/media fields (they're from query results, not editable)
-        const clickedEditableField = isInsideReadonly ? null : event.target.closest('[data-edit-text]');
-        const editableField = clickedEditableField || (isInsideReadonly ? null : blockElement.querySelector('[data-edit-text]'));
-
-        // Detect clicked linkable and media fields (ignored inside readonly blocks)
-        const clickedLinkableField = isInsideReadonly ? null : event.target.closest('[data-edit-link]');
-        const clickedMediaField = isInsideReadonly ? null : event.target.closest('[data-edit-media]');
+        // A field is judged by its own lock (isFieldReadonly), so a page field
+        // drawn in a locked block is still editable.
+        const clickedEditableField = this.clickedFieldAt(event.target, 'data-edit-text', blockUid);
+        const editableField = clickedEditableField || this.getOwnFirstEditableField(blockElement);
 
         // Clicking a data-edit-text element starts INLINE text editing, so prevent
         // the element's OWN default action. A data-edit-text submit button would
@@ -5502,7 +5569,7 @@ export class Bridge {
           event.preventDefault();
         }
 
-        this.recordClickPosition(event, editableField, !!isInsideReadonly);
+        this.recordClickPosition(event, editableField, blockUid);
         // Cancel any pending initial-selection from waitForStable —
         // user click takes priority over automatic block restoration
         if (this._pendingInitialSelectTimer) {
@@ -5557,9 +5624,7 @@ export class Bridge {
           typeof matchMedia === 'function' &&
           matchMedia('(pointer: coarse)').matches;
         const alreadySelected = blockUid === this.selectedBlockUid;
-        const hasOwnText =
-          !this.isBlockReadonly(blockUid) &&
-          this.getOwnEditableFields(blockElement).length > 0;
+        const hasOwnText = this.getOwnEditableFields(blockElement).length > 0;
         const enterTextMode = hasOwnText && (!coarsePointer || alreadySelected);
         this.editMode = enterTextMode ? 'text' : 'block';
         this.selectBlock(blockElement, { fromUserClick: true });
@@ -5954,8 +6019,10 @@ export class Bridge {
 
     if (processing) {
       log('BLOCKING input for', blockId);
-      // Clear any existing buffer when starting new blocking
-      this.eventBuffer = [];
+      // Keys already buffered for this block (typed while focus was on the body,
+      // between a transform and its new field's focus) are kept and replayed
+      // with what is buffered next; keys for another block go (inka#645).
+      if (blockId !== this.selectedBlockUid) this.eventBuffer = [];
       this.blockedBlockId = blockId;
 
       this._ensureDocumentKeyboardBlocker();
@@ -6461,9 +6528,17 @@ export class Bridge {
 
       // If no text node exists, create one with ZWS for cursor positioning
       if (!textNode) {
+        // Inside the innermost element the frontend drew for the empty text
+        // (its leaf <span>, say), not beside it: its next render writes the
+        // text into that element, so text typed beside it was left behind,
+        // and the caret with it (inka#645).
+        let leaf = firstNodeIdEl;
+        while (leaf.firstElementChild && leaf.firstElementChild.tagName !== 'BR') {
+          leaf = leaf.firstElementChild;
+        }
         textNode = document.createTextNode('\uFEFF');
-        firstNodeIdEl.appendChild(textNode);
-        log('getValidPositionForWhitespace: created ZWS text node in empty element');
+        leaf.appendChild(textNode);
+        log('getValidPositionForWhitespace: created ZWS text node in empty element', leaf.tagName);
         return { textNode, offset: 1 }; // Position after ZWS
       }
 
@@ -6707,6 +6782,13 @@ export class Bridge {
         anchorPos = this.getValidatedPosition(range.startContainer, range.startOffset);
         focusPos = this.getValidatedPosition(range.endContainer, range.endOffset);
       }
+    } else if (range.collapsed) {
+      // One caret, one position. Resolving each end separately put them in
+      // different places when the first made a text node for the caret: the
+      // second then found that node and resolved elsewhere, so text went
+      // before what was typed (inka#645).
+      anchorPos = this.getValidatedPosition(range.startContainer, range.startOffset);
+      focusPos = anchorPos;
     } else {
       anchorPos = this.getValidatedPosition(range.startContainer, range.startOffset);
       focusPos = this.getValidatedPosition(range.endContainer, range.endOffset);
@@ -7400,8 +7482,8 @@ export class Bridge {
         || null;
       const fieldName = container?.getAttribute?.('data-edit-text') || null;
 
-      // Skip error for readonly blocks - they don't need selection sync
-      if (blockUid && this.isBlockReadonly(blockUid)) {
+      // Skip error for readonly fields - they don't need selection sync
+      if (blockUid && this.isFieldReadonly(fieldName, blockUid)) {
         return null;
       }
 
@@ -7505,14 +7587,13 @@ export class Bridge {
     // Get blockUid from the element - don't rely on this.selectedBlockUid as it may not be set yet
     const blockUid = blockElement.getAttribute('data-block-uid');
 
-    // If block is readonly, remove contenteditable from all its editable fields
+    // In a readonly block, a field that is itself readonly loses contenteditable.
     if (blockUid && this.isBlockReadonly(blockUid)) {
-      const editableFields = blockElement.querySelectorAll('[data-edit-text][contenteditable="true"]');
-      editableFields.forEach((field) => {
-        field.removeAttribute('contenteditable');
+      blockElement.querySelectorAll('[data-edit-text][contenteditable="true"]').forEach((field) => {
+        if (this.isFieldReadonly(field.getAttribute('data-edit-text'), blockUid)) {
+          field.removeAttribute('contenteditable');
+        }
       });
-      log(`restoreContentEditableOnFields called from ${caller}: block ${blockUid} is readonly, removed contenteditable`);
-      return;
     }
 
     // For multi-element blocks, collect fields from ALL elements with this UID
@@ -9407,11 +9488,13 @@ export class Bridge {
       this.scrollBlockIntoView(blockElement);
     }
 
-    // Flush any pending text updates from the previous block before switching
-    // Also clear event buffer - user is reorienting to a new block
+    // Flush any pending text updates from the previous block before switching.
+    // Keys still buffered were typed for the old block, so they go - unless a
+    // transform is pending: then this switch IS its result (Enter made this
+    // block) and the keys typed after it belong here (inka#645).
     if (!isSelectingSameBlock) {
       this.flushPendingTextUpdates();
-      this.eventBuffer = [];
+      if (!this.pendingTransform) this.eventBuffer = [];
     }
 
     // editMode is controlled by user actions only (Escape → block, click/Enter → text).
@@ -9436,6 +9519,14 @@ export class Bridge {
       // Focus specific field + cursor placement after DOM settles
       if (fieldToFocus === 'first' || fieldToFocus === 'last' || typeof fieldToFocus === 'string') {
         const cursorAt = opts.cursorAt || 'start';
+        // The block's text when this placement was asked for. Keys can be
+        // replayed into it, and the author type on, before the frames below:
+        // once text has been typed the caret is where the typing left it, and
+        // putting it back at the start put what they typed next before it
+        // (inka#645). A caret that only moved (an arrow key's own move into
+        // this block) is still placed.
+        const textOf = (el) => this.stripZeroWidthSpaces(el?.textContent || '');
+        const askedText = textOf(blockElement);
         requestAnimationFrame(() => {
           requestAnimationFrame(() => {
             const currentElement = this.queryBlockElement(blockUid);
@@ -9451,6 +9542,7 @@ export class Bridge {
               targetField = currentElement.querySelector(`[data-edit-text="${fieldToFocus}"]`);
             }
             if (targetField && targetField.getAttribute('contenteditable') === 'true') {
+              if (textOf(currentElement) !== askedText) return;
               targetField.focus();
               if (cursorAt === 'end') {
                 this._placeCursorAtEnd(targetField);
@@ -9476,8 +9568,7 @@ export class Bridge {
     // the document-level keyboard blocker receives key events. Without focus
     // in the iframe, keydown events go to the parent page instead.
     if (!isTemplateInstance) {
-      const isReadonly = this.isBlockReadonly(blockUid);
-      const hasEditableFields = !isReadonly && this.getOwnEditableFields(blockElement).length > 0;
+      const hasEditableFields = this.getOwnEditableFields(blockElement).length > 0;
       // "No editable fields" is true of a CONTAINER whose text all belongs to
       // its children — a codeExample's labels and code live on its tabs, not on
       // the wrapper. Focusing the wrapper then rips the caret out of the field
@@ -9627,8 +9718,7 @@ export class Bridge {
     // - Non-editable blocks (no contenteditable field)
     // - Block mode (contenteditable not set)
     {
-      const isReadonly = this.isBlockReadonly(blockUid);
-      const hasEditableFields = !isReadonly && this.getOwnEditableFields(blockElement).length > 0;
+      const hasEditableFields = this.getOwnEditableFields(blockElement).length > 0;
       const needsImmediateSend = isTemplateInstance || isBlockMode || !hasEditableFields;
       if (needsImmediateSend && this._pendingBlockSelected) {
         const pending = this._pendingBlockSelected;
@@ -9834,14 +9924,13 @@ export class Bridge {
    * @param {HTMLElement|null} editableField - The text field the click resolved
    *   to, or null when the click wasn't on one (the target is still recorded,
    *   for field detection).
-   * @param {boolean} isInsideReadonly - Inside a readonly block (listing items
-   *   and friends) linkable/media fields come from query results, not editable
-   *   content, so they are ignored.
+   * @param {string} blockUid - The clicked block. A locked field (a listing
+   *   item's, a locked template block's own) is not recorded.
    */
-  recordClickPosition(event, editableField, isInsideReadonly = false) {
+  recordClickPosition(event, editableField, blockUid) {
     const rect = editableField?.getBoundingClientRect();
     const fieldAttr = (attr) =>
-      (isInsideReadonly ? null : event.target.closest(`[${attr}]`)?.getAttribute(attr)) || null;
+      this.clickedFieldAt(event.target, attr, blockUid)?.getAttribute(attr) || null;
     this.lastClickPosition = {
       ...(editableField && {
         relativeX: event.clientX - rect.left,
@@ -9898,7 +9987,8 @@ export class Bridge {
 
     // Readonly blocks (listing items and friends) render query results, not
     // editable content — same exclusion the plain-click path applies.
-    if (event.target.closest('[data-block-readonly]') || this.isBlockReadonly(ownerUid)) return;
+    if (event.target.closest('[data-block-readonly]')
+      || this.isFieldReadonly(field.getAttribute('data-edit-text'), ownerUid)) return;
 
     // Touch: the first tap on a not-yet-selected block selects it without a
     // caret, so iOS word-select and long-press multi-select have a clean
@@ -9910,7 +10000,7 @@ export class Bridge {
       return;
     }
 
-    this.recordClickPosition(event, field);
+    this.recordClickPosition(event, field, ownerUid);
     // editMode FIRST: focusedFieldName is an accessor that drops any value
     // assigned while the mode is still 'block' (block mode has no focused
     // field). Assigning the other way round silently loses the field name, and
@@ -11099,8 +11189,12 @@ export class Bridge {
         // Single element: clone it as before
         draggedBlock = allElements[0].cloneNode(true);
         draggedBlock.classList.add('dragging');
-        // Remove data-block-uid from shadow so it doesn't interfere with selectors
+        // Remove data-block-uid from the shadow, and from every block inside it,
+        // so none of it interferes with selectors: the shadow follows the cursor,
+        // and a container's own children in it were taken as the nearest drop
+        // target, dropping it into itself (inka#705).
         draggedBlock.removeAttribute('data-block-uid');
+        for (const inner of draggedBlock.querySelectorAll('[data-block-uid]')) inner.removeAttribute('data-block-uid');
       }
 
       // IMPORTANT: Set styles BEFORE appending to avoid brief layout flash
@@ -11205,8 +11299,10 @@ export class Bridge {
         // resolution is uniform for every cursor position (it effectively walks both up
         // and down and takes the nearest droppable edge). Enable HYDRA_DEBUG to trace.
         {
+          // Nor anything inside a dragged block: a block can't go into itself.
           const candidates = Array.from(document.querySelectorAll('[data-block-uid]'))
-            .filter(el => el !== draggedBlock && !draggedBlockUids.includes(uidOf(el)));
+            .filter(el => el !== draggedBlock && !draggedBlockUids.includes(uidOf(el))
+              && !allElements.some((dragged) => dragged.contains(el)));
           // For each candidate, measure BOTH insert edges along the axis its siblings
           // are laid out on — a horizontal row (columns / data-block-add="right") uses
           // the left/right edges + clientX, a vertical stack uses top/bottom + clientY
@@ -11526,10 +11622,27 @@ export class Bridge {
               borderLeft: 'none', borderTop: '3px dashed #007bff', display: 'block'
             });
           }
+          // The indicator shows where the drop goes: a place the author can't
+          // see is no drop. Walked up to a container's far edge, out of the
+          // window, a layout's title was dropped after the whole layout (inka#705).
+          // The edge it lands at must be in the window; the indicator, drawn in
+          // the gap beside that edge, is then kept on screen with it.
+          const landsAt = isHorizontal ? (insertAt === 0 ? rect.left : rect.right) : (insertAt === 0 ? rect.top : rect.bottom);
+          const windowEnd = isHorizontal ? window.innerWidth : window.innerHeight;
+          if (landsAt < 0 || landsAt > windowEnd) {
+            dropIndicator.style.display = 'none';
+            dropIndicatorVisible = false;
+            closestBlockUid = null;
+            replaceTargetUid = null;
+            return;
+          }
+          const scrolled = isHorizontal ? window.scrollX : window.scrollY;
+          const along = isHorizontal ? 'left' : 'top';
+          const at = parseFloat(dropIndicator.style[along]);
+          const kept = Math.min(Math.max(at, scrolled), scrolled + windowEnd - indicatorSize);
+          if (kept !== at) dropIndicator.style[along] = `${kept}px`;
           this._nameDropTarget(dropIndicator, closestBlockUid, insertAt === 1, isHorizontal);
           dropIndicatorVisible = true;
-          // TODO(scroll-into-view): if the resolved edge is off-screen, scroll it into
-          // view — deferred; scrolling mid-drag fights a held cursor, needs its own design.
         } else {
           // No valid drop target - hide indicator and mark as not droppable
           const existingIndicator = document.querySelector('.volto-hydra-drop-indicator');
@@ -11567,6 +11680,11 @@ export class Bridge {
 
         // Always clean up drop indicator on mouseup
         const dropIndicator = document.querySelector('.volto-hydra-drop-indicator');
+        // Where the block was dropped, in the frame's viewport: a chooser the
+        // drop asks for (convert to fit) opens there.
+        const dropRect = dropIndicatorVisible && dropIndicator
+          ? dropIndicator.getBoundingClientRect().toJSON()
+          : null;
         if (dropIndicator) {
           log('Hiding drop indicator on mouseup');
           dropIndicator.style.display = 'none';
@@ -11596,6 +11714,7 @@ export class Bridge {
               // When set, the admin deletes this block after the move so the
               // 'empty' placeholder is replaced rather than dropped beside.
               replaceTargetId: replaceTargetUid || null,
+              dropRect,
             },
             this.adminOrigin,
           );
@@ -11964,8 +12083,8 @@ export class Bridge {
       editableField = this.getOwnFirstEditableField(elementOrBlock);
     }
 
-    // Skip making readonly blocks editable
-    if (blockUid && this.isBlockReadonly(blockUid)) {
+    // Skip making readonly fields editable
+    if (blockUid && this.isFieldReadonly(editableField?.getAttribute('data-edit-text'), blockUid)) {
       return;
     }
 
@@ -15401,6 +15520,10 @@ export class Bridge {
           font-size: 24px;
           color: #b8c6c8;
           pointer-events: none;
+        }
+        /* The frontend draws its own add button (data-block-add="button"). */
+        [data-hydra-empty]:has([data-block-add="button"])::after {
+          content: none;
         }
       `;
     document.head.appendChild(style);

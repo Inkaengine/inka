@@ -26,7 +26,7 @@ describe('combined container paging — a manual block AFTER a listing', () => {
   });
 
   const blocks = {
-    l1: { '@type': 'listing', variation: 'default', querystring: { query: [{ i: 'path' }] } },
+    l1: { '@type': 'listing', variation: 'default', fieldMapping: { getURL: { field: 'href', type: 'link' }, title: { field: 'title', type: 'string' } }, querystring: { query: [{ i: 'path' }] } },
     s1: {
       '@type': 'slate',
       value: [{ type: 'p', children: [{ text: 'manual after listing' }] }],

@@ -25,5 +25,5 @@ setInjectedVoltoConfig({
 // so a file of them runs as one uninterrupted block, and the worker can't take
 // the replies to its progress reports until it ends. Past 60s vitest fails the
 // run with "Timeout calling onTaskUpdate", every test passing: the docs-corpus
-// round-trip (lib/prototype-roundtrip.test.mjs, ~55-62s) did that on CI.
+// round-trip (packages/blockmd/prototype-roundtrip.test.mjs, ~55-62s) did that on CI.
 beforeEach(() => new Promise((resolve) => setTimeout(resolve, 0)));

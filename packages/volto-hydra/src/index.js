@@ -1,34 +1,9 @@
 import { defineMessages } from 'react-intl';
-import filterSVG from '@plone/volto/icons/filter.svg';
 
 const messages = defineMessages({
   typeText: {
     id: 'Type text…',
     defaultMessage: 'Type text…',
-  },
-  typeTitle: {
-    id: 'Type the title…',
-    defaultMessage: 'Type the title…',
-  },
-  addDescription: {
-    id: 'Add a description…',
-    defaultMessage: 'Add a description…',
-  },
-  videoPlaceholder: {
-    id: 'Type a Video (YouTube, Vimeo or mp4) URL',
-    defaultMessage: 'Type a Video (YouTube, Vimeo or mp4) URL',
-  },
-  mapsPlaceholder: {
-    id: 'Paste a Google Maps Embed URL',
-    defaultMessage: 'Paste a Google Maps Embed URL',
-  },
-  imagePlaceholder: {
-    id: 'Browse the site or type a URL',
-    defaultMessage: 'Browse the site or type a URL',
-  },
-  htmlPlaceholder: {
-    id: 'Add some HTML here',
-    defaultMessage: 'Add some HTML here',
   },
 });
 import frontendPreviewUrl, { viewportPreset } from './reducers';
@@ -58,7 +33,7 @@ import SchemaFieldSelectWidget from './components/Widgets/SchemaFieldSelectWidge
 import VocabularySelectWidget from './components/Widgets/VocabularySelectWidget';
 import BlockPickerWidget from './components/Widgets/BlockPickerWidget';
 import QuerystringSelectWidget from './components/Widgets/QuerystringSelectWidget';
-import TableSchema, { TableBlockSchema } from '@plone/volto-slate/blocks/Table/schema';
+import TableSchema from '@plone/volto-slate/blocks/Table/schema';
 // Volto-slate ships TWO schemas for the slate block:
 //   ./schema.js          → "Block tab" form (override_toc / level / entry_text)
 //   ./TextBlockSchema.js → "Settings tab" form (placeholder / instructions /
@@ -66,7 +41,6 @@ import TableSchema, { TableBlockSchema } from '@plone/volto-slate/blocks/Table/s
 // We merge both into one schema below so Volto Hydra's single sidebar
 // surface shows everything.
 import _slateBlockTabSchema from '@plone/volto-slate/blocks/Text/schema';
-import { ImageSchema } from '@plone/volto/components/manage/Blocks/Image/schema';
 import {
   QUERY_RESULT_FIELDS,
   createSchemaEnhancerFromRecipe,
@@ -86,21 +60,11 @@ import { regionGatedLinkButton } from './components/Toolbar/regionRules';
 import { installLinkEditor } from './components/Toolbar/LinkEditor';
 import { noStore } from './express-middleware/noStore';
 import { apiAcceptEncoding } from './express-middleware/apiAcceptEncoding';
+import { registerRuleErrorValidators } from '@volto-hydra/helpers/blockFieldErrors.js';
 
-// The field types a `hydraRuleError` can land on. Volto looks a validator up by
-// the field's declared type (`field.type || 'string'`), so the rule's error has
-// to be offered for each type a rule might mark — there is no "any type" key.
-const RULE_ERROR_FIELD_TYPES = ['string', 'number', 'integer', 'boolean', 'array', 'object'];
-
-/**
- * Surface a field rule's `error` as a form error.
- *
- * `evaluateFieldRule` puts the message on the field DEFINITION when the rule
- * matches; this is what turns that into the things an author sees — the widget
- * red, the form's error summary, and a blocked save — all of which are Volto's
- * own, keyed on the field. Nothing here decides anything: the rule already did.
- */
-const hydraRuleErrorValidator = ({ field }) => field?.hydraRuleError || null;
+// The only blocks Inka's admin registers itself. Every other block a site uses
+// is the frontend's to declare (its blocks config, sent at initBridge).
+export const ADMIN_BLOCK_TYPES = ['slate', 'listing'];
 
 const applyConfig = (config) => {
   // No shared cache keeps an editor's page (express-middleware/noStore.js).
@@ -114,14 +78,9 @@ const applyConfig = (config) => {
     ];
   }
 
-  for (const fieldType of RULE_ERROR_FIELD_TYPES) {
-    config.registerUtility({
-      name: `hydraRuleError-${fieldType}`,
-      type: 'validator',
-      dependencies: { fieldType },
-      method: hydraRuleErrorValidator,
-    });
-  }
+  // A fieldRules `error` refuses the save, as any Volto validator's does. The
+  // offline content check registers the same (@volto-hydra/helpers/blockFieldErrors.js).
+  registerRuleErrorValidators(config);
 
   // A text link picked from the object browser keeps the picked item beside
   // its url (data.item), so a frontend can draw it from the item (a file's type
@@ -390,74 +349,6 @@ config.settings.additionalToolbarComponents = {
     mostUsed: true,
   };
 
-  // Title block: renders page title with placeholder hint
-  config.blocks.blocksConfig.title = {
-    ...config.blocks.blocksConfig.title,
-    blockSchema: ({ intl: blockIntl }) => ({
-      title: 'Title',
-      fieldsets: [{ id: 'default', title: 'Default', fields: ['title'] }],
-      properties: {
-        title: {
-          title: 'Title',
-          type: 'string',
-          placeholder: blockIntl.formatMessage(messages.typeTitle),
-        },
-      },
-      required: [],
-    }),
-  };
-
-  // Description block: renders page description with placeholder hint
-  config.blocks.blocksConfig.description = {
-    ...config.blocks.blocksConfig.description,
-    blockSchema: ({ intl: blockIntl }) => ({
-      title: 'Description',
-      fieldsets: [{ id: 'default', title: 'Default', fields: ['description'] }],
-      properties: {
-        description: {
-          title: 'Description',
-          type: 'string',
-          widget: 'textarea',
-          placeholder: blockIntl.formatMessage(messages.addDescription),
-        },
-      },
-      required: [],
-    }),
-  };
-
-  // Video block: placeholder for URL input
-  config.blocks.blocksConfig.video = {
-    ...config.blocks.blocksConfig.video,
-    schemaEnhancer: ({ schema, intl: blockIntl }) => {
-      if (schema.properties.url) {
-        schema.properties.url = { ...schema.properties.url, placeholder: blockIntl.formatMessage(messages.videoPlaceholder) };
-      }
-      return schema;
-    },
-  };
-
-  // Maps block: placeholder for embed URL input
-  config.blocks.blocksConfig.maps = {
-    ...config.blocks.blocksConfig.maps,
-    schemaEnhancer: ({ schema, intl: blockIntl }) => {
-      if (schema.properties.url) {
-        schema.properties.url = { ...schema.properties.url, placeholder: blockIntl.formatMessage(messages.mapsPlaceholder) };
-      }
-      return schema;
-    },
-  };
-
-  // HTML block: placeholder for code input
-  config.blocks.blocksConfig.html = {
-    ...config.blocks.blocksConfig.html,
-    schemaEnhancer: ({ schema, intl: blockIntl }) => {
-      if (schema.properties.html) {
-        schema.properties.html = { ...schema.properties.html, placeholder: blockIntl.formatMessage(messages.htmlPlaceholder) };
-      }
-      return schema;
-    },
-  };
-
   // Override Slate hotkeys: use Ctrl+Shift+S for strikethrough (del) instead of Ctrl+S
   // This frees Ctrl+S for the standard "save" action that users expect
   if (config.settings.slate?.hotkeys) {
@@ -467,65 +358,6 @@ config.settings.additionalToolbarComponents = {
       'mod+shift+s': { format: 'del', type: 'inline' },
     };
   }
-
-  // Image block: url field is added to blockSchema (not schemaEnhancer) so that
-  // a frontend-supplied schemaEnhancer recipe doesn't overwrite it when it
-  // replaces the block's schemaEnhancer.
-
-  // Configure slateTable block schema for buildBlockPathMap traversal
-  // Structure: block.table.rows[].cells[] with 'key' as idField
-  // Sidebar titles are derived from field names: "rows" -> "Row", "cells" -> "Cell"
-  // disableCustomSidebarEditForm: TableBlockEdit expects specific data structures that don't
-  // work well when rendered in sidebar - use schema form instead.
-  config.blocks.blocksConfig.slateTable = {
-    ...config.blocks.blocksConfig.slateTable,
-    disableCustomSidebarEditForm: true,
-    addMode: 'table', // Double-nested structure: rows contain cells, enables column add and row cell-count copying
-    blockSchema: (props) => {
-      const baseSchema = TableBlockSchema(props);
-      return {
-        ...baseSchema,
-        properties: {
-          ...baseSchema.properties,
-          // #245: rows nest inside the `table` object (block.table.rows) as a
-          // first-class widget:'object'. The pathMap recurses into
-          // the object and resolves the object_list relative to it.
-          table: {
-            widget: 'object',
-            schema: {
-              fieldsets: [{ id: 'default', title: 'Table', fields: ['rows'] }],
-              properties: {
-                rows: {
-                  widget: 'object_list',
-                  idField: 'key',
-                  addMode: 'table',
-                  schema: {
-                    fieldsets: [{ id: 'default', title: 'Default', fields: [] }],
-                    properties: {
-                      cells: {
-                        widget: 'object_list',
-                        idField: 'key',
-                        schema: {
-                          fieldsets: [{ id: 'default', title: 'Default', fields: ['value'] }],
-                          properties: {
-                            value: {
-                              title: 'Content',
-                              widget: 'slate',
-                              default: [{ type: 'p', children: [{ text: '' }] }],
-                            },
-                          },
-                        },
-                      },
-                    },
-                  },
-                },
-              },
-            },
-          },
-        },
-      };
-    },
-  };
 
 
 
@@ -590,314 +422,19 @@ config.settings.additionalToolbarComponents = {
     ],
   };
 
-  // Configure image block with blockSchema for block sync
-  // The default image block only has 'schema' (settings), not 'blockSchema' (data schema)
-  // We add 'url' field here (not in schemaEnhancer) so a frontend-supplied
-  // schemaEnhancer recipe doesn't lose it when it replaces the schemaEnhancer.
-  config.blocks.blocksConfig.image = {
-    ...config.blocks.blocksConfig.image,
-    mostUsed: true,
-    blockSchema: (props) => {
-      // applyBlockDefaults passes 'data', but ImageSchema expects 'formData'
-      const formData = props.formData || props.data || {};
-      const baseSchema = ImageSchema({ ...props, formData });
-      return {
-        ...baseSchema,
-        fieldsets: [
-          {
-            ...baseSchema.fieldsets[0],
-            fields: ['url', ...(baseSchema.fieldsets[0]?.fields || [])],
-          },
-          ...(baseSchema.fieldsets.slice(1) || []),
-        ],
-        properties: {
-          ...baseSchema.properties,
-          url: {
-            title: 'Image URL',
-            widget: 'image',
-            placeholder: props.intl?.formatMessage(messages.imagePlaceholder) || 'Browse the site or type a URL',
-          },
-        },
-      };
-    },
-    fieldMappings: {
-      '@default': { '@id': 'href', 'title': 'alt', 'image': 'url' },
-      // Converting from teaser block
-      teaser: { 'href': 'href', 'title': 'alt', 'preview_image': 'url' },
-    },
-  };
-
-  // Default result item for listings (simple title + description)
-  // Matches Volto's DefaultResultItem variation
-  config.blocks.blocksConfig.default = {
-    ...config.blocks.blocksConfig.default,
-    id: 'default',
-    title: 'Default',
-    restricted: true,
-    blockSchema: () => ({
-      title: 'Default Item',
-      fieldsets: [{ id: 'default', title: 'Default', fields: ['href', 'title', 'description'] }],
-      properties: {
-        href: { title: 'Link', widget: 'url' },
-        title: { title: 'Title' },
-        description: { title: 'Description', widget: 'textarea' },
-      },
-      required: [],
-    }),
-    fieldMappings: {
-      '@default': { '@id': 'href', 'title': 'title', 'description': 'description' },
-    },
-  };
-
-  // Summary result item for listings (title + description + image)
-  // Matches Volto's SummaryResultItem variation - the default for listings
-  config.blocks.blocksConfig.summary = {
-    ...config.blocks.blocksConfig.summary,
-    id: 'summary',
-    title: 'Summary',
-    restricted: true,
-    blockSchema: () => ({
-      title: 'Summary Item',
-      fieldsets: [{ id: 'default', title: 'Default', fields: ['href', 'title', 'description', 'image'] }],
-      properties: {
-        href: { title: 'Link', widget: 'url' },
-        title: { title: 'Title' },
-        description: { title: 'Description', widget: 'textarea' },
-        image: { title: 'Image', widget: 'url' },
-      },
-      required: [],
-    }),
-    fieldMappings: {
-      '@default': { '@id': 'href', 'title': 'title', 'description': 'description', 'image': 'image' },
-    },
-  };
-
-  // Teaser block - add fieldMappings so it appears in listing item type dropdown
-  config.blocks.blocksConfig.teaser = {
-    ...config.blocks.blocksConfig.teaser,
-    fieldMappings: {
-      '@default': { '@id': 'href', 'title': 'title', 'description': 'description', 'image': 'preview_image' },
-      // Converting from image block
-      image: { 'href': 'href', 'alt': 'title', 'url': 'preview_image' },
-    },
-  };
-
-  // Facet block types for typed object_list in search block
-  // Each facet type has its own schema, resolved via blocksConfig
-  // Shared field definitions for facet schemas
-  const facetFieldDef = {
-    title: 'Field',
-    widget: 'select_querystring_field',
-    vocabulary: { '@id': 'plone.app.vocabularies.MetadataFields' },
-  };
-  // Facet field mappings — explicit type-to-type using checkboxFacet as hub.
-  // All facet types share the same core fields (title, field, hidden).
-  // @default is NOT used here because these fields are facet-specific,
-  // not from the canonical @default type (@id, title, description, image).
-  const facetBaseFields = { title: 'title', field: 'field', hidden: 'hidden' };
-  const facetHubMappings = {
-    selectFacet: facetBaseFields,
-    daterangeFacet: facetBaseFields,
-    toggleFacet: facetBaseFields,
-  };
-  const facetSpokeMappings = { checkboxFacet: facetBaseFields };
-
-  config.blocks.blocksConfig.checkboxFacet = {
-    ...config.blocks.blocksConfig.checkboxFacet,
-    id: 'checkboxFacet',
-    title: 'Checkbox',
-    icon: filterSVG,
-    group: 'common',
-    restricted: true,
-    fieldMappings: facetHubMappings,
-    blockSchema: () => ({
-      title: 'Checkbox Facet',
-      fieldsets: [
-        {
-          id: 'default',
-          title: 'Default',
-          fields: ['title', 'field', 'multiple', 'hidden'],
-        },
-      ],
-      properties: {
-        title: { title: 'Label', type: 'string' },
-        field: facetFieldDef,
-        multiple: {
-          title: 'Multiple choices?',
-          type: 'boolean',
-          default: false,
-        },
-        hidden: { title: 'Hide facet?', type: 'boolean', default: false },
-      },
-      required: [],
-    }),
-  };
-
-  config.blocks.blocksConfig.selectFacet = {
-    ...config.blocks.blocksConfig.selectFacet,
-    id: 'selectFacet',
-    title: 'Select',
-    icon: filterSVG,
-    group: 'common',
-    restricted: true,
-    fieldMappings: facetSpokeMappings,
-    blockSchema: () => ({
-      title: 'Select Facet',
-      fieldsets: [
-        {
-          id: 'default',
-          title: 'Default',
-          fields: ['title', 'field', 'hidden'],
-        },
-      ],
-      properties: {
-        title: { title: 'Label', type: 'string' },
-        field: facetFieldDef,
-        hidden: { title: 'Hide facet?', type: 'boolean', default: false },
-      },
-      required: [],
-    }),
-  };
-
-  config.blocks.blocksConfig.daterangeFacet = {
-    ...config.blocks.blocksConfig.daterangeFacet,
-    id: 'daterangeFacet',
-    title: 'Date Range',
-    icon: filterSVG,
-    group: 'common',
-    restricted: true,
-    fieldMappings: facetSpokeMappings,
-    blockSchema: () => ({
-      title: 'Date Range Facet',
-      fieldsets: [
-        {
-          id: 'default',
-          title: 'Default',
-          fields: ['title', 'field', 'hidden'],
-        },
-      ],
-      properties: {
-        title: { title: 'Label', type: 'string' },
-        field: facetFieldDef,
-        hidden: { title: 'Hide facet?', type: 'boolean', default: false },
-      },
-      required: [],
-    }),
-  };
-
-  config.blocks.blocksConfig.toggleFacet = {
-    ...config.blocks.blocksConfig.toggleFacet,
-    id: 'toggleFacet',
-    title: 'Toggle',
-    icon: filterSVG,
-    group: 'common',
-    restricted: true,
-    fieldMappings: facetSpokeMappings,
-    blockSchema: () => ({
-      title: 'Toggle Facet',
-      fieldsets: [
-        {
-          id: 'default',
-          title: 'Default',
-          fields: ['title', 'field', 'hidden'],
-        },
-      ],
-      properties: {
-        title: { title: 'Label', type: 'string' },
-        field: facetFieldDef,
-        hidden: { title: 'Hide facet?', type: 'boolean', default: false },
-      },
-      required: [],
-    }),
-  };
-
-  // Configure search block to add listing container field and typed facets
-  // Facets converted to typed object_list: allowedBlocks controls facet types
-  const existingSearchSchemaEnhancer =
-    config.blocks.blocksConfig.search?.schemaEnhancer;
-  config.blocks.blocksConfig.search = {
-    ...config.blocks.blocksConfig.search,
-    // Skip Volto's SearchBlockEdit — it renders BlockDataForm without block prop,
-    // causing onChangeBlock(undefined, data) when schema defaults are applied.
-    // Our ParentBlocksWidget renders BlockDataForm with block={blockId} correctly.
-    disableCustomSidebarEditForm: true,
-    schemaEnhancer: (args) => {
-      let { schema } = args;
-
-      // Defensive check - schema must exist
-      if (!schema || !schema.properties) {
-        return schema;
-      }
-
-      // Run existing schemaEnhancer first
-      if (existingSearchSchemaEnhancer) {
-        schema = existingSearchSchemaEnhancer(args);
-      }
-
-      // Add listing container field for child listing block
-      // allowedBlocks includes 'listing' (container) + item types for the variation dropdown
-      if (schema.properties && !schema.properties.listing) {
-        schema.properties.listing = {
-          title: 'Results Listing',
-          widget: 'blocks_layout',
-          description: 'Listing block to render search results',
-          allowedBlocks: ['listing', 'default', 'summary', 'teaser', 'image'],
-          maxLength: 1,
-          defaultBlockType: 'listing',
-        };
-      }
-
-      // Convert facets to typed object_list: each facet type has its own schema
-      // from blocksConfig (checkboxFacet, selectFacet, etc.)
-      // Keep Volto's original schema (needed by Volto's form rendering to avoid crashes)
-      // but add allowedBlocks + typeField so processObjectListContainer uses typed mode
-      if (schema.properties.facets) {
-        schema.properties.facets = {
-          ...schema.properties.facets,
-          allowedBlocks: [
-            'checkboxFacet',
-            'selectFacet',
-            'daterangeFacet',
-            'toggleFacet',
-            'slate',
-            'image',
-          ],
-          typeField: 'type',
-        };
-        // Remove schemaExtender (would override our typed behavior)
-        delete schema.properties.facets.schemaExtender;
-      }
-
-      // Remove fields not needed for Hydra (query handled by child listing, no views selector)
-      // Facets are edited via iframe selection, not the accordion widget
-      // Keep showSortOn/sortOnOptions (sort dropdown controls), facetsTitle, and controls fieldset
-      const fieldsToRemove = [
-        'query',
-        'availableViews', // Results template - not needed, handled by listing child
-      ];
-      // Keep 'facets' fieldset - facetsTitle shows, facets object_list hidden by HiddenObjectListWidget
-      const fieldsetsToRemove = ['searchquery', 'views'];
-
-      // Remove from fieldsets
-      schema.fieldsets = (schema.fieldsets || [])
-        .filter((fs) => !fieldsetsToRemove.includes(fs.id))
-        .map((fs) => ({
-          ...fs,
-          fields: fs.fields.filter((f) => !fieldsToRemove.includes(f)),
-        }));
-
-      // Remove from properties
-      fieldsToRemove.forEach((field) => {
-        delete schema.properties[field];
-      });
-
-      return schema;
-    },
-  };
+  // A frontend declares its own blocks: Inka's admin keeps only slate (the
+  // rich text every region's text is written in) and listing (configured
+  // above), and drops the rest Volto registers. A block the admin also had
+  // kept the admin's keys under the frontend's own config: mappings written
+  // for the admin's schema, onto fields the frontend's didn't have, and blocks
+  // the frontend never sent (a teaser converting from an image by its link).
+  for (const blockType of Object.keys(config.blocks.blocksConfig)) {
+    if (!ADMIN_BLOCK_TYPES.includes(blockType)) delete config.blocks.blocksConfig[blockType];
+  }
 
   const updateAllowedBlocks = () => {
     const allowedBlocksList = getAllowedBlocksList();
-    const defaultAllowedBlocks = ['slate', 'image'];
+    const defaultAllowedBlocks = ['slate'];
 
     for (const key in config.blocks.blocksConfig) {
       config.blocks.blocksConfig[key].restricted =
@@ -912,16 +449,11 @@ config.settings.additionalToolbarComponents = {
   // Initial call to set the blocks based on the initial state
   updateAllowedBlocks();
 
-  // Initial block for Document content type
-  config.blocks.initialBlocks = {
-    Document: [
-      { '@type': 'title' },
-      {
-        '@type': 'slate',
-        value: [{ type: 'p', children: [{ text: '' }] }],
-      },
-    ],
-  };
+  // No initial blocks of Inka's own, for any content type: a new page's
+  // blocks fields start as any empty region does — its `default`, one block
+  // of its `defaultBlockType`, or empty — which the frontend's page schema
+  // decides (docs/frontend-guide/container-blocks.md).
+  config.blocks.initialBlocks = {};
 
   // Generic block actions registry
   // Actions can be referenced by ID in pathMap and rendered in toolbar/dropdown

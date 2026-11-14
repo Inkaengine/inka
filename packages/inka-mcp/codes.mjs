@@ -31,7 +31,7 @@
  * is unknown or lapsed is MediaGone.
  */
 import { randomBytes } from 'node:crypto';
-import { InvalidGrantError } from '@modelcontextprotocol/sdk/server/auth/errors.js';
+import { InvalidGrantError } from '@modelcontextprotocol/server-legacy/auth';
 import { Unsealable } from './sealed.mjs';
 
 const CODE_MS = 60 * 1000;

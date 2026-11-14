@@ -18,9 +18,9 @@ Settled against the mock API first, then implemented here:
 
 | What | Where |
 | --- | --- |
-| Response shape | `tests-playwright/fixtures/templates-component.test.cjs` |
-| The merge actually consuming it | `tests-playwright/fixtures/templates-component-merge.test.cjs` |
-| Reference implementation | `@templates` in `tests-playwright/fixtures/mock-plone-api.cjs` |
+| Response shape | `packages/mock-api/templates-component.test.cjs` |
+| The merge actually consuming it | `packages/mock-api/templates-component-merge.test.cjs` |
+| Reference implementation | `@templates` in `packages/mock-api/mock-plone-api.cjs` |
 
 ```json
 {
@@ -195,5 +195,5 @@ and the page's own text sits in the slot between them.
 | Command | What it checks |
 | --- | --- |
 | `cd backend/inkaengine.inka && make test` | The addon against the contract, including permissions (private templates are reported, not served). Needs `node` and this repo: its fixtures are exported from the mock at test time. |
-| `node --test tests-playwright/fixtures/templates-component*.test.cjs` | The mock's `@templates`, and the real merge consuming it. |
+| `node --test packages/mock-api/templates-component*.test.cjs` | The mock's `@templates`, and the real merge consuming it. |
 | `make hydra-test ARGS="tests-playwright/integration/template*.spec.ts --project=admin-nuxt"` | Template editing through the Nuxt frontend. Two BlockChooser tests are flaky on Nuxt; they were before this change too. |

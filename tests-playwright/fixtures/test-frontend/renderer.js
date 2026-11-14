@@ -209,7 +209,7 @@ function scaleUrl(baseUrl, download) {
  *
  * This reference frontend exists to demonstrate the contracts Inka asserts, and
  * "an image must use the sizes its data offers" is one of them (see
- * helpers/imageSizes.mjs). Rendering a bare `src` while the data advertises
+ * imageSizes.mjs in @inka/testing). Rendering a bare `src` while the data advertises
  * 400/800/1200 is exactly the failure that rule is for, so the reference has to
  * do the thing it asks of everyone else — otherwise the rule either never fires
  * or fires on Inka's own fixtures.
@@ -1475,17 +1475,20 @@ function renderFormBlock(block) {
         const label = field.label || '';
         const required = field.required || false;
         html += `<div class="form-field" data-block-uid="${fieldId}" data-block-add="bottom" style="margin-bottom: 12px;">`;
-        html += `<label data-edit-text="label" style="display: block; margin-bottom: 4px; font-weight: bold;">${label}${required ? ' *' : ''}</label>`;
         if (fieldType === 'empty') {
             // A typed object_list item seeded as 'empty' (type in field_type, no @type).
-            // Render a selectable placeholder; the admin supplies the '+' to pick its type.
-            // No data-edit-text: "Empty field — pick a type" is a hint the
-            // frontend writes, not content the author owns. No schema declares
-            // a `placeholder` field, so annotating it promised an edit that
-            // hydra correctly refuses — the same lie as a "Read More" label on
-            // a block with no button.
-            html += `<span style="color:#999;">Empty field — pick a type</span>`;
-        } else if (fieldType === 'textarea') {
+            // Drawn as empty space (docs: Empty Blocks) — no label, no control:
+            // the admin supplies the '+' that picks its type. On one page this
+            // frontend draws its OWN add button instead (data-block-add="button").
+            if (window.hydraTestOwnAddButton) {
+                // A ghost: styled, named for assistive tech, no visible text.
+                html += `<button type="button" data-block-add="button" aria-label="Add a question" style="width: 100%; min-height: 48px; border: 2px dashed #9ab; border-radius: 6px; background: rgba(150, 170, 190, 0.08); cursor: pointer;"></button>`;
+            }
+            html += '</div>';
+            continue;
+        }
+        html += `<label data-edit-text="label" style="display: block; margin-bottom: 4px; font-weight: bold;">${label}${required ? ' *' : ''}</label>`;
+        if (fieldType === 'textarea') {
             html += `<textarea name="${fieldId}" style="width: 100%; padding: 8px; border: 1px solid #ccc; border-radius: 4px;" rows="3"></textarea>`;
         } else if (fieldType === 'select') {
             const values = field.input_values || [];
@@ -1826,14 +1829,13 @@ async function renderContextNavigationBlock(block, blockId) {
     // Hydra seeds an '@type: empty' placeholder when a container has no defaultBlockType and
     // multiple allowedBlocks (getEmptyBlockType returns 'empty'). A custom container renderer
     // MUST tolerate that transient type — render it as a plain, selectable placeholder (not
-    // throw). The admin then shows a '+' on the selected empty to pick its type; the renderer
-    // doesn't need to make it clickable itself.
+    // throw), drawn as empty space with no text (docs: Empty Blocks). The admin then shows a
+    // '+' on the selected empty to pick its type; the renderer doesn't need to make it
+    // clickable itself.
     const emptyChildId = items.find((id) => blocks[id]?.['@type'] === 'empty');
     if (emptyChildId) {
         return `<nav data-block-uid="${escapeAttr(uid)}" aria-label="${escapeHtml(ariaLabel)}" class="context-navigation">` +
-            `<div data-block-uid="${escapeAttr(emptyChildId)}" style="display:block;min-height:40px;padding:0.5rem;color:#999;">` +
-            `Empty navigation — pick a type` +
-            `</div>` +
+            `<div data-block-uid="${escapeAttr(emptyChildId)}" style="display:block;min-height:40px;padding:0.5rem;"></div>` +
             `</nav>`;
     }
 

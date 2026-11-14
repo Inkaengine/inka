@@ -1,0 +1,82 @@
+# Build context for the admin image, shipped with the Dockerfile so every
+# consumer gets the same slim upload:
+#
+#   fly deploy -c fly.admin.toml --ignorefile hydra/docker/admin.Dockerfile.dockerignore
+#
+# The filename matters: BuildKit picks up `<dockerfile-path>.dockerignore`
+# automatically, so this one name serves BOTH a local `docker build -f
+# hydra/docker/admin.Dockerfile .` and the explicit --ignorefile that flyctl
+# needs (flyctl builds the context itself and does not apply the convention).
+# Named `admin.dockerignore` it would have worked only for fly, and a local
+# build would have silently used the repo's shared .dockerignore instead.
+#
+# admin.Dockerfile COPYs one thing -- ${INKA_PATH}/ -- so everything else in a
+# consumer's repo was being uploaded and discarded on every deploy. In
+# one consumer that was 134 MB across 3,634 files, of which its Plone
+# distribution (72 MB) and its frontend (40 MB) are unreachable from any
+# instruction here. Narrowing it took that context to 15.55 MB.
+#
+# This is an ALLOW-LIST (`*` then `!path`), so a new top-level directory in any
+# consumer stays out of the upload until something names it. A shared, per-repo
+# .dockerignore cannot do that: it has to satisfy every image at once, which is
+# how api/ and frontend/ ended up in the admin context.
+#
+# Consumers vendor Inka at different paths, so all the known ones are allowed;
+# the ones a given repo does not have simply match nothing. Paths below are
+# spelled out per location rather than written `**/examples`, because a `**`
+# glob would also match docs/examples -- see the warning on that directory.
+*
+!hydra
+!inka
+!frontend/inka
+!frontend/hydra
+
+# Re-cloned by mrs-developer or rebuilt by razzle inside the image.
+hydra/core
+hydra/build
+hydra/cache
+inka/core
+inka/build
+inka/cache
+frontend/inka/core
+frontend/inka/build
+frontend/inka/cache
+frontend/hydra/core
+frontend/hydra/build
+frontend/hydra/cache
+
+# The example frontends. Checked before excluding: these are NOT pnpm workspace
+# members -- Inka's pnpm-workspace.yaml globs `examples/*` and then negates all
+# three that exist (hydra-vue-f7, hydra-nextjs, nuxt-blog-starter). A missing
+# workspace member fails --frozen-lockfile, so this exclusion is load-bearing
+# and so is its precision.
+#
+# docs/ is deliberately NOT excluded, and must never be: the members
+# docs/examples/test-{react,svelte,vue,astro} live inside it. Writing this rule
+# as `**/examples` would match docs/examples too and break the install.
+hydra/examples
+inka/examples
+frontend/inka/examples
+frontend/hydra/examples
+
+# Tests, reports and notes the image never runs.
+hydra/tests-playwright
+hydra/playwright-report
+hydra/test-results
+hydra/_internal-docs
+hydra/superpowers
+inka/tests-playwright
+inka/playwright-report
+inka/test-results
+inka/_internal-docs
+inka/superpowers
+frontend/inka/tests-playwright
+frontend/inka/playwright-report
+frontend/inka/test-results
+frontend/hydra/tests-playwright
+frontend/hydra/playwright-report
+frontend/hydra/test-results
+
+**/node_modules
+**/.git
+**/__pycache__

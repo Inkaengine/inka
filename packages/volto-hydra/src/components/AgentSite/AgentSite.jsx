@@ -1,6 +1,6 @@
 /**
  * window.__inkaSite — the site-wide half of what an MCP server drives in a
- * headless admin: finding pages, moving, renaming and deleting them, and what
+ * headless admin: finding pages, moving, copying, ordering, renaming and deleting them, and what
  * state they are in and taking them to another.
  * Mounted on every admin page (appExtras), so none of it needs an editor
  * open — an open editor locks its page, and a locked page can't be moved or
@@ -12,8 +12,15 @@ import { useEffect } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import { useHistory } from 'react-router-dom';
 import { searchContent } from '@plone/volto/actions/search/search';
-import { moveContent } from '@plone/volto/actions/clipboard/clipboard';
-import { deleteContent, getContent, updateContent } from '@plone/volto/actions/content/content';
+import { copyContent, moveContent } from '@plone/volto/actions/clipboard/clipboard';
+import { getHistory, revertHistory } from '@plone/volto/actions/history/history';
+import {
+  deleteContent,
+  getContent,
+  linkIntegrityCheck,
+  orderContent,
+  updateContent,
+} from '@plone/volto/actions/content/content';
 import { flattenToAppURL } from '@plone/volto/helpers/Url/Url';
 import { lockedBy } from './lockedBy';
 import { contentState } from './contentState';
@@ -86,6 +93,18 @@ export function siteApi(dispatch, history, token) {
       }
     },
 
+    /**
+     * The content types this user may add in `path` (Plone's @types there),
+     * by id and title. Which types go where is the site's.
+     */
+    async addableTypes(path) {
+      const types = await run(`types allowed in ${path}`, {
+        type: 'INKA_AGENT_TYPES',
+        request: { op: 'get', path: `${path === '/' ? '' : path}/@types` },
+      });
+      return types.filter((t) => t.addable).map(({ id, title }) => ({ id, title }));
+    },
+
     /** A page as the CMS has it now (stored shape). */
     async get(path) {
       return run(`get ${path}`, getContent(path, null, 'inka-agent-get'));
@@ -106,10 +125,59 @@ export function siteApi(dispatch, history, token) {
       return flattenToAppURL(results[0].target);
     },
 
+    /** Copy `path`, and what it holds, into the section `target` (copy and paste); resolves to the copy's path. */
+    async copy({ path, target }) {
+      const results = await run(`copy ${path}`, copyContent([path], target === '/' ? '' : target));
+      return flattenToAppURL(results[0].target);
+    },
+
+    /**
+     * Move the page `id` by `delta` places among the pages of `section` named
+     * in `subset` (in their current order), as the contents view reorders.
+     */
+    async order({ section, id, delta, subset }) {
+      await run(`order ${id} in ${section}`, orderContent(section === '/' ? '' : section, id, delta, subset));
+    },
+
     /** Give `path` a new id (its last path segment) and/or title; resolves to its path. */
     async rename({ path, id, title }) {
       await run(`rename ${path}`, updateContent(path, { ...(id && { id }), ...(title && { title }) }));
       return id ? `${path.replace(/\/[^/]+\/?$/, '')}/${id}` : path;
+    },
+
+    /**
+     * What deleting `path` would break, as the editor's delete dialog asks
+     * (@linkintegrity): the pages outside it that link to it or to anything
+     * in it, and how many items it holds.
+     */
+    async linksInto(path) {
+      const { UID } = await run(`get ${path}`, getContent(path, null, 'inka-agent-links'));
+      const [result] = await run(`links into ${path}`, linkIntegrityCheck([UID]));
+      return {
+        holds: result?.items_total ?? 0,
+        linkedFrom: (result?.breaches ?? []).map((source) => ({
+          path: flattenToAppURL(source['@id']),
+          title: source.title,
+        })),
+      };
+    },
+
+    /** The page's saves and workflow changes, newest first (@history, as the History view lists them). */
+    async history(path) {
+      return run(`history of ${path}`, getHistory(path));
+    },
+
+    /** What one of `path`'s saved versions held, as stored (@history/<version>, what Compare shows). */
+    async historyVersion({ path, version }) {
+      return run(`version ${version} of ${path}`, {
+        type: 'INKA_AGENT_HISTORY_VERSION',
+        request: { op: 'get', path: `${path === '/' ? '' : path}/@history/${version}` },
+      });
+    },
+
+    /** Put `path` back to one of its saved versions, as the History view's revert does. */
+    async revert({ path, version }) {
+      await run(`revert ${path} to version ${version}`, revertHistory(path, version));
     },
 
     /** Delete `path`. */

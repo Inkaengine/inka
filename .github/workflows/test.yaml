@@ -24,6 +24,10 @@ defaults:
 # and those keep working.
 env:
   HYDRA_PORT_BASE: 8888
+  # The docs' screenshots and demo video are generated in the parent repo's
+  # deploy, not here (docs/.gitignore), so only they may fail to load; every
+  # other image and video must (PageIntegrityHelper.isAbsentAsset).
+  ABSENT_ASSETS: /docs/images/*.png /docs/static/hydra-demo.mp4 /docs/_static/hydra-demo.mp4
 
 jobs:
   # ── Build Volto and upload artifact ──────────────────────────────────────
@@ -44,10 +48,6 @@ jobs:
         with:
           node-version-file: '.nvmrc'
           cache: 'pnpm'
-      - name: Port block
-        # Derived from HYDRA_PORT_BASE by the one module that knows the
-        # offsets, rather than listed again here.
-        run: node scripts/with-ports.mjs --print >> "$GITHUB_ENV"
       - name: Get pnpm store directory
         run: echo "STORE_PATH=$(pnpm store path --silent)" >> $GITHUB_ENV
       - uses: actions/cache@v4
@@ -61,6 +61,10 @@ jobs:
         run: |
           pnpm dlx mrs-developer missdev --no-config --fetch-https
           pnpm install --frozen-lockfile
+      - name: Port block
+        # Derived from HYDRA_PORT_BASE by the one module that knows the
+        # offsets, rather than listed again here.
+        run: node scripts/with-ports.mjs --print >> "$GITHUB_ENV"
       - name: Check Volto customizations for upstream drift
         # Shadows are forks of upstream files, and forks go stale silently:
         # upstream fixes its copy and ours keeps the old behaviour. Runs right
@@ -102,6 +106,9 @@ jobs:
           # video narrates ("Nuxt blog", "F7 Mobile") and give F7 its hash-router
           # suffix so the switch lands on a rendered page, not a blank one.
           RAZZLE_DEFAULT_IFRAME_URL: "Test frontend|http://localhost:${{ env.HYDRA_TEST_FRONTEND_PORT }},Nuxt blog|http://localhost:${{ env.HYDRA_NUXT_PORT }},http://localhost:${{ env.HYDRA_REACT_DOC_PORT }},http://localhost:${{ env.HYDRA_VUE_DOC_PORT }},http://localhost:${{ env.HYDRA_SVELTE_DOC_PORT }},http://localhost:${{ env.HYDRA_NEXTJS_PORT }},F7 Mobile|http://localhost:${{ env.HYDRA_F7_PORT }}/#!"
+          # Where "Make template" saves a new template, and as what type.
+          RAZZLE_TEMPLATES_PATH: /templates
+          RAZZLE_TEMPLATE_TYPE: Template
           VOLTOCONFIG: ${{ github.workspace }}/volto.config.js
       - name: Upload Volto build
         uses: actions/upload-artifact@v4
@@ -114,6 +121,236 @@ jobs:
   # The JS side of @templates (the mock's endpoint, the loadTemplates helper, the merge
   # consuming it) runs in `build` above. This covers the Python addon that serves it on
   # a real Plone.
+  build-admin-image:
+    # Nothing anywhere built the Volto admin image. That is how a change which
+    # left two webpack instances in the tree reached a consumer's PRODUCTION
+    # deploy, failing there as "You forgot to add 'mini-css-extract-plugin'
+    # plugin" -- a build error, found by a deploy, because no build ran.
+    #
+    # This builds it the way a consumer does: Inka vendored in a parent repo,
+    # the context rooted at that parent, so the INKA_PATH indirection and the
+    # dockerignore allow-list are exercised rather than assumed.
+    runs-on: 'ubuntu-latest'
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # The default path: Inka already declares these, so the install stays
+          # --frozen-lockfile and enabling them is a volto.config.js edit.
+          - name: declared plugins, frozen install
+            volto_plugins: '@plone-collective/volto-authomatic @plone-collective/volto-sentry'
+            extra_plugins: ''
+            expect_frozen: 'true'
+          # The EXTRA_PLUGINS path: a plugin is written into package.json before
+          # the install, which therefore cannot be frozen. It re-pins a plugin
+          # Inka already declares, at the version the lockfile holds, ON PURPOSE:
+          # that exercises the whole branch (add-plugins, the unfrozen install,
+          # enabling) without making this job depend on a third-party release.
+          - name: extra plugin, unfrozen install
+            volto_plugins: '@plone-collective/volto-authomatic'
+            extra_plugins: '@plone-collective/volto-sentry@1.0.1'
+            expect_frozen: 'false'
+    name: build-admin-image (${{ matrix.name }})
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Lay the checkout out as a consumer vendors it
+        run: |
+          mkdir -p "$RUNNER_TEMP/consumer/hydra"
+          rsync -a --exclude .git ./ "$RUNNER_TEMP/consumer/hydra/"
+          # A consumer's repo holds more than Inka. These stand in for it, and
+          # must NOT reach the image: the dockerignore allow-list is what keeps
+          # a consumer's context from carrying its whole repo (134 MB -> 15 MB
+          # in the one that was measured).
+          mkdir -p "$RUNNER_TEMP/consumer/api" "$RUNNER_TEMP/consumer/frontend"
+          head -c 3000000 /dev/urandom > "$RUNNER_TEMP/consumer/api/blob.bin"
+          echo 'consumer file' > "$RUNNER_TEMP/consumer/frontend/app.js"
+
+      - name: Build the admin image
+        working-directory: ${{ runner.temp }}/consumer
+        env:
+          DOCKER_BUILDKIT: '1'
+        run: |
+          set -o pipefail
+          docker build \
+            -f hydra/docker/admin.Dockerfile \
+            --build-arg INKA_PATH=hydra \
+            --build-arg VOLTO_PLUGINS="${{ matrix.volto_plugins }}" \
+            --build-arg EXTRA_PLUGINS="${{ matrix.extra_plugins }}" \
+            --progress=plain \
+            -t inka-admin:ci \
+            . 2>&1 | tee "$RUNNER_TEMP/build.log"
+
+      - name: Assert both bundles compiled
+        run: |
+          # The outage was a build that failed here. Razzle exits 0 on some
+          # partial failures, so assert the lines, not just the exit status.
+          #
+          # Match what the build PRINTED, not what it was told to run:
+          # --progress=plain echoes each instruction as well as its output, and
+          # the install RUN carries `echo "EXTRA_PLUGINS set …"` in its own text,
+          # so a plain grep matches on both branches. Output lines carry a
+          # `#<step> <seconds> ` prefix; the echoed instruction does not.
+          for line in 'Compiled client default build successfully' \
+                      'Compiled server default build successfully'; do
+            grep -qE "^#[0-9]+ +[0-9]+\.[0-9]+ +$line" "$RUNNER_TEMP/build.log" \
+              || { echo "::error::missing from the build: $line"; exit 1; }
+          done
+
+      - name: Assert the install ran exactly once, on the expected footing
+        run: |
+          # Only what the build PRINTED counts -- see the note on the prefix above.
+          said () { grep -qE "^#[0-9]+ +[0-9]+\.[0-9]+ +$1" "$RUNNER_TEMP/build.log"; }
+          if [ '${{ matrix.expect_frozen }}' = 'true' ]; then
+            said 'EXTRA_PLUGINS set' \
+              && { echo '::error::took the unfrozen path with no EXTRA_PLUGINS'; exit 1; }
+          else
+            said 'EXTRA_PLUGINS set' \
+              || { echo '::error::EXTRA_PLUGINS given but the unfrozen path never ran'; exit 1; }
+            said 'add-plugins: \+' \
+              || { echo '::error::EXTRA_PLUGINS given but add-plugins wrote nothing'; exit 1; }
+          fi
+          # THE ONE RULE, as the thing that broke it: the copy that took down a
+          # production deploy added its plugins with `pnpm add -w` AFTER a frozen
+          # install. That second resolution pass is what left two webpack
+          # instances in the tree. Adding a package to package.json before the
+          # install is the supported way; `pnpm add` here never is.
+          # Comments must be stripped first: this Dockerfile EXPLAINS the bug,
+          # so it mentions both `pnpm add -w` and `pnpm install` in prose.
+          instructions=$(grep -vE '^[[:space:]]*#' docker/admin.Dockerfile)
+          printf '%s\n' "$instructions" | grep -nE 'pnpm +add' \
+            && { echo '::error::admin.Dockerfile re-resolves the workspace with pnpm add; inject into package.json before the install instead'; exit 1; }
+          # Deliberately NOT a count of `pnpm install` lines. That was the first
+          # version of this check and it was a false proxy: it read 2 when one
+          # stage had a frozen/unfrozen pair, then failed at 4 the moment a
+          # second stage legitimately gained its own pair. The invariant is not
+          # "how many installs exist" -- stages multiply, and the two branches
+          # of one `if` are mutually exclusive anyway -- it is that nothing
+          # re-resolves the workspace AFTER an install, which is what the
+          # `pnpm add` grep above asserts.
+          echo "pnpm install occurrences (informational): $(printf '%s\n' "$instructions" | grep -c 'pnpm install' || true)"
+
+      - name: Assert the enabled plugins reached the image's config
+        run: |
+          addons=$(docker run --rm --entrypoint node inka-admin:ci \
+            -e "console.log(require('/app/volto.config.js').addons.join(' '))")
+          echo "addons: $addons"
+          for plugin in '@plone-collective/volto-authomatic' '@plone-collective/volto-sentry'; do
+            case " $addons " in
+              *" $plugin "*) ;;
+              *) echo "::error::$plugin was not enabled in the image"; exit 1 ;;
+            esac
+          done
+          # Enabling without installing would break at runtime, not at build.
+          for plugin in '@plone-collective/volto-authomatic' '@plone-collective/volto-sentry'; do
+            docker run --rm --entrypoint test inka-admin:ci \
+              -d "/app/node_modules/$plugin" \
+              || { echo "::error::$plugin is enabled but not installed"; exit 1; }
+          done
+
+      - name: Assert the image holds the admin and nothing else
+        run: |
+          # The admin image installs the admin and what it depends on -- not the
+          # whole workspace. Inka's workspace also holds the MCP server, its own
+          # server with its own image, on Express 5. Installed here too, its
+          # Express could be the one hoisted to /app/node_modules/express, which
+          # the built Volto server loads at runtime; Volto runs on Express 4, and
+          # Express 5's router rejects its `*` route, so the admin exits on start.
+          # Which copy was hoisted was never chosen: an unfrozen build got 5.
+          pkgs=$(docker run --rm --entrypoint ls inka-admin:ci /app/node_modules/.pnpm)
+          for stray in '@inka+mcp@' '@modelcontextprotocol+' 'express@5'; do
+            found=$(printf '%s\n' "$pkgs" | grep -F -- "$stray" || true)
+            [ -z "$found" ] || { echo "::error::the admin image holds what only the MCP server uses: $found"; exit 1; }
+          done
+          express=$(docker run --rm --entrypoint node inka-admin:ci \
+            -e "console.log(require('/app/node_modules/express/package.json').version)")
+          echo "express at the root: $express"
+          case "$express" in
+            4.*) ;;
+            *) echo "::error::the admin server would load Express $express; Volto runs on Express 4"; exit 1 ;;
+          esac
+
+      - name: Report the image size
+        run: |
+          size=$(docker image inspect inka-admin:ci --format '{{.Size}}')
+          echo "admin image: $((size / 1024 / 1024)) MB"
+          echo "### admin image: $((size / 1024 / 1024)) MB" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Assert the image actually STARTS
+        run: |
+          # The runtime tree is installed with --prod, so anything the built
+          # server still requires that lives in devDependencies is missing. That
+          # fails when the server starts, NOT when the image builds, so a green
+          # build proves nothing about it -- and before this step nothing
+          # anywhere started this image at all.
+          #
+          # The probe runs INSIDE the container, on purpose. Probing the mapped
+          # host port cannot work: docker binds the host side as soon as the
+          # container starts, whether or not anything inside is listening, so
+          # `</dev/tcp/127.0.0.1/3000` from the runner answers for the forwarder
+          # and says nothing about the server. The first version of this step
+          # did exactly that and reported "listening after ~2s" for a Volto
+          # server that cannot boot that fast, while HTTP returned nothing --
+          # a check that was green and measured the forwarder.
+          #
+          # Asserting an HTTP 200 would be wrong too: with no backend reachable,
+          # server-side rendering can sit waiting on the API or return an error
+          # page. A bound port inside the container means the module graph
+          # loaded, which is precisely what --prod could break.
+          listens () {
+            docker exec "$1" node -e '
+              const s = require("net").connect(3000, "127.0.0.1");
+              s.on("connect", () => process.exit(0));
+              s.on("error", () => process.exit(1));
+              setTimeout(() => process.exit(1), 3000);
+            ' 2>/dev/null
+          }
+
+          # Negative control FIRST, so the probe has to earn its green: the same
+          # image with the server replaced by a sleep. If this one "listens",
+          # the probe is measuring something other than the server and every
+          # pass it ever reported is void.
+          docker run -d --name nolistener --entrypoint sleep inka-admin:ci 300 >/dev/null
+          sleep 3
+          if listens nolistener; then
+            echo '::error::the probe reports a listener in a container that runs `sleep` -- it is not measuring the server'
+            exit 1
+          fi
+          echo 'negative control: no listener detected in a sleeping container, as required'
+          docker rm -f nolistener >/dev/null
+
+          docker run -d --name admin -p 3000:3000 \
+            -e RAZZLE_API_PATH=http://127.0.0.1:8080 \
+            inka-admin:ci >/dev/null
+          for i in $(seq 1 60); do
+            if ! [ "$(docker inspect -f '{{.State.Running}}' admin)" = true ]; then
+              echo '::error::the admin container exited instead of serving'
+              docker logs admin 2>&1 | tail -40
+              exit 1
+            fi
+            if listens admin; then
+              echo "the server is listening inside the container after ~$((i * 2))s"
+              # Informational only: with no backend this may be an error page or
+              # nothing at all, and that is not what is being tested.
+              echo "HTTP from the runner: $(curl -s -o /dev/null -w '%{http_code}' --max-time 10 http://127.0.0.1:3000/ || echo none)"
+              exit 0
+            fi
+            sleep 2
+          done
+          echo '::error::nothing listened on 3000 inside the container within 120s'
+          docker logs admin 2>&1 | tail -40
+          exit 1
+
+      - name: Admin container logs (on failure)
+        if: failure()
+        run: docker logs admin 2>&1 | tail -60 || true
+
+      - name: Assert the consumer's own files stayed out of the context
+        run: |
+          docker run --rm --entrypoint sh inka-admin:ci -c '! test -e /app/api/blob.bin' \
+            || { echo '::error::the dockerignore allow-list let a consumer directory in'; exit 1; }
+
   test-backend-addon:
     runs-on: 'ubuntu-latest'
     timeout-minutes: 20
@@ -129,10 +366,6 @@ jobs:
         with:
           node-version-file: '.nvmrc'
           cache: 'pnpm'
-      - name: Port block
-        # Derived from HYDRA_PORT_BASE by the one module that knows the
-        # offsets, rather than listed again here.
-        run: node scripts/with-ports.mjs --print >> "$GITHUB_ENV"
       - name: Install dependencies
         # The addon's tests run against the SAME template fixtures as the JS suites: the
         # mock API exports them as a plone.exportimport distribution at test time, so the
@@ -141,6 +374,10 @@ jobs:
         run: |
           pnpm dlx mrs-developer missdev --no-config --fetch-https
           pnpm install --frozen-lockfile
+      - name: Port block
+        # Derived from HYDRA_PORT_BASE by the one module that knows the
+        # offsets, rather than listed again here.
+        run: node scripts/with-ports.mjs --print >> "$GITHUB_ENV"
       - name: Use Python
         uses: actions/setup-python@v5
         with:
@@ -184,10 +421,6 @@ jobs:
         with:
           node-version-file: '.nvmrc'
           cache: 'pnpm'
-      - name: Port block
-        # Derived from HYDRA_PORT_BASE by the one module that knows the
-        # offsets, rather than listed again here.
-        run: node scripts/with-ports.mjs --print >> "$GITHUB_ENV"
       - name: Get pnpm store directory
         run: echo "STORE_PATH=$(pnpm store path --silent)" >> $GITHUB_ENV
       - uses: actions/cache@v4
@@ -201,6 +434,10 @@ jobs:
         run: |
           pnpm dlx mrs-developer missdev --no-config --fetch-https
           pnpm install --frozen-lockfile
+      - name: Port block
+        # Derived from HYDRA_PORT_BASE by the one module that knows the
+        # offsets, rather than listed again here.
+        run: node scripts/with-ports.mjs --print >> "$GITHUB_ENV"
       - name: Start servers
         run: |
           # The servers outlive this step, but its stdout does not: in a container
@@ -209,7 +446,7 @@ jobs:
           exec > "$RUNNER_TEMP/servers.log" 2>&1
           # Through the launcher, so PORT is set: the server requires it rather
           # than defaulting to 8888, which is the whole point of the block.
-          node scripts/with-ports.mjs --port=mockApi node tests-playwright/fixtures/mock-api-server.cjs &
+          node scripts/with-ports.mjs --port=mockApi node packages/mock-api/mock-api-server.cjs &
           npx vite --config tests-playwright/fixtures/test-frontend/vite.config.js &
           # Every interface (--host): in the container `localhost` is both
           # 127.0.0.1 and ::1, a server bound to "localhost" takes one, and the
@@ -230,7 +467,7 @@ jobs:
           done
           echo "All servers ready"
       - name: Run tests
-        run: pnpm exec playwright test --project=unit --project=unit-firefox --project=api-contract --project=mock --project=react --project=svelte --project=vue --project=astro --reporter=github,list,html
+        run: pnpm exec playwright test --project=unit --project=unit-firefox --project=api-contract --project=mock --project=react --project=svelte --project=vue --project=astro
         env:
           CI: true
           NO_WEBSERVER: true
@@ -238,12 +475,6 @@ jobs:
           # network and DOM snapshots), uploaded below: what a flake needs.
           TRACE: '1'
           SKIP_VOLTO_CHECK: true
-          # The editor screenshots the docs embed are git-ignored and generated
-          # in the PARENT repo's deploy now, not recorded here — so they are
-          # legitimately absent in this checkout. Skip page-integrity's
-          # broken-image assertion (its link checks still run, so a typo'd path
-          # is still caught); see PageIntegrityHelper.skipBrokenImages.
-          SKIP_BROKEN_IMAGE_CHECK: true
           DISCOVER_BLOCKS_API: http://localhost:${{ env.HYDRA_MOCK_API_PORT }}
           # Discovery needs a frontend: without one it is type-only, container
           # regions are invisible, and the schema-dependent checks measure less
@@ -309,10 +540,6 @@ jobs:
         with:
           node-version-file: '.nvmrc'
           cache: 'pnpm'
-      - name: Port block
-        # Derived from HYDRA_PORT_BASE by the one module that knows the
-        # offsets, rather than listed again here.
-        run: node scripts/with-ports.mjs --print >> "$GITHUB_ENV"
       - name: Get pnpm store directory
         run: echo "STORE_PATH=$(pnpm store path --silent)" >> $GITHUB_ENV
       - uses: actions/cache@v4
@@ -326,6 +553,10 @@ jobs:
         run: |
           pnpm dlx mrs-developer missdev --no-config --fetch-https
           pnpm install --frozen-lockfile
+      - name: Port block
+        # Derived from HYDRA_PORT_BASE by the one module that knows the
+        # offsets, rather than listed again here.
+        run: node scripts/with-ports.mjs --print >> "$GITHUB_ENV"
       - name: Build workspace deps (@plone/registry, @plone/components)
         # pnpm start:prod loads these at runtime via workspace symlinks;
         # their dist/ output must exist or the SSR server fails to boot.
@@ -343,11 +574,12 @@ jobs:
           exec > "$RUNNER_TEMP/servers.log" 2>&1
           # Through the launcher, so PORT is set: the server requires it rather
           # than defaulting to 8888, which is the whole point of the block.
-          node scripts/with-ports.mjs --port=mockApi node tests-playwright/fixtures/mock-api-server.cjs &
+          node scripts/with-ports.mjs --port=mockApi node packages/mock-api/mock-api-server.cjs &
           npx vite --config tests-playwright/fixtures/test-frontend/vite.config.js &
           PORT=${{ env.HYDRA_VOLTO_SSR_PORT }} RAZZLE_API_PATH=http://localhost:${{ env.HYDRA_MOCK_API_PORT }} \
             RAZZLE_DEFAULT_IFRAME_URL=http://localhost:${{ env.HYDRA_TEST_FRONTEND_PORT }},http://localhost:${{ env.HYDRA_NUXT_PORT }} \
             VOLTOCONFIG=$GITHUB_WORKSPACE/volto.config.js \
+            RAZZLE_TEMPLATES_PATH=/templates RAZZLE_TEMPLATE_TYPE=Template \
             RAZZLE_DEMO_LOGIN=demo RAZZLE_DEMO_PASSWORD=demo \
             pnpm start:prod &
           sleep 3
@@ -359,7 +591,7 @@ jobs:
           done
           echo "All servers ready"
       - name: Run tests
-        run: pnpm exec playwright test --project=admin-mock --reporter=github,list,html
+        run: pnpm exec playwright test --project=admin-mock
         env:
           CI: true
           NO_WEBSERVER: true
@@ -428,10 +660,6 @@ jobs:
         with:
           node-version-file: '.nvmrc'
           cache: 'pnpm'
-      - name: Port block
-        # Derived from HYDRA_PORT_BASE by the one module that knows the
-        # offsets, rather than listed again here.
-        run: node scripts/with-ports.mjs --print >> "$GITHUB_ENV"
       - name: Get pnpm store directory
         run: echo "STORE_PATH=$(pnpm store path --silent)" >> $GITHUB_ENV
       - uses: actions/cache@v4
@@ -445,6 +673,10 @@ jobs:
         run: |
           pnpm dlx mrs-developer missdev --no-config --fetch-https
           pnpm install --frozen-lockfile
+      - name: Port block
+        # Derived from HYDRA_PORT_BASE by the one module that knows the
+        # offsets, rather than listed again here.
+        run: node scripts/with-ports.mjs --print >> "$GITHUB_ENV"
       - name: Build workspace deps (@plone/registry, @plone/components)
         # pnpm start:prod loads these at runtime via workspace symlinks;
         # their dist/ output must exist or the SSR server fails to boot.
@@ -466,11 +698,12 @@ jobs:
           exec > "$RUNNER_TEMP/servers.log" 2>&1
           # Through the launcher, so PORT is set: the server requires it rather
           # than defaulting to 8888, which is the whole point of the block.
-          node scripts/with-ports.mjs --port=mockApi node tests-playwright/fixtures/mock-api-server.cjs &
+          node scripts/with-ports.mjs --port=mockApi node packages/mock-api/mock-api-server.cjs &
           npx vite --config tests-playwright/fixtures/test-frontend/vite.config.js &
           PORT=${{ env.HYDRA_VOLTO_SSR_PORT }} RAZZLE_API_PATH=http://localhost:${{ env.HYDRA_MOCK_API_PORT }} \
             RAZZLE_DEFAULT_IFRAME_URL=http://localhost:${{ env.HYDRA_NEXTJS_PORT }},http://localhost:${{ env.HYDRA_TEST_FRONTEND_PORT }} \
             VOLTOCONFIG=$GITHUB_WORKSPACE/volto.config.js \
+            RAZZLE_TEMPLATES_PATH=/templates RAZZLE_TEMPLATE_TYPE=Template \
             RAZZLE_DEMO_LOGIN=demo RAZZLE_DEMO_PASSWORD=demo \
             pnpm start:prod &
           (cd examples/hydra-nextjs && pnpm run start:test) &
@@ -485,7 +718,7 @@ jobs:
           echo "All servers ready"
       - name: Run tests
         run: >-
-          pnpm exec playwright test --project=admin-nextjs --reporter=github,list,html
+          pnpm exec playwright test --project=admin-nextjs
           tests-playwright/integration/inline-editing-basic.spec.ts
           tests-playwright/integration/inline-editing-formatting.spec.ts
           tests-playwright/integration/inline-editing-clipboard.spec.ts
@@ -558,10 +791,6 @@ jobs:
         with:
           node-version-file: '.nvmrc'
           cache: 'pnpm'
-      - name: Port block
-        # Derived from HYDRA_PORT_BASE by the one module that knows the
-        # offsets, rather than listed again here.
-        run: node scripts/with-ports.mjs --print >> "$GITHUB_ENV"
       - name: Get pnpm store directory
         run: echo "STORE_PATH=$(pnpm store path --silent)" >> $GITHUB_ENV
       - uses: actions/cache@v4
@@ -575,6 +804,10 @@ jobs:
         run: |
           pnpm dlx mrs-developer missdev --no-config --fetch-https
           pnpm install --frozen-lockfile
+      - name: Port block
+        # Derived from HYDRA_PORT_BASE by the one module that knows the
+        # offsets, rather than listed again here.
+        run: node scripts/with-ports.mjs --print >> "$GITHUB_ENV"
       - name: Install and build Nuxt
         run: cd examples/nuxt-blog-starter && pnpm install --ignore-workspace --frozen-lockfile && pnpm run build:test
       - name: Start servers
@@ -585,7 +818,7 @@ jobs:
           exec > "$RUNNER_TEMP/servers.log" 2>&1
           # Through the launcher, so PORT is set: the server requires it rather
           # than defaulting to 8888, which is the whole point of the block.
-          node scripts/with-ports.mjs --port=mockApi node tests-playwright/fixtures/mock-api-server.cjs &
+          node scripts/with-ports.mjs --port=mockApi node packages/mock-api/mock-api-server.cjs &
           npx vite --config tests-playwright/fixtures/test-frontend/vite.config.js &
           cd examples/nuxt-blog-starter && pnpm run preview:test &
           sleep 3
@@ -597,7 +830,7 @@ jobs:
           done
           echo "All servers ready"
       - name: Run tests
-        run: pnpm exec playwright test --project=nuxt --project=nuxt-firefox --reporter=github,list,html
+        run: pnpm exec playwright test --project=nuxt --project=nuxt-firefox
         env:
           CI: true
           NO_WEBSERVER: true
@@ -605,12 +838,6 @@ jobs:
           # network and DOM snapshots), uploaded below: what a flake needs.
           TRACE: '1'
           SKIP_VOLTO_CHECK: true
-          # The editor screenshots the docs embed are git-ignored and generated
-          # in the PARENT repo's deploy now, not recorded here — so they are
-          # legitimately absent in this checkout. Skip page-integrity's
-          # broken-image assertion (its link checks still run, so a typo'd path
-          # is still caught); see PageIntegrityHelper.skipBrokenImages.
-          SKIP_BROKEN_IMAGE_CHECK: true
           DISCOVER_BLOCKS_API: http://localhost:${{ env.HYDRA_MOCK_API_PORT }}
           FRONTEND_URL: http://localhost:${{ env.HYDRA_NUXT_PORT }}
           # Discovery reads the frontend's INIT through mock-parent. Without it
@@ -676,10 +903,6 @@ jobs:
         with:
           node-version-file: '.nvmrc'
           cache: 'pnpm'
-      - name: Port block
-        # Derived from HYDRA_PORT_BASE by the one module that knows the
-        # offsets, rather than listed again here.
-        run: node scripts/with-ports.mjs --print >> "$GITHUB_ENV"
       - name: Get pnpm store directory
         run: echo "STORE_PATH=$(pnpm store path --silent)" >> $GITHUB_ENV
       - uses: actions/cache@v4
@@ -693,6 +916,10 @@ jobs:
         run: |
           pnpm dlx mrs-developer missdev --no-config --fetch-https
           pnpm install --frozen-lockfile
+      - name: Port block
+        # Derived from HYDRA_PORT_BASE by the one module that knows the
+        # offsets, rather than listed again here.
+        run: node scripts/with-ports.mjs --print >> "$GITHUB_ENV"
       - name: Build workspace deps (@plone/registry, @plone/components)
         # pnpm start:prod loads these at runtime via workspace symlinks;
         # their dist/ output must exist or the SSR server fails to boot.
@@ -717,11 +944,12 @@ jobs:
           exec > "$RUNNER_TEMP/servers.log" 2>&1
           # Through the launcher, so PORT is set: the server requires it rather
           # than defaulting to 8888, which is the whole point of the block.
-          node scripts/with-ports.mjs --port=mockApi node tests-playwright/fixtures/mock-api-server.cjs &
+          node scripts/with-ports.mjs --port=mockApi node packages/mock-api/mock-api-server.cjs &
           npx vite --config tests-playwright/fixtures/test-frontend/vite.config.js &
           PORT=${{ env.HYDRA_VOLTO_SSR_PORT }} RAZZLE_API_PATH=http://localhost:${{ env.HYDRA_MOCK_API_PORT }} \
             RAZZLE_DEFAULT_IFRAME_URL=http://localhost:${{ env.HYDRA_TEST_FRONTEND_PORT }},http://localhost:${{ env.HYDRA_NUXT_PORT }} \
             VOLTOCONFIG=$GITHUB_WORKSPACE/volto.config.js \
+            RAZZLE_TEMPLATES_PATH=/templates RAZZLE_TEMPLATE_TYPE=Template \
             RAZZLE_DEMO_LOGIN=demo RAZZLE_DEMO_PASSWORD=demo \
             pnpm start:prod &
           cd examples/nuxt-blog-starter && pnpm run preview:test &
@@ -734,7 +962,7 @@ jobs:
           done
           echo "All servers ready"
       - name: Run tests
-        run: pnpm exec playwright test --project=admin-nuxt --project=nuxt-specific --reporter=github,list,html
+        run: pnpm exec playwright test --project=admin-nuxt --project=nuxt-specific
         env:
           CI: true
           NO_WEBSERVER: true
@@ -798,10 +1026,6 @@ jobs:
         with:
           node-version-file: '.nvmrc'
           cache: 'pnpm'
-      - name: Port block
-        # Derived from HYDRA_PORT_BASE by the one module that knows the
-        # offsets, rather than listed again here.
-        run: node scripts/with-ports.mjs --print >> "$GITHUB_ENV"
       - name: Get pnpm store directory
         run: echo "STORE_PATH=$(pnpm store path --silent)" >> $GITHUB_ENV
       - uses: actions/cache@v4
@@ -815,6 +1039,10 @@ jobs:
         run: |
           pnpm dlx mrs-developer missdev --no-config --fetch-https
           pnpm install --frozen-lockfile
+      - name: Port block
+        # Derived from HYDRA_PORT_BASE by the one module that knows the
+        # offsets, rather than listed again here.
+        run: node scripts/with-ports.mjs --print >> "$GITHUB_ENV"
       - name: Build Next.js example
         run: cd examples/hydra-nextjs && pnpm install --ignore-workspace --frozen-lockfile && pnpm run build:test
         env:
@@ -833,7 +1061,7 @@ jobs:
           exec > "$RUNNER_TEMP/servers.log" 2>&1
           # Through the launcher, so PORT is set: the server requires it rather
           # than defaulting to 8888, which is the whole point of the block.
-          node scripts/with-ports.mjs --port=mockApi node tests-playwright/fixtures/mock-api-server.cjs &
+          node scripts/with-ports.mjs --port=mockApi node packages/mock-api/mock-api-server.cjs &
           npx vite --config tests-playwright/fixtures/test-frontend/vite.config.js &
           cd examples/hydra-nextjs && pnpm run start:test &
           cd examples/hydra-vue-f7 && VITE_API_BASE_URL=http://localhost:${{ env.HYDRA_MOCK_API_PORT }} npx vite --port ${{ env.HYDRA_F7_PORT }} --strictPort --config vite.config.test.mjs &
@@ -865,7 +1093,7 @@ jobs:
           done
           echo "All servers ready"
       - name: Run tests
-        run: pnpm exec playwright test --project=nextjs --project=nextjs-firefox --project=f7 --project=vanilla --project=svelte-qs --project=astro-qs --reporter=github,list,html
+        run: pnpm exec playwright test --project=nextjs --project=nextjs-firefox --project=f7 --project=vanilla --project=svelte-qs --project=astro-qs
         env:
           CI: true
           NO_WEBSERVER: true
@@ -873,12 +1101,6 @@ jobs:
           # network and DOM snapshots), uploaded below: what a flake needs.
           TRACE: '1'
           SKIP_VOLTO_CHECK: true
-          # The editor screenshots the docs embed are git-ignored and generated
-          # in the PARENT repo's deploy now, not recorded here — so they are
-          # legitimately absent in this checkout. Skip page-integrity's
-          # broken-image assertion (its link checks still run, so a typo'd path
-          # is still caught); see PageIntegrityHelper.skipBrokenImages.
-          SKIP_BROKEN_IMAGE_CHECK: true
           # Without this, discovery never runs here, so block-sanity and
           # page-integrity found no .discovered-blocks.json and skipped — the
           # nextjs project is inside block-sanity's own scope, so it had simply

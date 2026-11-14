@@ -10,8 +10,7 @@ import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { mkdtempSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { Client } from '@modelcontextprotocol/sdk/client/index.js';
-import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
+import { Client, InMemoryTransport } from '@modelcontextprotocol/client';
 import { createServer, MAX_FILE_BYTES } from './server.mjs';
 import { DROP_VIEW } from './dropView.mjs';
 import { localMedia } from './codes.mjs';
@@ -19,7 +18,7 @@ import { localFiles } from './media.mjs';
 
 async function connected(files) {
   const server = createServer(() => { throw new Error('no admin: staging a file needs none'); }, {
-    pictures: null, media: localMedia({ instance: null, now: Date.now }), localFiles: files, userOf: () => 'jane',
+    pictures: null, media: localMedia({ instance: null, now: Date.now }), localFiles: files, userOf: () => 'jane', reporting: null,
   });
   const [clientSide, serverSide] = InMemoryTransport.createLinkedPair();
   await server.connect(serverSide);
@@ -108,7 +107,7 @@ describe('ask_for_files: the person drops their own file', () => {
   });
 
   it('is not there where the server keeps no files', async () => {
-    const server = createServer(() => { throw new Error('no admin'); }, { pictures: null, media: null, localFiles: null, userOf: () => 'jane' });
+    const server = createServer(() => { throw new Error('no admin'); }, { pictures: null, media: null, localFiles: null, userOf: () => 'jane', reporting: null });
     const [clientSide, serverSide] = InMemoryTransport.createLinkedPair();
     await server.connect(serverSide);
     const none = new Client({ name: 'test', version: '0' });
@@ -116,5 +115,30 @@ describe('ask_for_files: the person drops their own file', () => {
     const names = (await none.listTools()).tools.map((t) => t.name);
     expect(names).not.toContain('ask_for_files');
     expect(names).not.toContain('stage_dropped');
+  });
+});
+
+describe('the instructions say how an image of your own gets onto a page (inka#702)', () => {
+  // With nothing saying so, an agent found no way to add its diagrams, and
+  // fitted one into a single call as inline data.
+  const instructionsOf = async (media) => {
+    const server = createServer(() => { throw new Error('no admin'); }, { pictures: null, media, localFiles: null, userOf: () => 'jane', reporting: null });
+    const [clientSide, serverSide] = InMemoryTransport.createLinkedPair();
+    await server.connect(serverSide);
+    const client = new Client({ name: 'test', version: '0' });
+    await client.connect(clientSide);
+    return client.getInstructions();
+  };
+
+  it('names staging and where the media id goes, where the server keeps files', async () => {
+    const text = await instructionsOf(localMedia({ instance: null, now: Date.now }));
+    expect(text).toMatch(/stage_media/);
+    expect(text).toMatch(/ask_for_files/);
+    expect(text).toMatch(/media" id/);
+    expect(text).toMatch(/edit_blocks/);
+  });
+
+  it('offers no staging where the server keeps no files', async () => {
+    expect(await instructionsOf(null)).not.toMatch(/stage_media/);
   });
 });

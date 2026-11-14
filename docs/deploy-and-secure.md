@@ -86,7 +86,11 @@ Inka is configured with environment variables:
 - `RAZZLE_API_PATH`: the URL of the CMS API that editors' browsers use.
 - `RAZZLE_INTERNAL_API_PATH` (optional): the address the Inka server uses to reach the same API from inside your network.
 - `RAZZLE_DEFAULT_IFRAME_URL`: the front ends offered in the front-end switcher, as `Name|EditURL[|PublishURL],…`. The optional publish URL is for a public site on a different origin from its editing build. If this is set when the editor is built, that value is fixed into the browser code and wins; otherwise the value at run time is used.
+- `RAZZLE_TEMPLATES_PATH`: the folder **Make Template** saves a new template in, such as `/templates`. Editors can choose another folder for each template.
+- `RAZZLE_TEMPLATE_TYPE` (optional): the content type of a new template. Unset, a template is a plain `Document`. Name a type your site adds for templates to keep them apart (see [Keeping templates out of search](./frontend-guide/templates.md#keeping-templates-out-of-search)).
 - `PORT`: the port the server listens on.
+
+Without `RAZZLE_TEMPLATES_PATH`, **Make Template** tells the editor the setting is missing and does nothing. As with `RAZZLE_DEFAULT_IFRAME_URL`, a value set when the editor is built wins.
 
 Don't set `RAZZLE_PUBLIC_URL`. Inka follows whichever front end the editor has selected; pinning one public URL breaks link handling for the others. See [URL flattening](./architecture.md#url-flattening-and-publicurl).
 
@@ -113,7 +117,7 @@ A Plone site whose content ships with its code, as a plone.exportimport layout, 
 `inkaengine.inka.content_deploy` applies only what the layout changed, in one transaction, so visitors see the old content until the new content is complete:
 
 - **Creates and updates** go through plone.exportimport's own importer, for just the changed items.
-- **Moves** keep the item's UID, history and place in its folder. **Deletes** remove the item. Both leave a redirect from the old path.
+- **Moves** keep the item's UID, history and place in its folder, and leave a redirect from the old path. **Deletes** remove the item, and its address answers 404. To send a deleted page's visitors somewhere else, add the redirect to `redirects.json`.
 - **Ordering, default pages, relations, workflow states and redirects** from the layout are applied too.
 
 The site keeps its own base: the layout it was last deployed from, saved in the same transaction as the content. The release step needs nothing else, so it can run on a throwaway machine. A dry run, a failure or a refused deploy leaves both the content and the base as they were.

@@ -7,8 +7,8 @@
  * same spec runs as a functional test with no waits at all.
  */
 import { test, expect } from '@playwright/test';
-import { showCaption } from '../helpers/caption';
-import { glance, holdOn, pacingUnitMs, readFor } from '../helpers/demoPacing';
+import { showCaption } from '@inka/testing/playwright/caption';
+import { glance, holdOn, pacingUnitMs, readFor } from '@inka/testing/playwright/demoPacing';
 
 test.describe('demo pacing', () => {
   let saved: string | undefined;

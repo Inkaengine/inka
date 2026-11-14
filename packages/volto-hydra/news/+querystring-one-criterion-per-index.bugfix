@@ -1,0 +1,1 @@
+A listing query and a search block's facets on the same index are combined into one criterion, as Plone keeps only one per index: a type facet no longer replaces the listing's own "none of" types. @djay

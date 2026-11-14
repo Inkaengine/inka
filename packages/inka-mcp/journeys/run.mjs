@@ -2,7 +2,8 @@
 /**
  * Agent journeys: give an agent that knows nothing about Inka a job in plain
  * words (tasks.mjs) and only the Inka MCP to do it with, then check the
- * result through the CMS API. Agents vary run to run, so each task runs
+ * result through the CMS API: the task's own check, and that the run left
+ * nothing on the site the validator refuses (siteCheck.mjs). Agents vary run to run, so each task runs
  * several times and the outcome is a pass rate, with the tool calls, errors,
  * time and cost of each run.
  *
@@ -18,8 +19,14 @@
  * server as its only server. Needs the local stack running (mock API, admin,
  * and the front end): see CLAUDE.md, "Manual Development Server".
  *
- *   node packages/inka-mcp/journeys/run.mjs [--runs 3] [--task id ...] [--frontend nuxt]
+ *   node packages/inka-mcp/journeys/run.mjs --schemas tests-playwright/fixtures/shared-block-schemas.js
+ *     [--runs 3] [--task id ...] [--frontend nuxt]
  *     [--model sonnet] [--person-model haiku] [--judge-model sonnet] [--parallel 2]
+ *
+ * --schemas: the block schemas of the front end the agent works with (the
+ * test frontend and the Nuxt starter both draw with the one above), which what
+ * a run leaves on the site is checked against, as the mock API's
+ * CONTENT_SCHEMAS is.
  *
  * Each run gets its own mock session (its own token), so all start from the
  * same pages. Transcripts and a summary go to a results directory, printed.
@@ -35,7 +42,9 @@ import { runClaude } from './claude.mjs';
 import { agentTurn, asText, asRagas } from './conversation.mjs';
 import { nextFromPerson } from './person.mjs';
 import { judge } from './judge.mjs';
-import mockTokens from '../../../tests-playwright/fixtures/mock-tokens.cjs';
+import { siteProblems, broughtProblems } from './siteCheck.mjs';
+import validator from '@inka/content-validator';
+import mockTokens from '@inka/mock-api/tokens';
 
 const { mintToken } = mockTokens;
 
@@ -63,8 +72,11 @@ const { values: opts } = parseArgs({
     'judge-model': { type: 'string', default: 'sonnet' },
     parallel: { type: 'string', default: '1' },
     out: { type: 'string' },
+    schemas: { type: 'string' },
   },
 });
+if (!opts.schemas) throw new Error('--schemas: the block schemas of the front end under test (see the usage above)');
+const schemas = await validator.loadSchemas(opts.schemas);
 
 const api = `http://localhost:${port('HYDRA_MOCK_API_PORT')}`;
 const admin = `http://localhost:${port('HYDRA_VOLTO_SSR_PORT')}`;
@@ -124,6 +136,8 @@ async function runOnce(task, n) {
   const token = mintToken('admin');
   const cms = apiFor(token);
   if (task.setup) await task.setup(cms);
+  // What the site already has wrong, so the run is held only to what it brings.
+  const before = await siteProblems(cms, schemas);
   const dir = mkdtempSync(join(tmpdir(), 'inka-journey-'));
   const config = join(dir, 'mcp.json');
   writeFileSync(config, JSON.stringify({
@@ -174,7 +188,12 @@ async function runOnce(task, n) {
   const down = turns.flatMap((t) => t.tools ?? []).find((t) => t.isError && STACK_DOWN.test(t.result));
   if (down) throw new Error(`${name}: the local stack went down during the run (${down.name}: ${down.result.split('\n')[0]}); it measured nothing`);
 
-  const problems = finished ? await task.check(cms, turns) : ['the agent never finished'];
+  const problems = finished
+    ? [
+      ...await task.check(cms, turns),
+      ...broughtProblems(before, await siteProblems(cms, schemas)).map((problem) => `left the site invalid: ${problem}`),
+    ]
+    : ['the agent never finished'];
   let verdicts = {};
   if (task.person && finished) {
     const judged = await judge({ turns, wants: task.person.wants, criteria: task.criteria, model: opts['judge-model'], cwd: dir });

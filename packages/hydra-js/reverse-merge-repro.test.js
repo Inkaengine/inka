@@ -1,7 +1,12 @@
-import { mergeTemplatesIntoPage, mergeInstanceIntoTemplate } from './mergeTemplates.js';
+import { mergeTemplatesIntoPage, mergeInstanceIntoTemplate } from '@volto-hydra/helpers/mergeTemplates.js';
 import { sharedBlocksConfig } from '../../tests-playwright/fixtures/shared-block-schemas.js';
 import { readFileSync } from 'fs';
 import { join } from 'path';
+import { buildIdFieldMap } from '@volto-hydra/helpers/buildBlockPathMap.js';
+
+// Each list's id field, from the schema, as the admin derives it (buildIdFieldMap).
+const ID_FIELDS = buildIdFieldMap(sharedBlocksConfig);
+
 
 // jest runs with cwd = packages/hydra-js
 const root = join(process.cwd(), '..', '..');
@@ -30,6 +35,7 @@ test('reverse merge captures a template-block edit using the default pageBlocksF
 
   // 1. INIT merge (page load): inject the template's fixed blocks
   const { merged: formData } = await mergeTemplatesIntoPage(page, {
+    idFieldMap: ID_FIELDS,
     loadTemplate: async () => template,
     pageBlocksFields: { items: {} },
     uuidGenerator,
@@ -45,7 +51,7 @@ test('reverse merge captures a template-block edit using the default pageBlocksF
   };
 
   // 3. Reverse merge (save) — note: NO pageBlocksFields, so the default is used
-  const { merged: updatedTemplate } = await mergeInstanceIntoTemplate(template, formData, prevInstanceId, { uuidGenerator });
+  const { merged: updatedTemplate } = await mergeInstanceIntoTemplate(template, formData, prevInstanceId, { idFieldMap: ID_FIELDS, uuidGenerator });
 
   const hdr = Object.values(updatedTemplate.blocks).find((b) => b.slotId === 'header' && b.fixed);
   expect(hdr).toBeDefined();
@@ -103,7 +109,7 @@ test('reverse merge captures an edit to a DEEPLY-nested template block (columns 
     blocks_layout: { items: ['footer-cols'] },
   };
 
-  const { merged: updatedTemplate } = await mergeInstanceIntoTemplate(template, formData, instanceId, { blocksConfig: sharedBlocksConfig, intl, uuidGenerator });
+  const { merged: updatedTemplate } = await mergeInstanceIntoTemplate(template, formData, instanceId, { idFieldMap: ID_FIELDS, blocksConfig: sharedBlocksConfig, intl, uuidGenerator });
 
   // Walk down to the deeply-nested cell in the updated template + assert the edit.
   const cols = Object.values(updatedTemplate.blocks).find((b) => b['@type'] === 'columns');
@@ -163,7 +169,7 @@ test('reverse merge captures a nested edit when the forced footer is in the FOOT
     blocks_layout: { items: ['main-1'], footer: ['branding', 'fcols'] },
   };
 
-  const { merged: updatedTemplate } = await mergeInstanceIntoTemplate(template, formData, instanceId, { blocksConfig: sharedBlocksConfig, intl, uuidGenerator });
+  const { merged: updatedTemplate } = await mergeInstanceIntoTemplate(template, formData, instanceId, { idFieldMap: ID_FIELDS, blocksConfig: sharedBlocksConfig, intl, uuidGenerator });
 
   const cols = Object.values(updatedTemplate.blocks || {}).find((b) => b['@type'] === 'columns');
   expect(cols).toBeDefined(); // EMPTY before the fix

@@ -79,6 +79,7 @@
         "properties": {
           "blocks": {
             "widget": "object_list",
+            "idField": "@id",
             "typeField": "@type"
           }
         }

@@ -15,8 +15,10 @@
  * @param {Object} intl
  * @param {Object} [opts]
  * @param {boolean} [opts.idEditable=true] - allow editing the Short name (new templates only)
+ * @param {string} [opts.templateType] - the template's content type. A save location is any
+ *   folderish item the site lets the user add that type to (its @types), not a type by name.
  */
-export const getTemplateInstanceSchema = (intl, { idEditable = true } = {}) => ({
+export const getTemplateInstanceSchema = (intl, { idEditable = true, templateType } = {}) => ({
   title: 'Template Settings',
   fieldsets: [
     {
@@ -42,7 +44,8 @@ export const getTemplateInstanceSchema = (intl, { idEditable = true } = {}) => (
       description: 'Folder where this template will be saved',
       widget: 'object_browser',
       mode: 'link',
-      selectableTypes: ['Folder'],
+      onlyFolderishSelectable: true,
+      addableType: templateType,
       allowExternals: false,
     },
   },

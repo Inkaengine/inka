@@ -17,6 +17,9 @@
  * working unchanged.
  */
 
+import { ADDRESS_SOURCE, sourceValue } from './catalogAddress.js';
+export { ADDRESS_SOURCE, sourceValue } from './catalogAddress.js';
+
 ////////////////////////////////////////////////////////////////////////////////
 // Internal: SSR-safe logging + auth header
 ////////////////////////////////////////////////////////////////////////////////
@@ -138,6 +141,145 @@ export function contentPath(url, apiUrl) {
 }
 
 ////////////////////////////////////////////////////////////////////////////////
+// combineQueries: the query builder's own step, one criterion per index
+////////////////////////////////////////////////////////////////////////////////
+
+/**
+ * Several querystring queries as ONE valid query.
+ *
+ * plone.app.querystring turns a query into a single catalog query keyed by
+ * index, so a second criterion on an index REPLACES the first: "type is any of
+ * [Document]" then "any of [Image]" returns exactly the Images. Criteria from
+ * different places (a listing's own query, a search block's facets, what a
+ * site always leaves out) therefore have to be combined, not appended:
+ *
+ *   any of + any of   → the values both allow
+ *   none of + none of → every value either leaves out
+ *   any of + none of  → the "any of" values less the "none of" ones
+ *   the same criterion twice → once
+ *   two date bounds on one index, or several paths → kept: Plone merges those
+ *     itself (a "from" and a "to" make a range; paths are searched together)
+ *
+ * An "any of" left with no values means the criteria together match nothing
+ * (a facet outside what the listing's own query allows). No query can say so:
+ * to the catalog an empty "any of" is no restriction at all. So the answer is
+ * `null`, no query, and the caller lists nothing without asking.
+ *
+ * Anything else on an index that already has a criterion is an error, naming
+ * it, rather than one criterion silently replacing another.
+ *
+ * @param {...Array<{i: string, o: string, v?: unknown}>} queries
+ * @returns {Array<{i: string, o: string, v?: unknown}>|null} a new list (the
+ *   inputs are not changed), or null when nothing can match
+ */
+const ANY = 'plone.app.querystring.operation.selection.any';
+const NONE = 'plone.app.querystring.operation.selection.none';
+const DATE_BOUND = /\.date\.(largerThan|lessThan|largerThanRelativeDate|lessThanRelativeDate)$/;
+
+const MATCHES_NOTHING = Symbol('matches nothing');
+const same = (a, b) => a.o === b.o && JSON.stringify(a.v) === JSON.stringify(b.v);
+const values = (c) => (Array.isArray(c.v) ? c.v : c.v === undefined ? [] : [c.v]);
+
+function combineTwo(kept, next) {
+  const { i } = next;
+  if (kept.o === NONE && next.o === NONE) {
+    return { ...kept, v: [...new Set([...values(kept), ...values(next)])] };
+  }
+  let any;
+  if (kept.o === ANY && next.o === ANY) {
+    const allowed = new Set(values(next));
+    any = values(kept).filter((x) => allowed.has(x));
+  } else if ((kept.o === ANY && next.o === NONE) || (kept.o === NONE && next.o === ANY)) {
+    const [a, n] = kept.o === ANY ? [kept, next] : [next, kept];
+    const left = new Set(values(n));
+    any = values(a).filter((x) => !left.has(x));
+  } else {
+    throw new Error(
+      `combineQueries: index "${i}" has ${kept.o} ${JSON.stringify(kept.v)} and ${next.o} ${JSON.stringify(next.v)}; ` +
+        'Plone keeps only one criterion per index, and these cannot be combined',
+    );
+  }
+  if (any.length === 0) return MATCHES_NOTHING;
+  return { i, o: ANY, v: any };
+}
+
+function combineQueries(...queries) {
+  const out = [];
+  for (const criterion of queries.flat()) {
+    const { i } = criterion;
+    const onIndex = out.filter((c) => c.i === i);
+    if (onIndex.some((c) => same(c, criterion))) continue;
+    if (onIndex.length === 0 || i === 'path') {
+      out.push({ ...criterion });
+      continue;
+    }
+    if (DATE_BOUND.test(criterion.o) && onIndex.every((c) => DATE_BOUND.test(c.o))) {
+      out.push({ ...criterion });
+      continue;
+    }
+    if (onIndex.length > 1) {
+      throw new Error(`combineQueries: index "${i}" already has ${onIndex.length} criteria`);
+    }
+    const combined = combineTwo(onIndex[0], criterion);
+    if (combined === MATCHES_NOTHING) return null;
+    out[out.indexOf(onIndex[0])] = combined;
+  }
+  return out;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+// How a search block sorts
+////////////////////////////////////////////////////////////////////////////////
+//
+// plone/volto#4000: a keyword is ranked by relevance unless the reader chose a
+// sort; with no keyword the listing's own sort applies (relevance has nothing
+// to rank). A sort the reader chose is dropped when the keyword starts or ends,
+// and kept while one keyword changes to another. A frontend keeps the keyword
+// and the chosen sort however it likes (URL, state); these answer the rules.
+
+/**
+ * Whether a search box's text is a keyword Plone can search for: it has a
+ * letter or a digit. A term without one (a lone `"`, `()`) makes Plone's text
+ * index fail, so a frontend drops it, and text of nothing else is no keyword.
+ *
+ * @param {string|null|undefined} text - The search box's text
+ * @returns {boolean}
+ */
+export function hasSearchKeyword(text) {
+  return /[\p{L}\p{N}]/u.test(text || '');
+}
+
+/**
+ * Whether a sort the reader chose stays when the search text changes: not when
+ * a keyword starts or ends. A new keyword is then ranked by relevance, and with
+ * the keyword gone the listing's own sort is back.
+ *
+ * @param {string|null|undefined} beforeText - The search text before
+ * @param {string|null|undefined} nextText - The search text now
+ * @returns {boolean}
+ */
+export function keepsChosenSort(beforeText, nextText) {
+  return hasSearchKeyword(beforeText) === hasSearchKeyword(nextText);
+}
+
+/**
+ * The sort criteria for buildQuerystringSearchBody's `extraCriteria`: the sort
+ * the reader chose, else relevance (`sort_on: null`) with a keyword, else none
+ * (the listing's own sort applies).
+ *
+ * @param {string|null|undefined} text - The search text
+ * @param {string|null|undefined} sortOn - The sort the reader chose, if any
+ * @param {string|null|undefined} [sortOrder] - Its order, if chosen
+ * @returns {{sort_on?: string|null, sort_order?: string}}
+ */
+export function searchSort(text, sortOn, sortOrder) {
+  if (sortOn) {
+    return sortOrder ? { sort_on: sortOn, sort_order: sortOrder } : { sort_on: sortOn };
+  }
+  return hasSearchKeyword(text) ? { sort_on: null } : {};
+}
+
+////////////////////////////////////////////////////////////////////////////////
 // buildQuerystringSearchBody
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -155,10 +297,14 @@ export function contentPath(url, apiUrl) {
  * @param {number} [paging.b_size=10] - Number of items per page
  * @param {Object} [extraCriteria={}] - Additional query criteria (for search blocks)
  * @param {string} [extraCriteria.SearchableText] - Text search term
- * @param {string} [extraCriteria.sort_on] - Override sort field
+ * @param {string|null} [extraCriteria.sort_on] - Override sort field. `null` asks
+ *   for relevance: the body names no sort, so Plone ranks the SearchableText
+ *   matches (it needs a SearchableText; without one this throws).
  * @param {string} [extraCriteria.sort_order] - Override sort order
  * @param {string|string[]} [extraCriteria['facet.*']] - Facet filters (e.g., 'facet.portal_type': ['Document'])
- * @returns {Object} Request body for POST to @querystring-search
+ * @returns {Object|null} Request body for POST to @querystring-search, or
+ *   null when the criteria together can match nothing (a facet value outside
+ *   what the listing's own query allows): list nothing, ask nothing.
  */
 export function buildQuerystringSearchBody(
   queryConfig,
@@ -182,7 +328,7 @@ export function buildQuerystringSearchBody(
   } else {
     // Default: the context's CONTENTS — its direct children (`.::1`), which is
     // what Volto shows for a listing with no criteria. `.` alone is the whole
-    // subtree: a converted LECC page listed 25 items (every language folder's
+    // subtree: a converted site's page listed 25 items (every language folder's
     // sub-pages) where the source listed its 7 languages. A listing that sets
     // its own `depth` keeps it (applied below).
     query = [
@@ -240,21 +386,42 @@ export function buildQuerystringSearchBody(
       });
     }
   }
+  // One criterion per index: a facet on an index the listing's own query
+  // already restricts is combined with it, not appended, which would make
+  // Plone keep only the facet (combineQueries).
+  // A facet outside the listing's own criterion matches nothing: the listing's
+  // query is the base, and a facet narrows within it.
+  query = combineQueries(query);
 
   // Default sort: folder order for unconfigured listings, effective date
   // (newest first) for configured ones. Descending is the default ONLY for that
   // implicit effective-date sort. A listing that names its own sort_on without a
   // sort_order gets Plone's own default, ascending — forcing descending there
   // reversed every folder-order listing on real Plone.
+  //
+  // Relevance is no sort at all: Plone ranks a SearchableText search only when
+  // the request names no sort_on. `sort_on: null` asks for it, as a choice —
+  // unlike a missing sort_on, which takes the listing's own sort.
+  const relevance = extraCriteria.sort_on === null;
+  if (relevance && !extraCriteria.SearchableText) {
+    throw new Error(
+      'buildQuerystringSearchBody: relevance (sort_on: null) ranks SearchableText matches, and no SearchableText was given',
+    );
+  }
+  if (query === null) return null;
   const explicitSortOn = extraCriteria.sort_on || queryConfig?.sort_on;
   const defaultSort = hasQuery ? 'effective' : 'getObjPositionInParent';
   const defaultOrder = hasQuery && !explicitSortOn ? 'descending' : 'ascending';
 
   const body = {
     query,
-    sort_on: explicitSortOn || defaultSort,
-    sort_order:
-      extraCriteria.sort_order || queryConfig?.sort_order || defaultOrder,
+    ...(relevance
+      ? {}
+      : {
+          sort_on: explicitSortOn || defaultSort,
+          sort_order:
+            extraCriteria.sort_order || queryConfig?.sort_order || defaultOrder,
+        }),
     b_start,
     b_size,
     metadata_fields: '_all',
@@ -366,7 +533,7 @@ export function calculatePaging(itemsTotal, bSize, currentPage = 0) {
  * // {
  * //   '@type': 'listing',
  * //   'itemType': 'teaser',
- * //   'fieldMapping': { 'title': 'headline', '@id': 'href' },
+ * //   'fieldMapping': { 'title': 'headline', getURL: 'href' },
  * //   'itemDefaults': { 'showImage': true }
  * // }
  * // Query result: { title: 'My Page', '@id': '/my-page', description: '...' }
@@ -752,28 +919,24 @@ export async function expandListingBlocks(inputItems, options = {}) {
       localSize = windowEnd - Math.max(blockStart, windowStart);
     }
 
-    try {
-      const fetcher = fetchItems[blocks[blockId]['@type']];
-      const result = await fetcher(blocks[blockId], {
-        start: localStart,
-        size: localSize,
-      });
-      const total = result.total || 0;
-      listingTotals[blockId] = total;
-      batchTotal += total;
+    // A failed fetch fails the listing: drawn as "no results" it would hide a
+    // broken API or a bad query from everyone who could fix it.
+    const fetcher = fetchItems[blocks[blockId]['@type']];
+    const result = await fetcher(blocks[blockId], {
+      start: localStart,
+      size: localSize,
+    });
+    const total = result.total || 0;
+    listingTotals[blockId] = total;
+    batchTotal += total;
 
-      // Now that we know the actual total, check if this listing truly overlaps
-      const blockEnd = blockStart + total;
-      if (localSize > 0 && blockEnd > windowStart && blockStart < windowEnd) {
-        listingResults[blockId] = result.items || [];
-      }
-
-      globalPos += total;
-    } catch (error) {
-      console.error(`[HYDRA] Failed to fetch listing ${blockId}:`, error);
-      listingTotals[blockId] = 0;
-      globalPos += 0;
+    // Now that we know the actual total, check if this listing truly overlaps
+    const blockEnd = blockStart + total;
+    if (localSize > 0 && blockEnd > windowStart && blockStart < windowEnd) {
+      listingResults[blockId] = result.items || [];
     }
+
+    globalPos += total;
   }
 
   // Build items array — walk layout in order, emitting items that fall in the page window
@@ -804,7 +967,13 @@ export async function expandListingBlocks(inputItems, options = {}) {
         items.push({ '@uid': blockId, '@type': 'empty', readOnly: true });
       } else if (listingResults[blockId]) {
         const itemType = block[itemTypeField] || defaultItemType;
-        const fieldMapping = block.fieldMapping || {};
+        const fieldMapping = block.fieldMapping;
+        if (!fieldMapping || Object.keys(fieldMapping).length === 0) {
+          throw new Error(
+            `Listing ${blockId} has no fieldMapping: the editor stores one when its item type is picked, ` +
+              `and there is no schema here to make one up from.`,
+          );
+        }
 
         // Extract itemDefaults from flat keys (e.g., itemDefaults_overwrite -> overwrite)
         const itemDefaults = {};
@@ -826,18 +995,10 @@ export async function expandListingBlocks(inputItems, options = {}) {
         // Convert each query result to a block of itemType
         // All expanded items share the same @uid (the listing block's ID)
         // fieldMapping acts as an allowlist: only mapped fields end up on the block.
-        // Format: { source: { field: target, type: jsonSchemaType } }
-        // Or legacy: { source: target } (simple rename, no conversion)
-        const DEFAULT_FIELD_MAPPING = {
-          '@id': 'href',
-          title: 'title',
-          description: 'description',
-          image: 'image',
-        };
-        const effectiveMapping =
-          Object.keys(fieldMapping).length > 0
-            ? fieldMapping
-            : DEFAULT_FIELD_MAPPING;
+        // Format: { source: { field: target, type: conversion } }. Every entry
+        // carries its conversion: there's no schema here to work one out, so
+        // an entry without one is refused (mappingConversions decides them).
+        const effectiveMapping = fieldMapping;
 
         for (const result of listingResults[blockId]) {
           const itemBlock = {
@@ -850,18 +1011,22 @@ export async function expandListingBlocks(inputItems, options = {}) {
           for (const [sourceField, mapping] of Object.entries(
             effectiveMapping,
           )) {
-            const targetField =
-              typeof mapping === 'string' ? mapping : mapping?.field;
-            const targetType =
-              typeof mapping === 'object' ? mapping?.type : undefined;
-            if (!targetField) continue;
+            const targetField = mapping?.field;
+            const targetType = mapping?.type;
+            if (!targetField || !targetType) {
+              throw new Error(
+                `Listing ${blockId}: fieldMapping "${sourceField}" is ${JSON.stringify(mapping)}; ` +
+                  `each entry is { field, type }, carrying its conversion (there is no schema here to work one out).`,
+              );
+            }
             // A brain carries null for a field the page never set (an
             // unpublished page's `effective`): no value, like a missing field.
             // Converted, it became the text "null".
-            if (result[sourceField] === undefined || result[sourceField] === null) continue;
+            const value = sourceValue(result, sourceField);
+            if (value === undefined || value === null) continue;
 
             itemBlock[targetField] = convertFieldValue(
-              result[sourceField],
+              value,
               targetType,
             );
           }
@@ -1019,6 +1184,7 @@ export function ploneFetchItems({
       },
       extraCriteria,
     );
+    if (body === null) return { items: [], total: 0 };
 
     // This folder's children in folder order, and nothing else, is the
     // question plone.restapi answers for every folderish page: its content
@@ -1667,6 +1833,9 @@ function _slateNodeDiffersOnlyInText(p, n) {
  */
 export function getImageUrl(value, apiUrl = '') {
   if (!value) return '';
+  // A list (the object-browser / `image_link` shape): its first element is
+  // read like any other value, a catalog brain's scales included.
+  if (Array.isArray(value)) return getImageUrl(value[0], apiUrl);
 
   // Catalog brain with image_scales
   if (value.image_scales && value.image_field) {
@@ -1689,7 +1858,7 @@ export function getImageUrl(value, apiUrl = '') {
   if (value.image_scales === null || value.image_field === '') return '';
 
   // Extract URL from various formats
-  let url = Array.isArray(value) ? value[0]?.['@id'] : value?.['@id'] || value;
+  let url = value?.['@id'] || value;
   if (typeof url !== 'string') return '';
 
   // Add @@images/image for content paths without a scale URL
@@ -1959,12 +2128,15 @@ export function getSnippetTemplates(templates, containerType, fieldName) {
  * @param {Object} blocks - Template blocks object
  * @param {Array} layout - Template blocks_layout.items array
  * @param {Function} uuidGenerator - Function to generate UUIDs (default: generateUUID)
+ * @param {Object} [idFieldMap] - { blockType: { field: idField } } for the lists in
+ *   these blocks (buildIdFieldMap); a list it doesn't name throws
  * @returns {Object} { blocks, layout, idMap } where idMap tracks old->new IDs
  */
 export function cloneBlocksWithNewIds(
   blocks,
   layout,
   uuidGenerator = generateUUID,
+  idFieldMap = null,
 ) {
   const idMap = {}; // oldId -> newId
   const newBlocks = {};
@@ -1977,7 +2149,7 @@ export function cloneBlocksWithNewIds(
     // Deep clone the block, filtering nested blocks without template markers
     const block = blocks[oldId];
     if (block) {
-      newBlocks[newId] = cloneBlockFilteringNested(block, uuidGenerator);
+      newBlocks[newId] = cloneBlockFilteringNested(block, uuidGenerator, idFieldMap);
     }
 
     newLayout.push(newId);
@@ -1998,14 +2170,14 @@ export function cloneBlocksWithNewIds(
  * @param {Function} uuidGenerator - Function to generate UUIDs
  * @returns {Object} Cloned block with filtered nested blocks
  */
-export function cloneBlockFilteringNested(block, uuidGenerator) {
+export function cloneBlockFilteringNested(block, uuidGenerator, idFieldMap = null) {
   // Start with a shallow clone
   const cloned = { ...block };
 
-  // Snippet insertion copies a TEMPLATE's blocks, so the same exception
-  // applies: its children are known by templateId, not by this caller's
-  // schema, which it does not have.
-  const fields = getChildFields(cloned, null, { templateChildren: true });
+  // Snippet insertion copies a TEMPLATE's blocks: its children are known by
+  // templateId. A list's items get new ids under the list's own key, which only
+  // the caller's idFieldMap names — a list it doesn't name throws.
+  const fields = getChildFields(cloned, idFieldMap, { templateChildren: true });
   if (fields.length === 0) return cloned;
 
   // blocks_layout regions share cloned.blocks — reset it once so template-internal blocks don't
@@ -2021,7 +2193,7 @@ export function cloneBlockFilteringNested(block, uuidGenerator) {
         kept.push({
           id: uuidGenerator(),
           // Recursively filter this nested block's children too
-          block: cloneBlockFilteringNested(nestedBlock, uuidGenerator),
+          block: cloneBlockFilteringNested(nestedBlock, uuidGenerator, idFieldMap),
         });
       }
     }
@@ -2177,6 +2349,39 @@ function findBlockAnywhere(blocks, blockId, idFieldMap, regions = DECLARED_REGIO
   walkBlocks(blocks, idFieldMap, (id, block) => {
     if (!found && id === blockId) found = block;
   }, regions);
+  return found;
+}
+
+/**
+ * A template's block by id, at any depth — for the merge, which has no schema. A
+ * blocks_layout child is found by its id; a list's item only by `listIdField`, the
+ * key the caller named for the list being looked up (null for a blocks_layout one).
+ * Lists are walked through, by their blocks, whatever they are keyed by.
+ */
+function findTemplateBlock(blocks, blockId, listIdField) {
+  let found = null;
+  const visit = (block) => {
+    for (const field of getChildFields(block, null, { templateChildren: true })) {
+      if (field.isObjectList) {
+        for (const child of getChildBlocks(block, field)) {
+          if (found) return;
+          if (listIdField && child?.[listIdField] === blockId) found = child;
+          else visit(child);
+        }
+      } else {
+        for (const { id, block: child } of getChildBlockEntries(block, field)) {
+          if (found) return;
+          if (id === blockId) found = child;
+          else visit(child);
+        }
+      }
+    }
+  };
+  for (const [id, block] of Object.entries(blocks || {})) {
+    if (found) break;
+    if (id === blockId) found = block;
+    else visit(block);
+  }
   return found;
 }
 
@@ -2788,6 +2993,7 @@ function blockText(block, idFieldMap) {
  * @param {Object} templateData - Snippet template document
  * @param {number} position - Index to insert at
  * @param {Function} uuidGenerator - Function to generate UUIDs (default: generateUUID)
+ * @param {Object} [idFieldMap] - the id field of each list in the snippet (buildIdFieldMap)
  * @returns {Object} Updated formData with snippet inserted
  */
 export function insertSnippetBlocks(
@@ -2795,6 +3001,7 @@ export function insertSnippetBlocks(
   templateData,
   position,
   uuidGenerator = generateUUID,
+  idFieldMap = null,
 ) {
   const result = {
     blocks: { ...pageFormData.blocks },
@@ -2814,6 +3021,7 @@ export function insertSnippetBlocks(
     templateData.blocks,
     templateData.blocks_layout?.items || [],
     uuidGenerator,
+    idFieldMap,
   );
 
   // Add template fields
@@ -3016,6 +3224,30 @@ export function resolveFieldPath(fieldPath, blockId, blockPathMap) {
   return { blockId: currentBlockId, fieldName: remainingPath };
 }
 
+function missingIdField(region) {
+  return (
+    `object_list "${region}" has no idField: nothing says which field its items are ` +
+    'keyed by, and none is guessed. Pass the list\'s idField (the block\'s code knows it), ' +
+    'or read its blocks with getChildBlocks when their ids are not needed.'
+  );
+}
+
+/**
+ * A region's child blocks, in order, without their ids — for a walk that only
+ * looks at the blocks. A list read this way needs no idField.
+ *
+ * @param {Object} parentBlock - the container block
+ * @param {Object} descriptor - as getChildBlockEntries
+ * @returns {Object[]}
+ */
+export function getChildBlocks(parentBlock, descriptor = {}) {
+  const { isObjectList, regionPath = [], region = 'items' } = descriptor;
+  if (isObjectList) return [...(getAtPath(parentBlock, [...regionPath, region]) || [])];
+  const container = getAtPath(parentBlock, regionPath);
+  const ids = container?.blocks_layout?.[region] || [];
+  return ids.map((id) => container?.blocks?.[id]).filter(Boolean);
+}
+
 /**
  * The child blocks at a container's region, as ordered {id, block} entries — uniform
  * across BOTH storages. blocks_layout and object_list are just two ways to lay out the
@@ -3034,7 +3266,7 @@ export function resolveFieldPath(fieldPath, blockId, blockPathMap) {
  * the node at `regionPath`. Same prefix, one representation, no `dataPath`.
  *
  * @param {Object} parentBlock - the container block
- * @param {Object} descriptor - { isObjectList, regionPath, region='items', idField='@id' }
+ * @param {Object} descriptor - { isObjectList, regionPath, region='items', idField } (a list's idField is required)
  * @returns {Array<{id: string, block: Object}>}
  */
 export function getChildBlockEntries(parentBlock, descriptor = {}) {
@@ -3042,10 +3274,13 @@ export function getChildBlockEntries(parentBlock, descriptor = {}) {
     isObjectList,
     regionPath = [],
     region = 'items',
-    idField = '@id',
+    idField,
   } = descriptor;
   if (isObjectList) {
-    // object_list: an inline array at [...regionPath, region].
+    // object_list: an inline array at [...regionPath, region], keyed by the list's
+    // own idField. Nothing guesses one: a list nobody named the key of has no ids
+    // to give (read its blocks with getChildBlocks).
+    if (!idField) throw new Error(missingIdField(region));
     const arr = getAtPath(parentBlock, [...regionPath, region]);
     return [...(arr || [])].map((block) => ({ id: block[idField], block }));
   }
@@ -3122,7 +3357,9 @@ export function getChildFields(block, idFieldMap = null, options = {}) {
           isObjectList: true,
           region: key,
           ...at,
-          idField: idField || '@id',
+          // A list known only by its items' templateId has no idField: the
+          // merge has no schema, and only the block's code knows the key.
+          ...(idField ? { idField } : {}),
         });
       }
     }
@@ -3154,7 +3391,7 @@ function clearRegions(block, fields) {
  * cloning each level (INITIAL_DATA arrives deep-frozen).
  *
  * @param {Object} parentBlock - the container block to mutate
- * @param {Object} descriptor - { isObjectList, regionPath, region='items', idField='@id' }
+ * @param {Object} descriptor - { isObjectList, regionPath, region='items', idField } (a list's idField is required)
  * @param {Array<{id: string, block: Object}>} entries
  */
 export function setChildBlockEntries(parentBlock, descriptor, entries) {
@@ -3162,9 +3399,10 @@ export function setChildBlockEntries(parentBlock, descriptor, entries) {
     isObjectList,
     regionPath = [],
     region = 'items',
-    idField = '@id',
+    idField,
   } = descriptor;
   if (isObjectList) {
+    if (!idField) throw new Error(missingIdField(region));
     const parent = ensureMutablePath(parentBlock, regionPath);
     parent[region] = entries.map((e) => ({
       ...e.block,
@@ -3800,8 +4038,13 @@ export function collectContentFromTree(
   // shared funnel the apply path uses (getChildFields + getChildBlockEntries) — one region-aware
   // read, not a bespoke isBlocksMap scan with an all-keys fallback and a divergent object_list
   // heuristic. processBlock captures each child (by slot/instance) and recurses into it.
+  // Content is taken by slot. A blocks_layout child's id is its key in the region;
+  // a list item's id is in the item itself, read by the list's own call (which
+  // names the list's idField) when it is placed — so none is recorded here.
   for (const field of getChildFields(container, null, { templateChildren: true })) {
-    const entries = getChildBlockEntries(container, field);
+    const entries = field.isObjectList
+      ? getChildBlocks(container, field).map((block) => ({ id: null, block }))
+      : getChildBlockEntries(container, field);
     // In a region of this instance's own block, the slot its page content
     // fills: a sibling slot block's, else `default`.
     const regionSlotId =
@@ -3919,7 +4162,7 @@ function templateSlotIds(template) {
   const slots = new Set();
   const visit = (container) => {
     for (const field of getChildFields(container, null, { templateChildren: true })) {
-      for (const { block } of getChildBlockEntries(container, field)) {
+      for (const block of getChildBlocks(container, field)) {
         if (!block?.templateId) continue;
         slots.add(block.slotId || 'default');
         visit(block);
@@ -3946,7 +4189,7 @@ function templateSlotIds(template) {
  *   (ctx.leftoverSlotId), else it is dropped.
  *
  * Each rule is checked in every kind of region and both directions by
- * packages/volto-hydra/src/utils/mergeTemplates.rules.test.js: a new case is a row there.
+ * packages/helpers/mergeTemplates.rules.test.js: a new case is a row there.
  */
 function fillRegionEntries(entries, templateState, options) {
   const { instanceId, templateId } = templateState;
@@ -3987,10 +4230,10 @@ function fillRegionEntries(entries, templateState, options) {
       let childSlotIds;
       for (const field of getChildFields(child, null, { templateChildren: true })) {
         const key = field.isObjectList ? field.region : 'blocks';
-        const first = getChildBlockEntries(child, field).find(({ block }) => block && !block.fixed && block.slotId);
+        const first = getChildBlocks(child, field).find((block) => block && !block.fixed && block.slotId);
         if (first) {
           if (!childSlotIds) childSlotIds = {};
-          if (!childSlotIds[key]) childSlotIds[key] = first.block.slotId;
+          if (!childSlotIds[key]) childSlotIds[key] = first.slotId;
         }
       }
       const stamped = {
@@ -4029,10 +4272,20 @@ function fillRegionEntries(entries, templateState, options) {
       slotId === ctx.leftoverSlotId
         ? ctx.leftovers.splice(0).map((entry) => ({ ...entry, orphaned: true }))
         : [];
-    const content = [...leftovers, ...(ctx.pendingContent.get(slotId) || [])];
+    // An `empty` is never content: what a document holds for a slot when that is
+    // only its empty slot (inka#708) is nothing, so the slot's own block goes in
+    // — and a commit takes the author's block in an empty slot's place.
+    const content = [...leftovers, ...(ctx.pendingContent.get(slotId) || [])].filter(
+      ({ block }) => block?.['@type'] !== 'empty',
+    );
     ctx.pendingContent.delete(slotId);
 
     if (content.length === 0) {
+      // A template keeps a slot nobody has filled as an `empty` (inka#708): a
+      // place the editor offers to add to. A visitor's page has none — only the
+      // admin's merge asks for them (keepEmptySlots), so no frontend draws
+      // editing furniture for visitors.
+      if (child['@type'] === 'empty' && !options.keepEmptySlots) continue;
       // The target has nothing for this slot: the template's slot block, without
       // what it holds (a slot's contents are a page's, never the template's).
       const { blocks: _slotBlocks, blocks_layout: _slotLayout, ...childDef } = child;
@@ -4146,10 +4399,10 @@ function leaveRegionsWaiting(stamped, tplBlock, ctx) {
   for (const field of fields) {
     const inInstance = (block) => ({ ...block, templateInstanceId: ctx.instanceId });
     mapChildBlocks(stamped, tplBlock, field, inInstance);
-    const entries = getChildBlockEntries(tplBlock, field).map(({ id, block }) => ({
-      id: field.isObjectList ? null : id,
-      block: inInstance(block),
-    }));
+    // A list's ids are in its items, for the block's own call to read by its idField.
+    const entries = field.isObjectList
+      ? getChildBlocks(tplBlock, field).map((block) => ({ id: null, block: inInstance(block) }))
+      : getChildBlockEntries(tplBlock, field).map(({ id, block }) => ({ id, block: inInstance(block) }));
     if (entries.length === 0) continue;
     ctx.waitingRegions.set(regionKey(entries), {
       blockType: tplBlock['@type'],
@@ -4463,7 +4716,7 @@ export async function loadTemplates(
  * every container" before changing how this is called.
  *
  * The merge's rules are docs/frontend-guide/templates.md "How the Merge Works":
- * change that section, this code and packages/volto-hydra/src/utils/mergeTemplates.rules.test.js together.
+ * change that section, this code and packages/helpers/mergeTemplates.rules.test.js together.
  *
  * @param {Array} inputItems - Input items (block IDs or block objects)
  * @param {Object} options - Configuration options
@@ -4562,7 +4815,7 @@ export async function expandTemplates(inputItems, options = {}) {
  *  - Nested containers are detected from DATA, never schema:
  *      • blocks_layout container: a block with its own `blocks` + `blocks_layout`.
  *      • object_list container: a block field holding an array whose items carry
- *        `templateId` (idField defaults to `@id`).
+ *        `templateId` (read by the list's idField, which the caller names).
  *  - A template MAY embed a DIFFERENT template (a nested block whose `templateId`
  *    differs from the one being applied). It is re-instanced as a SEPARATE
  *    instance — a template-in-a-template. [NOT YET SUPPORTED: the merge currently
@@ -4696,7 +4949,7 @@ function objectListItemId(item, idField) {
 // every container" before changing how this is called.
 //
 // The merge's rules are docs/frontend-guide/templates.md "How the Merge Works":
-// change that section, this code and packages/volto-hydra/src/utils/mergeTemplates.rules.test.js together.
+// change that section, this code and packages/helpers/mergeTemplates.rules.test.js together.
 export function expandTemplatesSync(inputItems, options = {}) {
   const {
     blocks: blocksDict,
@@ -4704,7 +4957,7 @@ export function expandTemplatesSync(inputItems, options = {}) {
     templates,
     allowedLayouts,
     loadTemplate,
-    idField = '@id', // For object_list arrays: field name used as item ID (e.g. 'key')
+    idField, // For an object_list: the field its items are keyed by ('@id', 'field_id', 'key', …). Required; never guessed.
     editMode: editModeOverride, // explicit edit-mode signal for SSR frontends that have no window.name
   } = options;
 
@@ -4728,6 +4981,15 @@ export function expandTemplatesSync(inputItems, options = {}) {
   // detector when no override is given (the browser edit iframe + view render).
   const editMode =
     editModeOverride !== undefined ? editModeOverride : _isEditMode();
+  // A list of blocks (not of ids) is keyed by a field only the block's code knows.
+  const listItem = (inputItems || []).find((item) => item && typeof item === 'object');
+  if (listItem && !idField) {
+    throw new Error(
+      `expandTemplatesSync: this list holds blocks (type ${listItem['@type'] ?? 'unknown'}), not ids, ` +
+        'and no idField says which field they are keyed by. Pass the list\'s idField ' +
+        "('@id', 'field_id', 'key', …); none is guessed. See \"Expand every container\" in the templates guide.",
+    );
+  }
   if (idField) assertUniqueObjectListIds(inputItems || [], idField);
   if (editMode) {
     return (inputItems || [])
@@ -4965,14 +5227,13 @@ export function expandTemplatesSync(inputItems, options = {}) {
     // At any depth, through the container API, blocks_layout and object_list alike:
     // a container's re-entry brings a region nested inside the definition, whose
     // blocks are nested in the template — found by the merge's own region rule.
+    // A list's items are found by the idField this call was given: the template's
+    // own lists are keyed the same way, and nothing else knows the key.
     if (
       ownTemplate?.blocks &&
       templateBlockIds.length > 0 &&
       templateBlockIds.every((id) => {
-        const own = findBlockAnywhere(ownTemplate.blocks, id, null, {
-          allObjectLists: true,
-          templateChildren: true,
-        });
+        const own = findTemplateBlock(ownTemplate.blocks, id, listItem ? idField : null);
         return own !== null && isSameTemplateBlock(blocks[id], own);
       })
     ) {

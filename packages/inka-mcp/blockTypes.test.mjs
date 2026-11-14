@@ -7,7 +7,21 @@ const schemas = {
   types: {
     slate: {
       title: 'Text',
-      blockSchema: { required: ['value'], properties: { value: field({ title: 'Body', widget: 'slate' }) } },
+      blockSchema: {
+        required: ['value'],
+        properties: {
+          value: field({ title: 'Body', widget: 'slate' }),
+          styles: field({
+            title: 'Styling',
+            widget: 'object',
+            schema: {
+              fieldsets: [{ id: 'default', title: 'Default', fields: ['align'] }],
+              properties: { align: { title: 'Alignment', widget: 'align', default: 'left' } },
+              required: [],
+            },
+          }),
+        },
+      },
       regions: [],
     },
     columns: {
@@ -22,7 +36,7 @@ const schemas = {
     },
     slider: {
       title: 'Slider',
-      blockSchema: { required: [], properties: { slides: field({ widget: 'object_list', title: 'Slides' }) } },
+      blockSchema: { required: [], properties: { slides: field({ widget: 'object_list', idField: '@id', title: 'Slides' }) } },
       regions: [{
         region: 'slides', isObjectList: true, allowedBlocks: ['slider:slides'], defaultBlockType: 'slider:slides', maxLength: null,
       }],
@@ -38,7 +52,7 @@ const schemas = {
 };
 
 describe('describeBlockTypes', () => {
-  const described = describeBlockTypes(schemas);
+  const described = describeBlockTypes(schemas, { media: false });
 
   it('lists what the page itself takes, by the agent name of its list', () => {
     expect(described.page).toEqual([{ field: 'blocks', allowed: ['slate', 'columns', 'slider'] }]);
@@ -49,7 +63,17 @@ describe('describeBlockTypes', () => {
   });
 
   it('gives fields with their facts, marking required and rich text', () => {
-    expect(described.types.slate.fields).toEqual({ value: { title: 'Body', widget: 'slate', required: true, markdown: true } });
+    expect(described.types.slate.fields.value).toEqual({ title: 'Body', widget: 'slate', required: true, markdown: true });
+  });
+
+  it("gives an object field's own fields as fields, so a value plainly goes inside it", () => {
+    // Given as a raw schema, an agent wrote styles' `align` at the block's top
+    // level, where nothing reads it (#672).
+    expect(described.types.slate.fields.styles).toEqual({
+      title: 'Styling',
+      widget: 'object',
+      fields: { align: { title: 'Alignment', widget: 'align', default: 'left' } },
+    });
   });
 
   it('lists regions separately from fields, with their limits', () => {
@@ -72,7 +96,7 @@ describe('describeBlockTypes', () => {
 
   it('fails on a region allowing a type nothing describes', () => {
     const broken = { ...schemas, page: { regions: [{ region: 'items', allowedBlocks: ['ghost'] }] } };
-    expect(() => describeBlockTypes(broken)).toThrow(/"ghost"/);
+    expect(() => describeBlockTypes(broken, { media: false })).toThrow(/"ghost"/);
   });
 });
 
@@ -91,7 +115,7 @@ describe('the page as a block of its content type', () => {
   };
 
   it('list_block_types names the content type, and describes it as a block: its fields and its regions', () => {
-    const listed = describeBlockTypes(withPage);
+    const listed = describeBlockTypes(withPage, { media: false });
     expect(listed.contentType).toBe('Document');
     expect(listed.types.Document).toEqual({
       title: 'Page', contentType: true,
@@ -101,7 +125,7 @@ describe('the page as a block of its content type', () => {
   });
 
   it('describe_block describes it in full, as any type', () => {
-    expect(describeBlockType(withPage, 'Document')).toMatchObject({ type: 'Document', title: 'Page', description: 'A page in the site', contentType: true });
+    expect(describeBlockType(withPage, 'Document', { media: false })).toMatchObject({ type: 'Document', title: 'Page', description: 'A page in the site', contentType: true });
   });
 });
 
@@ -112,7 +136,7 @@ describe('describeBlockType', () => {
   };
 
   it('gives the type in full: description, variations, fields, regions', () => {
-    const d = describeBlockType(withVariations, 'slate');
+    const d = describeBlockType(withVariations, 'slate', { media: false });
     expect(d).toMatchObject({
       type: 'slate', title: 'Text', description: 'Rich text',
       variations: [{ id: 'default', title: 'Default', isDefault: true }],
@@ -122,8 +146,8 @@ describe('describeBlockType', () => {
   });
 
   it('says where on the page it can go', () => {
-    expect(describeBlockType(withVariations, 'slate').allowedIn).toEqual(["the page's blocks", "column's blocks"]);
-    expect(describeBlockType(withVariations, 'column').allowedIn).toEqual(["columns's columns"]);
+    expect(describeBlockType(withVariations, 'slate', { media: false }).allowedIn).toEqual(["the page's blocks", "column's blocks"]);
+    expect(describeBlockType(withVariations, 'column', { media: false }).allowedIn).toEqual(["columns's columns"]);
   });
 
   it("gives the front end's guidance and its examples, in the agent format", () => {
@@ -141,7 +165,7 @@ describe('describeBlockType', () => {
       blockSchema: { required: [], properties: {} },
       regions: [],
     };
-    const d = describeBlockType({ ...schemas, types: { ...schemas.types, callout } }, 'callout');
+    const d = describeBlockType({ ...schemas, types: { ...schemas.types, callout } }, 'callout', { media: false });
     expect(d.guidance).toBe('For an aside. Pick the level by how much it matters.');
     expect(d.examples).toEqual([{
       title: 'A tip',
@@ -150,12 +174,53 @@ describe('describeBlockType', () => {
   });
 
   it('has no guidance or examples when the front end declares none', () => {
-    const d = describeBlockType(withVariations, 'slate');
+    const d = describeBlockType(withVariations, 'slate', { media: false });
     expect(d).not.toHaveProperty('guidance');
     expect(d).not.toHaveProperty('examples');
   });
 
   it('refuses a type the page has no config for', () => {
-    expect(() => describeBlockType(withVariations, 'ghost')).toThrow(/no block type "ghost"/);
+    expect(() => describeBlockType(withVariations, 'ghost', { media: false })).toThrow(/no block type "ghost"/);
+  });
+});
+
+describe('what an image or file field takes (inka#702)', () => {
+  // An agent saw `{"title": "Image", "widget": "image"}` and guessed: a file
+  // object in an image block (stored as junk), and an inline SVG small enough
+  // for one call as a lead image. The field now says what goes in it.
+  const withFiles = {
+    page: { regions: [{ region: 'items', isObjectList: false, allowedBlocks: ['image'], defaultBlockType: 'image', maxLength: null }], contentType: 'News Item' },
+    types: {
+      image: { title: 'Image', blockSchema: { required: [], properties: { url: field({ title: 'Image', widget: 'image' }), alt: field({ title: 'Alt text' }) } }, regions: [] },
+      'News Item': {
+        title: 'News Item', contentType: true, variations: [],
+        blockSchema: { required: [], properties: { image: field({ title: 'Lead Image', factory: 'Image', widget: 'file' }), attachment: field({ title: 'File', factory: 'File', widget: 'file' }) } },
+        regions: [],
+      },
+    },
+  };
+
+  it('an image field takes an image on the site, or a staged file where the server keeps files', () => {
+    const { takes } = describeBlockTypes(withFiles, { media: true }).types.image.fields.url;
+    expect(takes).toMatch(/path/);
+    expect(takes).toMatch(/stage_media/);
+    expect(describeBlockType(withFiles, 'image', { media: true }).fields.url.takes).toBe(takes);
+  });
+
+  it("a page's own image or file field takes a staged file", () => {
+    const { fields } = describeBlockTypes(withFiles, { media: true }).types['News Item'];
+    expect(fields.image.takes).toMatch(/stage_media/);
+    expect(fields.attachment.takes).toMatch(/stage_media/);
+  });
+
+  it('where the server keeps no files, an image field takes an image on the site, and no staged file is offered', () => {
+    const { types } = describeBlockTypes(withFiles, { media: false });
+    expect(types.image.fields.url.takes).toMatch(/path/);
+    expect(types.image.fields.url.takes).not.toMatch(/stage_media/);
+    expect(types['News Item'].fields.image.takes).not.toMatch(/stage_media/);
+  });
+
+  it('other fields say nothing of files', () => {
+    expect(describeBlockTypes(withFiles, { media: true }).types.image.fields.alt.takes).toBeUndefined();
   });
 });

@@ -110,7 +110,8 @@ test.describe('Template Creation', () => {
   // hand-crafted template fixtures end up with null timestamps.
   //
   // Expected behaviour: on save after make-template, a POST hits the
-  // template's parent folder with @type:'Document' and the block payload.
+  // template's parent folder with the admin's RAZZLE_TEMPLATE_TYPE (Template
+  // here, playwright.config.ts) as its @type and the block payload.
   // The folder path comes from the sidebar's 'folder' field, NOT from a
   // hard-coded '/templates/' prefix in the bridge (so consumers can host
   // templates anywhere in the content tree).
@@ -143,12 +144,18 @@ test.describe('Template Creation', () => {
 
     // Save. saveContent waits for redirect out of /edit so any POSTs
     // dispatched as part of the save will have been observed by then.
+    // A new template is saved by locking it, like any other: it is created
+    // then, and a page can't be saved with a template unlocked.
+    const unlockedToggle = page.locator('.edit-template-toggle[aria-pressed="true"]');
+    await unlockedToggle.click();
+    await expect(unlockedToggle).toHaveCount(0);
+
     await helper.saveContent();
 
-    // EXPECTED: at least one POST whose body @type is Document — that's
+    // EXPECTED: at least one POST whose body @type is Template — that's
     // the new template being created. Path is the parent folder; client
     // doesn't set timestamps (Plone fills those server-side).
-    const templatePosts = contentPosts.filter((r) => r.body['@type'] === 'Document');
+    const templatePosts = contentPosts.filter((r) => r.body['@type'] === 'Template');
     expect(templatePosts.length,
       'expected the save flow to POST a new template document for the just-created template',
     ).toBeGreaterThanOrEqual(1);
@@ -162,6 +169,25 @@ test.describe('Template Creation', () => {
     // not a baked-in literal in the bridge).
     expect(tplPost.url, 'template POST URL must come from the sidebar folder, not a hard-coded /templates/ literal')
       .not.toMatch(/\/templates\/$/);
+  });
+
+  test('a just-made template must be locked before the page saves', async ({ page }) => {
+    // No exception for a new template: it is saved, and its slots checked, by
+    // locking it, like any other.
+    const helper = new AdminUIHelper(page);
+    await helper.login();
+    await helper.navigateToEdit('/test-page');
+
+    await helper.clickBlockInIframe('block-1-uuid');
+    await helper.waitForBlockSelectedInAdmin('block-1-uuid');
+    await helper.openQuantaToolbarMenu('block-1-uuid');
+    await page.locator('.volto-hydra-dropdown-menu .volto-hydra-dropdown-item')
+      .filter({ hasText: /make.*template/i }).click();
+    await helper.waitForSidebarOpen();
+
+    await page.locator('#toolbar-save').click();
+    await expect(page.locator('.template-save-gate-modal')).toBeVisible();
+    await expect(page).toHaveURL(/\/edit$/);
   });
 
   // TDD (task #21): the template's URL id/filename is editable via a "Short name"
@@ -180,7 +206,7 @@ test.describe('Template Creation', () => {
       if (!req.url().startsWith(urls.mockApi)) return;
       let body: any = null;
       try { body = req.postDataJSON(); } catch { /* not JSON */ }
-      if (req.method() === 'POST' && body?.['@type'] === 'Document') docPosts.push({ url: req.url(), body });
+      if (req.method() === 'POST' && body?.['@type'] === 'Template') docPosts.push({ url: req.url(), body });
       if (req.method() === 'PATCH' && /\/test-page$/.test(req.url().replace(/\/$/, '')) && body) pagePatches.push(body);
     });
 
@@ -206,7 +232,13 @@ test.describe('Template Creation', () => {
     await expect(shortName).toBeEnabled({ timeout: 5000 });
     await shortName.fill('my-new-layout');
 
-    // Save (creates the template + writes the page).
+    // Lock (creates the template), then save (writes the page).
+    // A new template is saved by locking it, like any other: it is created
+    // then, and a page can't be saved with a template unlocked.
+    const unlockedToggle = page.locator('.edit-template-toggle[aria-pressed="true"]');
+    await unlockedToggle.click();
+    await expect(unlockedToggle).toHaveCount(0);
+
     await helper.saveContent();
 
     // (1) The template document is POSTed at the chosen id — not untitled-template-N.
@@ -428,7 +460,7 @@ test.describe('Template Creation', () => {
 test.describe('Template Edit Mode - Save', () => {
   // v2: templates commit when you LOCK them (Change on all pages), not with the
   // page. Locking a CHANGED template writes the template document.
-  test('locking a template (Change on all pages) saves the template document', async ({ page, urls }) => {
+  test('locking a template (Change on all pages), then saving the page, saves the template document', async ({ page, urls }) => {
     const helper = new AdminUIHelper(page);
     await helper.login();
     await helper.navigateToEdit('/template-test-page');
@@ -447,7 +479,7 @@ test.describe('Template Edit Mode - Save', () => {
     });
 
     // Unlock the template, make a change (delete the footer block), then lock with
-    // "Change on all pages" — the changed template is written.
+    // "Change on all pages" and save the page — the changed template is written.
     const { blockId: headerBlockId } = await helper.waitForBlockByContent(TEMPLATE_HEADER_CONTENT);
     const { blockId: footerBlockId } = await helper.waitForBlockByContent(TEMPLATE_FOOTER_CONTENT);
     await helper.unlockTemplate(headerBlockId);
@@ -457,12 +489,13 @@ test.describe('Template Edit Mode - Save', () => {
       document.dispatchEvent(new CustomEvent('hydra-delete-blocks', { detail: { blockIds: [id] } }));
     }, footerBlockId);
     await helper.lockTemplate(headerBlockId, 'commit');
+    await helper.saveContent();
 
     // A write whose URL is NOT the page itself = the template document being saved.
     const pageEnds = (u: string) => u.replace(/\/$/, '').endsWith('/template-test-page');
     await expect
       .poll(() => writes.filter((w) => !pageEnds(w.url)).length, {
-        message: `expected the template document to be saved on lock; observed: ${JSON.stringify(writes)}`,
+        message: `expected the template document to be saved with the page; observed: ${JSON.stringify(writes)}`,
         timeout: 5000,
       })
       .toBeGreaterThanOrEqual(1);
@@ -510,9 +543,9 @@ test.describe('Template Edit Mode - Save', () => {
 
   // v2: unlocking re-fetches the template fresh (structure), then locking with
   // "Change on all pages" COMMITS what you edited — reverse-merging the page's
-  // current content into that re-fetched template and PATCHing it. This guards the
-  // whole unlock(re-fetch) → edit → lock(commit) round trip: the edit reaches the
-  // saved template document.
+  // current content into that re-fetched template — and the page save PATCHes it.
+  // This guards the whole unlock(re-fetch) → edit → lock(commit) → save round
+  // trip: the edit reaches the saved template document.
   test('locking (Change on all pages) persists the edit made after the re-fetch', async ({ page }) => {
     const helper = new AdminUIHelper(page);
     const iframe = helper.getIframe();
@@ -539,8 +572,9 @@ test.describe('Template Edit Mode - Save', () => {
     await page.keyboard.type(` ${MARKER}`);
     await expect(iframe.locator(`[data-block-uid="${headerBlockId}"]`)).toContainText(MARKER, { timeout: 5000 });
 
-    // Lock with "Change on all pages" — the edit must reach the saved template.
+    // Lock with "Change on all pages" and save — the edit must reach the saved template.
     await helper.lockTemplate(headerBlockId, 'commit');
+    await helper.saveContent();
     await expect
       .poll(() => templatePatchBodies.join('\n'), {
         message: 'the commit must persist the edit into the template document',
@@ -1151,8 +1185,8 @@ test.describe('Template Edit Mode - Validation', () => {
     const errorMessage = page.locator('.toast-error, .Toastify__toast--error').filter({ hasText: /slot|contiguous|adjacent|position/i });
     await expect(errorMessage).toBeVisible({ timeout: 5000 });
 
-    // Still unlocked — the commit was refused.
-    await expect(editToggle).toHaveAttribute('aria-pressed', 'true');
+    // Still unlocked — the commit was refused (the refusal selects the block at fault).
+    await expect(page.locator('.sidebar-section-header .edit-template-toggle')).toHaveAttribute('aria-pressed', 'true');
   });
 
   test('adjacent slot groups without fixed block prevent exit from edit mode', async ({ page }) => {
@@ -1198,8 +1232,67 @@ test.describe('Template Edit Mode - Validation', () => {
     const errorMessage = page.locator('.toast-error, .Toastify__toast--error').filter({ hasText: /slot|fixed|separated/i });
     await expect(errorMessage).toBeVisible({ timeout: 5000 });
 
-    // Still unlocked — the commit was refused.
-    await expect(editToggle).toHaveAttribute('aria-pressed', 'true');
+    // Still unlocked — the commit was refused (the refusal selects the block at fault).
+    await expect(page.locator('.sidebar-section-header .edit-template-toggle')).toHaveAttribute('aria-pressed', 'true');
+  });
+
+  test('a refused lock opens the block at fault, with the problem on its Slot ID', async ({ page }) => {
+    // The slot rules are checked when a template is locked: the one place they
+    // can be fixed, since its Slot ID fields show only while it is unlocked. A
+    // refusal goes through the same error display a page save uses, so the
+    // author is taken to the block, not left with a sentence.
+    const helper = new AdminUIHelper(page);
+
+    await helper.login();
+    await helper.navigateToEdit('/template-test-page');
+
+    const iframe = helper.getIframe();
+    const { blockId: headerBlockId } = await helper.waitForBlockByContent(TEMPLATE_HEADER_CONTENT);
+    await expect(iframe.locator(`[data-block-uid="${USER_CONTENT_2}"]`)).toBeVisible({ timeout: 15000 });
+    await helper.unlockTemplate(headerBlockId);
+
+    // Two slot groups with no fixed block between them.
+    await helper.clickBlockInIframe(USER_CONTENT_2);
+    await helper.waitForSidebarOpen();
+    await page.locator('.field-wrapper-slotId input').fill('secondary');
+
+    await helper.clickBlockInIframe(headerBlockId);
+    await helper.waitForSidebarOpen();
+    await helper.escapeToParent();
+    const editToggle = page.locator('.sidebar-section-header[data-is-current="true"] .edit-template-toggle');
+    await editToggle.click();
+    await page.locator('.template-lock-modal .template-commit').click();
+
+    // The refusal links to the block…
+    const open = page.locator('.Toastify__toast--error .block-save-error-link');
+    await expect(open).toHaveText(/Open the .* block/);
+    await open.click();
+    await helper.waitForBlockSelectedInAdmin(USER_CONTENT_2);
+    // …and says what is wrong where it is fixed.
+    await expect(page.locator('.field-wrapper-slotId .form-error-label')).toContainText(/separated by a fixed block/);
+
+    // Still unlocked — the commit was refused (the refusal selects the block at fault).
+    await expect(page.locator('.sidebar-section-header .edit-template-toggle')).toHaveAttribute('aria-pressed', 'true');
+  });
+
+  test('a page saves with its templates locked, whatever slots it was saved with', async ({ page }) => {
+    // Slots are checked when a template is locked, and a page can't be saved
+    // with a template unlocked, so the page save doesn't check them again. A
+    // page saved before a block and a block inside it could share no slot (its
+    // group and the group's child both name "primary") still saves an edit to
+    // its own content.
+    const helper = new AdminUIHelper(page);
+
+    await helper.login();
+    await helper.navigateToEdit('/template-old-shared-slot-page');
+
+    const iframe = helper.getIframe();
+    await expect(iframe.locator('[data-block-uid="old-grp-child"]')).toBeVisible({ timeout: 15000 });
+
+    await helper.editBlockTextInIframe('standalone-block-1', 'Edited outside the template');
+    await helper.saveContent();
+
+    await expect(page.locator('.Toastify__toast--error')).toHaveCount(0);
   });
 
   test('while editing a template, dragging a block to a different slot region keeps its slotId', async ({ page }) => {
@@ -1897,7 +1990,7 @@ test.describe('Template Edit Mode - Permissions', () => {
     await helper.login();
     await helper.navigateToEdit('/test-page');
 
-    // A new template create is a POST with @type Document — must NOT happen when denied.
+    // A new template create is a POST with @type Template — must NOT happen when denied.
     const templatePosts: Array<any> = [];
     page.on('request', (req) => {
       if (req.method() !== 'POST') return;
@@ -1907,7 +2000,7 @@ test.describe('Template Edit Mode - Permissions', () => {
       } catch {
         /* not JSON */
       }
-      if (body?.['@type'] === 'Document') templatePosts.push(body);
+      if (body?.['@type'] === 'Template') templatePosts.push(body);
     });
 
     // Make a template on a regular block, then attempt to save.
@@ -1920,7 +2013,11 @@ test.describe('Template Edit Mode - Permissions', () => {
       .click();
     await helper.waitForSidebarOpen();
 
-    // The save's can_add check GETs the folder; can_add=false blocks the create.
+    // Lock it (a page can't be saved with a template unlocked); it's created by
+    // the page save, whose can_add check GETs the folder; can_add=false blocks it.
+    const unlockedToggle = page.locator('.edit-template-toggle[aria-pressed="true"]');
+    await unlockedToggle.click();
+    await expect(unlockedToggle).toHaveCount(0);
     const folderCheck = page.waitForRequest(
       (r) => r.method() === 'GET' && new URL(r.url()).pathname.endsWith('/templates'),
       { timeout: 15000 },
@@ -1997,6 +2094,47 @@ test.describe('Template Edit Mode - Lock affordance + metadata gating', () => {
     await expect(nameField.locator('input')).toBeVisible({ timeout: 5000 });
     await expect(nameField.locator('input')).toBeEnabled();
     await expect(folderField.locator('button.action')).toBeVisible();
+  });
+
+  // Content types are each site's: a template can be saved wherever the site
+  // lets the user add the template's type (that folder's @types), whatever
+  // the folder's own type (#663). "News" is a folderish Document that takes
+  // any type; "Media Only" takes images and files only.
+  test("a template is saved only where the site allows the template's type", async ({ page }) => {
+    const helper = new AdminUIHelper(page);
+    await helper.login();
+    await helper.navigateToEdit('/template-test-page');
+
+    const { blockId: headerBlockId } = await helper.waitForBlockByContent(TEMPLATE_HEADER_CONTENT);
+    await helper.clickBlockInIframe(headerBlockId);
+    await helper.waitForSidebarOpen();
+    await helper.escapeToParent();
+    await page.locator('.sidebar-section-header[data-is-current="true"] .edit-template-toggle').click();
+    await page.locator('.template-unlock-modal .template-confirm').click();
+    await helper.waitForBlockEditable(headerBlockId);
+
+    const folderField = page.locator('.field').filter({ hasText: 'Save Location' });
+    // The template already has a location: clicking it opens the browser (the
+    // button beside it clears it, as Volto's object browser widget does).
+    await expect(folderField.locator('.selected-values')).not.toBeEmpty();
+    const values = folderField.locator('.selected-values');
+    const box = (await values.boundingBox())!;
+    await values.click({ position: { x: box.width - 4, y: box.height / 2 } });
+    const ob = await helper.waitForObjectBrowser();
+    // It opens on the page being edited; News is in the folder above.
+    await page.getByRole('button', { name: '_test_data' }).click();
+    const mediaOnly = page.locator('.object-listing li').filter({ hasText: /^Media Only$/ });
+    await mediaOnly.locator('.ob-select-control').click();
+    await expect(page.locator('.Toastify')).toContainText(
+      'can’t be saved in /_test_data/media-only',
+      { timeout: 5000 },
+    );
+    await expect(folderField).not.toContainText('media-only');
+
+    const news = page.locator('.object-listing li').filter({ hasText: /^News$/ });
+    await expect(news.locator('.ob-select-control')).toBeVisible({ timeout: 10000 });
+    await helper.objectBrowserSelectItem(ob, /^News$/);
+    await expect(folderField).toContainText('News', { timeout: 5000 });
   });
 
   // A template's read-only (fixed/readonly) sub-blocks show their fields as read-only
@@ -2181,12 +2319,15 @@ test.describe('Template Edit Mode v2 - multi-unlock, no page lock, lock-to-commi
     }, footerBlockId);
 
     // Editing → the toggle is in the SAME spot but now LOCKS; clicking → decision
-    // modal → "Change on all pages" saves the template. The sidebar is never opened.
+    // modal → "Change on all pages", and the page save writes the template. The
+    // sidebar is never opened.
     await helper.clickBlockInIframe(headerBlockId);
     await helper.waitForBlockSelectedInAdmin(headerBlockId);
     await expect(toggle).toHaveAttribute('aria-pressed', 'true');
     await toggle.click();
     await page.locator('.template-lock-modal .template-commit').click();
+    await expect(toggle).toHaveAttribute('aria-pressed', 'false');
+    await helper.saveContent();
 
     await expect
       .poll(() => templateWrites.length, { timeout: 5000 })
@@ -2397,7 +2538,7 @@ test.describe('Template Edit Mode v2 - multi-unlock, no page lock, lock-to-commi
     await expect(iframe.locator(`[data-block-uid="${PAGE_BOTTOM}"]`)).toHaveCount(0);
   });
 
-  test('Change on all pages saves the template document at LOCK time', async ({ page, urls }) => {
+  test('Change on all pages writes nothing at LOCK time; the page save writes the template', async ({ page, urls }) => {
     const helper = new AdminUIHelper(page);
     await helper.login();
     await helper.navigateToEdit('/two-template-page');
@@ -2426,10 +2567,12 @@ test.describe('Template Edit Mode v2 - multi-unlock, no page lock, lock-to-commi
       document.dispatchEvent(new CustomEvent('hydra-delete-blocks', { detail: { blockIds: [id] } }));
     }, i1Footer);
 
-    // Locking with "Change on all pages" writes the template document now —
-    // before (and independently of) any page save. Lock via the fixed chrome header.
+    // Locking with "Change on all pages" checks the template and keeps the edit;
+    // nothing is written until the page is saved. Lock via the fixed chrome header.
     await helper.lockTemplate(i1Header, 'commit');
-    await expect.poll(() => templateWrites.length, { timeout: 5000 }).toBeGreaterThanOrEqual(1);
+    expect(templateWrites, 'locking writes nothing').toEqual([]);
+    await helper.saveContent();
+    await expect.poll(() => templateWrites.length, { timeout: 5000 }).toBe(1);
   });
 
   test('saving the page while a template is unlocked is blocked with a lock-first prompt', async ({ page }) => {

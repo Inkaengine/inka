@@ -36,11 +36,11 @@ import {
 } from '../../utils/blockPath';
 import { stripFixedInsideSlots } from '@volto-hydra/helpers';
 import { getDefaultBlockType } from '../../utils/injectedVoltoConfig';
-import { getPageAllowedBlocksFromRestricted } from '../../../../hydra-js/buildBlockPathMap.js';
+import { getPageAllowedBlocksFromRestricted } from '@volto-hydra/helpers/buildBlockPathMap.js';
 import {
   collectFieldRules,
   describeFieldRules,
-} from '../../../../hydra-js/fieldRules.js';
+} from '@volto-hydra/helpers/fieldRules.js';
 import config from '@plone/volto/registry';
 import { getParentUrl } from '@plone/volto/helpers/Url/Url';
 import { lockedBy } from '../AgentSite/lockedBy';
@@ -51,8 +51,11 @@ import {
   targetDestinations,
 } from '../../utils/copyFromTargetMapping';
 
-// The schema facts an agent needs, as plain data (see plain()).
-const FIELD_FACTS = ['title', 'description', 'widget', 'type', 'factory', 'choices', 'default', 'maxLength', 'allowedBlocks'];
+// The schema facts an agent needs, as plain data (see plain()). A list's
+// `idField` says which field its items' ids are kept in, and `subBlocks: false`
+// says it is a plain list rather than a region: without them a list's items
+// cannot be told apart.
+const FIELD_FACTS = ['title', 'description', 'widget', 'type', 'factory', 'choices', 'default', 'maxLength', 'allowedBlocks', 'idField', 'subBlocks'];
 
 /**
  * Which of a block type's fields a LINK owns, and which link: `{ title: 'href' }`.
@@ -341,6 +344,26 @@ export function registerAgentApi(live) {
       await commit('update', () => live.current.onChangeBlock(id, { ...blockData(id), ...fields }));
     },
 
+    /** A block as the editor holds it (stored shape, its own blocks included). */
+    getBlock(id) {
+      requireBlock('getBlock', id);
+      return blockData(id);
+    },
+
+    /**
+     * Make a block exactly `block`, through the sidebar's own handler: a field
+     * it does not have is gone. The MCP works out the block an agent's change
+     * makes (inka-mcp/patchBlock.mjs) and hands it over whole, since a merge
+     * here could not take a field away.
+     */
+    async replace({ id, block }) {
+      requireBlock('replace', id);
+      if (block?.['@type'] !== blockData(id)?.['@type']) {
+        throw new Error(`replace: "${id}" is a ${blockData(id)?.['@type']}, not a ${block?.['@type']}`);
+      }
+      await commit('replace', () => live.current.onChangeBlock(id, block));
+    },
+
     /** Delete a block, as the editor's delete does. */
     async remove(id) {
       requireBlock('remove', id);
@@ -349,8 +372,8 @@ export function registerAgentApi(live) {
 
     /**
      * Unlock the template a block belongs to, as its lock icon does: its
-     * locked blocks become editable, and lockTemplates saves them to the
-     * template. Resolves to the template instance id, or null for a block that
+     * locked blocks become editable; lockTemplates checks them, and the
+     * page save writes them to the template. Resolves to the template instance id, or null for a block that
      * belongs to no template.
      */
     async unlockTemplateOf(id) {
@@ -367,21 +390,22 @@ export function registerAgentApi(live) {
 
     /**
      * Lock every unlocked template with "Change on all pages", as the lock's
-     * dialog does: each is saved to its template document now, so every page
-     * using it changes. Resolves to the templates saved.
+     * dialog does: each is checked and kept, and the page save that follows
+     * writes it, so every page using it changes. Resolves to the templates
+     * locked that way.
      */
     async lockTemplates() {
       const saved = [];
       for (const instanceId of [...live.current.templateEditMode]) {
         delete live.current.templateCommitOutcomes[instanceId];
         if (!live.current.commitTemplateEdit(instanceId)) {
-          throw new Error(`lockTemplates: the template's structure is not valid, so it was not saved (${instanceId})`);
+          throw new Error(`lockTemplates: the template's structure is not valid, so it was not locked (${instanceId})`);
         }
         await until(() => !live.current.templateEditMode.includes(instanceId) && !live.current.committingTemplate,
-          SAVE_LIMIT_MS, `lockTemplates: the template (${instanceId}) did not finish saving`);
+          SAVE_LIMIT_MS, `lockTemplates: the template (${instanceId}) did not finish locking`);
         const outcome = live.current.templateCommitOutcomes[instanceId];
-        if (!outcome) throw new Error(`lockTemplates: the template (${instanceId}) was locked but not saved: the editor had not loaded it`);
-        if (outcome.error) throw new Error(`lockTemplates: ${outcome.templateId} was not saved: ${outcome.error}`);
+        if (!outcome) throw new Error(`lockTemplates: the template (${instanceId}) was locked without its changes: the editor had not loaded it`);
+        if (outcome.error) throw new Error(`lockTemplates: ${outcome.templateId} was not locked: ${outcome.error}`);
         saved.push(outcome.templateId);
       }
       return saved;

@@ -56,6 +56,15 @@ p {
     @apply text-base leading-base;
 }
 
+/* The style menu's text styles (blockStyles / inlineStyles in pages/[...slug].vue) */
+.lead {
+    @apply text-lg leading-relaxed;
+}
+
+.dropcap {
+    @apply float-left text-5xl leading-none font-bold mr-2;
+}
+
 /* Image sizes — applied to block wrapper, constrain the img inside */
 .image-size-l img { max-width: 100%; }
 .image-size-m img { max-width: 50%; }

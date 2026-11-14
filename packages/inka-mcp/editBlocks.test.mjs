@@ -6,7 +6,7 @@
 import { describe, it, expect } from 'vitest';
 import { sharedBlocksConfig } from '../../tests-playwright/fixtures/shared-block-schemas.js';
 import { editBlocks, EditError } from './editBlocks.mjs';
-import { slateToMd } from '../../lib/slate-md.mjs';
+import { slateToMd } from '@inka/blockmd/slate-md.mjs';
 
 /** A page as an ordered list of [id, block]; containers not modelled. */
 function fakeAgent(initial) {
@@ -35,6 +35,8 @@ function fakeAgent(initial) {
       return id;
     },
     async update({ id, fields }) { calls.push(['update', id]); Object.assign(page[at(id)][1], fields); },
+    async getBlock(id) { return structuredClone(page[at(id)][1]); },
+    async replace({ id, block }) { calls.push(['update', id]); page[at(id)][1] = block; },
     async remove(id) { calls.push(['remove', id]); page.splice(at(id), 1); },
     async move({ id, targetId, insertAfter }) {
       calls.push(['move', id, targetId, insertAfter]);

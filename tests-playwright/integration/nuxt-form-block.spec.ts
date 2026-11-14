@@ -194,4 +194,24 @@ test.describe('Form Block', () => {
     // Wait for the new field to appear (count goes from 6 to 7)
     await expect(formFields).toHaveCount(initialCount + 1, { timeout: 10000 });
   });
+
+  test("submits a form on a page that isn't published yet, with the editor's token", async ({ page }) => {
+    // A new page starts private, and Plone refuses an anonymous @submit-form
+    // there. An author can try the form before publishing only because this
+    // frontend sends the editor's token with the submission (getAuthHeaders).
+    const helper = new AdminUIHelper(page);
+    const iframe = helper.getIframe();
+
+    await helper.login();
+    await helper.navigateToView('/private-form-page');
+    await helper.waitForIframeReady();
+
+    const block = iframe.locator('[data-block-uid="private-form-block"]');
+    await expect(block.locator('form')).toBeVisible({ timeout: 10000 });
+    await block.locator('input[name="field-name"]').fill('Test User');
+    await block.locator('.form-submit').click();
+
+    await expect(block.locator('.form-success')).toBeVisible({ timeout: 5000 });
+    await expect(block.locator('.form-submit-error')).toHaveCount(0);
+  });
 });

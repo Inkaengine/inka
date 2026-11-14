@@ -10,7 +10,7 @@ import { expandListingBlocks } from '@volto-hydra/helpers';
  */
 describe('a listing with no results', () => {
   const blocks = {
-    l1: { '@type': 'listing', variation: 'summary', querystring: { query: [{ i: 'SearchableText' }] } },
+    l1: { '@type': 'listing', variation: 'summary', fieldMapping: { getURL: { field: 'href', type: 'link' }, title: { field: 'title', type: 'string' } }, querystring: { query: [{ i: 'SearchableText' }] } },
   };
   const noResults = { listing: async () => ({ items: [], total: 0 }) };
   const expand = () => expandListingBlocks(['l1'], {

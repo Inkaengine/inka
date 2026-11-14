@@ -175,7 +175,7 @@ describe('the merge fails loudly when it isn\'t used as documented', () => {
   test('an object_list\'s call without its id field', () => {
     const state = {};
     const [form] = render(page('i1', 1), ['form1', 'col1'], state);
-    expect(() => expandTemplatesSync(form.subblocks, options(state))).toThrow(/no "@id".*pass its idField/s);
+    expect(() => expandTemplatesSync(form.subblocks, options(state))).toThrow(/no idField says which field.*none is guessed/s);
   });
 
   test('a container that was never expanded', () => {

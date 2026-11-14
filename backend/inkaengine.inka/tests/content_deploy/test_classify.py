@@ -9,6 +9,7 @@ from __future__ import annotations
 from inkaengine.inka.content_deploy import changeset as _imod
 from inkaengine.inka.content_deploy import classify as _mod
 from inkaengine.inka.content_deploy.classify import cleaned_for_compare
+from inkaengine.inka.content_deploy.classify import CompareRules
 
 import copy
 
@@ -142,8 +143,9 @@ def test_deleted_from_disk():
     base = doc("services/old", UID_Y)
     plan = classify(tree(("services/old", base)), tree(), tree(("services/old", base)))
     assert plan.actions_for("services/old") == Action.DELETE
-    # 301 the removed path to its parent
-    assert ("/services/old", "/services") in plan.redirects
+    # A deleted page is gone: its address answers 404, not a redirect to
+    # somewhere the visitor didn't ask for.
+    assert plan.redirects == []
 
 
 def test_move_same_uid_different_path():
@@ -447,7 +449,7 @@ def test_fields_the_site_cannot_round_trip_do_not_warn():
         tree(("news/x", base)),
         tree(("news/x", disk)),
         tree(("news/x", live)),
-        ignored_fields=frozenset({"Finding"}),
+        CompareRules(ignored_fields=frozenset({"Finding"})),
     )
     assert plan.actions_for("news/x") == Action.UPDATE
     assert plan.warnings == []
@@ -494,3 +496,43 @@ def test_parent_follows_from_the_path_and_is_not_content():
     with_parent = {"@id": "/videos/v", "title": "V", "parent": {"@id": "/videos"}}
     without = {"@id": "/videos/v", "title": "V"}
     assert _mod.content_key(with_parent) == _mod.content_key(without)
+
+
+def test_an_item_on_its_types_default_view_is_unset():
+    """Plone reports an item's default view as `layout: <default view>`, and a
+    converted tree leaves the key out. That holds for any type the site has,
+    its own included, by the default view the site gives it. Another view is
+    an editor's choice and still counts."""
+    rules = CompareRules(
+        default_views={"Document": "document_view", "SiteOwnType": "own_view"}
+    )
+    for portal_type, default in (
+        ("Document", "document_view"),
+        ("SiteOwnType", "own_view"),
+    ):
+        live = doc("templates/footer", UID_X, **{"@type": portal_type, "layout": default})
+        disk = doc("templates/footer", UID_X, **{"@type": portal_type})
+        assert cleaned_for_compare(live, rules) == cleaned_for_compare(disk, rules)
+        chosen = doc(
+            "templates/footer", UID_X, **{"@type": portal_type, "layout": "summary_view"}
+        )
+        assert cleaned_for_compare(chosen, rules) != cleaned_for_compare(disk, rules)
+
+
+def test_the_site_root_is_the_export_root_whatever_the_site_is_called(tmp_path):
+    """The root is the item the export keeps in `plone_site_root`, the export
+    format's own name for it. Not a site called `Plone` (a site's id is its
+    own: `/lecc`), and not a type name: a page whose id is `Plone` is a page."""
+    import json as _json
+
+    items = (
+        ("plone_site_root", {"@id": "/lecc", "@type": "SiteRootOfAnyType", "UID": "root"}),
+        ("aaa", {"@id": "/Plone", "@type": "Document", "UID": "aaa"}),
+    )
+    for dirname, data in items:
+        (tmp_path / dirname).mkdir(parents=True)
+        (tmp_path / dirname / "data.json").write_text(_json.dumps(data))
+    tree, dirs = _mod.load_exportimport_tree(tmp_path)
+    assert tree["plone_site_root"]["UID"] == "root"
+    assert tree["Plone"]["UID"] == "aaa"
+    assert dirs == {"plone_site_root": "plone_site_root", "Plone": "aaa"}

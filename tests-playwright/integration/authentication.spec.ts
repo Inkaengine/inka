@@ -2,6 +2,15 @@ import { test, expect } from '../fixtures';
 import { AdminUIHelper } from '../helpers/AdminUIHelper';
 
 test.describe('Authentication and Access Control', () => {
+  test('the login page names Inka and links to its site', async ({ page, urls }) => {
+    // The editor every site signs in to is Inka; the old project name and
+    // repository were still the first thing an editor saw.
+    await page.goto(`${urls.voltoSsr}/login`);
+    const name = page.getByRole('heading', { level: 2 }).getByRole('link', { name: 'Inka', exact: true });
+    await expect(name).toHaveAttribute('href', 'https://inka.sh');
+    await expect(page.getByText('Hydra', { exact: true })).toHaveCount(0);
+  });
+
   test('Login form accepts admin/admin and redirects to dashboard', async ({ page, urls }) => {
     // Go to login page
     await page.goto(`${urls.voltoSsr}/login`);

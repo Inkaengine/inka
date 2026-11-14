@@ -357,7 +357,7 @@ describe('copy-from-target — on by default via @default (link-bearing blocks)'
     id: 'linkcard',
     fieldMappings: {
       '@default': {
-        '@id': 'href',
+        getURL: 'href',
         title: 'heading',
         description: 'summary',
         image: 'picture',
@@ -373,15 +373,15 @@ describe('copy-from-target — on by default via @default (link-bearing blocks)'
     },
   };
 
-  it('synthesizes a @target from @default (canonical → snapshot keys, @id skipped)', () => {
+  it('synthesizes a @target from @default (canonical → snapshot keys, getURL skipped)', () => {
     const m = getTargetMapping(linkCard);
     expect(m).toEqual({
       title: 'heading',
       description: 'summary',
       image: 'picture',
     });
-    // @id → href is the link itself, not pulled
-    expect(m['@id']).toBeUndefined();
+    // getURL → href is the link itself, not pulled
+    expect(m.getURL).toBeUndefined();
   });
 
   it('a block with @default but NO link field is not default-on', () => {
@@ -416,7 +416,7 @@ describe('copy-from-target — on by default via @default (link-bearing blocks)'
       linkcard: linkCard,
       hero: {
         id: 'hero',
-        fieldMappings: { '@default': { title: 'headline', '@id': 'link' } },
+        fieldMappings: { '@default': { title: 'headline', getURL: 'link' } },
         blockSchema: { properties: { headline: { title: 'Headline' }, link: { title: 'Link', widget: 'url' } } },
       },
     };
@@ -455,7 +455,7 @@ describe('copy-from-target — on by default via @default (link-bearing blocks)'
     id: 'richcard',
     fieldMappings: {
       '@default': {
-        '@id': 'href',
+        getURL: 'href',
         title: 'heading',
         image: 'picture',
         Subject: 'tags',
@@ -481,9 +481,9 @@ describe('copy-from-target — on by default via @default (link-bearing blocks)'
     expect(m.Subject).toBe('tags');
     expect(m.created).toBe('createdOn');
     expect(m.effective).toBe('publishedOn');
-    // image passes through verbatim (type derived from the dest widget); @id skipped
+    // image passes through verbatim (type derived from the dest widget); getURL skipped
     expect(m.image).toBe('picture');
-    expect(m['@id']).toBeUndefined();
+    expect(m.getURL).toBeUndefined();
   });
 
   it('pulls tags (Subject) and dates (created/effective) from the snapshot', () => {

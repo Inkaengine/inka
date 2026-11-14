@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { fillNewPage, describeBlock, getPage, editPage, movePage, renamePage, deletePage, previewLayout, search, listChildren, getTransitions, transitionPage, editTarget } from './tools.mjs';
+import { fillNewPage, describeBlock, getPage, editPage, movePage, renamePage, deletePage, previewLayout, search, listChildren, getTransitions, transitionPage, editTarget, contentTypes, getHistory, revertPage, copyPage, getPageVersion, savedVersion } from './tools.mjs';
 
 const schemas = {
   page: { regions: [{ region: 'items', isObjectList: false, allowedBlocks: ['teaser', 'columns'], defaultBlockType: null, maxLength: null }] },
@@ -31,14 +31,14 @@ describe('describeBlock', () => {
       search: async (q) => (q.blockTypes[0] === 'teaser' ? { total: 1, items: [{ path: '/news' }] } : { total: 0, items: [] }),
       get: async (path) => (path === '/news' ? page : null),
     };
-    const d = await describeBlock(agent, site, { type: 'teaser' });
+    const d = await describeBlock(agent, site, { type: 'teaser', media: false });
     expect(d.fields.href).toMatchObject({ widget: 'object_browser', required: true });
     expect(d.siteExample).toEqual({ from: '/news', block: { '@uid': 't1', '@type': 'teaser', href: [{ '@id': '/events' }] } });
   });
 
   it('says so when no page uses the type yet', async () => {
     const site = { search: async () => ({ total: 0, items: [] }), get: async () => { throw new Error('not called'); } };
-    const d = await describeBlock(agent, site, { type: 'teaser' });
+    const d = await describeBlock(agent, site, { type: 'teaser', media: false });
     expect(d.siteExample).toBeNull();
     expect(d.siteExampleNote).toMatch(/no page on the site uses a teaser block yet/);
   });
@@ -49,7 +49,7 @@ describe('describeBlock', () => {
     const drafts = [];
     // Each told how many there are, to share the room for pictures between them.
     const render = async (draft, uid, of) => { drafts.push({ draft, uid, of }); return { image: `png-${drafts.length}`, text: `text-${drafts.length}` }; };
-    const d = await describeBlock(agent, noSite, { type: 'columns', render });
+    const d = await describeBlock(agent, noSite, { type: 'columns', render, media: false });
     expect(drafts).toEqual([
       { uid: 'example', of: 2, draft: { blocks: { example: { '@type': 'columns', blocks: {}, blocks_layout: { items: [] } } }, blocks_layout: { items: ['example'] } } },
       { uid: 'example', of: 2, draft: { blocks: { example: { '@type': 'columns' } }, blocks_layout: { items: ['example'] } } },
@@ -58,7 +58,7 @@ describe('describeBlock', () => {
   });
 
   it('refuses to render a type whose front end declares no examples', async () => {
-    await expect(describeBlock(agent, noSite, { type: 'teaser', render: async () => ({}) }))
+    await expect(describeBlock(agent, noSite, { type: 'teaser', render: async () => ({}), media: false }))
       .rejects.toThrow(/the front end declares no examples of teaser to render/);
   });
 });
@@ -170,7 +170,8 @@ describe('editPage changing a template', () => {
         },
       }),
       unlockTemplateOf: async (id) => { did.push(`unlock ${id}`); return formData.blocks[id].templateInstanceId ?? null; },
-      update: async ({ id }) => { did.push(`update ${id}`); },
+      getBlock: async (id) => structuredClone(formData.blocks[id]),
+      replace: async ({ id }) => { did.push(`update ${id}`); },
       lockTemplates: async () => { did.push('lock'); return ['/templates/news-layout']; },
       save: async () => { did.push('save'); return { version: 'v2' }; },
       getDraft: async () => formData,
@@ -344,7 +345,11 @@ describe('files an agent staged (stage_media) in a page change', () => {
       }),
       // Save uploads each held file beside the page, by its own name.
       holdFile: async (file) => { did.push(`hold ${file.name}`); const ref = `inka-pending:${++n}`; held[ref] = `http://site/news/${file.name}`; return ref; },
-      update: async ({ id, fields }) => { did.push(`update ${id}`); Object.assign(id === '_page' ? formData : formData.blocks[id], fields); },
+      getBlock: async (id) => structuredClone(id === '_page' ? formData : formData.blocks[id]),
+      replace: async ({ id, block }) => {
+        did.push(`update ${id}`);
+        if (id === '_page') Object.assign(formData, block); else formData.blocks[id] = block;
+      },
       insert: async ({ block }) => { did.push('insert'); formData.blocks.added = block; formData.blocks_layout.items.push('added'); return 'added'; },
       save: async () => { did.push('save'); return { version: 'v2', uploaded: held }; },
     };
@@ -711,5 +716,274 @@ describe('what an edit reaches', () => {
   it('is the page if it has no draft', () => {
     expect(editTarget('/news', null)).toBe('/news');
     expect(editTarget('/news', null, true)).toBe('/news');
+  });
+});
+
+// Which content types there are, and which go where, is each site's: an agent
+// reads them from the site rather than being told a type by name (#663).
+describe('contentTypes', () => {
+  it("lists the types the site lets this user add in the section, by id and title", async () => {
+    const site = {
+      addableTypes: async (path) => {
+        expect(path).toBe('/news');
+        return [{ id: 'NewsArticle', title: 'News article' }, { id: 'Event', title: 'Event' }];
+      },
+    };
+    expect(await contentTypes(site, { path: '/news' })).toEqual({
+      path: '/news',
+      types: [{ id: 'NewsArticle', title: 'News article' }, { id: 'Event', title: 'Event' }],
+    });
+  });
+});
+
+describe('move_page: where a page goes in its section', () => {
+  /** A site whose sections hold pages in order; `order` is the admin's reorder (Volto's orderContent). */
+  function orderedSite(sections) {
+    const calls = [];
+    const parentOf = (p) => p.replace(/\/[^/]+$/, '') || '/';
+    const site = {
+      calls,
+      status: async () => ({ version: 'v1', lockedBy: null }),
+      draftOf: async () => null,
+      async search({ path, depth, limit, start = 0 }) {
+        expect(depth).toBe(1);
+        const items = (sections[path] ?? []).map((p) => ({ path: p }));
+        return { total: items.length, items: items.slice(start, start + limit) };
+      },
+      async move({ path, target }) {
+        calls.push(['move', path, target]);
+        const moved = `${target === '/' ? '' : target}/${path.split('/').pop()}`;
+        sections[parentOf(path)] = sections[parentOf(path)].filter((p) => p !== path);
+        sections[target] = [...(sections[target] ?? []), moved];
+        return moved;
+      },
+      async order(op) { calls.push(['order', op]); },
+    };
+    return site;
+  }
+  const about = () => ({ '/about': ['/about/team', '/about/history', '/about/contact', '/about/jobs'] });
+
+  it('puts a page first or last among its section\'s pages, as the contents view reorders', async () => {
+    let site = orderedSite(about());
+    expect(await movePage(site, { path: '/about/contact', position: 'first', expectedVersion: 'v1' })).toEqual({ path: '/about/contact' });
+    expect(site.calls).toEqual([['order', { section: '/about', id: 'contact', delta: -2, subset: ['team', 'history', 'contact', 'jobs'] }]]);
+
+    site = orderedSite(about());
+    await movePage(site, { path: '/about/team', position: 'last', expectedVersion: 'v1' });
+    expect(site.calls).toEqual([['order', { section: '/about', id: 'team', delta: 3, subset: ['team', 'history', 'contact', 'jobs'] }]]);
+  });
+
+  it('puts a page before or after another page in its section', async () => {
+    let site = orderedSite(about());
+    await movePage(site, { path: '/about/jobs', position: { before: '/about/history' }, expectedVersion: 'v1' });
+    expect(site.calls[0][1]).toMatchObject({ id: 'jobs', delta: -2 });
+
+    site = orderedSite(about());
+    await movePage(site, { path: '/about/team', position: { after: '/about/contact' }, expectedVersion: 'v1' });
+    expect(site.calls[0][1]).toMatchObject({ id: 'team', delta: 2 });
+  });
+
+  it('asks nothing of the site when the page is already there', async () => {
+    const site = orderedSite(about());
+    await movePage(site, { path: '/about/history', position: { after: '/about/team' }, expectedVersion: 'v1' });
+    expect(site.calls).toEqual([]);
+  });
+
+  it('moves into another section and places it there', async () => {
+    const site = orderedSite({ ...about(), '/archive': ['/archive/2024', '/archive/2025'] });
+    expect(await movePage(site, { path: '/about/jobs', target: '/archive', position: 'first', expectedVersion: 'v1' })).toEqual({ path: '/archive/jobs' });
+    expect(site.calls).toEqual([
+      ['move', '/about/jobs', '/archive'],
+      ['order', { section: '/archive', id: 'jobs', delta: -2, subset: ['2024', '2025', 'jobs'] }],
+    ]);
+  });
+
+  it('does not move a page into the section it is already in', async () => {
+    const site = orderedSite(about());
+    await movePage(site, { path: '/about/jobs', target: '/about', position: 'first', expectedVersion: 'v1' });
+    expect(site.calls.map(([kind]) => kind)).toEqual(['order']);
+  });
+
+  it('refuses a neighbour that is not in the same section, before changing anything', async () => {
+    const site = orderedSite({ ...about(), '/archive': ['/archive/2024'] });
+    await expect(movePage(site, { path: '/about/jobs', target: '/archive', position: { before: '/about/team' }, expectedVersion: 'v1' }))
+      .rejects.toThrow(/\/about\/team is not in \/archive/);
+    expect(site.calls).toEqual([]);
+  });
+
+  it('needs a section to move to or a place to go', async () => {
+    await expect(movePage(orderedSite(about()), { path: '/about/jobs', expectedVersion: 'v1' }))
+      .rejects.toThrow(/needs a "target".*"position"/);
+  });
+});
+
+describe('delete_page: links it would break', () => {
+  function siteLinked(linkedFrom, holds = 0) {
+    const removed = [];
+    return {
+      removed,
+      status: async () => ({ version: 'v1', lockedBy: null }),
+      draftOf: async () => null,
+      linksInto: async () => ({ linkedFrom, holds }),
+      remove: async (path) => { removed.push(path); },
+    };
+  }
+
+  it('refuses, naming the pages that link to it, and deletes nothing', async () => {
+    const site = siteLinked([{ path: '/home', title: 'Home' }, { path: '/news/launch', title: 'Launch' }]);
+    await expect(deletePage(site, { path: '/events', expectedVersion: 'v1' }))
+      .rejects.toThrow(/would break links on 2 pages: Home \(\/home\), Launch \(\/news\/launch\).*breakLinks/s);
+    expect(site.removed).toEqual([]);
+  });
+
+  it('deletes when told to break them, and says where they were', async () => {
+    const site = siteLinked([{ path: '/home', title: 'Home' }], 3);
+    expect(await deletePage(site, { path: '/events', expectedVersion: 'v1', breakLinks: true })).toEqual({
+      deleted: '/events', alsoDeleted: 3, brokenLinksOn: [{ path: '/home', title: 'Home' }],
+    });
+    expect(site.removed).toEqual(['/events']);
+  });
+
+  it('deletes a page nothing links to, saying what went with it', async () => {
+    const site = siteLinked([], 2);
+    expect(await deletePage(site, { path: '/old', expectedVersion: 'v1' })).toEqual({ deleted: '/old', alsoDeleted: 2 });
+  });
+});
+
+describe('get_history and revert_page: undoing a saved change', () => {
+  const actor = (fullname) => ({ '@id': null, fullname, id: fullname.toLowerCase(), username: fullname.toLowerCase() });
+  const trail = [
+    { type: 'versioning', version: 2, time: '2026-11-11T10:00:00Z', actor: actor('Agent'), comments: '', transition_title: 'Edited', may_revert: true },
+    { type: 'workflow', action: 'publish', time: '2026-11-10T12:00:00Z', actor: actor('Jane'), comments: 'Go live', transition_title: 'Publish', state_title: 'Published' },
+    { type: 'versioning', version: 1, time: '2026-11-10T11:00:00Z', actor: actor('Jane'), comments: 'Fixed typo', transition_title: 'Edited', may_revert: true },
+    { type: 'versioning', version: 0, time: '2026-11-09T09:00:00Z', actor: actor('Jane'), comments: 'Initial version', transition_title: 'Edited', may_revert: true },
+  ];
+  function siteWithHistory() {
+    const reverted = [];
+    return {
+      reverted,
+      history: async () => trail,
+      status: async () => ({ version: reverted.length ? 'v2' : 'v1', lockedBy: null }),
+      draftOf: async () => null,
+      revert: async (op) => { reverted.push(op); },
+    };
+  }
+
+  it('lists what was done to a page, newest first: saves that can be restored, and workflow changes', async () => {
+    expect(await getHistory(siteWithHistory(), { path: '/about' })).toEqual({
+      path: '/about',
+      history: [
+        { version: 2, current: true, time: '2026-11-11T10:00:00Z', by: 'Agent', did: 'Edited' },
+        { time: '2026-11-10T12:00:00Z', by: 'Jane', did: 'Publish', note: 'Go live', state: 'Published' },
+        { version: 1, time: '2026-11-10T11:00:00Z', by: 'Jane', did: 'Edited', note: 'Fixed typo' },
+        { version: 0, time: '2026-11-09T09:00:00Z', by: 'Jane', did: 'Edited', note: 'Initial version' },
+      ],
+    });
+  });
+
+  it('puts a page back to an earlier save, and gives its new version', async () => {
+    const site = siteWithHistory();
+    expect(await revertPage(site, { path: '/about', version: 1, expectedVersion: 'v1' }))
+      .toEqual({ path: '/about', restored: 1, version: 'v2' });
+    expect(site.reverted).toEqual([{ path: '/about', version: 1 }]);
+  });
+
+  it('refuses a version the history does not offer, changing nothing', async () => {
+    const site = siteWithHistory();
+    await expect(revertPage(site, { path: '/about', version: 5, expectedVersion: 'v1' })).rejects.toThrow(/\/about has no version 5 to restore: get_history lists them/);
+    await expect(revertPage(site, { path: '/about', version: 2, expectedVersion: 'v1' })).rejects.toThrow(/version 2 is what \/about holds now/);
+    expect(site.reverted).toEqual([]);
+  });
+
+  it('refuses when the page changed since it was read', async () => {
+    const site = siteWithHistory();
+    await expect(revertPage(site, { path: '/about', version: 1, expectedVersion: 'old' })).rejects.toThrow(/changed since it was read/);
+    expect(site.reverted).toEqual([]);
+  });
+});
+
+describe('copy_page', () => {
+  function copyingSite(sections) {
+    const calls = [];
+    const parentOf = (p) => p.replace(/\/[^/]+$/, '') || '/';
+    return {
+      calls,
+      async search({ path, limit, start = 0 }) {
+        const items = (sections[path] ?? []).map((p) => ({ path: p }));
+        return { total: items.length, items: items.slice(start, start + limit) };
+      },
+      async copy({ path, target }) {
+        calls.push(['copy', path, target]);
+        const id = path.split('/').pop();
+        const taken = (sections[target] ?? []).some((p) => p.endsWith(`/${id}`));
+        const made = `${target === '/' ? '' : target}/${taken ? `copy_of_${id}` : id}`;
+        sections[target] = [...(sections[target] ?? []), made];
+        return made;
+      },
+      async rename({ path, id, title }) {
+        calls.push(['rename', path, { id, title }]);
+        const renamed = id ? `${parentOf(path)}/${id}` : path;
+        sections[parentOf(path)] = sections[parentOf(path)].map((p) => (p === path ? renamed : p));
+        return renamed;
+      },
+      async order(op) { calls.push(['order', op]); },
+      get: async () => ({ review_state: 'private' }),
+      status: async () => ({ version: 'c1', lockedBy: null }),
+    };
+  }
+
+  it('copies a page beside itself, and says the copy\'s path, version and state', async () => {
+    const site = copyingSite({ '/events': ['/events/fair', '/events/talk'] });
+    expect(await copyPage(site, { path: '/events/fair' })).toEqual({ path: '/events/copy_of_fair', version: 'c1', reviewState: 'private' });
+    expect(site.calls).toEqual([['copy', '/events/fair', '/events']]);
+  });
+
+  it('copies into another section, names it and places it there', async () => {
+    const site = copyingSite({ '/events': ['/events/fair'], '/archive': ['/archive/a', '/archive/b'] });
+    const made = await copyPage(site, { path: '/events/fair', target: '/archive', id: 'fair-2025', title: 'Fair 2025', position: 'first' });
+    expect(made.path).toBe('/archive/fair-2025');
+    expect(site.calls).toEqual([
+      ['copy', '/events/fair', '/archive'],
+      ['rename', '/archive/fair', { id: 'fair-2025', title: 'Fair 2025' }],
+      ['order', { section: '/archive', id: 'fair-2025', delta: -2, subset: ['a', 'b', 'fair-2025'] }],
+    ]);
+  });
+
+  it('refuses a neighbour outside the section before copying anything', async () => {
+    const site = copyingSite({ '/events': ['/events/fair'], '/archive': ['/archive/a'] });
+    await expect(copyPage(site, { path: '/events/fair', target: '/archive', position: { after: '/events/fair' } }))
+      .rejects.toThrow(/\/events\/fair is not in \/archive/);
+    expect(site.calls).toEqual([]);
+  });
+});
+
+describe('get_page and view_page of an earlier version', () => {
+  const type = { blockSchema: { properties: { title: { title: 'Title' } } }, regions: [] };
+  const stored = (title, text) => ({
+    '@type': 'Document', title,
+    blocks: { p: { '@type': 'slate', value: [{ type: 'p', children: [{ text }] }] } }, blocks_layout: { items: ['p'] },
+  });
+  const agent = {
+    getBlockSchemas: async () => ({ page: { contentType: 'Document' }, types: { Document: type, slate: type } }),
+    getPage: async () => ({ path: '/about', apiPath: null }),
+  };
+  const site = {
+    history: async () => [
+      { type: 'versioning', version: 1, time: 't1' },
+      { type: 'versioning', version: 0, time: 't0' },
+    ],
+    historyVersion: async ({ version }) => (version === 0 ? stored('Old', 'Was') : stored('New', 'Is')),
+  };
+
+  it('reads what a version held, in the get_page format, saying which version it is', async () => {
+    const read = await getPageVersion(agent, site, { path: '/about', version: 0 });
+    expect(read).toMatchObject({ path: '/about', historyVersion: 0, '@uid': '_page', title: 'Old' });
+    expect(read.blocks[0]).toMatchObject({ '@uid': 'p', '@type': 'slate', value: { md: 'Was' } });
+    expect(read).not.toHaveProperty('version');
+  });
+
+  it('refuses a version the page does not have', async () => {
+    await expect(savedVersion(site, { path: '/about', version: 4 })).rejects.toThrow(/\/about has no version 4: get_history lists them/);
+    expect((await savedVersion(site, { path: '/about', version: 1 })).title).toBe('New');
   });
 });

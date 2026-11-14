@@ -92,6 +92,9 @@ function redirectUpstreamSuitesToShadows() {
   };
 }
 
+/** Tests of a server that runs on Node, which need Node's environment (the node-servers project below). */
+const NODE_SERVER_TESTS = ['packages/inka-mcp/http.test.mjs'];
+
 export default defineConfig({
   plugins: [redirectUpstreamSuitesToShadows()],
   resolve: {
@@ -108,22 +111,20 @@ export default defineConfig({
       // any docs-tree unit tests
       'docs/**/*.{test,spec}.mjs',
       // blockmd: the prototype engine and the slate <-> markdown core
-      'lib/**/*.{test,spec}.mjs',
+      'packages/blockmd/**/*.{test,spec}.mjs',
       // The pure data helpers (buildQuerystringSearchBody etc.) — server-safe,
       // no DOM, so their unit tests live alongside them here.
       'packages/helpers/**/*.{test,spec}.{js,jsx,ts,tsx}',
       // The MCP server: the agent page format and the tools.
       'packages/inka-mcp/**/*.{test,spec}.mjs',
-      // Pure aggregation helpers used BY the playwright suites (coverage
-      // bookkeeping, no browser). Their contract — "one example is enough",
-      // "reported only when no example covers it" — is worth testing directly
-      // rather than inferring it from a green e2e run. `.test.` only: the
-      // playwright specs themselves are `.spec.ts` and must not be collected.
-      'tests-playwright/helpers/**/*.test.{js,ts}',
-      // The coverage REPORTER (tests-playwright/coverage-reporter.ts) lives at
-      // the suite root, next to playwright.config's reference to it. Its unit
-      // test proves onEnd actually fails the run on a gap. `.test.` only, so
-      // the `.spec.ts` playwright specs at this level are never collected.
+      // The test harness: block discovery, the coverage bookkeeping the sanity
+      // suites keep (no browser), and the coverage REPORTER, whose unit test
+      // proves onEnd actually fails the run on a gap. Their contract — "one
+      // example is enough", "reported only when no example covers it" — is worth
+      // testing directly rather than inferring it from a green e2e run.
+      'packages/testing/**/*.test.{js,ts}',
+      // Repo checks at the suite root. `.test.` only, so the `.spec.ts`
+      // playwright specs at this level are never collected.
       'tests-playwright/*.test.{js,ts}',
     ],
     // hydra-js has its own jest harness; covered by `cd packages/hydra-js && pnpm test` in CI.
@@ -140,6 +141,14 @@ export default defineConfig({
       // Volto's setup files initialise the bare config registry but don't
       // invoke addon applyConfig chains.
       path.resolve(__dirname, 'vitest-setup-hydra.js'),
+    ],
+    projects: [
+      { extends: true, test: { name: 'hydra', exclude: NODE_SERVER_TESTS } },
+      // Servers that run on Node, tested on Node: jsdom's globals (its
+      // AbortController among them) are not Node's, and Node's own fetch
+      // refuses them, so a server under test there fails where it never
+      // would. Volto's setup files need a window, so these go without.
+      { test: { name: 'node-servers', include: NODE_SERVER_TESTS, environment: 'node', globals: true } },
     ],
   },
 });

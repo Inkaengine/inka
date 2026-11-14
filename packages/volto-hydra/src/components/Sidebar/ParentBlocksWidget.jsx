@@ -41,7 +41,7 @@ import { getConvertibleTypes, convertBlockType, findTypeField } from '../../util
 import { nestedStatus } from '@volto-hydra/helpers';
 import { buildIdFieldMap } from '../../utils/blockPath';
 import { PAGE_BLOCK_UID } from '@volto-hydra/hydra-js';
-import { isObjectListRegion, isRegionField } from '../../../../hydra-js/regionWidgets.js';
+import { isObjectListRegion, isRegionField } from '@volto-hydra/helpers/regionWidgets.js';
 import { isBlockReadonly } from '@volto-hydra/helpers';
 import { flattenToAppURL } from '@plone/volto/helpers';
 import { LinkedText } from '../../utils/linkedText';
@@ -670,8 +670,13 @@ const ParentBlockSection = ({
         };
         // The Short name is only editable for a not-yet-saved template; renaming a
         // saved template's id is a move (out of scope here).
+        // Where a template can be saved depends on its type: only the
+        // template's own document says which type that is. (While a new
+        // template's id is being changed, the document briefly isn't under
+        // the new id yet; the form shows nothing of it then.)
         const templateSchema = getTemplateInstanceSchema(contextIntl, {
           idEditable: !!tplDoc?._isNew,
+          templateType: tplDoc?.['@type'],
         });
         const formContent = isEditingThisTemplate ? (
           <HydraSchemaProvider value={{ blockPathMap, currentBlockId: blockId, formData, blocksConfig: config.blocks?.blocksConfig, liveBlockDataRef, onChangeBlock }}>
@@ -729,6 +734,13 @@ const ParentBlockSection = ({
         const formContent = (
           <HydraSchemaProvider value={{ blockPathMap, currentBlockId: blockId, formData, blocksConfig: config.blocks?.blocksConfig, liveBlockDataRef, onChangeBlock }}>
             <BlockDataForm
+              // A template rule's refusal is about this block's slot, so it is
+              // shown on its Slot ID, where it is fixed.
+              errors={
+                blocksErrors?.[blockId]?._layout
+                  ? { [blockId]: { slotId: [blocksErrors[blockId]._layout.message] } }
+                  : {}
+              }
               schema={templateBlockSchema}
               onChangeField={(fieldId, value) => {
                 const newBlockData = cloneDeep(blockData);

@@ -1,0 +1,1 @@
+The mock API refuses an anonymous form submission on a page the public can't view yet, as Plone does. The example frontends send the editor's token with a form submission, so an author can try a form before publishing it, and the form docs explain how a frontend does this. #659

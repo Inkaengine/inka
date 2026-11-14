@@ -7,7 +7,7 @@
 
 <script setup>
 import { computed, ref, reactive, watch } from 'vue';
-import { expandListingBlocks, ploneFetchItems, relatedItemsFetcher, searchShortcutsFetcher, rssFetcher } from '@hydra-js/helpers';
+import { expandListingBlocks, ploneFetchItems, relatedItemsFetcher, searchShortcutsFetcher, rssFetcher, searchSort } from '@hydra-js/helpers';
 
 const props = defineProps({
   id: { type: String, required: true },
@@ -26,11 +26,12 @@ const route = useRoute();
 function buildExtraCriteria(query) {
   const criteria = {};
   for (const [key, value] of Object.entries(query)) {
-    if (key === 'SearchableText' || key === 'sort_on' || key.startsWith('facet.')) {
+    if (key === 'SearchableText' || key.startsWith('facet.')) {
       criteria[key] = value;
     }
   }
-  return criteria;
+  // The chosen sort, else relevance with a keyword, else the listing's own.
+  return { ...criteria, ...searchSort(query.SearchableText, query.sort_on, query.sort_order) };
 }
 
 // Create own paging if none shared.

@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { randomBytes } from 'node:crypto';
-import { InvalidGrantError } from '@modelcontextprotocol/sdk/server/auth/errors.js';
+import { InvalidGrantError } from '@modelcontextprotocol/server-legacy/auth';
 import { sealer } from './sealed.mjs';
 import {
   localCodes, storedCodes, sealedCodes, CodeElsewhere, instanceOfCode, localPictures, storedPictures, PictureGone,

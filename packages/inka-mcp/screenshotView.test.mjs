@@ -5,8 +5,7 @@
  * result reached the model and never the person, who asked to see the page.
  */
 import { describe, it, expect, beforeAll } from 'vitest';
-import { Client } from '@modelcontextprotocol/sdk/client/index.js';
-import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
+import { Client, InMemoryTransport } from '@modelcontextprotocol/client';
 import { createServer } from './server.mjs';
 import { SCREENSHOT_VIEW } from './screenshotView.mjs';
 import { localPictures } from './codes.mjs';
@@ -17,7 +16,7 @@ describe('the screenshot view', () => {
   let client;
   beforeAll(async () => {
     const server = createServer(() => { throw new Error('no admin: nothing here calls a tool'); }, {
-      pictures: localPictures({ instance: null, now: Date.now }), media: null, localFiles: null, userOf: () => 'jane',
+      pictures: localPictures({ instance: null, now: Date.now }), media: null, localFiles: null, userOf: () => 'jane', reporting: null,
     });
     const [clientSide, serverSide] = InMemoryTransport.createLinkedPair();
     await server.connect(serverSide);

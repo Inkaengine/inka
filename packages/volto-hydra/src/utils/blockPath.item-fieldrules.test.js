@@ -34,7 +34,7 @@ import {
 import {
   buildBlockPathMap,
   getResolvedSchema,
-} from '../../../hydra-js/buildBlockPathMap.js';
+} from '@volto-hydra/helpers/buildBlockPathMap.js';
 
 const intl = { formatMessage: (m) => m?.defaultMessage || m?.id || '' };
 
@@ -98,7 +98,7 @@ describe('object_list item fieldRules — applied per position (@index) for type
         schemaEnhancer: createSchemaEnhancerFromRecipe(headerCapRecipe),
         blockSchema: {
           fieldsets: [{ id: 'default', title: 'Cell', fields: ['blocks'] }],
-          properties: { blocks: { title: 'Content', widget: 'object_list', allowedBlocks: ['slate'] } },
+          properties: { blocks: { title: 'Content', widget: 'object_list', idField: '@id', allowedBlocks: ['slate'] } },
         },
       },
       tblTyped: tableSchema('tblTyped', {
@@ -124,7 +124,7 @@ describe('object_list item fieldRules — applied per position (@index) for type
         schema: {
           schemaEnhancer: createSchemaEnhancerFromRecipe(headerCapRecipe),
           fieldsets: [{ id: 'default', title: 'Cell', fields: ['blocks'] }],
-          properties: { blocks: { title: 'Content', widget: 'object_list', allowedBlocks: ['slate'] } },
+          properties: { blocks: { title: 'Content', widget: 'object_list', idField: '@id', allowedBlocks: ['slate'] } },
         },
       }),
     };
@@ -152,7 +152,7 @@ describe('object_list item fieldRules — applied per position (@index) for type
         schema: {
           schemaEnhancer: headerCapRecipe, // RAW recipe object, not a function
           fieldsets: [{ id: 'default', title: 'Cell', fields: ['blocks'] }],
-          properties: { blocks: { title: 'Content', widget: 'object_list', allowedBlocks: ['slate'] } },
+          properties: { blocks: { title: 'Content', widget: 'object_list', idField: '@id', allowedBlocks: ['slate'] } },
         },
       }),
     };

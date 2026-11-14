@@ -1,0 +1,1 @@
+Mock API: a listing restricted by path is filtered when the criterion says `string.path` ("Navigation path"), as a real Plone filters it; the folder itself is a result where no `::depth` was asked for, as it is there too; and a criterion the mock cannot apply is refused instead of answered with everything. @djay

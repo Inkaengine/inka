@@ -2,7 +2,7 @@
 /**
  * Bundle the hosted MCP server into one file, for its image (Dockerfile):
  * everything it imports — the MCP SDK, the markdown libraries, the repo's
- * lib/slate-md.mjs — except Playwright, which the image's base provides with
+ * packages/blockmd/slate-md.mjs — except Playwright, which the image's base provides with
  * its browser. Run from the repo, with its dependencies installed:
  *
  *   node packages/inka-mcp/bundle.mjs   → packages/inka-mcp/dist/inka-mcp-http.mjs
@@ -41,7 +41,10 @@ export function bundling(entry, outfile) {
     platform: 'node',
     target: 'node22',
     format: 'esm',
-    external: ['playwright'],
+    // Playwright: the image's base provides it with the browser it matches.
+    // @sentry/node: its instrumentation patches modules as they are loaded,
+    // which bundling it would defeat; the image installs it too (Dockerfile).
+    external: ['playwright', '@sentry/node'],
     plugins: [inlineAppClient],
     // Bundled CommonJS (express, inside the SDK) still calls require() for
     // Node's own modules; an ES module has no require of its own.

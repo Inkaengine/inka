@@ -22,13 +22,13 @@ const API = 'http://api.test';
 describe('getImageUrl', () => {
   test('preview_image_link: resolves the hashed scale against base_path (the linked logo)', () => {
     const item = {
-      '@id': '/case-studies/justice-health-nsw',
+      '@id': '/case-studies/health-agency',
       image_field: 'preview_image_link',
       image_scales: {
         preview_image_link: [
           {
             download: '@@images/image-279-aaaaaaaa.png',
-            base_path: '/logos/justice-health-nsw',
+            base_path: '/logos/health-agency',
             width: 279,
             height: 65,
           },
@@ -36,23 +36,23 @@ describe('getImageUrl', () => {
       },
     };
     expect(getImageUrl(item, API)).toBe(
-      `${API}/logos/justice-health-nsw/@@images/image-279-aaaaaaaa.png`,
+      `${API}/logos/health-agency/@@images/image-279-aaaaaaaa.png`,
     );
   });
 
   test('preview_image_link: never resolves against the referencing item @id', () => {
     const item = {
-      '@id': '/case-studies/justice-health-nsw',
+      '@id': '/case-studies/health-agency',
       image_field: 'preview_image_link',
       image_scales: {
         preview_image_link: [
-          { download: '@@images/image-32-bbbb.png', base_path: '/logos/lecc' },
+          { download: '@@images/image-32-bbbb.png', base_path: '/logos/agency' },
         ],
       },
     };
     const url = getImageUrl(item, API);
     expect(url).not.toContain('/case-studies/');
-    expect(url).toBe(`${API}/logos/lecc/@@images/image-32-bbbb.png`);
+    expect(url).toBe(`${API}/logos/agency/@@images/image-32-bbbb.png`);
   });
 
   test('leadimage (no base_path): resolves the hashed download against the item @id', () => {
@@ -75,5 +75,19 @@ describe('getImageUrl', () => {
     expect(getImageUrl(item, API)).toBe(
       'http://api.test/case-studies/x/@@images/image-100-dddd.png',
     );
+  });
+});
+
+// A listing maps a result's image as `image_link`: the catalog brain inside a
+// list, its scales with it. The first element is read as a brain too, not just
+// for its `@id` (the page's address, which is no image).
+describe('getImageUrl — a brain inside a list', () => {
+  it('resolves the scale, not the page address', () => {
+    const brain = {
+      '@id': `${API}/news/a`,
+      image_field: 'image',
+      image_scales: { image: [{ download: '@@images/image-800-abc.jpeg' }] },
+    };
+    expect(getImageUrl([brain], API)).toBe(`${API}/news/a/@@images/image-800-abc.jpeg`);
   });
 });

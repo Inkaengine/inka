@@ -60,6 +60,34 @@ describe('checkDraft', () => {
     await expect(check(SAVED, draft)).rejects.toThrow(/unrecognized reference form: inka-pending:1/);
   });
 
+  it('refuses a field the block does not declare', async () => {
+    // Stored, nothing reads it and the editor cannot show it. The validator
+    // reports a stray field once per block type and field, not led by the
+    // page's path.
+    const stray = { ...teaserTo('/events'), colour: 'blue' };
+    const refused = await check(SAVED, withBlock(SAVED, 't', stray), siteWith({ paths: ['/events'] })).catch((error) => error);
+    expect(refused).toBeInstanceOf(DraftInvalid);
+    expect(refused.message).toMatch(/teaser\.colour is not declared by the block's schema/);
+  });
+
+  it('says where a stray field belongs, when a field of the block holds one of that name', async () => {
+    // A teaser's alignment is styles.align; an agent carrying older Volto
+    // configs writes it at the top level.
+    const stray = { ...teaserTo('/events'), align: 'center' };
+    const refused = await check(SAVED, withBlock(SAVED, 't', stray), siteWith({ paths: ['/events'] })).catch((error) => error);
+    expect(refused.message).toMatch(/teaser has no field "align" — it is styles\.align/);
+  });
+
+  // inka#702: an agent put a file's data in an image block, and it was saved as
+  // it was. Refused, with where a file of its own goes.
+  it('refuses a file put where an image goes, saying to stage it', async () => {
+    const file = { data: '<svg/>', encoding: 'utf8', filename: 'd.svg', 'content-type': 'image/svg+xml' };
+    const refused = await check(SAVED, withBlock(SAVED, 'i', { '@type': 'image', url: file })).catch((error) => error);
+    expect(refused).toBeInstanceOf(DraftInvalid);
+    expect(refused.message).toMatch(/block i \(image\) field "url" holds no reference/);
+    expect(refused.message).toMatch(/stage_media/);
+  });
+
   it('does not blame the change for a problem the page already had', async () => {
     const broken = withBlock(SAVED, 't', teaserTo('/gone'));
     const edited = { ...broken, title: 'News, retitled' };

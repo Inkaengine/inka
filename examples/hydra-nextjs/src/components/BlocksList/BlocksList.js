@@ -6,7 +6,7 @@ import SlateBlock, { SlateInline } from "@/components/SlateBlock";
 import CodeExampleBlock from "@/components/CodeExampleBlock/CodeExampleBlock";
 import CookieConsentBlock from "@/components/CookieConsentBlock/CookieConsentBlock";
 import { expandTemplatesSync, expandListingBlocks, ploneFetchItems, staticBlocks, contentPath } from "#utils/helpers";
-import { isEditMode } from "#utils/hydra";
+import { isEditMode, getAuthHeaders } from "#utils/hydra";
 import SwiperSlider from "@/components/SwiperSlider";
 import { pageFromPath } from "#utils/paging";
 
@@ -673,9 +673,12 @@ function FormBlock({ id, block, data, apiUrl, contextPath }) {
       }));
 
     const cp = contextPath || "/";
+    // Sending the editor's token lets an author try a form on a page that
+    // isn't published yet: Plone refuses an anonymous submission there. A
+    // public visitor has no token, so getAuthHeaders() adds nothing for them.
     const response = await fetch(`${apiUrl}${cp}/@submit-form`, {
       method: "POST",
-      headers: { "Content-Type": "application/json", Accept: "application/json" },
+      headers: { "Content-Type": "application/json", ...getAuthHeaders() },
       body: JSON.stringify({
         block_id: id,
         data: submitData,

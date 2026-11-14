@@ -8,7 +8,7 @@
 import { randomUUID } from 'node:crypto';
 import { expect } from '@playwright/test';
 import { URLS } from '../ports';
-import { mintToken } from '../fixtures/mock-tokens.cjs';
+import { mintToken } from '../../packages/mock-api/mock-tokens.cjs';
 
 /** A token for `user`, one the mock site issued (mock-tokens.cjs). */
 export function tokenFor(user: string): string {

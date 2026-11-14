@@ -1,4 +1,5 @@
 import { test, expect } from '../fixtures';
+import type { Page } from '@playwright/test';
 import { AdminUIHelper } from '../helpers/AdminUIHelper';
 
 /**
@@ -45,6 +46,21 @@ async function fromMoreMenu(page: import('@playwright/test').Page, entry: RegExp
   await expect(link, `the More menu offers ${entry}`).toBeVisible({ timeout: 10000 });
   await link.click();
 }
+/**
+ * A new translation opens its editor with the original's blocks copied in, and
+ * they are the translator's to save: Add creates the page without them, since
+ * the block definitions come from the frontend, which connects in the editor.
+ * Wait for the copy on the canvas, then save it as the translator would.
+ */
+async function keepTheCopy(page: Page, helper: AdminUIHelper) {
+  await helper.waitForIframeReady();
+  await expect(helper.getIframe().locator('body'), 'the copy is on the canvas').toContainText(
+    'What we do, in English.',
+    { timeout: 20000 },
+  );
+  await helper.saveContent();
+}
+
 test.describe('Multilingual editing', () => {
   test('a page shows what it is translated into', async ({ page }) => {
     const helper = new AdminUIHelper(page);
@@ -213,6 +229,7 @@ test.describe('Multilingual editing', () => {
 
     // Saved where German belongs, and straight into the editor.
     await expect(page).toHaveURL(/\/de\/dienstleistungen\/edit/, { timeout: 20000 });
+    await keepTheCopy(page, helper);
 
     const token = helper.authToken;
     const read = async (path: string) =>
@@ -275,6 +292,7 @@ test.describe('Multilingual editing', () => {
     await page.locator('#page-add #field-title').fill('Dienstleistungen');
     await page.locator('#toolbar-save').click();
     await expect(page).toHaveURL(/\/de\/dienstleistungen\/edit/, { timeout: 20000 });
+    await keepTheCopy(page, helper);
 
     // Viewed, not edited: the saved page as a reader gets it. Asserted on the
     // rendered text rather than any one frontend's markup, since every frontend
@@ -482,6 +500,8 @@ test.describe('Multilingual editing', () => {
     await page.locator('#page-add #field-title').fill('Dienstleistungen');
     await page.locator('#toolbar-save').click();
     await expect(page).toHaveURL(/\/de\/dienstleistungen\/edit/, { timeout: 20000 });
+    await keepTheCopy(page, helper);
+    await page.goto(`${helper.adminUrl}/de/dienstleistungen/edit`);
     await helper.waitForIframeReady();
 
     const compare = page.locator('.compare-languages');
@@ -563,6 +583,8 @@ test.describe('Multilingual editing', () => {
     await page.locator('#page-add #field-title').fill('Dienstleistungen');
     await page.locator('#toolbar-save').click();
     await expect(page).toHaveURL(/\/de\/dienstleistungen\/edit/, { timeout: 20000 });
+    await keepTheCopy(page, helper);
+    await page.goto(`${helper.adminUrl}/de/dienstleistungen/edit`);
 
     // Read it beside the English original — which is what makes
     // "untranslated" answerable at all.
@@ -708,18 +730,17 @@ test.describe('Multilingual editing', () => {
         })
       ).json();
 
-    // The copied paragraph, by the text it still carries from the original.
-    const german = await read('/de/dienstleistungen');
-    const slateId = Object.keys(german.blocks).find(
-      (id) =>
-        german.blocks[id]['@type'] === 'slate' &&
-        JSON.stringify(german.blocks[id].value ?? '').includes(
-          'What we do, in English.',
-        ),
-    );
-    expect(slateId, 'the copied paragraph is there to translate').toBeTruthy();
-
+    // The copied paragraph, by the text it still carries from the original:
+    // translated where the copy opens, and saved once, as a translator does.
     await helper.waitForIframeReady();
+    const copied = helper
+      .getIframe()
+      .locator('[data-block-uid]', { hasText: 'What we do, in English.' })
+      .last();
+    await expect(copied, 'the copied paragraph is there to translate').toBeVisible({
+      timeout: 20000,
+    });
+    const slateId = await copied.getAttribute('data-block-uid');
     await helper.editBlockTextInIframe(slateId!, 'Was wir machen, auf Deutsch.');
     await page.locator('#toolbar-save').click();
     await expect(page).toHaveURL(/\/de\/dienstleistungen$/, { timeout: 20000 });
@@ -873,6 +894,7 @@ test.describe('Multilingual editing', () => {
     await page.locator('#page-add #field-title').fill('Dienstleistungen');
     await page.locator('#toolbar-save').click();
     await expect(page).toHaveURL(/\/de\/dienstleistungen\/edit/, { timeout: 20000 });
+    await keepTheCopy(page, helper);
 
     const auth = {
       Authorization: `Bearer ${helper.authToken}`,
@@ -983,6 +1005,7 @@ test.describe('Multilingual editing', () => {
     await page.locator('#page-add #field-title').fill('Dienstleistungen');
     await page.locator('#toolbar-save').click();
     await expect(page).toHaveURL(/\/de\/dienstleistungen\/edit/, { timeout: 20000 });
+    await keepTheCopy(page, helper);
 
     const auth = {
       Authorization: `Bearer ${helper.authToken}`,
@@ -1067,6 +1090,7 @@ test.describe('Multilingual editing', () => {
     await page.locator('#page-add #field-title').fill('Dienstleistungen');
     await page.locator('#toolbar-save').click();
     await expect(page).toHaveURL(/\/de\/dienstleistungen\/edit/, { timeout: 20000 });
+    await keepTheCopy(page, helper);
 
     // Re-opened cold: no comparison, nothing clicked but the block itself.
     await page.goto(`${helper.adminUrl}/de/dienstleistungen/edit`);

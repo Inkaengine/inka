@@ -4,19 +4,23 @@
       >{{ node.text }}<RichText v-for="child in subs" :key="child.nodeId" :node="child"
     /></NuxtLink>
   </template>
-  <ul v-else-if="node.type === 'ul'" class="list-disc list-inside mx-4" :data-node-id="node.nodeId"
+  <ul v-else-if="node.type === 'ul'" class="list-disc list-inside mx-4" :class="node.styleName" :data-node-id="node.nodeId"
     >{{ node.text }}<RichText v-for="child in subs" :key="child.nodeId" :node="child"
   /></ul>
-  <ol v-else-if="node.type === 'ol'" class="list-decimal list-inside mx-4" :data-node-id="node.nodeId"
+  <ol v-else-if="node.type === 'ol'" class="list-decimal list-inside mx-4" :class="node.styleName" :data-node-id="node.nodeId"
     >{{ node.text }}<RichText v-for="child in subs" :key="child.nodeId" :node="child"
   /></ol>
-  <template v-else-if="!node.type"><!-- "\n" is a line break (Shift+Enter in the editor), drawn as <br>; a break at the very end needs a second <br> to show. --><template v-for="(line, i) in node.text.split('\n')" :key="i"><br v-if="i" />{{ line }}</template><br v-if="node.text.endsWith('\n')" /></template>
+  <!-- An inline style is a leaf mark (`style-<cssClass>`), so a styled leaf needs an element to carry the class; a plain leaf stays bare text. -->
+  <span v-else-if="!node.type && leafClass" :class="leafClass"><template v-for="(line, i) in lines" :key="i"><br v-if="i" />{{ line }}</template><br v-if="trailingBreak" /></span>
+  <template v-else-if="!node.type"><!-- "\n" is a line break (Shift+Enter in the editor), drawn as <br>; a break at the very end needs a second <br> to show. --><template v-for="(line, i) in lines" :key="i"><br v-if="i" />{{ line }}</template><br v-if="trailingBreak" /></template>
   <blockquote v-else-if="node.type === 'blockquote'"
     class="border-l-4 border-gray-300 pl-4 py-2 my-4 italic text-gray-600"
+    :class="node.styleName"
     :data-node-id="node.nodeId"
     >{{ node.text }}<RichText v-for="child in subs" :key="child.nodeId" :node="child"
   /></blockquote>
   <component v-else :is="node.type" :data-node-id="node.nodeId"
+    :class="node.styleName"
     :id="anchorId"
     :data-linkable-id="anchorName"
     :style="node.textAlign ? { textAlign: node.textAlign } : undefined"
@@ -34,6 +38,20 @@ export default {
     },
   },
   computed: {
+    // The style menu stores a block style as `styleName` on the element and an
+    // inline style as a `style-<cssClass>` mark on the leaf; both become classes.
+    leafClass() {
+      const classes = Object.keys(this.node)
+        .filter((key) => key.startsWith('style-') && this.node[key])
+        .map((key) => key.slice('style-'.length));
+      return classes.length ? classes.join(' ') : null;
+    },
+    lines() {
+      return this.node.text.split('\n');
+    },
+    trailingBreak() {
+      return this.node.text.endsWith('\n');
+    },
     subs() {
       const children = this.node.children || [];
       // The editor keeps an indented item's sub-list BESIDE the item it

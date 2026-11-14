@@ -1,7 +1,13 @@
 import { expandEveryContainer } from './expandEveryContainer.testutil.js';
 import fs from 'fs';
 import path from 'path';
-import { mergeTemplatesIntoPage, mergeInstanceIntoTemplate } from './mergeTemplates.js';
+import { mergeTemplatesIntoPage, mergeInstanceIntoTemplate } from '@volto-hydra/helpers/mergeTemplates.js';
+import { buildIdFieldMap } from '@volto-hydra/helpers/buildBlockPathMap.js';
+import { sharedBlocksConfig as idFieldSchemas } from '../../tests-playwright/fixtures/shared-block-schemas.js';
+
+// Each list's id field, from the schema, as the admin derives it (buildIdFieldMap).
+const ID_FIELDS = buildIdFieldMap(idFieldSchemas);
+
 
 const load = (p) => JSON.parse(fs.readFileSync(path.resolve(process.cwd(), '..', '..', p), 'utf-8'));
 const textOf = (b) =>
@@ -25,6 +31,7 @@ test('template edit propagates to another page — real fixtures (integration :8
 
   // 1. Apply the template to page 1.
   const { merged: applied1 } = await mergeTemplatesIntoPage(page1, {
+    idFieldMap: ID_FIELDS,
     loadTemplate: async () => template,
     pageBlocksFields: { items: {} },
     uuidGenerator,
@@ -39,12 +46,13 @@ test('template edit propagates to another page — real fixtures (integration :8
   header1.plaintext = 'Template Header - EDITED';
 
   // 3. SAVE: reverse-merge the edited instance back into the template (View.jsx path).
-  const { merged: updatedTemplate } = await mergeInstanceIntoTemplate(template, applied1, instanceId, { uuidGenerator });
+  const { merged: updatedTemplate } = await mergeInstanceIntoTemplate(template, applied1, instanceId, { idFieldMap: ID_FIELDS, uuidGenerator });
   const tplHeader = Object.values(updatedTemplate.blocks).find((b) => b.slotId === 'header' && b.fixed);
   expect(textOf(tplHeader)).toContain('EDITED'); // captured into the template
 
   // 4. VIEW page 2: forward-merge the UPDATED template — the edit must propagate.
   const { merged: applied2 } = await mergeTemplatesIntoPage(page2, {
+    idFieldMap: ID_FIELDS,
     loadTemplate: async () => updatedTemplate,
     pageBlocksFields: { items: {} },
     uuidGenerator,
@@ -60,6 +68,7 @@ test('template edit propagates to another page — real fixtures (integration :8
   // 5. Page 1 VIEW-mode re-render (what :866 asserts at line 926): re-forward-merge the
   // edited page with the updated template — the header must render with the edit.
   const { merged: rerendered1 } = await mergeTemplatesIntoPage(applied1, {
+    idFieldMap: ID_FIELDS,
     loadTemplate: async () => updatedTemplate,
     pageBlocksFields: { items: {} },
     uuidGenerator,
@@ -96,6 +105,7 @@ test('a form added inside a NEW column propagates to another page (footer column
 
   // 1. Apply the footer template to the home page.
   const { merged: home } = await mergeTemplatesIntoPage(freshPage(), {
+    idFieldMap: ID_FIELDS,
     loadTemplate: async () => template, pageBlocksFields: pbf, uuidGenerator,
   });
   const cols = findCols(home);
@@ -115,11 +125,12 @@ test('a form added inside a NEW column propagates to another page (footer column
   cols.blocks_layout.columns = [...cols.blocks_layout.columns, 'add-col'];
 
   // 3. SAVE: reverse-merge the edited home back into the template.
-  const { merged: saved } = await mergeInstanceIntoTemplate(template, home, iid, { uuidGenerator });
+  const { merged: saved } = await mergeInstanceIntoTemplate(template, home, iid, { idFieldMap: ID_FIELDS, uuidGenerator });
   expect(hasForm(findCols(saved))).toBe(true); // reverse merge must capture the form
 
   // 4. VIEW another page: forward-merge the updated template — the form must appear.
   const { merged: other } = await mergeTemplatesIntoPage(freshPage(), {
+    idFieldMap: ID_FIELDS,
     loadTemplate: async () => saved, pageBlocksFields: pbf, uuidGenerator,
   });
   expect(hasForm(findCols(other))).toBe(true); // form propagates to the other page
@@ -147,6 +158,8 @@ test('an empty slot added inside a NEW column propagates as a slot definition', 
     );
 
   const { merged: home } = await mergeTemplatesIntoPage(freshPage(), {
+
+    idFieldMap: ID_FIELDS,
     loadTemplate: async () => template, pageBlocksFields: pbf, uuidGenerator,
   });
   const cols = findCols(home);
@@ -163,11 +176,12 @@ test('an empty slot added inside a NEW column propagates as a slot definition', 
   cols.blocks_layout.columns = [...cols.blocks_layout.columns, 'add-col'];
 
   // SAVE: the slot definition must be captured (not dropped).
-  const { merged: saved } = await mergeInstanceIntoTemplate(template, home, iid, { uuidGenerator });
+  const { merged: saved } = await mergeInstanceIntoTemplate(template, home, iid, { idFieldMap: ID_FIELDS, uuidGenerator });
   expect(hasSlot(findCols(saved))).toBe(true);
 
   // VIEW another page: the slot appears (empty, fillable by that page's users).
   const { merged: other } = await mergeTemplatesIntoPage(freshPage(), {
+    idFieldMap: ID_FIELDS,
     loadTemplate: async () => saved, pageBlocksFields: pbf, uuidGenerator,
   });
   expect(hasSlot(findCols(other))).toBe(true);
@@ -191,6 +205,8 @@ test('a fixed block wrongly placed inside a slot does not propagate (definition 
   const findCols = (fd) => Object.values(fd.blocks).find((b) => b['@type'] === 'columns');
 
   const { merged: home } = await mergeTemplatesIntoPage(freshPage(), {
+
+    idFieldMap: ID_FIELDS,
     loadTemplate: async () => template, pageBlocksFields: pbf, uuidGenerator,
   });
   const cols = findCols(home);
@@ -207,7 +223,7 @@ test('a fixed block wrongly placed inside a slot does not propagate (definition 
   };
   cols.blocks_layout.columns = [...cols.blocks_layout.columns, 'bad-slot'];
 
-  const { merged: saved } = await mergeInstanceIntoTemplate(template, home, iid, { uuidGenerator });
+  const { merged: saved } = await mergeInstanceIntoTemplate(template, home, iid, { idFieldMap: ID_FIELDS, uuidGenerator });
 
   const savedCols = findCols(saved);
   // The slot definition survives...

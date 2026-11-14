@@ -24,9 +24,18 @@
           "@type": "listing",
           "variation": "image",
           "fieldMapping": {
-            "@id": "href",
-            "title": "alt",
-            "image": "url"
+            "getURL": {
+              "field": "href",
+              "type": "link"
+            },
+            "title": {
+              "field": "alt",
+              "type": "string"
+            },
+            "image": {
+              "field": "url",
+              "type": "image_link"
+            }
           },
           "querystring": {
             "query": [

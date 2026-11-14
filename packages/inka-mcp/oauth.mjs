@@ -20,7 +20,7 @@
  */
 import {
   InvalidGrantError, InvalidTokenError,
-} from '@modelcontextprotocol/sdk/server/auth/errors.js';
+} from '@modelcontextprotocol/server-legacy/auth';
 import { createHash } from 'node:crypto';
 import { Unsealable } from './sealed.mjs';
 import { SignedOut } from './signIn.mjs';

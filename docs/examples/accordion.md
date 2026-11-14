@@ -239,7 +239,7 @@ Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincid
 
 ## Accordion with listing
 
-<block type="listing" data-json='{"headlineTag":"h2","querystring":{"limit":"3","query":[{"i":"Description","o":"plone.app.querystring.operation.string.contains","v":"block"}],"sort_order":"descending","sort_order_boolean":true},"variation":"summary"}' />
+<block type="listing" data-json='{"headlineTag":"h2","querystring":{"limit":"3","query":[{"i":"Description","o":"plone.app.querystring.operation.string.contains","v":"block"}],"sort_order":"descending","sort_order_boolean":true},"variation":"summary","fieldMapping":{"getURL":{"field":"href","type":"link"},"title":{"field":"title","type":"string"},"description":{"field":"description","type":"textarea"},"image":{"field":"image","type":"image_link"}}}' />
 
 ## Accordion with table
 
