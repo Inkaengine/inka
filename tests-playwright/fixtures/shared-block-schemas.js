@@ -753,7 +753,7 @@ export const sharedBlocksConfig = {
             required: [],
         },
     },
-    video: { id: 'video', title: 'Video', group: 'common', blockSchema: { properties: {
+    video: { id: 'video', title: 'Video', group: 'common', mostUsed: true, blockSchema: { properties: {
         url: { title: 'Video URL', widget: 'url' },
         preview_image: { title: 'Preview image URL', widget: 'url' },
         align: { title: 'Alignment', widget: 'align' },
@@ -1084,6 +1084,8 @@ export const sharedBlocksConfig = {
     },
     // Listing item types — restricted child blocks, only usable inside listing containers
     summary: {
+        title: 'Summary',
+        group: 'common',
         restricted: true,
         fieldMappings: {
             '@default': { getURL: 'href', 'title': 'title', 'description': 'description', 'image': { field: 'image', type: 'image_link' } },
@@ -1099,6 +1101,8 @@ export const sharedBlocksConfig = {
         },
     },
     default: {
+        title: 'Default',
+        group: 'common',
         restricted: true,
         fieldMappings: {
             '@default': { getURL: 'href', 'title': 'title', 'description': 'description' },
@@ -1137,6 +1141,8 @@ export const sharedBlocksConfig = {
     },
     gridBlock: {
         id: 'gridBlock',
+        title: 'Grid',
+        mostUsed: true,
         // The chooser group, stated: a block's group is never made up.
         group: 'common',
         // Match Volto core's grid (allowedBlocks: ['image','listing','slate','teaser']).
@@ -1155,6 +1161,8 @@ export const sharedBlocksConfig = {
                     widget: 'blocks_layout',
                     itemTypeField: 'variation',  // sync trigger
                     allowedBlocks: ['slate', 'image', 'listing', 'teaser'],
+                    // A grid row holds at most four, as Volto's grid does.
+                    maxLength: 4,
                 },
                 variation: {
                     title: 'Item Type',
@@ -1179,6 +1187,7 @@ export const sharedBlocksConfig = {
     // for teasers via inheritSchemaFrom.parentControlled.teaser.
     teaser: {
         id: 'teaser',
+        mostUsed: true,
         // A listing renders each result as this type, so it must declare how a
         // result's fields land on it — that mapping is also what makes it
         // selectable in the Item Type widget (filterConvertibleFrom: '@default').
@@ -1247,6 +1256,7 @@ export const sharedBlocksConfig = {
     // Image block: parents declare claims via inheritSchemaFrom.parentControlled.image.
     image: {
         id: 'image',
+        mostUsed: true,
         // The chooser group, stated: a block's group is never made up.
         group: 'common',
         title: 'Image',
@@ -2335,6 +2345,7 @@ export const sharedBlocksConfig = {
     checkboxFacet: {
         id: 'checkboxFacet',
         title: 'Checkboxes',
+        group: 'common',
         restricted: true,
         fieldMappings: {
             selectFacet: FACET_BASE_FIELDS,
@@ -2355,6 +2366,7 @@ export const sharedBlocksConfig = {
     selectFacet: {
         id: 'selectFacet',
         title: 'Select',
+        group: 'common',
         restricted: true,
         fieldMappings: { checkboxFacet: FACET_BASE_FIELDS },
         blockSchema: {
@@ -2370,6 +2382,7 @@ export const sharedBlocksConfig = {
     daterangeFacet: {
         id: 'daterangeFacet',
         title: 'Date range',
+        group: 'common',
         restricted: true,
         fieldMappings: { checkboxFacet: FACET_BASE_FIELDS },
         blockSchema: {
@@ -2385,6 +2398,7 @@ export const sharedBlocksConfig = {
     toggleFacet: {
         id: 'toggleFacet',
         title: 'Toggle',
+        group: 'common',
         restricted: true,
         fieldMappings: { checkboxFacet: FACET_BASE_FIELDS },
         blockSchema: {
