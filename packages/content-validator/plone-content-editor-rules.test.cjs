@@ -318,9 +318,18 @@ describe('checkEditorRules()', () => {
     });
 
     it('checks any other page against the content region as before', async () => {
-      const r = await checkEditorRules(doc('/about', { f: { '@type': 'footerBar' } }, ['f']), WITH_FOOTER);
-      assert.equal(r.errors.length, 1);
+      const r = await checkEditorRules(
+        [...doc('/templates/footer', {}, []), ...doc('/about', { f: { '@type': 'footerBar' } }, ['f'])],
+        WITH_FOOTER,
+      );
+      assert.equal(r.errors.length, 1, r.errors.join('\n'));
       assert.match(r.errors[0], /footerBar/);
+    });
+
+    it('reports a page whose forced layout is not in the content, instead of checking it unmerged', async () => {
+      const r = await checkEditorRules(doc('/about', { p: { '@type': 'slate' } }, ['p']), WITH_FOOTER);
+      assert.equal(r.errors.length, 1, r.errors.join('\n'));
+      assert.match(r.errors[0], /content\/about: uses the template \/templates\/footer, which is not in the content/);
     });
   });
 });
@@ -575,6 +584,90 @@ describe('a template stores an empty slot', () => {
     const { checkBlockSchemas, fieldMapFromSchemas } = require('./plone-content-validator.cjs');
     const r = checkBlockSchemas(items, fieldMapFromSchemas(SCHEMAS));
     assert.deepEqual(r.warnings.filter((w) => /"empty"/.test(w)), []);
+  });
+});
+
+// A page whose region forces a layout (`allowedLayouts`) is checked as the
+// editor opens it: merged into that layout first. A page that was never saved
+// in the editor stores only its own blocks — its title marked for the layout's
+// `hero` slot, its text for the default slot — and the editor merges them into
+// the layout on load and stores the merged shape on save. Both shapes are what
+// a site holds, so both are checked in the shape the editor shows.
+describe('checkEditorRules() checks a page merged into its forced layout', () => {
+  const LAYOUT = '/templates/layout';
+  const LAYOUT_SCHEMAS = {
+    _page: {
+      blockSchema: {
+        properties: {
+          items: { widget: 'blocks_layout', allowedBlocks: ['slate', 'layout'], allowedLayouts: [LAYOUT] },
+        },
+      },
+    },
+    layout: {
+      blockSchema: {
+        properties: {
+          hero: { widget: 'blocks_layout', allowedBlocks: ['title'], maxLength: 1 },
+          main: { widget: 'blocks_layout', allowedBlocks: ['slate'] },
+        },
+      },
+    },
+    title: { blockSchema: { properties: {} } },
+    slate: { blockSchema: { properties: { value: { title: 'Text' } } } },
+    banner: { blockSchema: { properties: {} } },
+  };
+  const member = { templateId: LAYOUT };
+  const layoutBlock = (hero, main) => ({
+    '@type': 'layout',
+    ...member,
+    slotId: 'layout',
+    fixed: true,
+    readOnly: true,
+    blocks: Object.fromEntries([...hero, ...main]),
+    blocks_layout: { hero: hero.map(([id]) => id), main: main.map(([id]) => id) },
+  });
+  const heroTitle = { '@type': 'title', ...member, slotId: 'hero', fixed: true, readOnly: false };
+  const template = (main = [['m0', { '@type': 'slate', ...member, slotId: 'default', fixed: false }]]) => ({
+    rel: 'content/templates/layout',
+    data: {
+      '@id': LAYOUT,
+      blocks: { L: layoutBlock([['h0', heroTitle]], main) },
+      blocks_layout: { items: ['L'] },
+    },
+  });
+  const doc = (blocks, items) => ({ rel: 'content/x', data: { '@id': '/x', blocks, blocks_layout: { items } } });
+
+  it("passes a never-saved page whose title names the layout's hero slot", async () => {
+    const r = await checkEditorRules(
+      [template(), doc({ t: heroTitle, p: { '@type': 'slate' } }, ['t', 'p'])],
+      LAYOUT_SCHEMAS,
+    );
+    assert.deepEqual(r.errors, []);
+  });
+
+  it('passes a saved page that stores the layout with its title inside', async () => {
+    const saved = layoutBlock([['t', heroTitle]], [['p', { '@type': 'slate', ...member, slotId: 'default' }]]);
+    const r = await checkEditorRules([template(), doc({ L1: saved }, ['L1'])], LAYOUT_SCHEMAS);
+    assert.deepEqual(r.errors, []);
+  });
+
+  it('reports a page block the merge puts in a region that does not allow it', async () => {
+    // A title in no slot lands in the layout's main region, which takes text only.
+    const r = await checkEditorRules(
+      [template(), doc({ t: { '@type': 'title' }, p: { '@type': 'slate' } }, ['t', 'p'])],
+      LAYOUT_SCHEMAS,
+    );
+    assert.equal(r.errors.length, 1, r.errors.join('\n'));
+    assert.match(r.errors[0], /content\/x: a "title" block \(t\) is in layout\.main/);
+  });
+
+  it("reports a layout's own misplaced block once, on the layout, not on every page using it", async () => {
+    const bad = template([['m0', { '@type': 'banner', ...member, slotId: 'default', fixed: true, readOnly: true }]]);
+    const r = await checkEditorRules(
+      [bad, doc({ t: heroTitle, p: { '@type': 'slate' } }, ['t', 'p'])],
+      LAYOUT_SCHEMAS,
+    );
+    assert.equal(r.errors.length, 1, r.errors.join('\n'));
+    assert.match(r.errors[0], /content\/templates\/layout: a "banner" block \(m0\)/);
   });
 });
 

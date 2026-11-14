@@ -143,8 +143,9 @@ def test_deleted_from_disk():
     base = doc("services/old", UID_Y)
     plan = classify(tree(("services/old", base)), tree(), tree(("services/old", base)))
     assert plan.actions_for("services/old") == Action.DELETE
-    # 301 the removed path to its parent
-    assert ("/services/old", "/services") in plan.redirects
+    # A deleted page is gone: its address answers 404, not a redirect to
+    # somewhere the visitor didn't ask for.
+    assert plan.redirects == []
 
 
 def test_move_same_uid_different_path():

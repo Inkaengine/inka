@@ -257,11 +257,6 @@ def rel_to_path(rel: str) -> str:
     return "/" + rel
 
 
-def parent_path(rel: str) -> str:
-    head, _, _ = rel.rpartition("/")
-    return "/" + head if head else "/"
-
-
 def _uid_index(tree: dict[str, dict]) -> dict[str, str]:
     return {d["UID"]: rel for rel, d in tree.items() if d.get("UID")}
 
@@ -385,7 +380,6 @@ def classify(  # noqa: C901
         if in_base and not in_disk:
             plan.deletes.append(rel)
             plan._action[rel] = Action.DELETE
-            plan.redirects.append((rel_to_path(rel), parent_path(rel)))
             continue
 
         # present in both base and disk
