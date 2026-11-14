@@ -4732,6 +4732,22 @@ const Iframe = (props) => {
       return;
     }
 
+    // A new translation: the original's blocks, copied in before the
+    // template merge (see INIT, copyTranslationFrom). Its blocks replace the
+    // page's own; any template they bring in is loaded by the merge.
+    const withTranslationCopy = async (formData, copyFrom, api) => {
+      if (!copyFrom) return formData;
+      const original = await api.get(copyFrom);
+      const { blocks, items } = copyTranslationBlocks(
+        original, config.blocks.blocksConfig, intl, uuid,
+      );
+      return {
+        ...formData,
+        blocks,
+        blocks_layout: { ...formData.blocks_layout, items },
+      };
+    };
+
     // INITIAL_DATA sending - consolidated to this ONE place
     // Handles: no templates, templates loading, templates already cached
     if (pendingInitialDataRef.current) {
@@ -4767,21 +4783,7 @@ const Iframe = (props) => {
             return template;
           };
 
-          // A new translation: the original's blocks, copied in (see INIT).
-          // A page with no blocks references no templates, so it always takes
-          // this path; any template the copy brings in is loaded on demand.
-          let pageFormData = preparedFormData;
-          if (copyTranslationFrom) {
-            const original = await api.get(copyTranslationFrom);
-            const { blocks, items } = copyTranslationBlocks(
-              original, config.blocks.blocksConfig, intl, uuid,
-            );
-            pageFormData = {
-              ...preparedFormData,
-              blocks,
-              blocks_layout: { ...preparedFormData.blocks_layout, items },
-            };
-          }
+          const pageFormData = await withTranslationCopy(preparedFormData, copyTranslationFrom, api);
 
           // Merge templates with forced layouts
           const { merged: mergedFormData } = await mergeTemplatesIntoPage(pageFormData, {
@@ -4866,12 +4868,8 @@ const Iframe = (props) => {
           return;
         }
 
-        const { source, origin, formData: baseFormData, copyTranslationFrom } = pendingInitialDataRef.current;
-        // A page with no blocks references no templates, so a new translation
-        // never comes this way (its copy is made on the path above).
-        if (copyTranslationFrom) {
-          throw new Error(`A new translation (copying ${copyTranslationFrom}) already references templates to load`);
-        }
+        const { source, origin, formData: preparedFormData, copyTranslationFrom } = pendingInitialDataRef.current;
+        const baseFormData = await withTranslationCopy(preparedFormData, copyTranslationFrom, api);
         const toolbarButtons = config.settings.slate?.toolbarButtons || [];
 
         // Update template cache

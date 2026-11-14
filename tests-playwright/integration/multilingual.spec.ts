@@ -719,7 +719,6 @@ test.describe('Multilingual editing', () => {
     await page.locator('#page-add #field-title').fill('Dienstleistungen');
     await page.locator('#toolbar-save').click();
     await expect(page).toHaveURL(/\/de\/dienstleistungen\/edit/, { timeout: 20000 });
-    await keepTheCopy(page, helper);
 
     const read = async (path: string) =>
       (
@@ -731,19 +730,17 @@ test.describe('Multilingual editing', () => {
         })
       ).json();
 
-    // The copied paragraph, by the text it still carries from the original.
-    const german = await read('/de/dienstleistungen');
-    const slateId = Object.keys(german.blocks).find(
-      (id) =>
-        german.blocks[id]['@type'] === 'slate' &&
-        JSON.stringify(german.blocks[id].value ?? '').includes(
-          'What we do, in English.',
-        ),
-    );
-    expect(slateId, 'the copied paragraph is there to translate').toBeTruthy();
-
-    await page.goto(`${helper.adminUrl}/de/dienstleistungen/edit`);
+    // The copied paragraph, by the text it still carries from the original:
+    // translated where the copy opens, and saved once, as a translator does.
     await helper.waitForIframeReady();
+    const copied = helper
+      .getIframe()
+      .locator('[data-block-uid]', { hasText: 'What we do, in English.' })
+      .last();
+    await expect(copied, 'the copied paragraph is there to translate').toBeVisible({
+      timeout: 20000,
+    });
+    const slateId = await copied.getAttribute('data-block-uid');
     await helper.editBlockTextInIframe(slateId!, 'Was wir machen, auf Deutsch.');
     await page.locator('#toolbar-save').click();
     await expect(page).toHaveURL(/\/de\/dienstleistungen$/, { timeout: 20000 });
