@@ -2084,8 +2084,15 @@ export const sharedBlocksConfig = {
       title: 'Lead image',
       group: 'media',
       restricted: true,
-      blockSchema: { fieldsets: [], properties: {
-          align: { title: 'Alignment', widget: 'align' },}, required: [] },
+      // Its one field in a fieldset: a form draws only the fields its
+      // fieldsets list, and Volto's draws none at all without one (it read
+      // the first fieldset's id and threw). The admin's own lead image editor
+      // drew this sidebar until the admin stopped registering the block.
+      blockSchema: {
+        fieldsets: [{ id: 'default', title: 'Default', fields: ['align'] }],
+        properties: { align: { title: 'Alignment', widget: 'align' } },
+        required: [],
+      },
     },
     // Which page date field to show — the block's own setting.
     dateField: {
