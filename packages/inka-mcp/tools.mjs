@@ -563,7 +563,8 @@ export async function editPage(agent, { ops, expectedVersion, dryRun = false, ch
     }
     return dry;
   }
-  // Templates are saved as their lock does it ("Change on all pages"), before the page.
+  // Templates are locked as the lock does it ("Change on all pages"), which checks
+  // them; the page save then writes the ones that changed.
   const templatesChanged = changeTemplates ? await agent.lockTemplates() : [];
   const { version, uploaded } = await agent.save({ expectedVersion });
   // Each file now on the site: one this save uploaded, or one an earlier save had.

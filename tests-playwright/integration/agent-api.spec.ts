@@ -214,12 +214,18 @@ test.describe('Agent API', () => {
     const helper = new AdminUIHelper(page);
     await helper.login();
     await helper.navigateToEdit('/template-test-page');
+    const { version } = await agent(page, (a) => a.getPage());
 
     expect(await agent(page, (a) => a.unlockTemplateOf('template-header'))).toBe('tpl-instance-1');
     expect(await agent(page, (a) => a.unlockTemplateOf('standalone-block-1')), 'a page block has no template').toBeNull();
     await agent(page, (a, arg) => a.update(arg), { id: 'template-header', fields: { value: [{ type: 'h1', children: [{ text: 'Header for every page' }] }] } });
-    const saved = await agent(page, (a) => a.lockTemplates());
-    expect(saved).toEqual(['/_test_data/templates/test-layout']);
+    const locked = await agent(page, (a) => a.lockTemplates());
+    expect(locked).toEqual(['/_test_data/templates/test-layout']);
+    // Locked again.
+    expect(await agent(page, (a) => a.update({ id: 'template-header', fields: {} }).then(() => null, (e: Error) => e.message)))
+      .toMatch(/locked/);
+    // Locking checks it and keeps the change; the page save writes it.
+    await agent(page, (a, arg) => a.save(arg), { expectedVersion: version });
 
     // The template document itself now has it, so every page using it does.
     const token = (await page.context().cookies()).find((c) => c.name === 'auth_token')?.value;
@@ -228,8 +234,5 @@ test.describe('Agent API', () => {
     })).json();
     const header = Object.values(template.blocks as Record<string, any>).find((b) => b.slotId === 'header');
     expect(JSON.stringify(header.value)).toContain('Header for every page');
-    // Locked again.
-    expect(await agent(page, (a) => a.update({ id: 'template-header', fields: {} }).then(() => null, (e: Error) => e.message)))
-      .toMatch(/locked/);
   });
 });

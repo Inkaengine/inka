@@ -874,10 +874,13 @@ test.describe('allowedLayouts', () => {
         .join(' ');
       expect(boxContents, 'the saved footer box holds the placed container').toContain(movedText);
       expect(placed).toMatchObject({ '@type': 'convGroupDst', fixed: true, slotId: 'convGroupDst-1', templateId: footerTemplateId });
-      // Every block of a template has a slot, nested ones too: the child joins the
-      // slot the block landed in.
+      // Every block of a template has a slot, nested ones too, but never the
+      // block's own: a slot is one place at every depth (inka#708). The child is
+      // fixed, so its region gives it a slot of its own.
       const child = Object.values<any>(placed.blocks).find((c) => c.title === movedText);
-      expect(child).toMatchObject({ fixed: true, templateId: footerTemplateId, slotId: placed.slotId });
+      const region = Object.entries<any>(placed.blocks_layout).find(([, ids]) => ids.includes(
+        Object.keys(placed.blocks).find((id) => placed.blocks[id] === child)))![0];
+      expect(child).toMatchObject({ fixed: true, templateId: footerTemplateId, slotId: `${placed.slotId}-${region}-1` });
       // A template nested inside it — a snippet — is its own: its blocks keep the
       // snippet's template, instance and slots, not the footer's.
       // (Its template is recorded by the path it was loaded from. Instance ids are

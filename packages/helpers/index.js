@@ -4272,10 +4272,20 @@ function fillRegionEntries(entries, templateState, options) {
       slotId === ctx.leftoverSlotId
         ? ctx.leftovers.splice(0).map((entry) => ({ ...entry, orphaned: true }))
         : [];
-    const content = [...leftovers, ...(ctx.pendingContent.get(slotId) || [])];
+    // An `empty` is never content: what a document holds for a slot when that is
+    // only its empty slot (inka#708) is nothing, so the slot's own block goes in
+    // — and a commit takes the author's block in an empty slot's place.
+    const content = [...leftovers, ...(ctx.pendingContent.get(slotId) || [])].filter(
+      ({ block }) => block?.['@type'] !== 'empty',
+    );
     ctx.pendingContent.delete(slotId);
 
     if (content.length === 0) {
+      // A template keeps a slot nobody has filled as an `empty` (inka#708): a
+      // place the editor offers to add to. A visitor's page has none — only the
+      // admin's merge asks for them (keepEmptySlots), so no frontend draws
+      // editing furniture for visitors.
+      if (child['@type'] === 'empty' && !options.keepEmptySlots) continue;
       // The target has nothing for this slot: the template's slot block, without
       // what it holds (a slot's contents are a page's, never the template's).
       const { blocks: _slotBlocks, blocks_layout: _slotLayout, ...childDef } = child;

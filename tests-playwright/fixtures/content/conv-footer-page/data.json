@@ -96,7 +96,7 @@
           "title": "Moved group child",
           "templateId": "resolveuid/test-layout-template-uid",
           "templateInstanceId": "tpl-instance-1",
-          "slotId": "primary"
+          "slotId": "primary-items"
         },
         "moved-snip-heading": {
           "@type": "convTargetA",

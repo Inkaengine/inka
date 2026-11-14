@@ -372,8 +372,8 @@ export function registerAgentApi(live) {
 
     /**
      * Unlock the template a block belongs to, as its lock icon does: its
-     * locked blocks become editable, and lockTemplates saves them to the
-     * template. Resolves to the template instance id, or null for a block that
+     * locked blocks become editable; lockTemplates checks them, and the
+     * page save writes them to the template. Resolves to the template instance id, or null for a block that
      * belongs to no template.
      */
     async unlockTemplateOf(id) {
@@ -390,21 +390,22 @@ export function registerAgentApi(live) {
 
     /**
      * Lock every unlocked template with "Change on all pages", as the lock's
-     * dialog does: each is saved to its template document now, so every page
-     * using it changes. Resolves to the templates saved.
+     * dialog does: each is checked and kept, and the page save that follows
+     * writes it, so every page using it changes. Resolves to the templates
+     * locked that way.
      */
     async lockTemplates() {
       const saved = [];
       for (const instanceId of [...live.current.templateEditMode]) {
         delete live.current.templateCommitOutcomes[instanceId];
         if (!live.current.commitTemplateEdit(instanceId)) {
-          throw new Error(`lockTemplates: the template's structure is not valid, so it was not saved (${instanceId})`);
+          throw new Error(`lockTemplates: the template's structure is not valid, so it was not locked (${instanceId})`);
         }
         await until(() => !live.current.templateEditMode.includes(instanceId) && !live.current.committingTemplate,
-          SAVE_LIMIT_MS, `lockTemplates: the template (${instanceId}) did not finish saving`);
+          SAVE_LIMIT_MS, `lockTemplates: the template (${instanceId}) did not finish locking`);
         const outcome = live.current.templateCommitOutcomes[instanceId];
-        if (!outcome) throw new Error(`lockTemplates: the template (${instanceId}) was locked but not saved: the editor had not loaded it`);
-        if (outcome.error) throw new Error(`lockTemplates: ${outcome.templateId} was not saved: ${outcome.error}`);
+        if (!outcome) throw new Error(`lockTemplates: the template (${instanceId}) was locked without its changes: the editor had not loaded it`);
+        if (outcome.error) throw new Error(`lockTemplates: ${outcome.templateId} was not locked: ${outcome.error}`);
         saved.push(outcome.templateId);
       }
       return saved;

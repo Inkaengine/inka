@@ -65,7 +65,6 @@ import { readAsDataURL } from 'promise-file-reader';
 import {
   buildIdFieldMap,
   getBlockTypeSchema,
-  getBlockById,
 } from '../../../../../utils/blockPath';
 import {
   searchTextOptions,
@@ -89,8 +88,8 @@ import withSaveAsDraft from '@plone/volto/helpers/Utils/withSaveAsDraft';
 import SlotRenderer from '@plone/volto/components/theme/SlotRenderer/SlotRenderer';
 import Iframe from '../../../../../components/Iframe/View';
 import { ReadOnlyField } from '../../../../../components/Sidebar/ReadOnlyForm';
-import { validateTemplatePlaceholders } from '@volto-hydra/helpers/formDataValidation.js';
 import { validateBlocksAgainstSchemas } from '../../../../../utils/validateBlocks';
+import { reportBlockErrors } from '../../../../../utils/reportBlockErrors';
 import './styles.css';
 
 /**
@@ -678,14 +677,11 @@ class Form extends Component {
         })
       : {};
 
-    // Validate template slot contiguity
-    // The same map the merge is given below — the slot rules need it to see
-    // object_list regions at all.
-    const templateValidation = validateTemplatePlaceholders(
-      formData,
-      buildIdFieldMap(config.blocks.blocksConfig, this.props.intl),
-    );
-    // …and every block against its own schema. Core's Form does this and this
+    // Template slots are not checked here: they are checked when a template is
+    // locked, and a page can't be saved with an existing template unlocked. A
+    // new template, saved with the page, is checked as it is saved.
+    //
+    // Every block against its own schema. Core's Form does this and this
     // shadow had lost it, so a block's `required`, `maxLength`, `pattern` — and
     // a fieldRules `error` — were never enforced on save. Nested, because
     // hydra's blocks nest and core's top-level walk would miss everything
@@ -705,7 +701,6 @@ class Form extends Component {
     });
     const blocksErrors = {
       ...schemaValidation.blocksErrors,
-      ...templateValidation.blocksErrors,
     };
 
     if (keys(errors).length > 0) {
@@ -738,120 +733,43 @@ class Form extends Component {
     } else if (keys(blocksErrors).length > 0) {
       // Block errors — say that the save is blocked, name every block that
       // blocks it, and make each one a link that opens it.
-      //
-      // The toast used to title itself after the first failing FIELD, which
-      // for an image block's `url` reads "Image" — a word that names neither
-      // the problem nor the block, and said twice over when two blocks failed
-      // it told an author nothing she could act on. It also reported only the
-      // first block, so a second needed another save to discover.
-      //
-      // The link matters more than the wording: the block at fault is often
-      // one the author cannot find — inside a template container, or scrolled
-      // out of view — so "where is it" is the actual question to answer.
-      const blockPathMap = schemaValidation.blockPathMap || {};
-
-      const offenders = Object.keys(blocksErrors).map((blockId) => {
-        const blockData = getBlockById(
-          persistedFormData,
-          blockPathMap,
-          blockId,
-        );
-        const blockType = blockData?.['@type'];
-        // A template error is { title, message }; a schema error is Volto's
-        // list of messages for one field, named by the field's title since a
-        // region is not drawn as a widget.
-        const reasons = Object.entries(blocksErrors[blockId]).flatMap(
-          ([field, err]) => {
-            if (Array.isArray(err)) {
-              const label =
-                schemaValidation.fieldTitles?.[blockId]?.[field] || field;
-              return [`${label}: ${err.join(', ')}`];
-            }
-            return [err?.message || err?.title].filter(Boolean);
-          },
-        );
-        return {
-          blockId,
-          name: config.blocks.blocksConfig?.[blockType]?.title || blockType,
-          reasons,
-        };
-      });
-
       this.setState({
         errors: { blocks: blocksErrors },
       });
-
-      const goToBlock = (blockId) => {
-        this.props.setUIState({
-          selected: blockId,
-          multiSelected: [],
-          hovered: null,
-        });
-        this.props.setSidebarTab(1);
-      };
-
-      toast.error(
-        <Toast
-          error
-          title="Can't save yet"
-          content={
-            <div className="block-save-errors">
-              {offenders.map(({ blockId, name, reasons }) => (
-                <div key={blockId} className="block-save-error">
-                  <button
-                    type="button"
-                    className="block-save-error-link"
-                    onClick={() => {
-                      goToBlock(blockId);
-                      toast.dismiss();
-                    }}
-                  >
-                    {name ? `Open the ${name} block` : 'Open the block'}
-                  </button>
-                  {reasons.length > 0 && (
-                    <div className="block-save-error-why">
-                      {reasons.join('; ')}
-                    </div>
-                  )}
-                </div>
-              ))}
-            </div>
-          }
-        />,
-      );
-
-      // Still jump to the first one, so the fix stays one click away even if
-      // the toast is dismissed before it is read.
-      goToBlock(offenders[0].blockId);
+      reportBlockErrors({
+        blocksErrors,
+        formData: persistedFormData,
+        blockPathMap: schemaValidation.blockPathMap || {},
+        blocksConfig: config.blocks.blocksConfig,
+        fieldTitles: schemaValidation.fieldTitles,
+        goToBlock: (blockId) => {
+          this.props.setUIState({
+            selected: blockId,
+            multiSelected: [],
+            hovered: null,
+          });
+          this.props.setSidebarTab(1);
+        },
+      });
     } else {
-      // Save templates first if the Iframe has set up the save function. It returns the
-      // page data with finalized template ids ONLY when a new template's placeholder id
-      // was rewritten across the page's block references — save the page with THAT so it
-      // doesn't reference a template id that was never created. When it returns nothing,
-      // save from our own (post-flush) state so just-flushed inline edits aren't lost.
-      let finalizedFormData = null;
+      // The page save is refused while a template is unlocked: a template is
+      // saved by locking it. The Iframe raises "lock your templates first" and
+      // returns { blocked }; otherwise it has flushed the iframe's pending edits.
       if (this.props.isEditForm && this.saveTemplatesRef.current) {
-        const currentPath = this.props.pathname;
         const result = await this.saveTemplatesRef.current(
           formData,
-          currentPath,
+          this.props.pathname,
         );
-        // v2: the page save is gated while a template is unlocked — the Iframe
-        // raised the "lock your templates first" modal and returns this sentinel.
-        // Abort the page save.
         if (result?.blocked) return;
-        finalizedFormData = result;
       }
 
       // Then save the page. Source the PATCH from this.state.formData READ HERE,
       // after saveTemplatesRef has flushed the iframe's pending inline edits, so
       // an edit typed and saved before the 300ms debounce still lands (a pre-flush
-      // snapshot taken at the top of onSubmit would drop it). finalizedFormData is
-      // only returned when a brand-new template's id was rewritten across the page
-      // — that narrow path keeps its own (id-rewritten) data, as upstream does.
-      // Deep-link anchors already ride in formData (merged in as they're
-      // harvested), so there's nothing extra to fold in at save.
-      let pageFormData = finalizedFormData || this.state.formData;
+      // snapshot taken at the top of onSubmit would drop it). Deep-link anchors
+      // already ride in formData (merged in as they're harvested), so there's
+      // nothing extra to fold in at save.
+      let pageFormData = this.state.formData;
       // A translator who rewrites a block has caught it up with the original,
       // so the copy records the source it is now level with and the "the
       // original changed" marker clears. Only the blocks whose WORDS changed:

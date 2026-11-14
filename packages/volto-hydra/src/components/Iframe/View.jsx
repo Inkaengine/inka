@@ -19,6 +19,7 @@ import {
   applyBlockDefaults,
 } from '@plone/volto/helpers';
 import { validateAndLog, validateTemplatePlaceholders } from '@volto-hydra/helpers/formDataValidation.js';
+import { reportBlockErrors } from '../../utils/reportBlockErrors';
 import { toast } from 'react-toastify';
 import { getIframeUrlCookieName } from '../../utils/cookieNames';
 import rememberedFrontendUrl from '../../utils/getRememberedFrontendUrl';
@@ -341,13 +342,13 @@ import OpenObjectBrowser from './OpenObjectBrowser';
 import SyncedSlateToolbar from '../Toolbar/SyncedSlateToolbar';
 import { getBlockTypeSchema } from '../../utils/blockPath';
 import { copyTranslationBlocks } from '../../utils/copyTranslationBlocks';
-import { removeReplacedPlaceholder, buildBlockPathMap, buildIdFieldMap, stripBlockPathMapForPostMessage, getBlockByPath, getBlockById, updateBlockById, getChildBlockIds, getContainerFieldConfig, getSelectAfterDelete, insertBlockInContainer, deleteBlockFromContainer, mutateBlockInContainer, ensureEmptyBlockIfEmpty, ensureAllContainersHaveBlocks, initializeContainerBlock, moveBlockBetweenContainers, reorderBlocksInContainer, getAllContainerFields, insertTableColumn, deleteTableColumn, removeTemplateInstance, getContainerItems, getResolvedSchema, getCommonAncestor, wrapBlocksInContainer, unwrapContainer, getEmptyBlockType, getContainerRegionDescriptors, inheritTemplateMembershipDeep } from '../../utils/blockPath';
+import { removeReplacedPlaceholder, buildBlockPathMap, buildIdFieldMap, stripBlockPathMapForPostMessage, getBlockByPath, getBlockById, updateBlockById, getChildBlockIds, getContainerFieldConfig, getSelectAfterDelete, insertBlockInContainer, deleteBlockFromContainer, mutateBlockInContainer, ensureEmptyBlockIfEmpty, ensureAllContainersHaveBlocks, initializeContainerBlock, moveBlockBetweenContainers, reorderBlocksInContainer, getAllContainerFields, insertTableColumn, deleteTableColumn, removeTemplateInstance, getContainerItems, getResolvedSchema, getCommonAncestor, wrapBlocksInContainer, unwrapContainer, getEmptyBlockType, getContainerRegionDescriptors, inheritTemplateMembershipDeep, freshNestedInstances } from '../../utils/blockPath';
 import { mergeAnchorsIntoContent } from '../../utils/linkableAnchors';
 import { heldImages, onImageHeld } from '../../utils/pendingImages';
 import { withImageMetadata } from '../../utils/imageMetadata';
 import { installStyleMenuPreviewCss } from '../../utils/styleMenuPreviewCss';
 import { adoptTemplate, canContainAll, getBlockAddability, getChildBlockEntries, setBlockType, clearBlockType } from '@volto-hydra/helpers';
-import { mergeTemplatesIntoPage, instanceContent, mergeInstanceIntoTemplate } from '@volto-hydra/helpers/mergeTemplates.js';
+import { mergeTemplatesIntoPage, instanceContent, mergeInstanceIntoTemplate, removedSlots } from '@volto-hydra/helpers/mergeTemplates.js';
 import {
   applySchemaDefaultsToFormData,
   previewSchemaDefaultConversions,
@@ -355,6 +356,7 @@ import {
   applyBlockDefaultsWithContext,
   applyMembershipWhereLanded,
   settleBlockStructure,
+  emptiedByMove,
   deleteBlocks,
   canInsertBesideBlock,
   createSchemaEnhancerFromRecipe,
@@ -783,6 +785,39 @@ function sendHeldImages(target, origin) {
   }
 }
 
+
+const slugifyId = (s) =>
+  String(s || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+
+// Rewrite every templateId / templateInstanceId equal to oldId, immutably
+// (page data is frozen): a node is copied only when something under it changed.
+const rewriteTemplateRefs = (node, oldId, newId) => {
+  if (Array.isArray(node)) {
+    let changed = false;
+    const arr = node.map((n) => {
+      const nn = rewriteTemplateRefs(n, oldId, newId);
+      if (nn !== n) changed = true;
+      return nn;
+    });
+    return changed ? arr : node;
+  }
+  if (!node || typeof node !== 'object') return node;
+  let changed = false;
+  const out = {};
+  for (const [k, v] of Object.entries(node)) {
+    const nv = rewriteTemplateRefs(v, oldId, newId);
+    out[k] = nv;
+    if (nv !== v) changed = true;
+  }
+  if (out.templateId === oldId) { out.templateId = newId; changed = true; }
+  if (out.templateInstanceId === oldId) { out.templateInstanceId = newId; changed = true; }
+  return changed ? out : node;
+};
+
 const Iframe = (props) => {
   if (typeof window !== 'undefined' && window._formatT0) {
     console.log('[VIEW-TIMING] Iframe render +' + (performance.now() - window._formatT0).toFixed(0) + 'ms');
@@ -860,6 +895,12 @@ const Iframe = (props) => {
   // @type changed, we surface it here and wait for a confirm.
   //   { conversions: [{ blockId, from, to }], onConfirm: () => void }
   const [convertConfirm, setConvertConfirm] = useState(null);
+  // "Remove these slots?" before a commit drops a slot pages may use (inka#708):
+  // { slots, templateId, resolve(yes) }.
+  const [slotRemovalConfirm, setSlotRemovalConfirm] = useState(null);
+  // Blocks a template's lock (or a new template's first save) refused, shown
+  // the way a refused page save shows its blocks: blockId → errors.
+  const [templateBlocksErrors, setTemplateBlocksErrors] = useState({});
   const multiSelectedRef = useRef(multiSelected);
   multiSelectedRef.current = multiSelected;
   // The multi-selection hydra.js last reported or was sent, so the sync below
@@ -1367,7 +1408,14 @@ const Iframe = (props) => {
               : [uuid(), cloneBlocks(blockData)]
             : [blockId, blockData];
         })
-        .filter(Boolean);
+        .filter(Boolean)
+        // A copy is a new block, and so is a template nested in it: another
+        // instance of it, not the same one in two places (inka#708).
+        .map(([newId, blockData]) =>
+          mode === 'copy'
+            ? [newId, freshNestedInstances(blockData, buildIdFieldMap(blocksConfig, intl), uuid)]
+            : [newId, blockData],
+        );
 
       if (cloneWithIds.length === 0) return;
 
@@ -1545,6 +1593,16 @@ const Iframe = (props) => {
       console.error(`[HYDRA] Couldn't unlock template ${templateId}:`, error);
     });
   };
+  // A lock that writes nothing (Reset, or locking unchanged) lets the site lock
+  // go only when there's nothing left for the page save to write: an earlier
+  // "Change on all pages" since the last save keeps it held until that save.
+  const releaseTemplateLockIfWritten = (instanceId) => {
+    const templateId = heldTemplateLocksRef.current[instanceId];
+    const template = templateId && templateCacheRef.current[templateId];
+    if (template && templateStoredRef.current[templateId] !==
+        JSON.stringify({ blocks: template.blocks, blocks_layout: template.blocks_layout })) return;
+    releaseTemplateLock(instanceId);
+  };
   useEffect(() => () => {
     for (const instanceId of Object.keys(heldTemplateLocksRef.current)) releaseTemplateLock(instanceId);
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
@@ -1601,7 +1659,7 @@ const Iframe = (props) => {
     }));
     postTemplateEditMode(next);
     delete templateSnapshotsRef.current[instanceId];
-    releaseTemplateLock(instanceId);
+    releaseTemplateLockIfWritten(instanceId);
   }, [iframeSyncState.templateEditMode, postTemplateEditMode]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Persist ONE template document from the cache: POST a brand-new template
@@ -1662,9 +1720,10 @@ const Iframe = (props) => {
         rememberStored(templateId, template);
       }
     } catch (error) {
-      console.error(`[HYDRA] Failed to save template ${templateId}:`, error);
-      // A permission failure must block, not silently drop the template.
-      if (error?.isPermissionError) throw error;
+      // The page save stops: a template edit that wasn't written must not be
+      // dropped while the page saves as if it had been.
+      error.templateId = templateId;
+      throw error;
     }
   }, []);
 
@@ -1677,6 +1736,62 @@ const Iframe = (props) => {
   const builtIdFieldMap = buildIdFieldMap(config.blocks.blocksConfig, intl);
   const builtIdFieldMapKey = JSON.stringify(builtIdFieldMap);
   const idFieldMap = useMemo(() => builtIdFieldMap, [builtIdFieldMapKey]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // A template's slots are checked when it is saved: on its lock, and for a new
+  // template on the page save that creates it. A page can't be saved with an
+  // existing template unlocked, so the page save checks no other (a page saved
+  // under older slot rules still saves). Only the template being saved is
+  // checked: another one on the page is not this author's to fix now. A
+  // refusal names the blocks at fault the way a refused page save does, and
+  // the errors mark them in the sidebar and their Slot ID. Returns whether it
+  // refused.
+  // Give a new template the id its Short name asks for (else one from its
+  // Template Name), moving it in the cache. Returns the id it now has.
+  const finalizeNewTemplateId = (oldId) => {
+    const templateCache = templateCacheRef.current;
+    const tpl = templateCache[oldId];
+    const lastSlash = oldId.lastIndexOf('/');
+    const parent = lastSlash > 0 ? oldId.slice(0, lastSlash) : '';
+    const desiredSlug = slugifyId(tpl.id) || slugifyId(tpl.title) || oldId.slice(lastSlash + 1);
+    const newId = `${parent}/${desiredSlug}`;
+    if (newId === oldId) return oldId;
+    templateCache[newId] = {
+      ...tpl,
+      '@id': newId,
+      id: desiredSlug,
+      blocks: rewriteTemplateRefs(tpl.blocks, oldId, newId),
+    };
+    delete templateCache[oldId];
+    return newId;
+  };
+
+  const templateIdOfInstance = (formData, instanceId) =>
+    Object.values(instanceContent(formData, instanceId, idFieldMap).blocks)
+      .find((block) => block.templateId)?.templateId;
+
+  const refuseInvalidTemplate = (formData, isOurs, title) => {
+    const blockPathMap = buildBlockPathMap(formData, config.blocks.blocksConfig, intl);
+    const { blocksErrors } = validateTemplatePlaceholders(formData, idFieldMap);
+    const ours = Object.fromEntries(
+      Object.entries(blocksErrors).filter(([blockId]) =>
+        isOurs(getBlockById(formData, blockPathMap, blockId) || {}),
+      ),
+    );
+    setTemplateBlocksErrors(ours);
+    if (Object.keys(ours).length === 0) return false;
+    reportBlockErrors({
+      blocksErrors: ours,
+      formData,
+      blockPathMap,
+      blocksConfig: config.blocks.blocksConfig,
+      title,
+      goToBlock: (blockId) => {
+        onSelectBlock(blockId);
+        dispatch(setSidebarTab(1));
+      },
+    });
+    return true;
+  };
 
 
 
@@ -1723,30 +1838,14 @@ const Iframe = (props) => {
     if (!saveTemplatesRef) return;
 
     saveTemplatesRef.current = async (formData, currentPath) => {
-      // v2: the page save is GATED while an EXISTING template is unlocked —
-      // committing it affects every page that uses it, so that must be a deliberate
-      // lock action, not a page save. A brand-new (_isNew) template has no other
-      // pages yet, so it still persists on page save (preserving the make-template
-      // flow). Raise the "lock your templates first" modal and abort otherwise.
-      const findTemplateId = (instanceId) => {
-        for (const block of Object.values(formData?.blocks || {})) {
-          if (block.templateInstanceId === instanceId && block.templateId) {
-            return block.templateId;
-          }
-        }
-        return null;
-      };
-      // Read the latest-ref, not this effect closure's captured templateEditMode:
-      // the ref is refreshed during the same render that flips the toggle to locked,
-      // so a Ctrl+S fired the instant that lands sees the up-to-date set (no stale gate).
-      const blockingUnlocked = (templateEditModeRef.current || []).filter(
-        (iid) => {
-          const tid = findTemplateId(iid);
-          const tpl = tid && templateCacheRef.current[tid];
-          return tpl && !tpl._isNew;
-        },
-      );
-      if (blockingUnlocked.length > 0) {
+      // The page save is GATED while any template is unlocked: a template is
+      // saved by locking it, which checks it ("Change on all pages", or for a
+      // new one from Make template, creating it). Raise the "lock your templates
+      // first" modal and abort. Read the latest-ref, not this effect closure's
+      // captured templateEditMode: the ref is refreshed during the same render
+      // that flips the toggle to locked, so a Ctrl+S fired the instant that
+      // lands sees the up-to-date set (no stale gate).
+      if ((templateEditModeRef.current || []).length > 0) {
         setTemplateModal({ kind: 'saveGate' });
         return { blocked: true };
       }
@@ -1754,100 +1853,30 @@ const Iframe = (props) => {
       // Flush any pending inline edit text from the iframe before saving.
       await flushIframeEdits();
 
-      const templateCache = templateCacheRef.current;
-
-      // A new template is saved with what the author did to it before this first
-      // save (its kind, its blocks' text): the same reverse merge as "Change on
-      // all pages", from the page as it is now. Make template's copy alone
-      // missed every edit after it (inka#693). Its instance id is its own id.
-      const page = propertiesRef.current;
-      const onPage = new Set(getUniqueTemplateIds(page));
-      for (const [id, tpl] of Object.entries(templateCache)) {
-        if (!tpl?._isNew || !onPage.has(id)) continue;
-        const { merged } = await mergeInstanceIntoTemplate(tpl, page, id, { idFieldMap, uuidGenerator: uuid });
-        templateCache[id] = { ...tpl, blocks: merged.blocks, blocks_layout: merged.blocks_layout };
-      }
-
-      // Finalize the id/filename for any not-yet-saved template BEFORE we compute the
-      // ids to save: choose its id from the Short name (or a slug of the Template
-      // Name), then rewrite EVERY reference to the placeholder id — the template's own
-      // blocks + its cache key, AND the page's blocks. The page's blocks are frozen
-      // (Redux), so this rewrites immutably and returns the new page data for the page
-      // save (see Form.jsx); otherwise the page would reference a template id that was
-      // never created (404 on reload).
-      const slugifyId = (s) =>
-        String(s || '')
-          .trim()
-          .toLowerCase()
-          .replace(/[^a-z0-9]+/g, '-')
-          .replace(/^-+|-+$/g, '');
-      const rewriteTemplateRefs = (node, oldId, newId) => {
-        if (Array.isArray(node)) {
-          let changed = false;
-          const arr = node.map((n) => {
-            const nn = rewriteTemplateRefs(n, oldId, newId);
-            if (nn !== n) changed = true;
-            return nn;
-          });
-          return changed ? arr : node;
-        }
-        if (!node || typeof node !== 'object') return node;
-        let changed = false;
-        const out = {};
-        for (const [k, v] of Object.entries(node)) {
-          const nv = rewriteTemplateRefs(v, oldId, newId);
-          out[k] = nv;
-          if (nv !== v) changed = true;
-        }
-        if (out.templateId === oldId) { out.templateId = newId; changed = true; }
-        if (out.templateInstanceId === oldId) { out.templateInstanceId = newId; changed = true; }
-        return changed ? out : node;
-      };
-
-      let pageFormData = formData;
-      for (const oldId of Object.keys(templateCache)) {
-        const tpl = templateCache[oldId];
-        if (!tpl?._isNew) continue;
-        const lastSlash = oldId.lastIndexOf('/');
-        const parent = lastSlash > 0 ? oldId.slice(0, lastSlash) : '';
-        const currentSlug = oldId.slice(lastSlash + 1);
-        // Short name → else derive from the Template Name → else keep the placeholder.
-        const desiredSlug = slugifyId(tpl.id) || slugifyId(tpl.title) || currentSlug;
-        const newId = `${parent}/${desiredSlug}`;
-        if (!desiredSlug || newId === oldId) continue;
-        templateCache[newId] = {
-          ...tpl,
-          '@id': newId,
-          id: desiredSlug,
-          blocks: rewriteTemplateRefs(tpl.blocks, oldId, newId),
-        };
-        delete templateCache[oldId];
-        pageFormData = rewriteTemplateRefs(pageFormData, oldId, newId);
-      }
-
-      const templateIds = getUniqueTemplateIds(pageFormData).filter(
-        id => id !== currentPath && templateCache[id]
-      );
-
-      if (templateIds.length === 0) {
-        // Only hand back page data when an id was actually rewritten; otherwise
-        // return nothing so Form.jsx uses its own (post-flush) state — which holds
-        // the just-flushed inline edits this pre-flush `formData` param lacks.
-        return pageFormData !== formData ? pageFormData : undefined;
-      }
-
-      // Use Volto's Api helper which handles auth and URL formatting
+      // Write every template whose copy here differs from what the site has
+      // (persistTemplateDoc): edited and locked ("Change on all pages"), or new
+      // from Make template, wherever its instance sits on the page. The rest are
+      // left alone (inka#705).
+      const templateIds = Object.keys(templateCacheRef.current).filter((id) => id !== currentPath);
       const api = new Api();
-
-      await Promise.all(
-        templateIds.map((templateId) => persistTemplateDoc(api, templateId)),
-      );
-
-      // Hand the page data back to Form.jsx ONLY when an id was rewritten, so the page
-      // save writes the finalized references. Otherwise return nothing so Form uses its
-      // own post-flush state (which holds just-flushed inline edits this pre-flush
-      // `formData` param lacks).
-      return pageFormData !== formData ? pageFormData : undefined;
+      try {
+        await Promise.all(
+          templateIds.map((templateId) => persistTemplateDoc(api, templateId)),
+        );
+      } catch (error) {
+        toast.error(
+          <Toast
+            error
+            title="Couldn't save template"
+            content={`${error.templateId}: ${error.message || 'it could not be saved'}. The page was not saved.`}
+          />,
+        );
+        return { blocked: true };
+      }
+      // Written: release the templates this editor locked on the site.
+      for (const instanceId of Object.keys(heldTemplateLocksRef.current)) {
+        releaseTemplateLock(instanceId);
+      }
     };
   }, [saveTemplatesRef, flushIframeEdits, persistTemplateDoc, iframeSyncState.templateEditMode, idFieldMap]);
 
@@ -1868,7 +1897,9 @@ const Iframe = (props) => {
     const formData = iframeSyncState.formData;
 
     // Drop this instance from the unlocked set + tell the iframe.
-    const finish = () => {
+    // A commit keeps the template locked on the site until the page save writes
+    // it; a reset has nothing to write, so it releases it now.
+    const finish = ({ keepSiteLock = false } = {}) => {
       const next = (iframeSyncState.templateEditMode || []).filter((id) => id !== prevInstanceId);
       setIframeSyncState((prev) => ({
         ...prev,
@@ -1876,7 +1907,7 @@ const Iframe = (props) => {
       }));
       postTemplateEditMode(next);
       delete templateSnapshotsRef.current[prevInstanceId];
-      releaseTemplateLock(prevInstanceId);
+      if (!keepSiteLock) releaseTemplateLockIfWritten(prevInstanceId);
       setCommittingTemplate(false); // commit round-trip done — drop the saving overlay
     };
 
@@ -1926,10 +1957,32 @@ const Iframe = (props) => {
             toast.error(<Toast error title="This template can't be saved" content={reasons.join('; ')} />);
             return;
           }
-          templateCacheRef.current[templateId] = updatedTemplate;
-          // "Change on all pages": persist the template document immediately.
-          await persistTemplateDoc(new Api(), templateId);
-          templateCommitOutcomeRef.current[prevInstanceId] = { templateId, error: null };
+          // A slot the new version no longer has may hold content on pages
+          // using the template, which the merge would then have nowhere to put.
+          // Nothing records which pages use which slots, so ask (inka#708).
+          // A new template is used by no page yet, so there is nothing to ask.
+          const removed = template._isNew ? [] : removedSlots(template, updatedTemplate, idFieldMap);
+          if (removed.length) {
+            const yes = await new Promise((resolve) =>
+              setSlotRemovalConfirm({ slots: removed, templateId, resolve }),
+            );
+            if (!yes) {
+              keepUnlocked = true;
+              return;
+            }
+          }
+          templateCacheRef.current[templateId] = template._isNew
+            ? { ...updatedTemplate, _isNew: true }
+            : updatedTemplate;
+          // A new template (Make template) is created at the id its Short name
+          // gives it, and the page's references follow it there.
+          const savedId = template._isNew ? finalizeNewTemplateId(templateId) : templateId;
+          if (savedId !== templateId) {
+            onChangeFormData(rewriteTemplateRefs(formData, templateId, savedId));
+          }
+          // Nothing is written now: the page save writes every template that
+          // changed (saveTemplatesRef), and releases its lock on the site.
+          templateCommitOutcomeRef.current[prevInstanceId] = { templateId: savedId, error: null };
         })
         .catch((e) => {
           templateCommitOutcomeRef.current[prevInstanceId] = {
@@ -1943,7 +1996,7 @@ const Iframe = (props) => {
             />,
           );
         })
-        .finally(() => (keepUnlocked ? setCommittingTemplate(false) : finish()));
+        .finally(() => (keepUnlocked ? setCommittingTemplate(false) : finish({ keepSiteLock: true })));
     } else {
       finish();
     }
@@ -2210,10 +2263,12 @@ const Iframe = (props) => {
     const firstBlockId = blocksToMove[0];
     const sourceParentId = currentBlockPathMap[firstBlockId]?.parentId || null;
 
-    // Get source container config BEFORE the move (needed for ensureEmptyBlockIfEmpty)
-    const sourceContainerConfig = sourceParentId !== targetParentId && sourceParentId
+    // The region the blocks come out of, and the first one as it was there,
+    // BEFORE the move: what it leaves behind is decided after (emptiedByMove).
+    const sourceContainerConfig = sourceParentId
       ? getContainerFieldConfig(firstBlockId, currentBlockPathMap, currentFormData, blocksConfig, intl)
       : null;
+    const firstBlockAsItWas = getBlockById(currentFormData, currentBlockPathMap, firstBlockId);
 
     // Resolve each block against the target container's allowedBlocks:
     // native fit, or convertible (auto when one target type; a single-block
@@ -2330,16 +2385,20 @@ const Iframe = (props) => {
       // THEN a re-seed of the region it came out of. settleBlockStructure
       // fixes that order in one place so the drag path and the chooser's
       // ask-first drop cannot disagree about it again.
+      const movedPathMap = buildBlockPathMap(newFormData, config.blocks.blocksConfig, intl);
       const settledMove = settleBlockStructure(
         newFormData,
-        buildBlockPathMap(newFormData, config.blocks.blocksConfig, intl),
+        movedPathMap,
         {
           landed: blocksToMove,
           replacedPlaceholders: replaceTargetId ? [replaceTargetId] : [],
-          emptiedContainers:
-            sourceParentId !== targetParentId && sourceContainerConfig
-              ? [sourceContainerConfig]
-              : [],
+          // The region the blocks left — another container's, or another
+          // region of the same one — with the slot they held there.
+          emptiedContainers: emptiedByMove(
+            sourceContainerConfig,
+            getContainerFieldConfig(firstBlockId, movedPathMap, newFormData, blocksConfig, intl),
+            firstBlockAsItWas,
+          ),
         },
         {
           blocksConfig,
@@ -5607,7 +5666,10 @@ const Iframe = (props) => {
     // Lock the template on the site, as opening a page to edit locks the page.
     // Someone else has it unlocked: it stays locked here, and the author is told
     // who. A new template isn't on the site yet, so there's nothing to lock.
-    if (editTemplateId && !templateCacheRef.current[editTemplateId]?._isNew) {
+    // One this editor still holds (locked here since, but the page not saved
+    // yet) keeps both its lock and its copy here: that copy has the edits.
+    const stillHeld = !!heldTemplateLocksRef.current[instanceId];
+    if (editTemplateId && !stillHeld && !templateCacheRef.current[editTemplateId]?._isNew) {
       const lock = await new Api().post(`${editTemplateId}/@lock`, { data: {} });
       const holder = lockedBy(lock, sessionToken);
       if (holder) {
@@ -5630,7 +5692,7 @@ const Iframe = (props) => {
     // Re-fetch the template fresh into the cache — templateCacheRef persists across
     // page navigations, so without this we'd commit a stale copy. Skip for a
     // not-yet-saved template (_isNew): a GET would 404 / return a stub and clobber it.
-    if (editTemplateId && !templateCacheRef.current[editTemplateId]?._isNew) {
+    if (editTemplateId && !stillHeld && !templateCacheRef.current[editTemplateId]?._isNew) {
       try {
         templateCacheRef.current[editTemplateId] = adoptTemplate(
           await new Api().get(editTemplateId),
@@ -5654,16 +5716,13 @@ const Iframe = (props) => {
   // inline edits; the flush-complete effect reverse-merges into the template and
   // saves the template document, then drops this instance from the unlocked set.
   const commitTemplateEdit = (instanceId) => {
-    const validation = validateTemplatePlaceholders(iframeSyncState.formData);
-    if (!validation.valid) {
-      const firstError = Object.values(validation.blocksErrors)[0]?._layout;
-      toast.error(
-        <Toast
-          error
-          title={firstError?.title || 'Invalid Template Structure'}
-          content={firstError?.message || 'Please fix the template structure before locking.'}
-        />,
-      );
+    if (
+      refuseInvalidTemplate(
+        iframeSyncState.formData,
+        (block) => block.templateInstanceId === instanceId,
+        "This template can't be saved",
+      )
+    ) {
       return false; // keep it unlocked so the user can fix it
     }
     const requestId = `tpl-commit-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
@@ -5787,7 +5846,11 @@ const Iframe = (props) => {
     // during the unlock session, lock silently (no prompt, no save); otherwise show
     // the Change/Reset/Cancel modal.
     await flushIframeEdits();
-    if (isInstanceUnchanged(instanceId, propertiesRef.current)) {
+    // A new template (Make template) is on no other page yet: locking it creates
+    // it, so there is nothing to ask and an unchanged one must still be saved.
+    if (templateCacheRef.current[templateIdOfInstance(propertiesRef.current, instanceId)]?._isNew) {
+      commitTemplateEdit(instanceId);
+    } else if (isInstanceUnchanged(instanceId, propertiesRef.current)) {
       exitTemplateEditNoSave(instanceId);
     } else {
       setTemplateModal({ kind: 'lock', instanceId });
@@ -6043,6 +6106,40 @@ const Iframe = (props) => {
           const cb = convertConfirm?.onConfirm;
           setConvertConfirm(null);
           if (cb) cb();
+        }}
+      />
+      {/* "Remove these slots?" — a commit that drops a slot pages may use. */}
+      <Confirm
+        open={!!slotRemovalConfirm}
+        header={
+          slotRemovalConfirm?.slots.length === 1 ? 'Remove a slot?' : 'Remove slots?'
+        }
+        content={
+          slotRemovalConfirm ? (
+            <div className="content" data-testid="slot-removal-confirm">
+              <p>
+                This change removes{' '}
+                {slotRemovalConfirm.slots.map((slotId, i) => (
+                  <React.Fragment key={slotId}>
+                    {i > 0 && ', '}
+                    <strong>{slotId}</strong>
+                  </React.Fragment>
+                ))}{' '}
+                from {slotRemovalConfirm.templateId}. Pages using it may have content
+                there, which would have nowhere to go. Inka can't tell which pages.
+              </p>
+            </div>
+          ) : null
+        }
+        confirmButton="Remove"
+        cancelButton="Keep editing"
+        onCancel={() => {
+          slotRemovalConfirm?.resolve(false);
+          setSlotRemovalConfirm(null);
+        }}
+        onConfirm={() => {
+          slotRemovalConfirm?.resolve(true);
+          setSlotRemovalConfirm(null);
         }}
       />
       {/* Slash menu — appears under the field in the iframe where "/" was typed */}
@@ -7143,7 +7240,7 @@ const Iframe = (props) => {
       <ParentBlocksWidget
         selectedBlock={selectedBlock}
         multiSelected={multiSelected}
-        blocksErrors={blocksErrors}
+        blocksErrors={{ ...blocksErrors, ...templateBlocksErrors }}
         blockStatuses={translationStatuses.statuses}
         formData={properties}
         blockPathMap={iframeSyncState.blockPathMap}

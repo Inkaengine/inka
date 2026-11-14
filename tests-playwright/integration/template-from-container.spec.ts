@@ -32,6 +32,12 @@ test('a template made from a section saves its children as the template\'s own',
     .click();
   await helper.waitForSidebarOpen();
 
+  // A new template is saved by locking it, like any other: it is created
+  // then, and a page can't be saved with a template unlocked.
+  const unlockedToggle = page.locator('.edit-template-toggle[aria-pressed="true"]');
+  await unlockedToggle.click();
+  await expect(unlockedToggle).toHaveCount(0);
+
   await helper.saveContent();
 
   await expect.poll(() => posts.length, { message: 'the new template is saved' }).toBeGreaterThanOrEqual(1);
@@ -76,6 +82,12 @@ test('a new template saves the kind chosen before its first save', async ({ page
   await kindField.locator('.react-select__control').click();
   await page.locator('.react-select__menu .react-select__option', { hasText: 'Fixed, read-only' }).click();
   await expect(kindField.locator('.react-select__single-value')).toContainText('Fixed, read-only');
+
+  // A new template is saved by locking it, like any other: it is created
+  // then, and a page can't be saved with a template unlocked.
+  const unlockedToggle = page.locator('.edit-template-toggle[aria-pressed="true"]');
+  await unlockedToggle.click();
+  await expect(unlockedToggle).toHaveCount(0);
 
   await helper.saveContent();
 
