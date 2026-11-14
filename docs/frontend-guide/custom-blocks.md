@@ -173,7 +173,7 @@ blocks: {
 
 ### Overriding a built-in block
 
-The built-in blocks are `slate` and `listing`. Your frontend is the thing that renders, so it decides what an author can set. Give one a `blockSchema` and **your schema is the whole schema**: the sidebar shows your fields and nothing else — a listing's, for one, is in [Listings](listings.md).
+The built-in blocks are `slate` and `listing`. Your frontend is the thing that renders, so it decides what an author can set. Give one a `blockSchema` and **your schema is the whole schema**: the sidebar shows your fields and nothing else — a listing's, for one, is in [Listings](./listings.md).
 
 This is deliberate: before, the admin's fields were merged in and its edit component kept rendering the sidebar, so an author was offered settings the frontend could not honour — they ticked a box and the page did not change.
 
