@@ -267,9 +267,9 @@ test.describe('Block Sync - Listing Block Item Type', () => {
   test("a site's own catalog column holds what its field on the content types holds", async ({ page }) => {
     // A column has no type of its own; the catalog fills it from the field of
     // the same name. exclude_from_nav is a yes/no on every type (its @types
-    // schema says boolean), so its column is a yes/no too: the teaser has no
-    // yes/no field, and none of its text fields is offered for it, as they
-    // were when every column counted as text. CreationDate has no field of
+    // schema says boolean), so its column is a yes/no too: it is offered the
+    // teaser's yes/no fields and none of its text fields, which it was offered
+    // when every column counted as text. CreationDate has no field of
     // that name on any type (an indexer fills it), so it stays text: the
     // teaser's Title is offered for it.
     const helper = new AdminUIHelper(page);
@@ -292,7 +292,9 @@ test.describe('Block Sync - Listing Block Item Type', () => {
       return options;
     };
     await expect(mappingTable.locator('tbody tr td:first-child').filter({ hasText: /^Exclude from navigation$/ })).toHaveCount(1);
-    expect(await optionsOf(/^Exclude from navigation$/)).toEqual(['(none)']);
+    const yesNo = await optionsOf(/^Exclude from navigation$/);
+    expect(yesNo).toContain('Open in a new tab');
+    expect(yesNo).not.toContain('Title');
     expect(await optionsOf(/^Creation date$/)).toContain('Title');
   });
 
