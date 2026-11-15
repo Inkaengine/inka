@@ -572,7 +572,7 @@ Two more things a renderer must survive once the user picks a type for a seeded 
 
 You can have one container type whose children are all kept the same `@type`, with the editor picking that type once on the parent. When the type changes, every child is converted (using each child's `fieldMappings`); when a new child is added it gets the selected type.
 
-Declare `itemTypeField` on the *blocks field* — its value names a sibling field on the same schema whose value drives every child's `@type`. The sibling field is typically rendered with `widget: 'blockTypeSelect'`, which computes its `choices` from the blocks field's `allowedBlocks` at render time:
+Declare `itemTypeField` on the *blocks field* — its value names a sibling field on the same schema whose value drives every child's `@type`. The sibling field is typically rendered with `widget: 'blockTypeSelect'`, which computes its `choices` from the blocks field's `allowedBlocks` at render time (its options — `blocksField`, `filterConvertibleFrom`, `default` — are declared on the field: see [Type field options](#type-field-options)):
 
 ### Javascript
 
@@ -660,6 +660,11 @@ When `parentControlled[childType]` is set, it **replaces** the `@default` fallba
 - **\`mappingField\`** — name of the field where a per-block `fieldMapping` override is stored. Required for the `FieldMappingWidget` to appear.
 - **\`parentControlled\`** — `{ childType: [fieldName, ...] }` per-child-type override. Replaces the `fieldMappings['@default']` fallback.
 - **\`defaultsField\`** — prefix for the inherited fields on the parent's "Item Defaults" fieldset (default: `'itemDefaults'`).
-- **\`blockTypeSelect\`** widget options:
+
+### Type field options
+
+The type field is a `blockTypeSelect` field. Its options are declared on the field itself, never on the recipe (a recipe declaring them stops the editor loading, naming them). The picker and the recipe both read them there, so the type offered is the type stored:
+
 - **\`blocksField\`** — which sub-blocks field's `allowedBlocks` to use for the choices. Auto-discovers if omitted. Set to `'..'` when the choices should come from the *enclosing parent's* `allowedSiblingTypes`.
 - **\`filterConvertibleFrom\`** — only offer types whose `fieldMappings` accept the named source. Typically `'@default'` for listings (every item type must be populatable from canonical content fields).
+- **\`default\`** — with `blocksField` or `filterConvertibleFrom`, the PREFERRED type: kept where the choices include it, otherwise the first choice. The editor stores it in the block, so a block always has a type, picked or the one its position allows.

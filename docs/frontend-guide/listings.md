@@ -128,12 +128,15 @@ async function ListingItems({ id, blocks, paging, seen, fetchItems, onPaging }) 
 - **\`fetchItems\`** — Required. Map of `{ blockType: async (block, { start, size }) => { items, total } }`. Keys declare which block types to expand; values are fetcher functions. Use `ploneFetchItems()` for Plone backends.
 - **\`paging\`** — Paging input `{ start, size }` (not mutated). Computed values are returned in the response.
 - **\`seen\`** — Number of items already seen by prior calls (default: 0). Chain `paging.seen` from one call to the next for grids.
-- **\`itemTypeField\`** — Field on the listing block that holds the item type (default: `'itemType'`)
-- **\`defaultItemType\`** — Fallback type when field is not set (default: `'summary'`)
+- **\`itemTypeField\`** — Required. Field on the listing block that holds the item type: the recipe's `typeField` (e.g. `'variation'`). The editor stores the type there, picked or the one the listing's position allows; a listing without one throws.
+- **\`mappingField\`** — Field on the listing block that holds its mapping: the recipe's `mappingField` (default: `'fieldMapping'`).
+- **\`defaultsField\`** — Prefix of the listing fields that hold its item defaults, `<defaultsField>_<field>`: the recipe's `defaultsField` (default: `'itemDefaults'`).
+
+The editor saves the item type, the mapping and the item defaults into the listing under the fields its recipe names. `expandListingBlocks` has no recipe, so the frontend that declared those fields passes their names.
 
 ## ploneFetchItems Helper
 
-`ploneFetchItems({ apiUrl, contextPath, extraCriteria })` creates a fetcher function for Plone's `@querystring-search` endpoint, suitable as a value in the `fetchItems` map.
+`ploneFetchItems({ apiUrl, contextPath, extraCriteria, mappingField })` creates a fetcher function for Plone's `@querystring-search` endpoint, suitable as a value in the `fetchItems` map.
 
 <block type="slateTable" table.fixed table.celled>
 
@@ -142,6 +145,7 @@ async function ListingItems({ id, blocks, paging, seen, fetchItems, onPaging }) 
 | `apiUrl` | — | Plone site URL (e.g. `'http://localhost:8080/Plone'`) |
 | `contextPath` | `'/'` | Path for relative queries |
 | `extraCriteria` | `{}` | Additional query params — `SearchableText`, `sort_on`, `sort_order`, `facet.*` keys |
+| `mappingField` | `'fieldMapping'` | Field on the listing block that holds its mapping (the recipe's `mappingField`); a folder-contents listing checks the page's own items carry every mapped field |
 
 </block>
 
@@ -266,6 +270,8 @@ listing: {
                 title: 'Item type',
                 widget: 'blockTypeSelect',
                 filterConvertibleFrom: '@default',  // only offer types with @default mappings
+                blocksField: '..',                  // ...that the listing's container allows
+                default: 'summary',                 // preferred, where the container allows it
             },
             querystring: { title: 'Search criteria', widget: 'querystring' },
             // The mapping widget, and what a result offers to map: the
@@ -294,6 +300,8 @@ listing: {
 }
 ```
 
+The type picker's options go on the type field, never on the recipe: the picker and the recipe both read them there. `blocksField: '..'` takes the choices from the listing's container — a link list that allows only links offers only `link` — and `default` is a preference, kept where the container allows it and otherwise the container's first choice (see [Type field options](./container-blocks.md#type-field-options)). The editor stores the resulting type as the listing lands, so a listing always has one: picked, or the one its position allows.
+
 `filterConvertibleFrom: '@default'` restricts the dropdown to types that have a `fieldMappings['@default']` entry — i.e. types that can be populated from the canonical content fields (`getURL`, `title`, `description`, `image`) that listing queries return. Each item type's `fieldMappings['@default']` (on its own block config) defines how those source fields land on its schema. Adding `mappingField` to the enhancer fills the declared `field_mapping` widget with its smart defaults for the chosen item type, so the editor can override the mapping per listing instance. The widget and its `sourceFields` are yours to declare, as is every other field: the schema you send is the listing's whole schema.
 
 **Worked example:** [Related Items Block](../examples/relatedItemsListing.md) — the page's relation field, drawn with a configurable item type.
@@ -312,9 +320,10 @@ listing: {
 
 </block>
 
-The registry mapping is an *editing-time* input: it decides what the widget proposes for the selected `variation`. `expandListingBlocks` never reads a block config — it reads `block.fieldMapping`, and converts each result by exactly what is stored, so a listing carries its mapping in its own data:
+The registry mapping is an *editing-time* input: it decides what the widget proposes for the selected `variation`. `expandListingBlocks` never reads a block config — it reads the listing's stored item type and mapping (from the fields the frontend names: `itemTypeField`, `mappingField`), and converts each result by exactly what is stored, so a listing carries its item type and mapping in its own data:
 
-- **Picking the item type stores it.** The widget's default for that type (the registry mapping, kept to the sources the widget offers) is saved with the block, every entry `{ field, type }` with its conversion from the [mapping rule](./custom-blocks.md#which-fields-map-onto-which). Changing the item type stores the new type's default.
+- **The item type is stored as the listing lands.** Picked, or the one its position allows; a listing without one makes `expandListingBlocks` throw, naming it. There is no render-time default.
+- **Picking the item type stores its mapping.** The widget's default for that type (the registry mapping, kept to the sources the widget offers) is saved with the block, every entry `{ field, type }` with its conversion from the [mapping rule](./custom-blocks.md#which-fields-map-onto-which). Changing the item type stores the new type's default.
 - **There is no fallback.** A listing with no stored `fieldMapping`, or an entry without a `type`, makes `expandListingBlocks` throw, naming the listing: the renderer has no schema to work one out from.
 - **It is checked.** A block whose schema has a mapping widget must have a mapping, and every entry must name a source the widget offers, a field the item type has, and a conversion that gives what that field holds. The editor refuses to save one that doesn't, and the content check reports it.
 

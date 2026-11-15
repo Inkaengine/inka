@@ -522,22 +522,32 @@ export function calculatePaging(itemsTotal, bSize, currentPage = 0) {
  * @param {string} [options.extraCriteria.sort_on] - Override sort field
  * @param {string} [options.extraCriteria.sort_order] - Override sort order ('ascending'|'descending')
  * @param {string|string[]} [options.extraCriteria['facet.*']] - Facet filters (e.g., 'facet.portal_type': ['Document'])
- * @param {string} [options.itemTypeField='itemType'] - Field name to read item block type from (e.g., 'variation')
- * @param {string} [options.defaultItemType='summary'] - Default item type when field is not set
+ * @param {string} options.itemTypeField - The listing field that holds its item type: the
+ *   recipe's `typeField` (e.g. 'variation'). The editor stores the type there, picked or
+ *   the one the listing's position allows; a listing without one is refused.
+ * @param {string} [options.mappingField='fieldMapping'] - The listing field that holds its
+ *   mapping: the recipe's `mappingField`.
+ * @param {string} [options.defaultsField='itemDefaults'] - The prefix of the listing fields
+ *   that hold its item defaults (`<defaultsField>_<field>`): the recipe's `defaultsField`.
  * @returns {Promise<{items: Array, paging: Object}>}
  *   - items: Array of blocks, each with @uid (block ID for data-block-uid) and @type
  *   - paging: { currentPage, totalPages, totalItems, prev, next, pages }
  *
  * @example
- * // Listing block with itemType and fieldMapping:
+ * // A listing as the editor stores it (recipe: typeField 'variation',
+ * // mappingField 'fieldMapping', defaultsField 'itemDefaults'):
  * // {
  * //   '@type': 'listing',
- * //   'itemType': 'teaser',
- * //   'fieldMapping': { 'title': 'headline', getURL: 'href' },
- * //   'itemDefaults': { 'showImage': true }
+ * //   'variation': 'teaser',
+ * //   'fieldMapping': {
+ * //     title: { field: 'headline', type: 'string' },
+ * //     getURL: { field: 'href', type: 'link' },
+ * //   },
+ * //   'itemDefaults_showImage': true,
  * // }
+ * // expandListingBlocks(['l1'], { blocks, fetchItems, itemTypeField: 'variation' })
  * // Query result: { title: 'My Page', '@id': '/my-page', description: '...' }
- * // Output block: { '@type': 'teaser', headline: 'My Page', href: '/my-page', showImage: true }
+ * // Output block: { '@type': 'teaser', headline: 'My Page', href: [{ '@id': '/my-page' }], showImage: true }
  */
 
 /**
@@ -822,9 +832,23 @@ export async function expandListingBlocks(inputItems, options = {}) {
     blocks: blocksDict, // Optional: lookup dict for when items are IDs
     fetchItems, // { blockType: async (block, { start, size }) => { items, total } }
     paging: pagingIn, // { start, size } — not mutated
-    itemTypeField = 'itemType', // Field name to read item type from (e.g., 'variation')
-    defaultItemType = 'summary', // Default item type when field is not set
+    // The listing fields the editor saves into, as the frontend's recipe names
+    // them (typeField, mappingField, defaultsField). There is no recipe here.
+    itemTypeField,
+    mappingField = 'fieldMapping',
+    defaultsField = 'itemDefaults',
   } = options;
+
+  if (!itemTypeField) {
+    throw new Error(
+      'expandListingBlocks requires itemTypeField: the listing field its recipe names as typeField',
+    );
+  }
+  if ('defaultItemType' in options) {
+    throw new Error(
+      'expandListingBlocks no longer takes defaultItemType: a listing stores its item type when edited',
+    );
+  }
 
   if (!fetchItems || typeof fetchItems !== 'object') {
     throw new Error(
@@ -966,18 +990,24 @@ export async function expandListingBlocks(inputItems, options = {}) {
         // when static blocks come before the listing in the same window.
         items.push({ '@uid': blockId, '@type': 'empty', readOnly: true });
       } else if (listingResults[blockId]) {
-        const itemType = block[itemTypeField] || defaultItemType;
-        const fieldMapping = block.fieldMapping;
+        const itemType = block[itemTypeField];
+        if (!itemType) {
+          throw new Error(
+            `Listing ${blockId} has no item type in "${itemTypeField}": the editor stores one, ` +
+              `picked or the one its position allows.`,
+          );
+        }
+        const fieldMapping = block[mappingField];
         if (!fieldMapping || Object.keys(fieldMapping).length === 0) {
           throw new Error(
-            `Listing ${blockId} has no fieldMapping: the editor stores one when its item type is picked, ` +
+            `Listing ${blockId} has no ${mappingField}: the editor stores one when its item type is picked, ` +
               `and there is no schema here to make one up from.`,
           );
         }
 
         // Extract itemDefaults from flat keys (e.g., itemDefaults_overwrite -> overwrite)
         const itemDefaults = {};
-        const defaultsPrefix = 'itemDefaults_';
+        const defaultsPrefix = `${defaultsField}_`;
         for (const [key, value] of Object.entries(block)) {
           if (key.startsWith(defaultsPrefix)) {
             const fieldName = key.slice(defaultsPrefix.length);
@@ -1170,6 +1200,8 @@ export function ploneFetchItems({
   contextPath = '/',
   extraCriteria = {},
   contextContent,
+  // The listing field holding its mapping: the recipe's mappingField.
+  mappingField = 'fieldMapping',
 } = {}) {
   if (!apiUrl) {
     throw new Error('ploneFetchItems requires apiUrl');
@@ -1197,7 +1229,7 @@ export function ploneFetchItems({
         apiUrl,
         contextPath,
         contextContent,
-        mapped: Object.keys(block.fieldMapping ?? {}),
+        mapped: Object.keys(block[mappingField] ?? {}),
         start,
         size,
       });

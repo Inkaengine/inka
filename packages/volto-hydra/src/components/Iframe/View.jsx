@@ -5164,8 +5164,10 @@ const Iframe = (props) => {
     );
   }, [selectedBlock, iframeSyncState.blockPathMap, iframeSyncState.formData, intl]);
 
-  // Filter allowedBlocks by parent's variation if inheritSchemaFrom with blocksField is configured
-  // This ensures new blocks match the parent's item type selection (container use case)
+  // Filter allowedBlocks by parent's variation if its inheritSchemaFrom recipe
+  // names a typeField whose picker has a blocksField (declared on the type
+  // field, where the picker reads it). This ensures new blocks match the
+  // parent's item type selection (container use case)
   const filterByParentVariation = useCallback((rawAllowedBlocks, parentBlockData, parentType) => {
     if (!rawAllowedBlocks || !parentBlockData || !parentType) {
       return rawAllowedBlocks;
@@ -5177,7 +5179,10 @@ const Iframe = (props) => {
       ? schemaEnhancer.config
       : schemaEnhancer?.inheritSchemaFrom;
     const typeField = schemaEnhancerConfig?.typeField;
-    const blocksField = schemaEnhancerConfig?.blocksField;
+    const blocksField =
+      typeField &&
+      getBlockTypeSchema(parentType, intl, config.blocks.blocksConfig)?.properties?.[typeField]
+        ?.blocksField;
 
     // Only filter when blocksField is set and not '..' (container use case)
     // Listing use case (blocksField: '..') doesn't need BlockChooser filtering
@@ -5191,7 +5196,7 @@ const Iframe = (props) => {
       return [variationValue];
     }
     return rawAllowedBlocks;
-  }, []);
+  }, [intl]);
 
   // Iframe add: adds AFTER the selected block (as sibling)
   // Uses parentContainerConfig.allowedBlocks, or page-level allowedBlocks

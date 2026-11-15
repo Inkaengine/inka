@@ -1,10 +1,9 @@
 /**
  * When does a listing "pin" an item type its container forbids?
  *
- * A listing's item type is either PINNED (a static default or choices, or a
- * recipe default nothing ties to the container) or DERIVED (a recipe default
- * with `blocksField`, which blockSync resolves against the container's allowed
- * types). Only a pin can land outside what the container allows, so only a pin
+ * A listing's item type is either PINNED (choices, or a default nothing ties
+ * to the container) or DERIVED (a default on a type field with `blocksField`,
+ * which blockSync resolves against the container's allowed types). Only a pin can land outside what the container allows, so only a pin
  * is reported. Getting this wrong fails silently either way: miss a pin and a
  * listing renders blank items; call a derived default a pin and the check cries
  * wolf about the one configuration that is correct.
@@ -15,11 +14,11 @@ import { describe, expect, test } from 'vitest';
 const require = createRequire(import.meta.url);
 const { collectListingContainerIssues } = require('@inka/testing/discover-blocks');
 
-const withListing = ({ recipe = {}, variation = {} }) => ({
+const withListing = ({ variation = {} }) => ({
   listing: {
     blockSchema: { properties: { variation: { widget: 'blockTypeSelect', ...variation } } },
     schemaEnhancer: {
-      inheritSchemaFrom: { typeField: 'variation', mappingField: 'fieldMapping', ...recipe },
+      inheritSchemaFrom: { typeField: 'variation', mappingField: 'fieldMapping' },
     },
   },
   summary: { fieldMappings: { '@default': { title: 'title' } } },
@@ -49,17 +48,13 @@ const pins = (blocksConfig) =>
     .map((i) => i.itemType);
 
 describe('pinned-type-not-allowed', () => {
-  test('a recipe default tied to the container is derived, not a pin', () => {
+  test('a default tied to the container is derived, not a pin', () => {
     expect(
-      pins(withListing({ recipe: { blocksField: '..', default: 'summary' } })),
+      pins(withListing({ variation: { blocksField: '..', default: 'summary' } })),
     ).toEqual([]);
   });
 
-  test('a recipe default with nothing tying it to the container is a pin', () => {
-    expect(pins(withListing({ recipe: { default: 'summary' } }))).toEqual(['summary']);
-  });
-
-  test('a static default on the field is a pin', () => {
+  test('a default with nothing tying it to the container is a pin', () => {
     expect(pins(withListing({ variation: { default: 'summary' } }))).toEqual(['summary']);
   });
 
@@ -69,7 +64,7 @@ describe('pinned-type-not-allowed', () => {
 });
 
 describe('no-example', () => {
-  const config = withListing({ recipe: { blocksField: '..', default: 'summary' } });
+  const config = withListing({ variation: { blocksField: '..', default: 'summary' } });
   const noExample = (blocks) =>
     collectListingContainerIssues(config, blocks).filter((i) => i.kind === 'no-example');
 

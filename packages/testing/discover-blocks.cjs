@@ -165,10 +165,10 @@ function buildEmptyRegionCases(blocksConfig, blocks) {
  *  1. `no-example` — the container ALLOWS a listing and no content puts one
  *     there, so the pairing is never rendered by anything.
  *  2. `pinned-type-not-allowed` — the listing's type field pins a value (a
- *     static `default`, a `choices` entry, or a recipe `default` with no
- *     `blocksField` tying it to the container) that the container does not
- *     allow. A recipe default WITH `blocksField` is resolved against the
- *     container's allowed types, so it is a preference, not a pin.
+ *     `choices` entry, or a `default` with no `blocksField` tying it to the
+ *     container) that the container does not allow. A default WITH
+ *     `blocksField` is resolved against the container's allowed types, so it
+ *     is a preference, not a pin.
  *     The container then imposes its own type at render while the listing's
  *     stored field mapping was computed for the pinned one.
  *  3. `item-type-without-default-mapping` — the container allows an item type
@@ -249,16 +249,15 @@ function collectListingContainerIssues(blocksConfig, blocks) {
         blocksConfig?.[listingType]?.blockSchema?.properties?.[typeFieldName];
       if (typeField) {
         const pinned = new Set();
-        if (typeof typeField.default === 'string') pinned.add(typeField.default);
-        for (const choice of typeField.choices || []) {
-          pinned.add(Array.isArray(choice) ? choice[0] : choice);
-        }
-        // A recipe default is a pin only when nothing ties it to the container.
-        // With `blocksField` the choices ARE the container's allowed types and
+        // A default is a pin only when nothing ties it to the container. With
+        // `blocksField` the choices ARE the container's allowed types and
         // blockSync resolves the default against them (kept if allowed, else
         // the first allowed), so it can never land outside them.
-        if (typeof recipe.default === 'string' && !recipe.blocksField) {
-          pinned.add(recipe.default);
+        if (typeof typeField.default === 'string' && !typeField.blocksField) {
+          pinned.add(typeField.default);
+        }
+        for (const choice of typeField.choices || []) {
+          pinned.add(Array.isArray(choice) ? choice[0] : choice);
         }
         for (const itemType of pinned) {
           if (!offered.includes(itemType)) {

@@ -679,22 +679,27 @@ export function applyBlockDefaultsWithContext(blockData, context) {
  * The referenced type's schema fields are added to the parent's sidebar,
  * minus any fields that are mapped to external data.
  *
- * @param {string|null} typeField - Field name containing the block type, or null to read from
- *                                  blocksConfig[blockType].itemTypeField at call time
+ * @param {string|null} typeField - Field name containing the block type, or null to find it
+ *                                  at call time (findTypeField: the blocks field's itemTypeField)
  * @param {string} mappingField - Field name containing field mappings (e.g., 'fieldMapping')
  *                                Can be null if no mapping is used
  * @param {string} defaultsField - Field name to store inherited values (e.g., 'itemDefaults')
- * @param {Object} typeFieldOptions - Options for the typeField (optional)
- * @param {string} typeFieldOptions.title - Title for the typeField (default: 'Item Type')
- * @param {string} typeFieldOptions.filterConvertibleFrom - Only show types with fieldMappings[this]
- * @param {string} typeFieldOptions.default - Default value for the typeField
+ * @param {Object} typeFieldOptions - Recipe options for the typeField (optional)
+ * @param {Object} typeFieldOptions.parentControlled - { childType: [field, …] } the parent claims
+ *
+ * The type picker's own options — `blocksField`, `filterConvertibleFrom` and a
+ * preferred `default` — are declared on the typeField itself (the
+ * blockTypeSelect field), where the picker reads them; this reads them there
+ * too, so the type offered is the type stored.
  * @returns {Function} - A schemaEnhancer function
  *
  * @example
  * // In block config:
  * config.blocks.blocksConfig.listing = {
- *   itemTypeField: 'variation',
- *   schemaEnhancer: { inheritSchemaFrom: { mappingField: 'fieldMapping' } },
+ *   blockSchema: { properties: {
+ *     variation: { widget: 'blockTypeSelect', filterConvertibleFrom: '@default', blocksField: '..' },
+ *   } },
+ *   schemaEnhancer: { inheritSchemaFrom: { typeField: 'variation', mappingField: 'fieldMapping' } },
  * };
  */
 export function inheritSchemaFrom(typeField, mappingField, defaultsField, typeFieldOptions = {}) {
@@ -733,8 +738,10 @@ export function inheritSchemaFrom(typeField, mappingField, defaultsField, typeFi
     // through hydraContext.liveBlockDataRef inside getLiveBlockData itself.
     const liveFallback = { formData: args.pageFormData, blockPathMap };
 
-    // Create or update typeField with computed choices
-    const { filterConvertibleFrom, blocksField, title, default: defaultValue } = typeFieldOptions;
+    // Create or update typeField with computed choices, from the picker's own
+    // options on the field.
+    const { filterConvertibleFrom, blocksField, default: defaultValue } =
+      schema.properties?.[typeField] || {};
     if (filterConvertibleFrom || blocksField) {
       const choices = getBlockTypeChoices(
         { filterConvertibleFrom, blocksField },
@@ -767,7 +774,7 @@ export function inheritSchemaFrom(typeField, mappingField, defaultsField, typeFi
           ...schema.properties,
           [typeField]: {
             ...priorField,
-            title: title || schema.properties?.[typeField]?.title || 'Item Type',
+            title: priorField.title || 'Item Type',
             choices,
             ...(resolvedDefault ? { default: resolvedDefault } : {}),
           },
@@ -1790,12 +1797,13 @@ export function filterAddableTypesByRule(
  * Create a schemaEnhancer function from a declarative recipe.
  *
  * New format (supports combining multiple enhancers):
- *   { inheritSchemaFrom: { typeField, defaultsField, mappingField?, parentControlled?, filterConvertibleFrom?, blocksField?, title?, default? } }
+ *   { inheritSchemaFrom: { typeField, defaultsField, mappingField?, parentControlled? } }
+ *   (the type picker's options — blocksField, filterConvertibleFrom, default — go on the typeField)
  *   { fieldRules: { fieldName: false | { set, when?, else? } | [rule, ...] } }
  *
  * Combined example:
  *   {
- *     inheritSchemaFrom: { typeField: 'variation', defaultsField: 'itemDefaults', filterConvertibleFrom: '@default' },
+ *     inheritSchemaFrom: { typeField: 'variation', defaultsField: 'itemDefaults' },
  *     fieldRules: { advancedOptions: { when: { mode: 'advanced' }, else: false } },
  *   }
  *
@@ -1940,7 +1948,20 @@ function createEnhancerByType(type, config) {
 
   switch (type) {
     case 'inheritSchemaFrom': {
-      const { typeField, mappingField, defaultsField = 'itemDefaults', filterConvertibleFrom, blocksField, title, default: defaultValue, parentControlled } = config;
+      const { typeField, mappingField, defaultsField = 'itemDefaults', parentControlled } = config;
+      // The type picker's options live on the typeField (the blockTypeSelect
+      // field), where the picker reads them. Declared here too they were a
+      // second copy that could disagree with the picker — or the only copy,
+      // which the picker never saw.
+      const pickerOptions = ['blocksField', 'filterConvertibleFrom', 'title', 'default'].filter(
+        (k) => k in config,
+      );
+      if (pickerOptions.length) {
+        throw new Error(
+          `inheritSchemaFrom recipe declares ${pickerOptions.join(', ')}: ` +
+            `declare them on the type field (${typeField || 'its typeField'}) instead`,
+        );
+      }
       // typeField is optional — if not in recipe, inheritSchemaFrom reads
       // blocksConfig[blockType].itemTypeField at call time.
       // parentControlled: { childType: ['fieldA', 'fieldB'] } — fields the
@@ -1949,9 +1970,7 @@ function createEnhancerByType(type, config) {
       // applied to every block by installChildBlockEnhancers) and also by
       // this enhancer's own inherited-fields filter so parentControlled
       // fields appear in the parent's "Item Defaults" fieldset.
-      const typeFieldOptions = (filterConvertibleFrom || blocksField || title || defaultValue || parentControlled)
-        ? { filterConvertibleFrom, blocksField, title, default: defaultValue, parentControlled }
-        : {};
+      const typeFieldOptions = parentControlled ? { parentControlled } : {};
       enhancer = inheritSchemaFrom(typeField || null, mappingField || null, defaultsField, typeFieldOptions);
       enhancer.config = { ...config, enhancerType: 'inheritSchemaFrom' };
       break;
