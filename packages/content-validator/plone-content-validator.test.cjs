@@ -1650,11 +1650,17 @@ describe('checkBlockSchemas()', () => {
     assert.match(r.errors[0], /contentBlock\.url/);
   });
 
-  it('warns about a block type missing from the field map', () => {
+  it('refuses a block type missing from the field map', () => {
     const r = checkBlockSchemas(page({ b1: { '@type': 'mystery' } }), FIELDS);
-    assert.equal(r.errors.length, 0);
     assert.equal(r.stats.unknownTypes, 1);
-    assert.match(r.warnings[0], /mystery/);
+    assert.equal(r.errors.length, 1);
+    assert.match(r.errors[0], /mystery/);
+  });
+
+  it('knows Inka\'s own text block without the field map naming it', () => {
+    const r = checkBlockSchemas(page({ b1: { '@type': 'slate', value: [] } }), FIELDS);
+    assert.equal(r.stats.unknownTypes, 0);
+    assert.deepEqual(r.errors, []);
   });
 
   it('ignores identity keys and a container\'s child storage', () => {

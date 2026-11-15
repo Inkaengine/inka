@@ -41,10 +41,6 @@ import TableSchema from '@plone/volto-slate/blocks/Table/schema';
 // We merge both into one schema below so Volto Hydra's single sidebar
 // surface shows everything.
 import _slateBlockTabSchema from '@plone/volto-slate/blocks/Text/schema';
-import {
-  QUERY_RESULT_FIELDS,
-  createSchemaEnhancerFromRecipe,
-} from './utils/blockSync';
 import rowBeforeSVG from '@plone/volto/icons/row-before.svg';
 import rowAfterSVG from '@plone/volto/icons/row-after.svg';
 import rowDeleteSVG from '@plone/volto/icons/row-delete.svg';
@@ -61,10 +57,7 @@ import { installLinkEditor } from './components/Toolbar/LinkEditor';
 import { noStore } from './express-middleware/noStore';
 import { apiAcceptEncoding } from './express-middleware/apiAcceptEncoding';
 import { registerRuleErrorValidators } from '@volto-hydra/helpers/blockFieldErrors.js';
-
-// The only blocks Inka's admin registers itself. Every other block a site uses
-// is the frontend's to declare (its blocks config, sent at initBridge).
-export const ADMIN_BLOCK_TYPES = ['slate', 'listing'];
+import { INKA_BLOCK_TYPES } from '@volto-hydra/helpers/inkaBlocks.js';
 
 const applyConfig = (config) => {
   // No shared cache keeps an editor's page (express-middleware/noStore.js).
@@ -361,75 +354,14 @@ config.settings.additionalToolbarComponents = {
 
 
 
-  // Configure listing block to use variation as item type selector
-  // The existing variation field is repurposed to select the block type for rendering items
-  // expandListingBlocks reads from 'variation' field via itemTypeField option
-  //
-  // Fully declarative schemaEnhancer composed from recipe parts:
-  // - existingListingSchemaEnhancer: Volto's core listing enhancer (handles variations)
-  // - inheritSchemaFrom: type selector + block sync
-  // - fieldRules: admin-only field modifications (hide b_size, add fieldMapping)
-  const existingListingSchemaEnhancer =
-    config.blocks.blocksConfig.listing?.schemaEnhancer;
-  const listingSchemaEnhancer = createSchemaEnhancerFromRecipe([
-    existingListingSchemaEnhancer,
-    {
-      inheritSchemaFrom: {
-        mappingField: 'fieldMapping',
-        defaultsField: 'itemDefaults',
-        blocksField: '..',
-        filterConvertibleFrom: '@default',
-        title: 'Item Type',
-        default: 'summary',
-      },
-    },
-    {
-      fieldRules: {
-        'querystring.b_size': false,
-        fieldMapping: {
-          set: {
-            title: 'Field Mapping',
-            widget: 'field_mapping',
-            sourceFields: QUERY_RESULT_FIELDS,
-            // …and every metadata column the site's catalog holds, so its own
-            // fields can be mapped too.
-            vocabulary: { '@id': 'plone.app.vocabularies.MetadataFields' },
-            description: 'Map query result fields to item block fields',
-            fieldset: { id: 'mapping', title: 'Field Mapping' },
-          },
-        },
-      },
-    },
-  ]);
-  config.blocks.blocksConfig.listing = {
-    ...config.blocks.blocksConfig.listing,
-    itemTypeField: 'variation',
-    schemaEnhancer: listingSchemaEnhancer,
-    // Volto core ships listing with 3 template variations (default/imageGallery/summary)
-    // for its built-in render path. Hydra renders listing items via expandListingBlocks
-    // in the user's frontend, but Volto's admin-side ListingBody.jsx still mounts a
-    // template component, so we keep one passthrough entry. Critically, reducing the
-    // array to length === 1 stops Volto's withVariationSchemaEnhancer from
-    // wholesale-replacing the `variation` field definition (it only fires for
-    // variations.length > 1) — that's what would wipe our `widget: 'blockTypeSelect'`.
-    variations: [
-      {
-        id: 'default',
-        isDefault: true,
-        title: 'Default',
-        template: () => null,
-      },
-    ],
-  };
-
   // A frontend declares its own blocks: Inka's admin keeps only slate (the
-  // rich text every region's text is written in) and listing (configured
-  // above), and drops the rest Volto registers. A block the admin also had
+  // rich text every region's text is written in) and drops the rest Volto
+  // registers, listing included. A block the admin also had
   // kept the admin's keys under the frontend's own config: mappings written
   // for the admin's schema, onto fields the frontend's didn't have, and blocks
   // the frontend never sent (a teaser converting from an image by its link).
   for (const blockType of Object.keys(config.blocks.blocksConfig)) {
-    if (!ADMIN_BLOCK_TYPES.includes(blockType)) delete config.blocks.blocksConfig[blockType];
+    if (!INKA_BLOCK_TYPES.includes(blockType)) delete config.blocks.blocksConfig[blockType];
   }
 
   const updateAllowedBlocks = () => {

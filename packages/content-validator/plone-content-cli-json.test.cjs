@@ -55,7 +55,7 @@ describe('plone-content --json', () => {
       ['b', 't'],
     );
     assert.equal(status, 1);
-    assert.deepEqual(Object.keys(report).sort(), ['chooser', 'fieldsets', 'mappings', 'reserved', 'rules', 'schema']);
+    assert.deepEqual(Object.keys(report).sort(), ['chooser', 'fieldsets', 'mappings', 'reserved', 'rules', 'schema', 'undeclared']);
     assert.equal(report.schema.errors.length, 1);
     assert.match(report.schema.errors[0], /banner\.bogus/);
     assert.equal(report.rules.errors.length, 1);
@@ -76,6 +76,7 @@ describe('plone-content --json', () => {
     // These fixtures declare no fieldsets, which hides nothing, so the
     // coverage check has nothing to say about them.
     assert.deepEqual(report.fieldsets.errors, []);
+    assert.deepEqual(report.undeclared.errors, []);
   });
 
   it('fails on a block the chooser cannot offer, though every page is clean', () => {

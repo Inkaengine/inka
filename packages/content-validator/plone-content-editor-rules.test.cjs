@@ -764,3 +764,32 @@ describe("checkEditorRules() and a site's own catalog column", () => {
     assert.match(r.errors.join('\n'), /fieldMapping: "Topic" → "tags" as array: a text can't become/);
   });
 });
+
+/**
+ * checkUndeclaredBlocks(): every block a region may hold is one the frontend
+ * declares (or Inka's own text block) — the check the editor refuses to load
+ * on, run in CI first.
+ */
+describe('checkUndeclaredBlocks()', () => {
+  const { checkUndeclaredBlocks } = require('./plone-content-validator.cjs');
+  const region = (allowedBlocks) => ({ widget: 'blocks_layout', allowedBlocks });
+
+  it('passes regions naming declared blocks and slate', () => {
+    const r = checkUndeclaredBlocks({
+      _page: { blockSchema: { properties: { items: region(['grid', 'slate']) } } },
+      grid: { blockSchema: { properties: { items: region(['card']) } } },
+      card: { blockSchema: { properties: {} } },
+    });
+    assert.deepEqual(r.errors, []);
+  });
+
+  it("reports a block's region and the page's naming an undeclared block", () => {
+    const r = checkUndeclaredBlocks({
+      _page: { blockSchema: { properties: { items: region(['grid', 'listing']) } } },
+      grid: { blockSchema: { properties: { items: region(['teaser']) } } },
+    });
+    assert.equal(r.errors.length, 2);
+    assert.match(r.errors[0], /grid: .*"teaser"/);
+    assert.match(r.errors[1], /page: .*"listing"/);
+  });
+});

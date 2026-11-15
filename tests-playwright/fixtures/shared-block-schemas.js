@@ -882,6 +882,7 @@ export const sharedBlocksConfig = {
     // include @default as a source (i.e., can convert from catalog brain fields)
     listing: {
         id: 'listing',
+        title: 'Listing',
         // The chooser group, stated: a block's group is never made up.
         group: 'common',
         blockSchema: {
@@ -2058,6 +2059,8 @@ export const sharedBlocksConfig = {
       title: 'Title',
       group: 'text',
       restricted: true,
+      // A window onto the page's own field: the page form edits it.
+      disableCustomSidebarEditForm: false,
       blockSchema: {
         fieldsets: [{ id: 'default', title: 'Default', fields: ['title'] }],
         properties: {
@@ -2071,6 +2074,8 @@ export const sharedBlocksConfig = {
       title: 'Description',
       group: 'text',
       restricted: true,
+      // A window onto the page's own field: the page form edits it.
+      disableCustomSidebarEditForm: false,
       blockSchema: {
         fieldsets: [{ id: 'default', title: 'Default', fields: ['description'] }],
         properties: {
@@ -2084,6 +2089,8 @@ export const sharedBlocksConfig = {
       title: 'Lead image',
       group: 'media',
       restricted: true,
+      // A window onto the page's own field: the page form edits it.
+      disableCustomSidebarEditForm: false,
       // Its one field in a fieldset: a form draws only the fields its
       // fieldsets list, and Volto's draws none at all without one (it read
       // the first fieldset's id and threw). The admin's own lead image editor

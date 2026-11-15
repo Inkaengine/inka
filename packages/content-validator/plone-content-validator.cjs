@@ -28,6 +28,7 @@ const { getChildFields, getChildBlockEntries, isUnlabelledDefinition, adoptTempl
 const { validateTemplatePlaceholders } = require('@volto-hydra/helpers/formDataValidation.js');
 const { buildBlockPathMap, buildIdFieldMap, getResolvedSchema } = require('@volto-hydra/helpers/buildBlockPathMap.js');
 const { fieldMappingProblems, reservedFieldProblems } = require('@volto-hydra/helpers/conversionValidation.js');
+const { INKA_BLOCK_TYPES, undeclaredBlockProblems } = require('@volto-hydra/helpers/inkaBlocks.js');
 
 // Where an export keeps the site root: plone.exportimport's own name for it.
 const SITE_ROOT = 'plone_site_root';
@@ -985,7 +986,13 @@ function imageDimensions(file) {
         // A type the config does not declare at all. A declared one whose
         // schema has no properties (a `title` block renders page metadata and
         // has no fields) is not that: there is simply nothing to check.
-        if (!info.isVirtualBlockType && !blocksConfig[info.blockType]) unschemad.add(info.blockType);
+        if (
+          !info.isVirtualBlockType &&
+          !blocksConfig[info.blockType] &&
+          !INKA_BLOCK_TYPES.includes(info.blockType)
+        ) {
+          unschemad.add(info.blockType);
+        }
         checkBlockRefs(rel, bid, block, getResolvedSchema(info, pathMap));
       }
     }
@@ -1446,12 +1453,12 @@ function imageDimensions(file) {
     }
   }
 
+  // The frontend declares every block it renders (Inka provides only
+  // INKA_BLOCK_TYPES): a type it doesn't declare is one the editor can't edit
+  // and the site can't draw.
   stats.unschemadTypes = unschemad.size;
-  if (unschemad.size) {
-    warnings.push(
-      `  ${unschemad.size} block type(s) have no schema, so their fields and ` +
-        `references were NOT checked: ${[...unschemad].sort().join(', ')}`,
-    );
+  for (const type of [...unschemad].sort()) {
+    errors.push(`  block type "${type}" is in the content but the frontend doesn't declare it`);
   }
   return { errors, findings, warnings, stats, ...(elsewhere && { elsewhere: deferred }) };
 }
@@ -1474,9 +1481,9 @@ function imageDimensions(file) {
  * schemas. It runs over a directory or an in-memory array, like checkIntegrity,
  * so the same call serves a CI corpus and a live site's pages.
  *
- * A block type absent from the map is REPORTED, not skipped: an unknown type is
- * either a block the frontend cannot render or a map gone stale, and both are
- * worth hearing about.
+ * A block type absent from the map is an ERROR (bar Inka's own,
+ * INKA_BLOCK_TYPES): the frontend declares every block it renders, so an
+ * unknown type is one the editor can't edit and the site can't draw.
  */
 function checkBlockSchemas(source, fieldMap, { idFieldMap = null } = {}) {
   // `{ blocks: { type: { fields, defaultsPrefix } }, identityFields: [...] }`.
@@ -1515,13 +1522,15 @@ function checkBlockSchemas(source, fieldMap, { idFieldMap = null } = {}) {
         // not checked here. Its children still are, below.
       } else if (isEmptySlot(block)) {
         // A template's empty slot (inka#708): Inka's own block, no schema's.
+      } else if (!declared && INKA_BLOCK_TYPES.includes(type)) {
+        // Inka's own block: its schema is Inka's, not the frontend's to send.
       } else if (!declared) {
         if (!unknown.has(type)) {
           unknown.add(type);
           stats.unknownTypes += 1;
-          warnings.push(
-            `  ${rel}: block type "${type}" is in the content but not in the ` +
-              `field map — an unrenderable block, or a stale map`,
+          errors.push(
+            `  ${rel}: block type "${type}" is in the content but the frontend ` +
+              `doesn't declare it`,
           );
         }
       } else {
@@ -1817,6 +1826,23 @@ function checkFieldMappings(schemas) {
 }
 
 /**
+ * Every block a region may hold, in a block's config or the page's (`_page`),
+ * must be one the frontend declares or Inka's own: the check the editor
+ * refuses to load on (undeclaredBlockProblems), run in CI first.
+ */
+function checkUndeclaredBlocks(schemas) {
+  const declared = Object.fromEntries(
+    Object.entries(schemas || {}).filter(
+      ([type, def]) => def && typeof def === 'object' && !type.startsWith('_'),
+    ),
+  );
+  const errors = undeclaredBlockProblems(declared, schemas?._page?.blockSchema).map(
+    (p) => `  ${p.rule}: ${p.message}`,
+  );
+  return { errors, warnings: [], stats: { blocks: Object.keys(declared).length, undeclared: errors.length } };
+}
+
+/**
  * Volto's field validation, as the editor's save runs it: built from Volto's
  * source into one dependency-free file (scripts/build-volto-validation.mjs),
  * because this check runs where Volto is not installed. Null when it has not
@@ -2091,6 +2117,8 @@ function formatReport(title, result) {
     );
   } else if (title === 'mappings') {
     lines.push(`Mappings: ${result.stats.blocks} block types, ${result.stats.mappings} field mappings that don't make sense`);
+  } else if (title === 'undeclared') {
+    lines.push(`Declared: ${result.stats.blocks} block types, ${result.stats.undeclared} regions naming a block nobody declares`);
   } else if (title === 'validate') {
     lines.push(`Content export OK: ${result.stats.dataFiles} data files, ${result.stats.blobFiles} blob files`);
   } else {
@@ -2212,4 +2240,4 @@ function checkExport(contentDir, { schemas = null, allowMissingBlobs = false } =
   return { errors: [...shape.errors, ...content.errors], warnings: [...shape.warnings, ...content.warnings] };
 }
 
-module.exports = { validate, checkIntegrity, checkBlockSchemas, checkContent, checkExport, idFieldMapFor, checkEditorRules, checkChooserGroups, checkFieldsetCoverage, checkReservedFields, checkFieldMappings, fieldMapFromSchemas, loadSchemas, formatReport, UNDECLARED_EXEMPT };
+module.exports = { validate, checkIntegrity, checkBlockSchemas, checkContent, checkExport, idFieldMapFor, checkEditorRules, checkChooserGroups, checkFieldsetCoverage, checkReservedFields, checkFieldMappings, checkUndeclaredBlocks, fieldMapFromSchemas, loadSchemas, formatReport, UNDECLARED_EXEMPT };

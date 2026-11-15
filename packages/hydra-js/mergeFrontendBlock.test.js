@@ -13,6 +13,18 @@ describe('mergeFrontendBlock', () => {
     expect(mergeFrontendBlock('callout', undefined, entry)).toEqual({ entry, previousEnhancer: undefined });
   });
 
+  // Without a schema the editor can't tell what the block holds: its form is
+  // empty, its text can't be indexed, and the save that needs that index
+  // fails long after the editor opened. Refused when the config arrives.
+  test('a block the admin does not have needs a schema', () => {
+    expect(() => mergeFrontendBlock('card', undefined, { id: 'card', title: 'Card', group: 'common' })).toThrow(
+      'Block "card" from the frontend needs a `blockSchema`',
+    );
+    expect(() => mergeFrontendBlock('card', undefined, {
+      id: 'card', title: 'Card', group: 'common', blockSchema: () => ({ properties: {} }),
+    })).not.toThrow();
+  });
+
   test('a block the admin does not have needs a title and a group — never made up', () => {
     expect(() => mergeFrontendBlock('card', undefined, { id: 'card', group: 'common' })).toThrow(
       'Block "card" from the frontend needs a `title` and a `group`',
