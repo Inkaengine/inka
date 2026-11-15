@@ -1168,27 +1168,6 @@ export function hideParentOwnedFields() {
 }
 
 /**
- * Query result fields available for mapping in listing blocks.
- * These are the standard fields returned by @querystring-search.
- */
-export const QUERY_RESULT_FIELDS = {
-  [ADDRESS_SOURCE]: { title: 'URL', type: 'string' },
-  title: { title: 'Title', type: 'string' },
-  description: { title: 'Description', type: 'string' },
-  image: { title: 'Lead Image', type: 'image' },
-  created: { title: 'Created', type: 'date' },
-  effective: { title: 'Published', type: 'date' },
-  Creator: { title: 'Author', type: 'string' },
-  review_state: { title: 'State', type: 'string' },
-  // The keyword index behind tags/topics — a LIST, so `array`: the `string`
-  // conversion joins ['a','b'] into "a, b", and a renderer that draws one pill
-  // per category then draws none. Without this entry the widget offered no way
-  // to map categories at all, so a block whose recipe declared the mapping had
-  // one nobody could change, and every other block had none.
-  Subject: { title: 'Categories', type: 'array' },
-};
-
-/**
  * Compute smart default field mappings based on field types.
  *
  * If declaredMappings is provided (from block's top-level fieldMappings config),
@@ -1199,7 +1178,7 @@ export const QUERY_RESULT_FIELDS = {
  * - image → first image field (object_browser with mode='image')
  * - @id → first link field (object_browser with mode='link')
  *
- * @param {Object} sourceFields - Source field definitions (e.g., QUERY_RESULT_FIELDS)
+ * @param {Object} sourceFields - Source field definitions (a mapping widget's `sourceFields`)
  * @param {Object} targetSchema - Target block schema with properties
  * @param {Object} declaredMappings - Optional declared mappings from block's fieldMappings config
  * @returns {Object} - Field mapping { sourceField: targetField | { field, type }, ... }

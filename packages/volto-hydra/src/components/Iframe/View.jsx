@@ -25,6 +25,7 @@ import { getIframeUrlCookieName } from '../../utils/cookieNames';
 import rememberedFrontendUrl from '../../utils/getRememberedFrontendUrl';
 import { PAGE_BLOCK_UID } from '@volto-hydra/hydra-js';
 import { isObjectListRegion } from '@volto-hydra/helpers/regionWidgets.js';
+import { INKA_BLOCK_TYPES } from '@volto-hydra/helpers/inkaBlocks.js';
 import { mergeFrontendBlock } from '@volto-hydra/hydra-js/mergeFrontendBlock.js';
 import { registerAgentApi } from './agentApi';
 import { lockedBy } from '../AgentSite/lockedBy';
@@ -189,7 +190,7 @@ function splitMultiNodeSlateBlocks(formData, blockPathMap, blocksConfig, uuidGen
   for (const [blockId, pathInfo] of Object.entries(blockPathMap)) {
     if (blockId.startsWith('_')) continue;
     const blockType = pathInfo.blockType;
-    if (!blockType || blockType === 'title' || blockType === 'description') continue;
+    if (!blockType) continue;
 
     const block = getBlockById(result, blockPathMap, blockId);
     if (!block) continue;
@@ -405,27 +406,6 @@ const templateNote = (block) => (block?.templateId
 const NoPreview = () => null;
 
 /**
- * Block types that keep their admin Edit component in the sidebar even though a
- * schema is declared for them.
- *
- * `slate`: hydra's own schema carries the `value` field block-sync and the
- * shadowed text editor depend on, which no frontend can know to send.
- *
- * `title` / `description` / `leadimage`: windows onto the PAGE's fields, not
- * blocks with data of their own — the page metadata form already edits those.
- * Their schema is still what gives the canvas its placeholder. Routing them to
- * the schema form costs the page field itself: the leadimage's own schema
- * describes only `align`, so `/preview_image` — the thing it renders — stopped
- * being reachable and clicking the image raised no toolbar.
- */
-const SCHEMA_KEEPS_ADMIN_FORM = new Set([
-  'slate',
-  'title',
-  'description',
-  'leadimage',
-]);
-
-/**
  * Validate frontend configuration passed to initBridge.
  * Collects all validation errors and throws a single error with all issues.
  *
@@ -471,10 +451,9 @@ const extractBlockFieldTypes = (intl, contentTypeSchema = null) => {
     return blockFieldTypes;
   }
 
-  // Hardcode known block types that don't have schemas
-  // Slate blocks always have a 'value' field that is a slate field
+  // Inka's text block: its schema is a factory (`schema`, not `blockSchema`),
+  // and its `value` is the slate field.
   blockFieldTypes.slate = { value: 'array:slate' };
-  blockFieldTypes.detachedSlate = { value: 'array:slate' };
 
   // Extract page-level field types from content type schema
   // These are accessed via /fieldName syntax (e.g., /title, /description)
@@ -499,13 +478,6 @@ const extractBlockFieldTypes = (intl, contentTypeSchema = null) => {
       const schema = typeof blockConfig.blockSchema === 'function'
         ? blockConfig.blockSchema({ ...config, formData: {}, intl })
         : blockConfig.blockSchema;
-
-      // Debug: Log hero block schema processing
-      if (blockType === 'hero') {
-        logExtract('Processing hero block, blockConfig.blockSchema:', blockConfig.blockSchema);
-        logExtract('Hero schema after resolution:', schema);
-        logExtract('Hero schema.properties:', schema?.properties);
-      }
 
       if (!schema?.properties) {
         return;
@@ -558,10 +530,6 @@ const extractBlockFieldTypes = (intl, contentTypeSchema = null) => {
       };
       registerFieldTypes(blockType, schema.properties);
 
-      // Debug: Log what was added for hero
-      if (blockType === 'hero') {
-        logExtract('Hero blockFieldTypes after processing:', blockFieldTypes['hero']);
-      }
     } catch (error) {
       console.warn(`[VIEW] Error extracting field types for block type "${blockType}":`, error);
       // Continue with other block types
@@ -570,7 +538,6 @@ const extractBlockFieldTypes = (intl, contentTypeSchema = null) => {
 
   // Debug: Final state check
   logExtract('Final blockFieldTypes keys:', Object.keys(blockFieldTypes));
-  logExtract('Final blockFieldTypes.hero:', blockFieldTypes['hero']);
 
   return blockFieldTypes;
 };
@@ -4174,21 +4141,19 @@ const Iframe = (props) => {
               // `disableCustomSidebarEditForm: false` — for a block whose admin
               // Edit does something a JSON schema cannot express.
               //
-              // `slate` is exempt: hydra's own slate schema carries the `value`
-              // field that block-sync and the shadowed text editor depend on,
-              // which no frontend can know to send (see index.js).
+              // Inka's own blocks are exempt: hydra's slate schema carries the
+              // `value` field that block-sync and the shadowed text editor depend
+              // on, which no frontend can know to send (see index.js).
               //
-              // `title` and `description` are exempt for a different reason:
-              // they are not blocks with data, they are windows onto the PAGE's
-              // own fields, and the page metadata form already edits those. A
-              // schema-driven block form for them renders a second, always-empty
-              // `#field-title` beside the metadata form's — a duplicate DOM id,
-              // and an input whose writes land in block data nothing reads.
-              // Their schema still stands: it is where the canvas placeholder
-              // ("Type the title…") comes from.
+              // A block that is a window onto the PAGE's own fields (a title, a
+              // description, a lead image) sends `false`: the page metadata form
+              // already edits those, and a schema form beside it renders a
+              // second, always-empty `#field-title` (a duplicate DOM id, writes
+              // landing in block data nothing reads). Its schema still stands:
+              // it is where the canvas placeholder comes from.
               if (
                 blockConfig.blockSchema &&
-                !SCHEMA_KEEPS_ADMIN_FORM.has(blockType) &&
+                !INKA_BLOCK_TYPES.includes(blockType) &&
                 blockConfig.disableCustomSidebarEditForm === undefined
               ) {
                 blockConfig.disableCustomSidebarEditForm = true;
@@ -4204,7 +4169,7 @@ const Iframe = (props) => {
             // the mock parent applies the same rule): a key the frontend sends
             // replaces the admin's, a schema included; keys it doesn't send keep
             // the admin's; an enhancer chains. An admin enhancer that is a
-            // function (e.g. listing's fieldMapping/b_size logic) comes back to be
+            // function (an add-on's, on Inka's text block) comes back to be
             // chained with the frontend's recipe in step 1b.
             processBlockIcons(blocksConfig);
             const savedEnhancers = {};
@@ -4244,8 +4209,8 @@ const Iframe = (props) => {
 
             // 1b. Create schemaEnhancers from frontend recipes
             // When the frontend sends a recipe (e.g., { inheritSchemaFrom: {...} }),
-            // chain it with any existing function enhancer from admin plugins (e.g., listing's
-            // fieldMapping/b_size removal) rather than replacing it.
+            // chain it with any existing function enhancer from admin plugins
+            // rather than replacing it.
             const recipeKeys = ['inheritSchemaFrom', 'fieldRules'];
             for (const blockType of Object.keys(blocksConfig)) {
               const recipe = config.blocks.blocksConfig[blockType].schemaEnhancer;

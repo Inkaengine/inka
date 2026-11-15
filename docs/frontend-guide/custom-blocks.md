@@ -118,8 +118,8 @@ blocks: {
     mostUsed: true,
     blockSchema: { properties: { /* fields */ } },
   },
-  listing: {                         // override a built-in block
-    blockSchema: { /* YOUR fields — see "Overriding a built-in block" */ },
+  slate: {                           // add rules to Inka's text block
+    schemaEnhancer: { /* see "Inka's text block" */ },
   },
 }
 ```
@@ -127,24 +127,24 @@ blocks: {
 Per-block options (most are passed through to Volto's block config):
 
 - **\`id\`** — block type identifier (matches the key).
-- **\`title\`** — display name in the BlockChooser. **Required for a new block type** — nothing makes one up from the key; a block without one fails to register with an error naming it.
+- **\`title\`** — display name in the BlockChooser. **Required for every block you declare** — nothing makes one up from the key; a block without one stops the editor loading, with an error naming it.
 - **\`icon\`** — icon shown in the BlockChooser (data URL or SVG component).
 - **\`description\`** — what the block is for, kept short: the sidebar shows it at the top of the block's settings, and the BlockChooser as the block button's tooltip. It may link to the block's guidance with a markdown link, `[text](url)` (see [Links in advice](#links-in-advice)).
 - **\`guidance\`** — how to use the block, for an AI agent: when it suits, and how to fill it in. See [Describing a block to AI agents](#describing-a-block-to-ai-agents).
 - **\`examples\`** — the block filled in, as stored blocks, for an AI agent. See [Describing a block to AI agents](#describing-a-block-to-ai-agents).
-- **\`group\`** — chooser group (e.g. `'common'`). **Required for a new block type**, like `title`.
+- **\`group\`** — chooser group (e.g. `'common'`). **Required**, like `title`.
 - **\`restricted\`** — `true` hides the block from the chooser; can also be a function for conditional restrictions.
 - **\`mostUsed\`** — pin to the top of the chooser.
-- **\`disableCustomSidebarEditForm\`** — use only the schema form in the sidebar (no custom edit component). **Defaults to \`true\` for any block you give a \`blockSchema\`** — see [Overriding a built-in block](#overriding-a-built-in-block). Set `false` to keep the admin's own edit component for a block whose sidebar does something a JSON schema cannot express.
-- **\`blockSchema\`** — JSON-schema-style definition of the block's fields. See [Schema Enhancers](#schema-enhancers) below and the [Block reference](../examples/index.md).
+- **\`disableCustomSidebarEditForm\`** — use only the schema form in the sidebar (no custom edit component). **Defaults to \`true\`.** Set `false` for a block whose fields the page form already edits (see [Title and description blocks](#title-and-description-blocks)), or one with an edit component of its own in the editor, for a sidebar a JSON schema cannot express.
+- **\`blockSchema\`** — JSON-schema-style definition of the block's fields. **Required**: the editor reads what a block holds from it (its form, the text a search finds), and a block without one stops the editor loading. A block with no fields of its own sends `{ properties: {} }`. See [Schema Enhancers](#schema-enhancers) below and the [Block reference](../examples/index.md).
 - **\`fieldMappings\`** — block-to-block conversion rules. See [Block conversion and fieldMappings](#block-conversion-and-fieldmappings) below.
 - **\`schemaEnhancer\`** — recipe-based schema modifier; supports `fieldRules`, `inheritSchemaFrom`, etc. See [Schema Enhancers](#schema-enhancers).
 
-`page` and `blocks` interact via name lookup: a region's `allowedBlocks: ['slate', 'slider']` references keys of the `blocks` registry. You can use one without the other — `page` alone places only the two built-in blocks; `blocks` alone registers custom types and gets a default `blocks_layout` region accepting everything.
+`page` and `blocks` interact via name lookup: a region's `allowedBlocks: ['slate', 'slider']` references keys of the `blocks` registry. You can use one without the other — `page` alone places only Inka's text block (`slate`); `blocks` alone registers custom types and gets a default `blocks_layout` region accepting everything.
 
 ### Title and description blocks
 
-A page's title and description are its own fields, not block data. A frontend that draws them as blocks on the canvas declares a block for each whose schema names that page field; its placeholder is the hint an author sees on an empty one:
+A page's title and description are its own fields, not block data. A frontend that draws them as blocks on the canvas declares a block for each whose schema names that page field; its placeholder is the hint an author sees on an empty one. Each sends `disableCustomSidebarEditForm: false`: the page form already edits the field, and a block form beside it would show a second, always-empty copy of it. A lead image block is the same:
 
 ### Js
 
@@ -152,6 +152,7 @@ A page's title and description are its own fields, not block data. A frontend th
 blocks: {
   title: {
     id: 'title', title: 'Title', group: 'text', restricted: true,
+    disableCustomSidebarEditForm: false,
     blockSchema: {
       fieldsets: [{ id: 'default', title: 'Default', fields: ['title'] }],
       properties: { title: { title: 'Title', type: 'string', placeholder: 'Type the title…' } },
@@ -160,6 +161,7 @@ blocks: {
   },
   description: {
     id: 'description', title: 'Description', group: 'text', restricted: true,
+    disableCustomSidebarEditForm: false,
     blockSchema: {
       fieldsets: [{ id: 'default', title: 'Default', fields: ['description'] }],
       properties: {
@@ -171,22 +173,11 @@ blocks: {
 }
 ```
 
-### Overriding a built-in block
+### Inka's text block
 
-The built-in blocks are `slate` and `listing`. Your frontend is the thing that renders, so it decides what an author can set. Give one a `blockSchema` and **your schema is the whole schema**: the sidebar shows your fields and nothing else — a listing's, for one, is in [Listings](./listings.md).
+Inka provides one block itself, `slate`: the rich text every region's text is written in. Every other block your site uses, a listing included, is yours to declare; the editor knows no block you don't send, and the content check refuses a page holding one.
 
-This is deliberate: before, the admin's fields were merged in and its edit component kept rendering the sidebar, so an author was offered settings the frontend could not honour — they ticked a box and the page did not change.
-
-### Adding to a built-in block
-
-An entry for a block the admin already has applies key by key:
-
-- **`blockSchema` / `schema`** — replaces the admin's schema, as above; your fields are not merged into its.
-- **`schemaEnhancer`** — **adds**: with no `blockSchema`, it runs after the admin's own enhancer, so you can add `fieldRules` to a built-in block without replacing it. **With** a `blockSchema` the admin's enhancer does not run at all — it changes the admin's schema (adds its fields, seeds its regions), and yours is the whole schema; only your own enhancer applies.
-- **Any other key** (`title`, `group`, `fieldMappings`, `allowedBlocks`…) — replaces that key. Send every `fieldMappings` source type you want, including the admin's own conversions.
-- **A key you don't send** — the admin's value stands: a built-in block keeps its name, group and schema.
-
-Don't send an empty `blockSchema` just to register a built-in block: it replaces the admin's. An entry carrying only rules adds them:
+`slate`'s schema is Inka's: it carries the `value` field that block-sync and inline editing depend on, which a frontend cannot know to send. So you don't declare it. An entry for it carries rules, which add to it:
 
 ### Js
 
@@ -202,14 +193,7 @@ blocks: {
 }
 ```
 
-Two consequences worth knowing:
-
-- **Variations follow the schema.** Variations are a separate registry the admin fills in. Declare a `blockSchema` and the admin's variations for that block are dropped too; send your own `variations` to keep a picker.
-- **Labels are yours.** The admin's built-in labels come from its translation catalogue. A schema sent over the bridge carries plain strings, so an overriding frontend supplies its own — in whatever language it wants them.
-
-`slate` is the one exception: the admin's slate schema carries the `value` field that block-sync and inline editing depend on, which a frontend cannot know to send, so declaring a slate schema adds to it rather than replacing it.
-
-To keep the admin's edit component for one block — a picker or upload UI a schema cannot describe — send `disableCustomSidebarEditForm: false` for that block.
+Every other block's entry is the block's whole definition: its schema, its labels (plain strings, in whatever language you want them) and its `variations`, if it has a picker of renderings.
 
 ### Other top-level options
 
