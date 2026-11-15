@@ -29,6 +29,7 @@ const { validateTemplatePlaceholders } = require('@volto-hydra/helpers/formDataV
 const { buildBlockPathMap, buildIdFieldMap, getResolvedSchema } = require('@volto-hydra/helpers/buildBlockPathMap.js');
 const { fieldMappingProblems, reservedFieldProblems } = require('@volto-hydra/helpers/conversionValidation.js');
 const { INKA_BLOCK_TYPES, undeclaredBlockProblems } = require('@volto-hydra/helpers/inkaBlocks.js');
+const { collectFieldRules, fieldsRulesMayAdd } = require('@volto-hydra/helpers/fieldRules.js');
 
 // Where an export keeps the site root: plone.exportimport's own name for it.
 const SITE_ROOT = 'plone_site_root';
@@ -989,7 +990,9 @@ function imageDimensions(file) {
         if (
           !info.isVirtualBlockType &&
           !blocksConfig[info.blockType] &&
-          !INKA_BLOCK_TYPES.includes(info.blockType)
+          !INKA_BLOCK_TYPES.includes(info.blockType) &&
+          // A template's empty slot (inka#708): Inka's own placeholder.
+          !isEmptySlot(block)
         ) {
           unschemad.add(info.blockType);
         }
@@ -2185,7 +2188,11 @@ function fieldMapFromSchemas(schemas) {
       blocks[type] = { builtIn: true };
       continue;
     }
-    const entry = { fields: Object.keys(def.blockSchema.properties ?? {}) };
+    // Its schema's fields, and those its rules add (a field may be declared
+    // by a rule alone).
+    const ruled = fieldsRulesMayAdd(collectFieldRules(def.schemaEnhancer));
+    const own = Object.keys(def.blockSchema.properties ?? {});
+    const entry = { fields: [...own, ...ruled.filter((f) => !own.includes(f))] };
     const defaultsField = def?.schemaEnhancer?.inheritSchemaFrom?.defaultsField;
     if (defaultsField) entry.defaultsPrefix = defaultsField;
     blocks[type] = entry;

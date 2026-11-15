@@ -941,6 +941,28 @@ function evaluateOperators(surface, operators) {
 }
 
 /**
+ * The fields a fieldRules map can ADD to a block's schema: a rule whose `set`
+ * (alone or as a switch entry) or `else` is a field definition, or a plain
+ * definition. A block may declare a field this way alone (its schema's
+ * properties naming none of it), and the editor then shows it; a rule that
+ * only hides (`false`) or only advises adds nothing.
+ */
+export function fieldsRulesMayAdd(fieldRules) {
+  const isDefinition = (v) => Boolean(v) && typeof v === 'object' && !Array.isArray(v);
+  const adds = (rule) => {
+    if (Array.isArray(rule)) return rule.some((r) => r !== false && adds(r));
+    if (!isDefinition(rule)) return false;
+    if ('when' in rule || 'set' in rule || 'error' in rule || 'warning' in rule) {
+      return isDefinition(rule.set) || isDefinition(rule.else);
+    }
+    return true;
+  };
+  return Object.entries(fieldRules ?? {})
+    .filter(([, rule]) => adds(rule))
+    .map(([field]) => field);
+}
+
+/**
  * Every fieldRules map in an enhancer chain, merged in declaration order.
  *
  * A composed enhancer's own `config` is the parts' configs merged, so a chain
