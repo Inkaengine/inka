@@ -25,7 +25,7 @@ import { getIframeUrlCookieName } from '../../utils/cookieNames';
 import rememberedFrontendUrl from '../../utils/getRememberedFrontendUrl';
 import { PAGE_BLOCK_UID } from '@volto-hydra/hydra-js';
 import { isObjectListRegion } from '@volto-hydra/helpers/regionWidgets.js';
-import { INKA_BLOCK_TYPES } from '@volto-hydra/helpers/inkaBlocks.js';
+import { INKA_BLOCK_TYPES, undeclaredBlockProblems } from '@volto-hydra/helpers/inkaBlocks.js';
 import { mergeFrontendBlock } from '@volto-hydra/hydra-js/mergeFrontendBlock.js';
 import { registerAgentApi } from './agentApi';
 import { lockedBy } from '../AgentSite/lockedBy';
@@ -410,7 +410,7 @@ const NoPreview = () => null;
  * Collects all validation errors and throws a single error with all issues.
  *
  * @param {Object} options - Options from FRONTEND_INIT message
- * @param {string[]} options.allowedBlocks - Page-level allowed block types
+ * @param {Object} options.pageSchema - The page's regions, as `{ properties }`
  * @param {Object} options.voltoConfig - Frontend's custom config
  * @param {Object} mergedBlocksConfig - Full merged blocks configuration
  * @throws {Error} If any validation errors are found
@@ -422,9 +422,13 @@ const validateFrontendConfig = (options, mergedBlocksConfig) => {
   // a field that doesn't exist, onto an id, or with a conversion the field
   // can't hold is refused here, when the config arrives, not found later as
   // missing links on a published page or a save the CMS crashes on.
+  //
+  // And every block a region may hold must be one the frontend declares (or
+  // Inka's own): a name nobody declares is a block nothing can offer or draw.
   for (const problem of [
     ...reservedFieldProblems(mergedBlocksConfig),
     ...fieldMappingProblems(mergedBlocksConfig),
+    ...undeclaredBlockProblems(mergedBlocksConfig, options.pageSchema),
   ]) {
     errors.push(`${problem.rule}: ${problem.message}`);
   }
@@ -4371,8 +4375,12 @@ const Iframe = (props) => {
               fieldDef.allowedBlocks.forEach(blockType => allAllowedBlocks.add(blockType));
             }
           }
+          // Every config check runs on every frontend, whatever its page allows.
+          validateFrontendConfig(
+            { pageSchema: { properties: pageBlocksFieldsDef } },
+            config.blocks.blocksConfig,
+          );
           if (allAllowedBlocks.size > 0) {
-            validateFrontendConfig({ allowedBlocks: [...allAllowedBlocks] }, config.blocks.blocksConfig);
             Object.keys(config.blocks.blocksConfig).forEach((blockType) => {
               const blockConfig = config.blocks.blocksConfig[blockType];
               if (blockConfig && !allAllowedBlocks.has(blockType)) {

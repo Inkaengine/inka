@@ -175,7 +175,7 @@ blocks: {
 
 ### Inka's text block
 
-Inka provides one block itself, `slate`: the rich text every region's text is written in. Every other block your site uses, a listing included, is yours to declare; the editor knows no block you don't send, and the content check refuses a page holding one.
+Inka provides one block itself, `slate`: the rich text every region's text is written in. Every other block your site uses, a listing included, is yours to declare. The editor knows no block you don't send: a region whose `allowedBlocks` names one stops the editor loading, with an error saying where, and the content check reports both that and a page holding one.
 
 `slate`'s schema is Inka's: it carries the `value` field that block-sync and inline editing depend on, which a frontend cannot know to send. So you don't declare it. An entry for it carries rules, which add to it:
 
