@@ -1109,7 +1109,8 @@ A listing's stored `fieldMapping` is different: it is expanded where there is no
 
 When a parent block has `mappingField` set in its `inheritSchemaFrom` recipe, the admin sidebar shows a widget that lets editors configure field mappings visually:
 
-- Shows the source fields on the left: the listing schema's `sourceFields` (each with a `type`: `string`, `image`, `date`, `array` or `boolean`) and the columns of the vocabulary it names, which map as text.
+- Shows the source fields on the left: the listing schema's `sourceFields` (each with a `type`: `string`, `image`, `date`, `array` or `boolean`) and the columns of the vocabulary it names.
+- A vocabulary column (a site's own catalog column, as `plone.app.vocabularies.MetadataFields` lists them) has no type of its own: the catalog fills it from the object attribute of the same name. So it holds what the content types' field of that exact name holds, as each type's `@types/<type>` schema says: the edited page's own type first, else the site's other types (an event's `start` is a field of events only). A list field gives a list, a date or datetime a date, a yes/no a boolean, any other text field text. A column no type has a field for (one an indexer fills) is text. A column whose types hold it differently, or whose field Inka has no conversion for (rich text, a number, an image), isn't offered.
 - For each source, offers only the selected child type's fields it [can fill](#which-fields-map-onto-which).
 - Saves each entry as `{ field, type }`, with the conversion from the rule, as `fieldMapping` (singular) on the block data — also when the item type changes and the mapping is reset to that type's `@default`.
 

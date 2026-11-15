@@ -18,6 +18,10 @@
  *                                              listing it is merged. Never on a deploy.
  *   --exempt-slot <slotId>                    — (repeatable) don't check the PLACEMENT of
  *                                              blocks in that template slot
+ *   --content-types <types.json>             — the site's content types, { <type>: the schema
+ *                                              its @types/<type> serves }: what a site's own
+ *                                              catalog column holds, for a listing mapping one
+ *                                              (schema, all, field-mappings)
  *   --json <report.json>                     — also write the report as data:
  *                                              { <check>: { errors, warnings, stats } }
  *
@@ -40,7 +44,7 @@ const { validate, checkIntegrity, checkBlockSchemas, checkEditorRules, checkChoo
 function usage() {
   console.error(
     'Usage: plone-content <validate|check|schema|all|search-text|field-mappings> [<content-dir>] ' +
-      '[--schemas <schemas.json>] [--exempt-slot <slot>]... [--json <report.json>] [--allow-missing-blobs]',
+      '[--schemas <schemas.json>] [--content-types <types.json>] [--exempt-slot <slot>]... [--json <report.json>] [--allow-missing-blobs]',
   );
   process.exit(2);
 }
@@ -60,6 +64,8 @@ const fieldsPath = takeFlag('--fields');
 // The report as data — { <check>: { errors, warnings, stats } } for each
 // check run — for a program that acts on it rather than a person reading it.
 const jsonPath = takeFlag('--json');
+const contentTypesPath = takeFlag('--content-types');
+const contentTypes = contentTypesPath ? JSON.parse(fs.readFileSync(path.resolve(contentTypesPath), 'utf8')) : undefined;
 // Template slots whose blocks are placed deliberately where the editor would
 // not put them (a documentation page's examples). Repeatable.
 const allowMissingBlobs = argv.includes('--allow-missing-blobs');
@@ -92,7 +98,7 @@ if (cmd === 'field-mappings') {
     if (!entry.isDirectory() || !fs.existsSync(file)) continue;
     const page = JSON.parse(fs.readFileSync(file, 'utf8'));
     if (!page.blocks) continue;
-    const written = withFieldMappings(page, schemas, intl);
+    const written = withFieldMappings(page, schemas, intl, contentTypes);
     if (written === page) continue;
     fs.writeFileSync(file, `${JSON.stringify(written, null, 2)}\n`);
     pages += 1;
@@ -190,7 +196,7 @@ if (cmd === 'schema' || (cmd === 'all' && (schemas || fieldsPath))) {
   // field map: placement, maxLength, required fields and region text styles.
   if (schemas) {
     console.log('');
-    const rules = await checkEditorRules(contentDir, schemas, { exemptSlots });
+    const rules = await checkEditorRules(contentDir, schemas, { exemptSlots, contentTypes });
     report.rules = rules;
     console.log(formatReport('rules', rules));
     if (rules.errors.length) hasErrors = true;

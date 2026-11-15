@@ -74,15 +74,46 @@ describe('fieldMappingErrors', () => {
     expect(errors.fieldMapping.join(' ')).toMatch(message);
   });
 
-  test("a vocabulary column maps as text", () => {
+  describe("a site's own catalog column", () => {
     const schema = {
       properties: {
         ...listingSchema.properties,
         fieldMapping: { ...listingSchema.properties.fieldMapping, vocabulary: { '@id': 'plone.app.vocabularies.MetadataFields' } },
       },
     };
-    const blockData = { '@type': 'listing', variation: 'card', fieldMapping: { Creator: { field: 'title', type: 'string' } } };
-    expect(fieldMappingErrors({ schema, blockData, blocksConfig })).toEqual({});
+    const site = {
+      pageType: 'Document',
+      contentTypes: {
+        Document: { properties: { Topic: { type: 'array', items: { type: 'string' } } } },
+        Link: { properties: { Topic: { type: 'string' } } },
+      },
+    };
+    const errors = (fieldMapping, s = site) =>
+      fieldMappingErrors({ schema, blockData: { '@type': 'listing', variation: 'card', fieldMapping }, blocksConfig, site: s });
+
+    test('holds what its field on the content types holds: a list maps onto a list', () => {
+      expect(errors({ Topic: { field: 'tags', type: 'array' } })).toEqual({});
+    });
+
+    test('and not onto what a list cannot become that way', () => {
+      expect(errors({ Topic: { field: 'url', type: 'link' } }).fieldMapping.join(' ')).toMatch(/a list can't become/);
+    });
+
+    test('with no field on any type it is text', () => {
+      expect(errors({ Creator: { field: 'title', type: 'string' } })).toEqual({});
+      expect(errors({ Creator: { field: 'tags', type: 'array' } }).fieldMapping.join(' ')).toMatch(/a text can't become/);
+    });
+
+    test('types that hold it differently are refused', () => {
+      const elsewhere = { ...site, pageType: 'Folder' };
+      expect(errors({ Topic: { field: 'tags', type: 'array' } }, elsewhere).fieldMapping.join(' ')).toMatch(/Document.*Link/);
+    });
+
+    test('without the content types the check cannot tell, and throws', () => {
+      expect(() =>
+        fieldMappingErrors({ schema, blockData: { '@type': 'listing', variation: 'card', fieldMapping: { Topic: { field: 'tags', type: 'array' } } }, blocksConfig }),
+      ).toThrow(/content types/);
+    });
   });
 
   // In a container that picks the item type, the parent controls `variation`

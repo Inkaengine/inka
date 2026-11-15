@@ -1832,7 +1832,7 @@ function formatVoltoMessage(message, values = {}) {
   return message.defaultMessage.replace(/\{(\w+)\}/g, (whole, key) => (key in values ? String(values[key]) : whole));
 }
 
-async function checkEditorRules(source, schemas, { exemptSlots = [], volto = loadVoltoValidation() } = {}) {
+async function checkEditorRules(source, schemas, { exemptSlots = [], volto = loadVoltoValidation(), contentTypes } = {}) {
   const exempt = new Set(exemptSlots);
   const { buildBlockPathMap } = await import('@volto-hydra/helpers/buildBlockPathMap.js');
   const { normalizeSlateFields } = await import('@volto-hydra/helpers/slateStyles.js');
@@ -2021,6 +2021,9 @@ async function checkEditorRules(source, schemas, { exemptSlots = [], volto = loa
           validateFieldsPerFieldset: volto.validateFieldsPerFieldset,
           formatMessage: formatVoltoMessage,
           blocksConfig: schemas,
+          // What a site's own catalog column holds (a listing's mapping):
+          // its field on the content types, the page's own type first.
+          site: contentTypes && { contentTypes, pageType: stored['@type'] },
         });
         for (const [field, messages] of Object.entries(refused)) {
           for (const message of messages) {

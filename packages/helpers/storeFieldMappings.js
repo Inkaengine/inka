@@ -16,7 +16,7 @@ import { RETIRED_ADDRESS_SOURCE, ADDRESS_SOURCE } from './catalogAddress.js';
 import { getBlockById, updateBlockById } from './blockPath.js';
 import { buildBlockPathMap } from './buildBlockPathMap.js';
 import { computeSmartDefaults } from './blockSync.js';
-import { conversionFor, sourceKind } from './mappingConversions.js';
+import { columnKind, conversionFor, sourceKind } from './mappingConversions.js';
 
 function propertiesOf(blocksConfig, type, intl) {
   const schema = blocksConfig?.[type]?.blockSchema;
@@ -25,7 +25,7 @@ function propertiesOf(blocksConfig, type, intl) {
 }
 
 /** One block's mappings, as the editor would store them (the block unchanged when they are). */
-function blockWithMappings(block, id, blocksConfig, intl) {
+function blockWithMappings(block, id, blocksConfig, intl, site) {
   const props = propertiesOf(blocksConfig, block['@type'], intl);
   let out = block;
   for (const [name, def] of Object.entries(props || {})) {
@@ -53,8 +53,11 @@ function blockWithMappings(block, id, blocksConfig, intl) {
         typed[source] = entry;
         continue;
       }
-      const kind = sources[source] ? sourceKind(source, sources[source]) : def.vocabulary ? 'text' : undefined;
-      if (!kind) throw new Error(`Block ${id}: "${key}" isn't a source its mapping offers (${Object.keys(sources).join(', ')}).`);
+      if (!sources[source] && !def.vocabulary) {
+        throw new Error(`Block ${id}: "${key}" isn't a source its mapping offers (${Object.keys(sources).join(', ')}).`);
+      }
+      const { kind, problem } = sources[source] ? { kind: sourceKind(source, sources[source]) } : columnKind(source, site);
+      if (!kind) throw new Error(`Block ${id}: ${problem}`);
       const type = conversionFor(kind, itemProps[field]);
       if (type === undefined) {
         throw new Error(`Block ${id}: "${key}" → "${field}" — a ${kind} can't become what ${itemType}'s "${field}" holds.`);
@@ -70,16 +73,18 @@ function blockWithMappings(block, id, blocksConfig, intl) {
  * @param {Object} page - a page (or any form data with blocks)
  * @param {Object} blocksConfig - the site's block definitions
  * @param {Object} intl - { formatMessage }
+ * @param {Object} [contentTypes] - type name → its `@types/<type>` schema:
+ *   what a site's own column holds (columnKind), for a mapping that maps one
  * @returns {Object} the page with every mapping as the editor stores it
  */
-export function withFieldMappings(page, blocksConfig, intl) {
+export function withFieldMappings(page, blocksConfig, intl, contentTypes) {
   const pathMap = buildBlockPathMap(page, blocksConfig, intl);
   let out = page;
   for (const id of Object.keys(pathMap)) {
     if (id === '_page') continue;
     const block = getBlockById(out, pathMap, id);
     if (!block?.['@type']) continue;
-    const next = blockWithMappings(block, id, blocksConfig, intl);
+    const next = blockWithMappings(block, id, blocksConfig, intl, contentTypes && { contentTypes, pageType: page['@type'] });
     if (next !== block) out = updateBlockById(out, pathMap, id, next);
   }
   return out;

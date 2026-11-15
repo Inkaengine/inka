@@ -311,7 +311,7 @@ The registry mapping is an *editing-time* input: it decides what the widget prop
 - **There is no fallback.** A listing with no stored `fieldMapping`, or an entry without a `type`, makes `expandListingBlocks` throw, naming the listing: the renderer has no schema to work one out from.
 - **It is checked.** A block whose schema has a mapping widget must have a mapping, and every entry must name a source the widget offers, a field the item type has, and a conversion that gives what that field holds. The editor refuses to save one that doesn't, and the content check reports it.
 
-Content that never passes through the editor — a conversion, an import, a fixture — gets what the editor would have stored by running `plone-content field-mappings <content-dir> --schemas <schemas>` over it: the item type's default where there is no mapping, a conversion for every entry without one, and the address under `getURL`. A listing with no item type has no default and is reported.
+Content that never passes through the editor — a conversion, an import, a fixture — gets what the editor would have stored by running `plone-content field-mappings <content-dir> --schemas <schemas>` over it: the item type's default where there is no mapping, a conversion for every entry without one, and the address under `getURL`. A listing with no item type has no default and is reported. A listing that maps a site's own catalog column needs the site's content types as well, `--content-types <types.json>` (`{ <type>: <its @types/<type> schema> }`), since that is where a column's kind comes from; `plone-content schema` takes the same option.
 
 ## Combining Listings with Container Syncing
 

@@ -25,6 +25,7 @@ import {
 import { useHydraSchemaContext } from '../../context/HydraSchemaContext';
 import { getBlockById } from '../../utils/blockPath';
 import { mergeVocabularySources } from '../../utils/fieldMappingSources';
+import { loadContentTypeSchemas } from '../../utils/contentTypeSchemas';
 import { conversionFor, sourceKind } from '@volto-hydra/helpers/mappingConversions.js';
 
 /**
@@ -86,10 +87,33 @@ const FieldMappingWidget = (props) => {
       cancelled = true;
     };
   }, [vocabularyName, token]);
-  const sourceFields = mergeVocabularySources(declaredSources, terms);
+  // What each column holds comes from its field on the site's content types
+  // (columnKind): until they are in, no column is offered rather than one
+  // offered as the wrong kind.
+  const [contentTypes, setContentTypes] = useState(null);
+  useEffect(() => {
+    if (!vocabularyName) return undefined;
+    let cancelled = false;
+    loadContentTypeSchemas()
+      .then((types) => {
+        if (!cancelled) setContentTypes(types);
+      })
+      .catch((error) => {
+        if (!cancelled) setVocabularyError(String(error.message || error));
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [vocabularyName]);
 
   // Get block data from HydraSchemaContext (InlineForm doesn't pass formData)
   const hydraCtx = useHydraSchemaContext();
+  const sourceFields = contentTypes
+    ? mergeVocabularySources(declaredSources, terms, {
+        contentTypes,
+        pageType: hydraCtx?.formData?.['@type'],
+      })
+    : declaredSources;
   const blockData = (() => {
     if (!hydraCtx || !block) return null;
     // Check liveBlockDataRef first for fresh form data
