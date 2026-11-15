@@ -872,14 +872,10 @@ export const sharedBlocksConfig = {
             required: [],
         },
     },
-    // Grid block: block sync recipe
-    // variation field is created by inheritSchemaFrom with computed choices
-    // allowedBlocks on config controls what children can be added
-    // blocksField: 'blocks_layout' tells inheritSchemaFrom to derive choices from it
-    // When variation is set, BlockChooser only shows that type
     // Listing block: block sync for item types (summary, default, teaser)
-    // filterConvertibleFrom: '@default' means only show types whose fieldMappings
-    // include @default as a source (i.e., can convert from catalog brain fields)
+    // filterConvertibleFrom: '@default' (on the type field) means only show
+    // types whose fieldMappings include @default as a source (i.e., can convert
+    // from catalog brain fields)
     listing: {
         id: 'listing',
         title: 'Listing',
@@ -915,14 +911,16 @@ export const sharedBlocksConfig = {
                 headlineTag: { title: 'Headline tag', widget: 'select', choices: [['h1','h1'],['h2','h2'],['h3','h3'],['h4','h4'],['h5','h5'],['h6','h6']] },
                 querystring: { title: 'Search criteria', widget: 'querystring' },
                 query: { title: 'Query', widget: 'querystring' },
-                // No static default: a listing's item type is chosen from what
-                // its CONTAINER allows (blocksField '..'), and the recipe below
-                // resolves `summary` against that — a context nav gets navItem.
+                // A listing's item type is chosen from what its CONTAINER
+                // allows (blocksField '..'); `summary` is the PREFERRED default,
+                // used only where the container allows it (blockSync resolves
+                // it) — a context nav gets navItem.
                 variation: {
                     title: 'Item Type',
                     widget: 'blockTypeSelect',
                     filterConvertibleFrom: '@default',
                     blocksField: '..',
+                    default: 'summary',
                 },
             },
         },
@@ -931,12 +929,6 @@ export const sharedBlocksConfig = {
                 typeField: 'variation',  // listing has no blocks field — declare on recipe
                 mappingField: 'fieldMapping',
                 defaultsField: 'itemDefaults',
-                // The item type comes from the enclosing container's allowed
-                // types; `summary` is the PREFERRED default, used only where
-                // the container allows it (blockSync resolves it).
-                blocksField: '..',
-                filterConvertibleFrom: '@default',
-                default: 'summary',
                 // Override the default "hide everything not in @default":
                 // teaser has an `overwrite` meta-toggle that should remain
                 // editable per-child so the user can override auto-populated
@@ -964,7 +956,7 @@ export const sharedBlocksConfig = {
                     widget: 'schemaFieldSelect',
                     fieldType: 'relation',
                 },
-                variation: { title: 'Item Type', widget: 'blockTypeSelect', filterConvertibleFrom: '@default', default: 'summary' },
+                variation: { title: 'Item Type', widget: 'blockTypeSelect', filterConvertibleFrom: '@default', blocksField: '..', default: 'summary' },
                 // The mapping's sources: each related item's catalog fields (relatedItemsFetcher). The item type's default
                 // is stored with the block when the type is picked, as a
                 // listing's is: the renderer converts by what is stored.
@@ -1024,7 +1016,7 @@ export const sharedBlocksConfig = {
                     fieldType: 'keyword',
                 },
                 searchUrl: { title: 'Search page URL', widget: 'url' },
-                variation: { title: 'Item Type', widget: 'blockTypeSelect', filterConvertibleFrom: '@default', default: 'default' },
+                variation: { title: 'Item Type', widget: 'blockTypeSelect', filterConvertibleFrom: '@default', blocksField: '..', default: 'default' },
                 // The mapping's sources: each shortcut's search link and value (searchShortcutsFetcher). The item type's default
                 // is stored with the block when the type is picked, as a
                 // listing's is: the renderer converts by what is stored.
@@ -1048,7 +1040,7 @@ export const sharedBlocksConfig = {
             properties: {
                 feedUrl: { title: 'Feed URL', widget: 'url' },
                 count: { title: 'Max items', type: 'number', default: 6 },
-                variation: { title: 'Item Type', widget: 'blockTypeSelect', filterConvertibleFrom: '@default', default: 'summary' },
+                variation: { title: 'Item Type', widget: 'blockTypeSelect', filterConvertibleFrom: '@default', blocksField: '..', default: 'summary' },
                 // The mapping's sources: an entry's link, title and description (rssFetcher). The item type's default
                 // is stored with the block when the type is picked, as a
                 // listing's is: the renderer converts by what is stored.

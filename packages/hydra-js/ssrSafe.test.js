@@ -12,7 +12,7 @@ describe('hydra.js SSR safety', () => {
   test('expandListingBlocks runs with no window global', async () => {
     expect(typeof window).toBe('undefined');
     await expect(
-      expandListingBlocks([], { fetchItems: {} }),
+      expandListingBlocks([], { fetchItems: {}, itemTypeField: 'variation' }),
     ).resolves.toBeDefined();
   });
 });
