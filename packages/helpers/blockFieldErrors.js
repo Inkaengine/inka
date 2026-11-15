@@ -81,9 +81,11 @@ export function withUnsetFieldsOmitted(blockData) {
  * @param {Function} args.validateFieldsPerFieldset - Volto's FormValidation.validateFieldsPerFieldset
  * @param {Function} args.formatMessage - intl.formatMessage
  * @param {Object} args.blocksConfig - the block registry (a mapping's item type)
+ * @param {Object} [args.site] - { contentTypes, pageType }: what a site's own
+ *   catalog column holds, for a mapping that maps one (fieldMappingErrors)
  * @returns {Object} fieldName → [messages]; empty when the block may be saved
  */
-export function blockFieldErrors({ schema, blockData, validateFieldsPerFieldset, formatMessage, blocksConfig }) {
+export function blockFieldErrors({ schema, blockData, validateFieldsPerFieldset, formatMessage, blocksConfig, site }) {
   if (!blocksConfig) throw new Error('blockFieldErrors needs the block registry (blocksConfig)');
   const errors = validateFieldsPerFieldset({
     schema,
@@ -103,7 +105,7 @@ export function blockFieldErrors({ schema, blockData, validateFieldsPerFieldset,
   }
   // A mapping widget's block always has a mapping, and a valid one: what is
   // stored is all its renderer converts by (fieldMappingErrors).
-  for (const [fieldName, messages] of Object.entries(fieldMappingErrors({ schema, blockData, blocksConfig }))) {
+  for (const [fieldName, messages] of Object.entries(fieldMappingErrors({ schema, blockData, blocksConfig, site }))) {
     errors[fieldName] = [...(errors[fieldName] || []), ...messages];
   }
   return errors;

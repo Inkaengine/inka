@@ -24,6 +24,13 @@ const KIND_OF_SOURCE_TYPE = {
 /** The source `type`s a mapping widget may declare. */
 export const SOURCE_TYPES = Object.keys(KIND_OF_SOURCE_TYPE);
 
+/** The source `type` that gives values of a kind: a column's, once columnKind knows it. */
+export function sourceTypeOfKind(kind) {
+  const type = SOURCE_TYPES.find((name) => KIND_OF_SOURCE_TYPE[name] === kind);
+  if (!type) throw new Error(`No source type gives a ${kind}.`);
+  return type;
+}
+
 /** The catalog fields a linked page or listing result gives, by kind. */
 export const CATALOG_SOURCE_KINDS = {
   [ADDRESS_SOURCE]: 'address',
@@ -54,6 +61,59 @@ export function sourceKind(source, sourceDef) {
     );
   }
   return kind;
+}
+
+/**
+ * The kind of value a content type's field gives, from its schema as Plone's
+ * `@types/<type>` serves it; null when Inka has no conversion for it (rich
+ * text, a number, an image, a list of anything but strings).
+ */
+export function kindOfContentField(def) {
+  if (def.widget === 'date' || def.widget === 'datetime') return 'date';
+  if (def.type === 'array') return def.items?.type === 'string' ? 'list' : null;
+  if (def.type === 'boolean') return 'boolean';
+  if (def.type === 'string' && def.widget !== 'richtext') return 'text';
+  return null;
+}
+
+/**
+ * The kind of value a site's own catalog column gives (one a mapping offers
+ * through a vocabulary, as `plone.app.vocabularies.MetadataFields` names them).
+ *
+ * A column has no type of its own: the catalog fills it from the object
+ * attribute of the same, exact name. So the field of that name says: on the
+ * edited page's type first; else on the site's other types, since a column can
+ * be filled by a few types only (an event's `start`). Types that hold it
+ * differently are refused rather than guessed between; a column no type has a
+ * field for is filled by an indexer, and is text.
+ *
+ * @param {string} column
+ * @param {Object} site
+ * @param {Object} site.contentTypes - type name → its `@types/<type>` schema
+ * @param {string} site.pageType - the edited page's type
+ * @returns {{ kind: string|null, problem?: string }}
+ */
+export function columnKind(column, site) {
+  if (!site?.contentTypes) {
+    throw new Error(`The kind of column "${column}" comes from the site's content types, and none were given.`);
+  }
+  const { contentTypes, pageType } = site;
+  const fieldIn = (type) => contentTypes[type]?.properties?.[column];
+  const typed = (type) => {
+    const kind = kindOfContentField(fieldIn(type));
+    return kind
+      ? { kind }
+      : { kind: null, problem: `"${column}" is a field of ${type} whose value Inka has no conversion for.` };
+  };
+  if (fieldIn(pageType)) return typed(pageType);
+  const holders = Object.keys(contentTypes).filter(fieldIn);
+  if (holders.length === 0) return { kind: 'text' };
+  const kinds = new Map(holders.map((type) => [type, kindOfContentField(fieldIn(type))]));
+  if (new Set(kinds.values()).size > 1) {
+    const each = [...kinds].map(([type, kind]) => `${type} a ${kind ?? 'value Inka has no conversion for'}`).join(', ');
+    return { kind: null, problem: `"${column}" holds different things on different types (${each}), so there is no telling what a result gives.` };
+  }
+  return typed(holders[0]);
 }
 
 /**

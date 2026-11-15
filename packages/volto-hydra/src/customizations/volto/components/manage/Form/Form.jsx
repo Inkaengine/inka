@@ -89,6 +89,7 @@ import SlotRenderer from '@plone/volto/components/theme/SlotRenderer/SlotRendere
 import Iframe from '../../../../../components/Iframe/View';
 import { ReadOnlyField } from '../../../../../components/Sidebar/ReadOnlyForm';
 import { validateBlocksAgainstSchemas } from '../../../../../utils/validateBlocks';
+import { loadContentTypeSchemas } from '../../../../../utils/contentTypeSchemas';
 import { reportBlockErrors } from '../../../../../utils/reportBlockErrors';
 import './styles.css';
 
@@ -698,6 +699,8 @@ class Form extends Component {
       blocksConfig: config.blocks.blocksConfig,
       intl: this.props.intl,
       formatMessage: this.props.intl.formatMessage,
+      // What a listing's mapped site columns hold (cached after the first save).
+      contentTypes: await loadContentTypeSchemas(),
     });
     const blocksErrors = {
       ...schemaValidation.blocksErrors,

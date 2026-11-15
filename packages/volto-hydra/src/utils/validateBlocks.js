@@ -33,6 +33,9 @@ const PAGE_BLOCK = '_page';
  * @param {Object} options.blocksConfig - config.blocks.blocksConfig
  * @param {Object} options.intl - react-intl object (for schema resolution)
  * @param {Function} options.formatMessage - intl.formatMessage
+ * @param {Object} [options.contentTypes] - type name → its `@types/<type>`
+ *   schema (loadContentTypeSchemas): what a site's own catalog column holds,
+ *   for a listing that maps one
  * @returns {{ blocksErrors: Object, fieldTitles: Object }}
  *   blocksErrors: blockId → { fieldName: [messages] };
  *   fieldTitles: blockId → { fieldName: title } for each field in error, so a
@@ -44,7 +47,7 @@ const PAGE_BLOCK = '_page';
  */
 export function validateBlocksAgainstSchemas(
   formData,
-  { blocksConfig, intl, formatMessage },
+  { blocksConfig, intl, formatMessage, contentTypes },
 ) {
   const blocksErrors = {};
   const fieldTitles = {};
@@ -95,6 +98,7 @@ export function validateBlocksAgainstSchemas(
       validateFieldsPerFieldset: FormValidation.validateFieldsPerFieldset,
       formatMessage,
       blocksConfig,
+      site: contentTypes && { contentTypes, pageType: formData['@type'] },
     });
     if (Object.keys(errors).length > 0) {
       blocksErrors[blockId] = errors;

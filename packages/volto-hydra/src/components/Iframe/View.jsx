@@ -30,6 +30,7 @@ import { mergeFrontendBlock } from '@volto-hydra/hydra-js/mergeFrontendBlock.js'
 import { registerAgentApi } from './agentApi';
 import { lockedBy } from '../AgentSite/lockedBy';
 import { validateBlocksAgainstSchemas } from '../../utils/validateBlocks';
+import { loadContentTypeSchemas } from '../../utils/contentTypeSchemas';
 import {
   isSlateFieldType,
   formDataContentEqual,
@@ -1916,6 +1917,7 @@ const Iframe = (props) => {
           // and left unlocked for the author to fix.
           const check = validateBlocksAgainstSchemas(updatedTemplate, {
             blocksConfig: config.blocks.blocksConfig, intl, formatMessage: intl.formatMessage,
+            contentTypes: await loadContentTypeSchemas(),
           });
           const reasons = Object.entries(check.blocksErrors).flatMap(([blockId, errors]) => {
             const type = getBlockById(updatedTemplate, check.blockPathMap, blockId)?.['@type'];

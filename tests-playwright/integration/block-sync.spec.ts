@@ -264,6 +264,40 @@ test.describe('Block Sync - Listing Block Item Type', () => {
     await expect(page.locator('#sidebar-properties .field-wrapper-fieldMapping .help.error')).toHaveCount(0);
   });
 
+  test("a site's own catalog column holds what its field on the content types holds", async ({ page }) => {
+    // A column has no type of its own; the catalog fills it from the field of
+    // the same name. exclude_from_nav is a yes/no on every type (its @types
+    // schema says boolean), so its column is a yes/no too: it is offered the
+    // teaser's yes/no fields and none of its text fields, which it was offered
+    // when every column counted as text. CreationDate has no field of
+    // that name on any type (an indexer fills it), so it stays text: the
+    // teaser's Title is offered for it.
+    const helper = new AdminUIHelper(page);
+    await helper.login();
+    await helper.navigateToEdit('/test-page');
+    await helper.clickBlockInIframe('block-9-listing');
+    await helper.waitForSidebarOpen();
+    await helper.openSidebarTab('Block');
+
+    const mappingTable = page.locator('#sidebar-properties .field-wrapper-fieldMapping .field-mapping-table');
+    const menu = page.locator('.react-select__menu');
+    const optionsOf = async (label: RegExp) => {
+      const row = mappingTable.locator('tr').filter({ has: page.locator('td:first-child', { hasText: label }) });
+      await row.locator('.react-select__control').scrollIntoViewIfNeeded();
+      await row.locator('.react-select__control').click();
+      await menu.waitFor({ state: 'visible' });
+      const options = await menu.locator('.react-select__option').allTextContents();
+      await mappingTable.locator('th', { hasText: 'Source' }).click();
+      await menu.waitFor({ state: 'hidden' });
+      return options;
+    };
+    await expect(mappingTable.locator('tbody tr td:first-child').filter({ hasText: /^Exclude from navigation$/ })).toHaveCount(1);
+    const yesNo = await optionsOf(/^Exclude from navigation$/);
+    expect(yesNo).toContain('Open in a new tab');
+    expect(yesNo).not.toContain('Title');
+    expect(await optionsOf(/^Creation date$/)).toContain('Title');
+  });
+
   test('fieldMapping shows smart defaults based on field types', async ({ page }) => {
     const helper = new AdminUIHelper(page);
 

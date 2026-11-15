@@ -717,6 +717,54 @@ describe('checkFieldMappings()', () => {
   });
 });
 
+// A listing mapping a site's own catalog column: the column holds what its
+// field on the content types holds, the page's own type first. Without that,
+// every column is text and a list column can't be mapped onto a list.
+describe("checkEditorRules() and a site's own catalog column", () => {
+  const schemas = {
+    ...SCHEMAS,
+    _page: { blockSchema: { properties: { items: { widget: 'blocks_layout', allowedBlocks: ['listing'] } } } },
+    listing: {
+      blockSchema: {
+        properties: {
+          variation: { title: 'Item type', widget: 'blockTypeSelect', filterConvertibleFrom: '@default' },
+          fieldMapping: {
+            title: 'Field mapping',
+            widget: 'field_mapping',
+            sourceFields: { getURL: { title: 'URL', type: 'string' } },
+            vocabulary: { '@id': 'plone.app.vocabularies.MetadataFields' },
+          },
+        },
+      },
+    },
+    teaser: { blockSchema: { properties: { tags: { title: 'Tags', type: 'array' } } } },
+  };
+  const listing = [
+    {
+      rel: 'content/x',
+      data: {
+        '@id': '/x',
+        '@type': 'Document',
+        blocks: { l: { '@type': 'listing', variation: 'teaser', fieldMapping: { Topic: { field: 'tags', type: 'array' } } } },
+        blocks_layout: { items: ['l'] },
+      },
+    },
+  ];
+  const contentTypes = { Document: { properties: { Topic: { type: 'array', items: { type: 'string' } } } } };
+
+  it('a list column maps onto a list', async () => {
+    const r = await checkEditorRules(listing, schemas, { contentTypes });
+    assert.deepEqual(r.errors, []);
+  });
+
+  it('a column the content types hold as text does not', async () => {
+    const r = await checkEditorRules(listing, schemas, {
+      contentTypes: { Document: { properties: { Topic: { type: 'string' } } } },
+    });
+    assert.match(r.errors.join('\n'), /fieldMapping: "Topic" → "tags" as array: a text can't become/);
+  });
+});
+
 /**
  * checkUndeclaredBlocks(): every block a region may hold is one the frontend
  * declares (or Inka's own text block) — the check the editor refuses to load

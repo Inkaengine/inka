@@ -89,6 +89,36 @@ describe('plone-content field-mappings', () => {
     assert.equal(read(dir, 'a').blocks.l.fieldMapping.getURL.type, 'link');
   });
 
+  // A site's own catalog column (offered through a vocabulary) holds what its
+  // field on the content types holds: a list stores as one.
+  describe("a site's own column", () => {
+    const withColumns = (dir) => {
+      const schemas = JSON.parse(fs.readFileSync(path.join(dir, 'schemas.json'), 'utf8'));
+      schemas.listing.blockSchema.properties.fieldMapping.vocabulary = { '@id': 'plone.app.vocabularies.MetadataFields' };
+      schemas.card.blockSchema.properties.tags = { title: 'Tags', type: 'array' };
+      fs.writeFileSync(path.join(dir, 'schemas.json'), JSON.stringify(schemas));
+      fs.writeFileSync(
+        path.join(dir, 'types.json'),
+        JSON.stringify({ Document: { properties: { Topic: { type: 'array', items: { type: 'string' } } } } }),
+      );
+      return dir;
+    };
+    const listing = { '@type': 'Document', blocks: { l: { '@type': 'listing', variation: 'card', fieldMapping: { Topic: 'tags' } } }, blocks_layout: { items: ['l'] } };
+
+    it('stores the conversion its field on the content types calls for', () => {
+      const dir = withColumns(site({ a: listing }));
+      execFileSync('node', [CLI, 'field-mappings', ...run(dir), '--content-types', path.join(dir, 'types.json')]);
+      assert.deepEqual(read(dir, 'a').blocks.l.fieldMapping, { Topic: { field: 'tags', type: 'array' } });
+    });
+
+    it('fails without the content types, saying so', () => {
+      const dir = withColumns(site({ a: listing }));
+      const { status, stderr } = spawnSync('node', [CLI, 'field-mappings', ...run(dir)], { encoding: 'utf8' });
+      assert.notEqual(status, 0);
+      assert.match(stderr, /content types/);
+    });
+  });
+
   it('needs the schemas', () => {
     const { status } = spawnSync('node', [CLI, 'field-mappings', os.tmpdir()], { encoding: 'utf8' });
     assert.equal(status, 2);
