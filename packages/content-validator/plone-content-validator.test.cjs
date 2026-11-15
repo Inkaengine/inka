@@ -1888,6 +1888,45 @@ describe('validating against a site\'s schemas', () => {
     assert.deepEqual(r.warnings, []);
   });
 
+  it('counts a field a rule adds as declared, and not one a rule only hides', () => {
+    // A block may declare a field through its rules alone (a `title` block
+    // whose own heading is a rule's `set`): the editor shows it, so storing it
+    // is no stray field.
+    const schemas = {
+      ...SCHEMAS,
+      title: {
+        blockSchema: { properties: {} },
+        schemaEnhancer: {
+          fieldRules: {
+            usePageTitle: { set: { title: 'Use page title', type: 'boolean' } },
+            heading: [{ when: { usePageTitle: false }, set: { title: 'Heading', type: 'string' } }, false],
+            subtitle: { when: { usePageTitle: false }, else: { title: 'Subtitle', type: 'string' } },
+            kicker: { title: 'Kicker', type: 'string' },
+            hidden: false,
+          },
+        },
+      },
+    };
+    const map = fieldMapFromSchemas(schemas);
+    assert.deepEqual(map.blocks.title.fields.sort(), ['heading', 'kicker', 'subtitle', 'usePageTitle']);
+    const r = checkBlockSchemas(
+      page({ b1: { '@type': 'title', usePageTitle: false, heading: 'Longer', hidden: 'x' } }),
+      map,
+    );
+    assert.equal(r.errors.length, 1, r.errors.join('\n'));
+    assert.match(r.errors[0], /title\.hidden/);
+  });
+
+  it("does not call a template's empty slot an undeclared block", () => {
+    // Inka's own placeholder for a region left empty (inka#708), as the
+    // check's own message asks a template to store one.
+    const r = checkIntegrity(
+      [{ rel: 'content/t', data: { blocks: { e: { '@type': 'empty', slotId: 'upper', fixed: false } }, blocks_layout: { items: ['e'] } } }],
+      { schemasFor: () => SCHEMAS },
+    );
+    assert.deepEqual(r.errors.filter((e) => /doesn't declare/.test(e)), []);
+  });
+
   it('reports a field the schemas do not declare', () => {
     const r = checkBlockSchemas(page({ b1: { '@type': 'card', title: 'T', url: '/x' } }), fieldMapFromSchemas(SCHEMAS));
     assert.equal(r.errors.length, 1);
