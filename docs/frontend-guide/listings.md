@@ -49,6 +49,8 @@ blocks-tagged: |
 
 A listing block fetches content from the server (e.g. latest news) and renders each result as a separate block, repeating each block once per result entry. This means a listing can be moved between containers and reuse normal blocks for what it repeats.
 
+Inka has no listing of its own: your frontend declares it, like any block, with a `title`, a `group` and a `blockSchema` (see [Item Type Selection](#item-type-selection) for the whole declaration).
+
 `expandListingBlocks(layout, options)` is a helper in hydra.js that handles fetching, paging, and mapping results to block objects. It walks a layout, fetches results for each listing-type block, and returns `{ items, paging }` where `items` is an array of block objects with `@uid` and `@type`.
 
 You tell it which block types need fetching via a `fetchItems` map — keys are block types, values are fetcher functions. This means you can have different kinds of listings (Plone queries, RSS feeds, etc.) each with their own fetcher:
@@ -118,7 +120,7 @@ async function ListingItems({ id, blocks, paging, seen, fetchItems, onPaging }) 
 }
 ```
 
-**Worked example:** [Listing Block](../examples/listing.md) — the built-in block, with renderers for all four stacks.
+**Worked example:** [Listing Block](../examples/listing.md) — the declaration, with renderers for all four stacks.
 
 ## expandListingBlocks Options
 
@@ -217,7 +219,7 @@ The **Search Shortcuts** link target reads the search block's facet params — a
 
 A result's address is mapped from `getURL`, the catalog's name for it, never `@id`: Plone reads every `@id` in a block's stored data as a link, so a stored mapping keyed `@id` with a `{ field, type }` value can't be saved, and a config that maps from `@id` stops the editor loading. A listing saved before the rename keeps its `@id` key and is still read as the address.
 
-Built-in item types and the fields they expose:
+The example item types and the fields they expose:
 
 <block type="slateTable" table.fixed table.celled>
 
@@ -255,12 +257,17 @@ Use `variation` on the listing block to control what `@type` expanded items get.
 
 ```javascript
 listing: {
+    id: 'listing',
+    title: 'Listing',
+    group: 'common',
     blockSchema: {
         properties: {
             variation: {
+                title: 'Item type',
                 widget: 'blockTypeSelect',
                 filterConvertibleFrom: '@default',  // only offer types with @default mappings
             },
+            querystring: { title: 'Search criteria', widget: 'querystring' },
             // The mapping widget, and what a result offers to map: the
             // fields YOUR fetcher returns (here @querystring-search's). A
             // listing of another kind — related items, a feed — lists the
@@ -287,7 +294,7 @@ listing: {
 }
 ```
 
-`filterConvertibleFrom: '@default'` restricts the dropdown to types that have a `fieldMappings['@default']` entry — i.e. types that can be populated from the canonical content fields (`getURL`, `title`, `description`, `image`) that listing queries return. Each item type's `fieldMappings['@default']` (on its own block config) defines how those source fields land on its schema. Adding `mappingField` to the enhancer fills the declared `field_mapping` widget with its smart defaults for the chosen item type, so the editor can override the mapping per listing instance. The widget and its `sourceFields` are yours to declare: a listing schema you send is the whole schema, so nothing from the admin's own listing is added to it.
+`filterConvertibleFrom: '@default'` restricts the dropdown to types that have a `fieldMappings['@default']` entry — i.e. types that can be populated from the canonical content fields (`getURL`, `title`, `description`, `image`) that listing queries return. Each item type's `fieldMappings['@default']` (on its own block config) defines how those source fields land on its schema. Adding `mappingField` to the enhancer fills the declared `field_mapping` widget with its smart defaults for the chosen item type, so the editor can override the mapping per listing instance. The widget and its `sourceFields` are yours to declare, as is every other field: the schema you send is the listing's whole schema.
 
 **Worked example:** [Related Items Block](../examples/relatedItemsListing.md) — the page's relation field, drawn with a configurable item type.
 

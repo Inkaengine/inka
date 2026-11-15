@@ -35,7 +35,7 @@
 
 const path = require('path');
 const fs = require('fs');
-const { validate, checkIntegrity, checkBlockSchemas, checkEditorRules, checkChooserGroups, checkFieldsetCoverage, checkReservedFields, checkFieldMappings, fieldMapFromSchemas, idFieldMapFor, loadSchemas, formatReport } = require('./plone-content-validator.cjs');
+const { validate, checkIntegrity, checkBlockSchemas, checkEditorRules, checkChooserGroups, checkFieldsetCoverage, checkReservedFields, checkFieldMappings, checkUndeclaredBlocks, fieldMapFromSchemas, idFieldMapFor, loadSchemas, formatReport } = require('./plone-content-validator.cjs');
 
 function usage() {
   console.error(
@@ -225,6 +225,14 @@ if (cmd === 'schema' || (cmd === 'all' && (schemas || fieldsPath))) {
     report.mappings = mappings;
     console.log(formatReport('mappings', mappings));
     if (mappings.errors.length) hasErrors = true;
+
+    // A region that may hold a block nobody declares: the editor refuses to
+    // load on it.
+    console.log('');
+    const undeclared = checkUndeclaredBlocks(schemas);
+    report.undeclared = undeclared;
+    console.log(formatReport('undeclared', undeclared));
+    if (undeclared.errors.length) hasErrors = true;
   }
 }
 
