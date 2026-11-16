@@ -9,6 +9,7 @@
  */
 import { describe, it, expect } from 'vitest';
 import { parsePrototypes, matchBlocks, keyBlocks, unkeyBlocks, emitBlocks, emitPage, decodePage } from './prototype-mapping.mjs';
+import { fieldText } from '@volto-hydra/helpers/blockText.js';
 
 describe('prototype mapping', () => {
   it('maps a paragraph to a slate block via a single-node prototype', () => {
@@ -302,6 +303,34 @@ describe('emit multi-node', () => {
     const block = { '@type': 'image', url: '/img.png' }; // no alt, no title
     expect(emitBlocks(protos, [block])).toBe('![](/img.png)');
     expect(matchBlocks(protos, emitBlocks(protos, [block]))).toEqual([block]);
+  });
+});
+
+describe('a text block\'s plaintext reads its words as search text does', () => {
+  // One rule for where a word ends, as the helpers' slateText has it: blocks
+  // (paragraphs, list items) are separate words; inline content runs on, so a
+  // bold syllable stays inside its word. The plaintext a page decodes to is the
+  // text search reads, so the two must not disagree.
+  const protos = parsePrototypes(
+    '<block type="slate" value="${p,ul,ol/slate}" plaintext="${p,ul,ol/text}" />',
+  );
+
+  it('a list: each item is its own words', () => {
+    const [block] = matchBlocks(protos, '- Masterbrand – the default\n- Co-brand – a custom logo\n- Endorsed');
+    expect(block.plaintext).toBe('Masterbrand – the default Co-brand – a custom logo Endorsed');
+    expect(block.plaintext).toBe(fieldText(block.value));
+  });
+
+  it('a nested list: its items are words too', () => {
+    const [block] = matchBlocks(protos, '- One\n  - Inner\n- Two');
+    expect(block.plaintext).toBe(fieldText(block.value));
+    expect(block.plaintext).toBe('One Inner Two');
+  });
+
+  it('inline formatting and links run on inside a word', () => {
+    const [block] = matchBlocks(protos, 'Un**bold**ed and [linked](https://example.org)ness.');
+    expect(block.plaintext).toBe('Unbolded and linkedness.');
+    expect(block.plaintext).toBe(fieldText(block.value));
   });
 });
 

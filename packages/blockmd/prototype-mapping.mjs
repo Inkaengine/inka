@@ -19,6 +19,7 @@
  */
 import YAML from 'yaml';
 import { getAtPath, ensureMutablePath } from '@volto-hydra/helpers';
+import { joined } from '@volto-hydra/helpers/blockText.js';
 import { tagOf, mdParser, mdSerializer, blockToSlate, slateToMd, fmtTagAttrs, cleanAttrStr, normaliseTables, tableToMd, gridTableToMd, NoCellForm, slateBlockToMdast, isBrTag,
          mdastToHtml, htmlToMd, htmlRichtext, isFlatDict, flatDictAttrs } from './slate-md.mjs';
 
@@ -321,8 +322,24 @@ const proseText = (node) => {
   if (node.type === 'break') return '\n';
   if (node.type === 'html' && isBrTag(node.value)) return '\n';
   if (node.type === 'text') return node.value.replace(/[ \t]*\n[ \t]*/g, ' ');
-  return node.value !== undefined ? node.value : (node.children || []).map(proseText).join('');
+  if (node.value !== undefined) return node.value;
+  // Where one word ends, as search text reads a slate value (the helpers'
+  // slateText): inline content runs on, so a bold syllable stays inside its
+  // word; blocks -- paragraphs, list items, a list nested in its item -- are
+  // separate words.
+  const parts = [];
+  let run = '';
+  for (const child of node.children || []) {
+    if (PHRASING.has(child.type)) run += proseText(child);
+    else { parts.push(run, proseText(child)); run = ''; }
+  }
+  parts.push(run);
+  return parts.length === 1 ? run : joined(parts);
 };
+
+/** Markdown's inline (phrasing) nodes; anything else is a block. */
+const PHRASING = new Set(['text', 'emphasis', 'strong', 'delete', 'link', 'linkReference', 'inlineCode',
+  'break', 'image', 'imageReference', 'html', 'footnoteReference']);
 
 /**
  * A string field's value as inline mdast: text, with each line break a

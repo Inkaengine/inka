@@ -123,6 +123,18 @@ describe('the text of a block', () => {
     expect(textOf({ '@type': 'slate', value })).toBe('Intro first item; and the second');
   });
 
+  test('a nested list starts new words, though its item has text before it', () => {
+    // A list item holds its own words and then the list nested under it.
+    const value = [{
+      type: 'ul',
+      children: [
+        { type: 'li', children: [{ text: 'One' }, { type: 'ul', children: [{ type: 'li', children: [{ text: 'Inner' }] }] }] },
+        { type: 'li', children: [{ text: 'Two' }] },
+      ],
+    }];
+    expect(textOf({ '@type': 'slate', value })).toBe('One Inner Two');
+  });
+
   test('inline elements inside slate run on with the text around them', () => {
     const value = [{
       type: 'p',
