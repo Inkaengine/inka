@@ -783,7 +783,11 @@ function decodeTag(protos, attrs, inner, depth) {
     // An explicit `<region name=X>` in the instance body overrides which content
     // is region X (a local override); regions without one take the remainder.
     const { regions: explicit, rest: bodyRest } = splitRegions(rest);
+    // A body that names its regions and leaves nothing over has said where
+    // everything goes: a region it doesn't name is one the block doesn't have.
+    const allNamed = Object.keys(explicit).length > 0 && bodyRest.length === 0;
     for (const region of container.regions) {
+      if (allNamed && !(region.name in explicit)) continue;
       const content = region.name in explicit ? explicit[region.name] : bodyRest;
       setAt(block, region.path, decodeRegion(protos, region, content, depth));
     }
@@ -1179,7 +1183,18 @@ function emitContainer(protos, proto, block, depth) {
   // `wrap`: write each blocks_layout child in its own `<block>` tag. A bare
   // child can be claimed by the container's own refs on decode (a heading
   // slate read as the grid's headline); a tagged one never is.
-  const render = (wrap, tableForm) => proto.regions.map((region) => {
+  // A container with several regions names each one: its blocks alone can't
+  // say where one region ends and the next begins, and the decoder gives every
+  // region it isn't told about the same leftover content (see splitRegions).
+  // A region the block doesn't have is left out, as the block left it out.
+  const named = proto.regions.length > 1;
+  const render = (wrap, tableForm) => proto.regions
+    .filter((region) => getAtPath(block, region.path) !== undefined)
+    .map((region) => {
+      const body = renderRegion(region, wrap, tableForm);
+      return named ? `<region name="${region.name}">\n\n${body}\n\n</region>` : body;
+    }).join('\n\n');
+  const renderRegion = (region, wrap, tableForm) => {
     const val = getAtPath(block, region.path);
     if (region.widget === 'blocks_layout') {
       const scope = [...protos, ...region.protos];
@@ -1197,7 +1212,7 @@ function emitContainer(protos, proto, block, depth) {
       return tableToMd(table, { html: tableForm === 'html' });
     }
     return val.map((item) => emitItem(protos, region.protos[0], item, depth)).join('\n\n');
-  }).join('\n\n');
+  };
   const tag = (body) => `<block type="${block['@type']}"${emitOverrides(proto, block, variantKeys(protos, proto))}>\n\n${[head, body].filter(Boolean).join('\n\n')}\n\n</block>`;
   // A table is written in the first form that reads back the same: a plain
   // GFM table, else a grid table, else a GFM table with HTML in its cells. A

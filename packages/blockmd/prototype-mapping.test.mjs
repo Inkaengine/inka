@@ -381,6 +381,38 @@ describe('emit container', () => {
   });
 });
 
+describe('emit a container with several regions', () => {
+  // A page layout: a sidebar and a main column, each a run of blocks. Its
+  // regions are keys of one blocks_layout, so nothing in the markdown of the
+  // blocks themselves says where one region ends and the next begins.
+  const protos = parsePrototypes([
+    '<block type="slate" value="${p/slate}" />',
+    '<block type="layout">',
+    '  <region name="sidebar" widget="blocks_layout" />',
+    '  <region name="main" widget="blocks_layout" />',
+    '</block>',
+  ].join('\n'), { explicit: true });
+  const para = (text) => ({ '@type': 'slate', value: [{ type: 'p', children: [{ text }] }] });
+
+  it('names each region, so its blocks read back into it', () => {
+    const block = { '@type': 'layout', sidebar: [para('Side.')], main: [para('First.'), para('Second.')] };
+    const md = emitBlocks(protos, [block]);
+    expect(md).toContain('<region name="sidebar">');
+    expect(md).toContain('<region name="main">');
+    expect(md).not.toContain('data-json');
+    expect(matchBlocks(protos, md)).toEqual([block]);
+  });
+
+  it('leaves out a region the block does not have, rather than give up on the block', () => {
+    // A layout with no sidebar stores no sidebar key at all.
+    const block = { '@type': 'layout', main: [para('Only.')] };
+    const md = emitBlocks(protos, [block]);
+    expect(md).not.toContain('data-json');
+    expect(md).not.toContain('<region name="sidebar">');
+    expect(matchBlocks(protos, md)).toEqual([block]);
+  });
+});
+
 describe('emitPage / full page round-trip', () => {
   const protos = parsePrototypes([
     '<block type="slate" value="${p/slate}" />',
