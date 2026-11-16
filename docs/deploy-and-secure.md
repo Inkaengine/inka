@@ -166,7 +166,7 @@ The token is the editor's CMS session token, so its lifetime is set by the CMS. 
 
 - Keep the editing front end private, as above. The token is only ever sent to it.
 - Don't log query strings on the editing front end, or strip `access_token` from its logs.
-- Send `Referrer-Policy: no-referrer` (or `same-origin`) from the editing front end.
+- Send `Referrer-Policy: same-origin` from the editing front end. It sends no `Referer` to any other site, and the only one it sends goes to the editing front end itself, which already has the URL. Don't use `no-referrer`: under it the browser sends `Origin: null` with a form's plain POST, so a form the editor submits before the page's JavaScript has loaded is refused by a server that checks the origin (Next.js server actions do, as protection against cross-site requests).
 - Serve everything over HTTPS.
 - Keep the CMS token lifetime short, and let editors sign out when they finish.
 
@@ -200,7 +200,7 @@ initBridge({
 
 ```text
 Content-Security-Policy: frame-ancestors https://inka.example.org
-Referrer-Policy: no-referrer
+Referrer-Policy: same-origin
 ```
 
 ## Keep the bridge out of the public build
