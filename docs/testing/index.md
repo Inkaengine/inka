@@ -132,7 +132,7 @@ export default defineConfig({
 });
 ```
 
-`npm run dev` stands for however your front end starts, told the mock API's URL as its API. The same module has `defineEmptyRegionTests`, `defineListingContainerTests` and `definePageIntegrityTests`, for the other checks on the rendered page.
+`npm run dev` stands for however your front end starts, told the mock API's URL as its API. That one call is all of sanity: every block discovery found, the template slots, every container region emptied as the editor empties it, every listing in the containers that allow one, and every discovered page whole (no broken images, no links to the backend's origin).
 
 ### GitHub Actions
 
