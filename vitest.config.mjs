@@ -93,7 +93,12 @@ function redirectUpstreamSuitesToShadows() {
 }
 
 /** Tests of a server that runs on Node, which need Node's environment (the node-servers project below). */
-const NODE_SERVER_TESTS = ['packages/inka-mcp/http.test.mjs'];
+const NODE_SERVER_TESTS = [
+  'packages/inka-mcp/http.test.mjs',
+  // Playwright's global setup runs on Node: what it gets from a refused fetch
+  // is Node's error shape, not jsdom's.
+  'packages/testing/playwright/waitForAdmin.test.ts',
+];
 
 export default defineConfig({
   plugins: [redirectUpstreamSuitesToShadows()],
