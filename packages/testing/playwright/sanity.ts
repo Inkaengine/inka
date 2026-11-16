@@ -12,6 +12,8 @@
  *
  * Playwright collects spec files from a project's testDir, so the suites are
  * functions a consumer's own spec calls rather than spec files of their own.
+ * That one call is all of sanity: block sanity, template slots, emptied
+ * regions, listings in containers and page integrity all come with it.
  *
  * Env vars, read at run time:
  *   DISCOVER_BLOCKS_API  - Plone API URL the pages are loaded from
@@ -174,7 +176,10 @@ export function defineBlockSanityTests(options: SanityOptions): void {
     }
   }
 
-  base.beforeEach(async ({}, testInfo) => {
+  // Registered inside each of this suite's describes, never at file level: the
+  // other sanity suites share the spec file, and a file-level hook would gate
+  // their tests on this suite's discovery (and theirs on this).
+  const scopeAndDiscovery = async ({}, testInfo: import('@playwright/test').TestInfo) => {
     // Scope BEFORE environment: a project this spec doesn't cover is a decision,
     // and no CI change would make it run — so it skips even on CI. Discovery
     // missing is the opposite, hence requireEnvironment below.
@@ -186,7 +191,7 @@ export function defineBlockSanityTests(options: SanityOptions): void {
       discoveredBlocks.length > 0,
       'no .discovered-blocks.json — discovery needs DISCOVER_BLOCKS_API=<mock api url> in this job',
     );
-  });
+  };
 
   const test = base.extend<{ helper: AdminUIHelper }>({
     helper: async ({ page }, use) => {
@@ -195,6 +200,7 @@ export function defineBlockSanityTests(options: SanityOptions): void {
   });
 
   test.describe('Block sanity (auto-discovered)', () => {
+    test.beforeEach(scopeAndDiscovery);
     for (const block of discoveredBlocks) {
       // Run each discovered case only on the frontend it came from. Discovery is
       // per-frontend because they do not register the same blocks — one found via
@@ -664,6 +670,7 @@ export function defineBlockSanityTests(options: SanityOptions): void {
    * carrying a multi-slot template have anything to check.
    */
   test.describe('Template slots', () => {
+    test.beforeEach(scopeAndDiscovery);
     const pagesWithTemplates = [
       ...new Set(discoveredBlocks.map((b) => b.pagePath).filter(Boolean)),
     ].sort();
@@ -710,6 +717,15 @@ export function defineBlockSanityTests(options: SanityOptions): void {
       });
     }
   });
+
+  // The rest of sanity, from the same discovery: every emptied region draws
+  // what the editor seeds, every container that allows a listing has one in an
+  // example, and every discovered page is whole. One call gives a frontend all
+  // of it — a suite a consumer had to register separately was a suite most of
+  // them never ran (PretaGov and the DDS docs site ran none of the three).
+  defineEmptyRegionTests(options);
+  defineListingContainerTests(options);
+  definePageIntegrityTests(options);
 }
 
 interface EmptyRegionCase {
@@ -776,24 +792,12 @@ function contentOfEmptyPlaceholder(root: Element): string[] {
   return found;
 }
 
-export function defineEmptyRegionTests(options: SanityOptions): void {
+function defineEmptyRegionTests(options: SanityOptions): void {
   const projects = new Set(options.projects);
   const where = addresses(options);
   const onlyOn = describeProjects(projects);
   const cases = (readDiscovery<EmptyRegionCase>(options.discoveryDir, 'emptyRegions') ?? [])
     .filter((c) => inContract(c.parentType, options));
-
-  base.beforeEach(async ({}, testInfo) => {
-    // Scope first, environment second — see block-sanity for why the order matters.
-    if (!projects.has(testInfo.project.name)) {
-      testInfo.skip(true, `empty-region sanity only runs on ${onlyOn} (skipping ${testInfo.project.name})`);
-    }
-    requireEnvironment(
-      testInfo,
-      cases.length > 0,
-      'no .discovered-empty-regions.json — discovery needs DISCOVER_BLOCKS_API=<mock api url> in this job',
-    );
-  });
 
   const test = base.extend<{ helper: AdminUIHelper }>({
     helper: async ({ page }, use) => {
@@ -802,6 +806,18 @@ export function defineEmptyRegionTests(options: SanityOptions): void {
   });
 
   test.describe('Empty container region renders (auto-discovered)', () => {
+    // Inside the describe: block sanity shares the spec file (see there).
+    test.beforeEach(async ({}, testInfo) => {
+      // Scope first, environment second — see block-sanity for why the order matters.
+      if (!projects.has(testInfo.project.name)) {
+        testInfo.skip(true, `empty-region sanity only runs on ${onlyOn} (skipping ${testInfo.project.name})`);
+      }
+      requireEnvironment(
+        testInfo,
+        cases.length > 0,
+        'no .discovered-empty-regions.json — discovery needs DISCOVER_BLOCKS_API=<mock api url> in this job',
+      );
+    });
     for (const c of cases) {
       const what = c.field === '*' ? `every ${c.parentType} region` : `${c.parentType}.${c.field}`;
       test(`${what} draws what it is given when its region is emptied`, async ({ page, helper }, testInfo) => {
@@ -951,7 +967,7 @@ function explain(c: ListingContainerIssue): string {
  * that listing in that container, and the existing block-sanity render checks
  * will then exercise it.
  */
-export function defineListingContainerTests(
+function defineListingContainerTests(
   options: Pick<SanityOptions, 'discoveryDir' | 'projects' | 'excludeBlockTypes' | 'excludeTypePrefixes'>,
 ): void {
   const projects = new Set(options.projects);
@@ -1006,7 +1022,7 @@ export function defineListingContainerTests(
  * mock-parent iframe, because verifyPageIntegrity uses `page.evaluate` /
  * `document.querySelectorAll`.
  */
-export function definePageIntegrityTests(
+function definePageIntegrityTests(
   options: Pick<SanityOptions, 'discoveryDir' | 'frontends'>,
 ): void {
   const where = addresses(options);
