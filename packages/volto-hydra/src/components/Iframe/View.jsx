@@ -1982,10 +1982,9 @@ const Iframe = (props) => {
   // Pending INIT: the iframe's INIT is a one-shot postMessage, and the content
   // type schema is an async prop. When INIT wins that race there is nothing to
   // register the page's own fields from, so the payload is kept here and
-  // replayed by the effect below once `schema` arrives. It used to throw
-  // instead — the bridge's retry (_retryInitUntilAcknowledged) papered over it
-  // at the cost of an uncaught error per lost INIT and seconds of backoff, and
-  // a dead editor outright if the schema outlasted the retry budget.
+  // replayed by the effect below once `schema` arrives. The bridge posts INIT
+  // once and never again, so an INIT dropped here is an editor that never
+  // connects.
   const pendingInitRef = useRef(null);
 
   // The live message handler, so the replay effect calls the current closure
