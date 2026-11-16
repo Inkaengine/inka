@@ -309,6 +309,17 @@ export interface AdminOptions {
 }
 
 /**
+ * Was this fetch refused because nothing is listening yet? Node's fetch throws
+ * `TypeError: fetch failed` with the code on its `cause` (an AggregateError
+ * when localhost resolves to both IPv4 and IPv6, which carries the code too);
+ * a bare socket error has it on the error itself.
+ */
+function connectionRefused(error: unknown): boolean {
+  const { code, cause } = error as { code?: unknown; cause?: { code?: unknown } };
+  return (code ?? cause?.code) === 'ECONNREFUSED';
+}
+
+/**
  * Wait for the admin to be ready: a production server answering, or the dev
  * server's webpack compilation finishing. Throws on a failed compilation.
  */
@@ -348,8 +359,8 @@ export async function waitForAdmin(options: AdminOptions = {}): Promise<void> {
           throw new Error(`Webpack compilation failed: ${text}`);
         }
       }
-    } catch (error: any) {
-      if (error.code === 'ECONNREFUSED') {
+    } catch (error) {
+      if (connectionRefused(error)) {
         console.log(`[SETUP] Waiting for Volto ${serverType} to start...`);
       } else {
         throw error;
