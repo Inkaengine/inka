@@ -184,3 +184,51 @@ describe('firstOf', () => {
     );
   });
 });
+
+describe('blocks from a template', () => {
+  // A template's blocks sit in the page's own regions, in the page's own
+  // order; the path map gives them a stand-in parent for the instance, which
+  // has no place in any layout. Reading order is still the page's layout.
+  const fromTemplate = (block, slotId) => ({
+    ...block,
+    templateId: '/templates/doc',
+    templateInstanceId: 'doc-1',
+    slotId,
+  });
+  const templated = {
+    '@type': 'Document',
+    blocks: {
+      a: { '@type': 'image', url: '/own.png' },
+      t1: fromTemplate(slate(node('h2')), 'head'),
+      t2: fromTemplate(
+        {
+          '@type': 'group',
+          blocks: { tg: fromTemplate(slate(node('h3')), 'head') },
+          blocks_layout: { items: ['tg'] },
+        },
+        'body',
+      ),
+      z: slate(node('h4')),
+    },
+    blocks_layout: { items: ['a', 't1', 't2', 'z'] },
+  };
+  const map = buildBlockPathMap(templated, blocksConfig, {});
+  const holdsIn = (blockId, when) =>
+    evaluateWhenCondition(
+      when,
+      map[blockId].path.reduce((n, k) => n[k], templated),
+      { blockId, blockPathMap: map, pageFormData: templated },
+    );
+
+  test('are read where the page lays them out, between its own blocks', () => {
+    expect(holdsIn('t1', { '@typesBefore': { firstOf: ['image', 'slate', 'group'], is: 'image' } })).toBe(true);
+    expect(holdsIn('a', { '@typesAfter': { contains: 'group' } })).toBe(true);
+    expect(holdsIn('z', { '@typesBefore': { firstOf: ['image', 'slate', 'group'], is: 'slate' } })).toBe(true);
+    expect(holdsIn('t1', { '@typesAfter': { contains: 'image' } })).toBe(false);
+  });
+
+  test('inside a container from the template, after the container', () => {
+    expect(holdsIn('tg', { '@typesBefore': { firstOf: ['image', 'slate', 'group'], is: 'group' } })).toBe(true);
+    expect(holdsIn('z', { '@stylesBefore': { firstOf: ['h2', 'h3', 'h4'], is: 'h3' } })).toBe(true);
+  });
+});
