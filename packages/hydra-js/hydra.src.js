@@ -4672,56 +4672,14 @@ export class Bridge {
           return '';
         });
 
-        // INITIAL_DATA is the ONLY acknowledgement of INIT, and INIT used to be
-        // posted exactly once. A message posted before the admin has mounted its
-        // listener is simply gone — the iframe then sits there fully loaded and
-        // completely inert, and the only thing hydra did about it was paint a
-        // "Not Connected" diagnostic five seconds later. Reloading was the user's
-        // only recovery. Waiting on the acknowledgement and re-posting until it
-        // comes turns that dead editor into a slow one.
-        //
-        // Backs off rather than spinning: a lost INIT is recovered in a quarter
-        // of a second, and an admin that is genuinely absent is given up on
-        // after ~7.75s instead of being asked forever.
-        this._retryInitUntilAcknowledged = (initMessage) => {
-          const delays = [250, 500, 1000, 2000, 4000];
-          let attempt = 0;
-          const again = () => {
-            if (this.initialized || attempt >= delays.length) {
-              if (!this.initialized) {
-                // Out of attempts with no acknowledgement. THIS is the moment
-                // the diagnostic is entitled to speak — a handshake that has
-                // actually failed, not a clock that ran out while it was still
-                // in progress.
-                this._initHandshakeGaveUp = true;
-                _showBridgeDiagnostic({
-                  windowName: window.name,
-                  hasHydraName: window.name.startsWith('hydra-edit:'),
-                  inIframe: window.self !== window.top,
-                  adminOrigin: this.adminOrigin || null,
-                  bridgeCreated: true,
-                  bridgeInitialized: false,
-                });
-              }
-              return;
-            }
-            this._initRetryTimer = setTimeout(() => {
-              if (this.initialized) return;
-              log(`INIT not acknowledged, retrying (attempt ${attempt + 1})`);
-              window.parent.postMessage(initMessage, this.adminOrigin);
-              attempt += 1;
-              again();
-            }, delays[attempt]);
-          };
-          again();
-        };
-
-        this._stopInitRetries = () => {
-          if (this._initRetryTimer) {
-            clearTimeout(this._initRetryTimer);
-            this._initRetryTimer = null;
-          }
-        };
+        // INIT is posted ONCE, and INITIAL_DATA is its only acknowledgement.
+        // It used to be re-posted until acknowledged, to recover an INIT the
+        // admin dropped before it could answer; the admin now holds an early
+        // INIT until it can answer it (View.jsx, the deferred-INIT replay). The
+        // re-posts did harm of their own: under load the admin answered every
+        // copy, and a late answer rebuilt the page from the form as it was when
+        // that copy arrived — over edits made since. An INIT nobody answers is a
+        // broken editor, and the connection check below reports it as one.
 
         // Send single INIT message with config - admin merges config before responding
         // This ensures blockPathMap is built with complete schema knowledge
@@ -4780,7 +4738,6 @@ export class Bridge {
             initMessage.voltoConfig = options.voltoConfig;
           }
           window.parent.postMessage(initMessage, this.adminOrigin);
-          this._retryInitUntilAcknowledged(initMessage);
         }
 
         const receiveInitialData = (e) => {
@@ -4809,9 +4766,8 @@ export class Bridge {
 
               // Mark bridge as initialized — block selection is now allowed
               this.initialized = true;
-              // The handshake is acknowledged: stop retrying, and take down any
-              // diagnostic that was raised while we were still trying.
-              this._stopInitRetries();
+              // The handshake is acknowledged: take down a diagnostic raised
+              // while the answer was slow.
               _removeBridgeDiagnostic();
 
               // Restore block selection if provided (e.g., after adding a new block)
@@ -15616,14 +15572,11 @@ if (typeof window !== 'undefined' && window.self !== window.top) {
     // Check after page load + 5 seconds — enough time for bridge to connect
     const _checkConnection = () => {
       setTimeout(() => {
-        // Only the "initBridge was never called" case is left to a timer, and
-        // only because there is no event for something that never happens. A
-        // bridge that HAS been created is mid-handshake: it retries INIT and
-        // reports for itself when it runs out of attempts, so the clock must
-        // not pre-empt it.
-        const stillHandshaking =
-          bridgeInstance && !bridgeInstance.initialized && !bridgeInstance._initHandshakeGaveUp;
-        if (!stillHandshaking && (!bridgeInstance || !bridgeInstance.initialized)) {
+        // A bridge never created, or an INIT never answered: either way the
+        // editor is not connected, and this is the only thing that says so
+        // (there is no event for something that never happens). A late answer
+        // takes the panel down again (_removeBridgeDiagnostic).
+        if (!bridgeInstance || !bridgeInstance.initialized) {
           _showBridgeDiagnostic({
             windowName: window.name,
             hasHydraName: _isEditMode,
