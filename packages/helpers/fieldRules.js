@@ -427,11 +427,21 @@ function readingOrder(pageFormData, blockPathMap, blockData) {
   if (!blockPathMap || !pageFormData) return null;
   const cached = readingOrderCache.get(blockPathMap);
   if (cached) return cached;
+  // A template's blocks get a stand-in parent for their instance in the path
+  // map; it has no place in any layout. They are read where they sit: in the
+  // instance's own container, among that container's other blocks.
+  const containerOf = (parentId) => {
+    let at = parentId;
+    while (blockPathMap[at]?.isTemplateInstance) at = blockPathMap[at].parentId;
+    return at;
+  };
   const children = new Map();
   for (const [id, entry] of Object.entries(blockPathMap)) {
     if (id === '_schemas' || !entry || typeof entry !== 'object' || !entry.parentId) continue;
-    if (!children.has(entry.parentId)) children.set(entry.parentId, []);
-    children.get(entry.parentId).push(id);
+    if (entry.isTemplateInstance) continue;
+    const parentId = containerOf(entry.parentId);
+    if (!children.has(parentId)) children.set(parentId, []);
+    children.get(parentId).push(id);
   }
   const placeOf = (parentId, id) => {
     const entry = blockPathMap[id];
