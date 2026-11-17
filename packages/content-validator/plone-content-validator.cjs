@@ -140,7 +140,7 @@ function childEntries(container, idFieldMap = null) {
   const out = [];
   for (const descriptor of getChildFields(container, idFieldMap, { allObjectLists: true })) {
     for (const entry of getChildBlockEntries(container, descriptor)) {
-      if (entry.block && typeof entry.block === 'object') out.push({ ...entry, region: descriptor.region });
+      if (entry.block && typeof entry.block === 'object') out.push({ ...entry, region: descriptor.region, idField: descriptor.idField });
     }
   }
   return out;
@@ -1488,6 +1488,13 @@ function imageDimensions(file) {
  * INKA_BLOCK_TYPES): the frontend declares every block it renders, so an
  * unknown type is one the editor can't edit and the site can't draw.
  */
+/**
+ * Is this `@` key part of a block's identity? Its type and uid, and on an item of a list,
+ * the key the list is keyed by (`@id` for most). An `@id` anywhere else is not the
+ * block's: a page block is keyed by its uid, and nothing reads one.
+ */
+const identityKey = (field, idField) => field === '@type' || field === '@uid' || field === idField;
+
 function checkBlockSchemas(source, fieldMap, { idFieldMap = null } = {}) {
   // `{ blocks: { type: { fields, defaultsPrefix } }, identityFields: [...] }`.
   // A bare `{ type: [fields] }` map still works, for a caller that has one.
@@ -1511,7 +1518,8 @@ function checkBlockSchemas(source, fieldMap, { idFieldMap = null } = {}) {
   const findings = [];
   const found = new Set();
 
-  const visit = (block, rel) => {
+  // `idField`: the key the list this block is an item of is keyed by, if it is one.
+  const visit = (block, rel, idField) => {
     if (!block || typeof block !== 'object') return;
     const type = block['@type'];
     if (typeof type === 'string') {
@@ -1520,6 +1528,22 @@ function checkBlockSchemas(source, fieldMap, { idFieldMap = null } = {}) {
       // `{ fields, defaultsPrefix }`, or a bare array from an older map.
       const declared = Array.isArray(entry) ? entry : entry && entry.fields;
       const defaultsPrefix = Array.isArray(entry) ? null : entry && entry.defaultsPrefix;
+      const report = (field) => {
+        const key = `${type}.${field}`;
+        if (!strays.has(key)) strays.set(key, rel);
+        if (!found.has(`${rel}\0${key}`)) {
+          found.add(`${rel}\0${key}`);
+          findings.push({
+            rel, blockType: type, field,
+            message: `${rel}: ${key} is not declared by the block's schema — the field cannot be edited, and whatever reads it renders nothing`,
+          });
+        }
+      };
+      // An `@` key is never a schema field (checkReservedFields), so beyond a block's
+      // identity (identityKey) one is stray on any block, whoever holds its schema.
+      for (const field of Object.keys(block)) {
+        if (field.startsWith('@') && !identityKey(field, idField)) report(field);
+      }
       if (entry && entry.builtIn) {
         // Its fields are the admin's built-in schema's (fieldMapFromSchemas):
         // not checked here. Its children still are, below.
@@ -1538,16 +1562,16 @@ function checkBlockSchemas(source, fieldMap, { idFieldMap = null } = {}) {
         }
       } else {
         for (const field of Object.keys(block)) {
-          // `@`-prefixed keys are the block's identity, and UNDECLARED_EXEMPT is
-          // the same set block-sanity uses: fields that ride on a block without
-          // being schema fields. Template machinery is the big one —
+          // A block's identity (identityKey), and UNDECLARED_EXEMPT, the same set
+          // block-sanity uses: fields that ride on a block without being schema
+          // fields. Template machinery is the big one —
           // `templateId`, `templateInstanceId`, `slotId`, `fixed`, `readOnly` —
           // and it is not unchecked, it is checked by the pass that owns it
           // (a template's blocks must carry templateId AND slotId, above).
           // Reporting them here would bury the real findings under three lines
           // for every block on every templated page: 151 of them on content
           // that has nothing wrong with it.
-          if (field.startsWith('@') || UNDECLARED_EXEMPT.has(field)) continue;
+          if (field.startsWith('@') || UNDECLARED_EXEMPT.has(field)) continue; // `@` keys: above
           // A container's per-item defaults (`itemDefaults_colour`) are not
           // properties of the container, and which are valid depends on the
           // item type — resolvable only with the bridge's registry, which is
@@ -1555,15 +1579,7 @@ function checkBlockSchemas(source, fieldMap, { idFieldMap = null } = {}) {
           if (defaultsPrefix && field.startsWith(defaultsPrefix)) continue;
           if (identityFields.has(field)) continue;
           if (declared.includes(field)) continue;
-          const key = `${type}.${field}`;
-          if (!strays.has(key)) strays.set(key, rel);
-          if (!found.has(`${rel}\0${key}`)) {
-            found.add(`${rel}\0${key}`);
-            findings.push({
-              rel, blockType: type, field,
-              message: `${rel}: ${key} is not declared by the block's schema — the field cannot be edited, and whatever reads it renders nothing`,
-            });
-          }
+          report(field);
         }
       }
     }
@@ -1578,7 +1594,7 @@ function checkBlockSchemas(source, fieldMap, { idFieldMap = null } = {}) {
     // the restapi's summary of the TARGET, was read as a child block and the
     // target's content type ("Document", "CaseStudy") reported as an
     // unrenderable block type.
-    for (const [, block] of walkAllBlocks(data.blocks, data, idFieldMap)) visit(block, rel);
+    for (const [, block, , idField] of walkAllBlocks(data.blocks, data, idFieldMap)) visit(block, rel, idField);
   }
 
   for (const [key, rel] of [...strays.entries()].sort()) {
@@ -1664,9 +1680,9 @@ const PLONE_RESOLVES_BY_NAME = new Set(['url', 'href', 'preview_image']);
 function* walkAllBlocks(blocks, container = null, idFieldMap = null, where = null) {
   const seenIds = new Set();
   if (container) {
-    for (const { id, block } of childEntries(container, idFieldMap)) {
+    for (const { id, block, idField } of childEntries(container, idFieldMap)) {
       seenIds.add(id);
-      yield [id, block, where];
+      yield [id, block, where, idField];
       yield* walkAllBlocks(block.blocks, block, idFieldMap, id);
     }
   }
