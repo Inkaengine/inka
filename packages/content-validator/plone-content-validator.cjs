@@ -1887,6 +1887,7 @@ async function checkEditorRules(source, schemas, { exemptSlots = [], volto = loa
   const { createFieldRulesEnhancer } = await import('@volto-hydra/helpers/fieldRules.js');
   const { blockFieldErrors, registerRuleErrorValidators } = await import('@volto-hydra/helpers/blockFieldErrors.js');
   const { mergeTemplatesIntoPage } = await import('@volto-hydra/helpers/mergeTemplates.js');
+  const { getEmptyBlockType } = await import('@volto-hydra/helpers/blockPath.js');
   if (volto) registerRuleErrorValidators(volto.config);
   // A schemas file carries schemaEnhancer RECIPES (plain data), and
   // buildBlockPathMap runs only enhancer FUNCTIONS — in the admin, blockSync
@@ -2031,8 +2032,17 @@ async function checkEditorRules(source, schemas, { exemptSlots = [], volto = loa
       // PLACEMENT is not checked, and it does not count against maxLength.
       // Every other rule below still applies to it.
       const placementExempt = Boolean(blockData && exempt.has(blockData.slotId));
+      // `empty` is the seed of a region that names no default and offers a choice
+      // (getEmptyBlockType, as the editor seeds it): allowed there, listed or not.
+      const parentSchema = info.parentId
+        ? pathMap._schemas[pathMap[info.parentId]?._schemaRef]
+        : withRules._page?.blockSchema;
+      const regionDef = parentSchema?.properties?.[info.region];
+      const seeded = info.blockType === 'empty'
+        && getEmptyBlockType({ defaultBlockType: regionDef?.defaultBlockType, allowedBlocks: info.allowedSiblingTypes }) === 'empty';
       if (
         !placementExempt &&
+        !seeded &&
         !isEmptySlot(blockData) &&
         !info.allowedSiblingTypesDerived &&
         Array.isArray(info.allowedSiblingTypes) &&

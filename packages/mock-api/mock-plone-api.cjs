@@ -69,6 +69,10 @@ function parseContentMounts() {
 
 const CONTENT_MOUNTS = parseContentMounts();
 const CONTENT_SCHEMAS = process.env.CONTENT_SCHEMAS || null;
+// Template slots whose blocks are placed where the editor wouldn't put them, on
+// purpose (a docs site's examples): their placement and length go unchecked, every
+// other rule still applies. Comma-separated, as `plone-content --exempt-slot`.
+const CONTENT_EXEMPT_SLOTS = (process.env.CONTENT_EXEMPT_SLOTS || '').split(',').filter(Boolean);
 
 /** The prefix of the non-root mount a path is under (`/_test_data` for `/_test_data/x`), or null. */
 function prefixMountOf(urlPath) {
@@ -2702,8 +2706,8 @@ function loadMarkdownMount(mount) {
  * Mounts that are exportimport trees (have __metadata__.json) also get the
  * export-shape check, since they are what gets imported into a real Plone.
  */
-function validateServedContent() {
-  const { validate, checkContent } = require('@inka/content-validator');
+async function validateServedContent() {
+  const { validate, checkContent, checkEditorRules } = require('@inka/content-validator');
   // ALLOW_MISSING_BLOBS=true: a blob whose bytes are not on disk is a warning,
   // not an error — what `plone-content --allow-missing-blobs` does. For a pull
   // request whose content references a file CI makes only after the merge (a
@@ -2727,6 +2731,17 @@ function validateServedContent() {
     return { rel: urlPath, data: { ...data, '@id': urlPath } };
   });
   keep(checkContent(source, { schemas: contentSchemas, allowMissingBlobs }));
+  // What the editor's save refuses (a required field left empty, a value its widget
+  // doesn't write, a block its region doesn't allow): content the editor couldn't
+  // save is no example of anything. It runs Volto's own validators, built from its
+  // source; a gate that silently checked less without them would be no gate.
+  if (contentSchemas) {
+    const bundle = path.join(path.dirname(require.resolve('@inka/content-validator')), 'volto-validation.cjs');
+    if (!fs.existsSync(bundle)) {
+      throw new Error("content-check: the editor's validators aren't built; run `pnpm build:volto-validation`");
+    }
+    keep(await checkEditorRules(source, contentSchemas, { exemptSlots: CONTENT_EXEMPT_SLOTS }));
+  }
   for (const m of warnings) console.warn(`[content-check] warning: ${m.trim()}`);
   return errors.map((m) => m.trim());
 }
@@ -2756,8 +2771,8 @@ function reportContentErrors(errors) {
 /** Startup: invalid content is fatal — tests must not run against a site that
  *  would not import, or that links to nothing. There is no way out: content a
  *  test needs broken is created at runtime (session content), never served. */
-function assertServedContentValid() {
-  const errors = validateServedContent();
+async function assertServedContentValid() {
+  const errors = await validateServedContent();
   if (errors.length) {
     reportContentErrors(errors);
     throw new Error(`${errors.length} content problem(s) — fix the content (listed above)`);
@@ -2766,8 +2781,8 @@ function assertServedContentValid() {
 
 /** A reload (watcher or cache miss) only reports: one bad edit mid-session
  *  should not take the dev server down. The next start is the gate. */
-function reportServedContentProblems() {
-  const errors = validateServedContent();
+async function reportServedContentProblems() {
+  const errors = await validateServedContent();
   if (errors.length) reportContentErrors(errors);
 }
 
@@ -2878,7 +2893,8 @@ function setupContentWatchers() {
       // Reload every mount through the format-agnostic seam -- markdown trees
       // reload and re-validate too, not just the JSON contentDirMap.
       for (const mount of CONTENT_MOUNTS) reloadMount(mount);
-      reportServedContentProblems();
+      // Reported, not fatal, mid-session; a failure of the check itself is shown too.
+      reportServedContentProblems().catch((err) => console.error(`[content-check] ${err.stack}`));
     }, debounceMs);
   };
   for (const { dirPath } of CONTENT_MOUNTS) {

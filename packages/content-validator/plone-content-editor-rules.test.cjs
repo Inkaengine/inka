@@ -174,6 +174,27 @@ describe('checkEditorRules()', () => {
     assert.match(r.errors[0], /column/);
   });
 
+  describe('an empty block is where the editor seeds one', () => {
+    // A region's seed is its defaultBlockType, else its one allowed type, else `empty`
+    // (getEmptyBlockType). So `empty` belongs wherever the seed is `empty`, listed or not.
+    const regionSchemas = (items) => ({
+      ...SCHEMAS,
+      box: { blockSchema: { properties: { items: { widget: 'blocks_layout', ...items } } } },
+      _page: { blockSchema: { properties: { items: { ...SCHEMAS._page.blockSchema.properties.items, allowedBlocks: ['box'] } } } },
+    });
+    const boxWithEmpty = page({ b: { '@type': 'box', blocks: { e: { '@type': 'empty' } }, blocks_layout: { items: ['e'] } } }, ['b']);
+    const misplaced = async (items) => (await checkEditorRules(boxWithEmpty, regionSchemas(items))).errors.filter((e) => /does not allow it/.test(e));
+
+    it('allowed in a region with no default and a choice of types', async () => {
+      assert.deepEqual(await misplaced({ allowedBlocks: ['card', 'text'] }), []);
+    });
+
+    it('refused where the region seeds another type', async () => {
+      assert.equal((await misplaced({ allowedBlocks: ['card', 'text'], defaultBlockType: 'text' })).length, 1);
+      assert.equal((await misplaced({ allowedBlocks: ['card'] })).length, 1);
+    });
+  });
+
   describe('a link field holds the link list, the one shape its widget writes', () => {
     // An object_browser field stores `[{ "@id": "/path" }]`. A plain string worked only
     // where a reader guessed at both shapes, and a markdown rule reads one.
