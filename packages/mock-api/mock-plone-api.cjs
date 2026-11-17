@@ -1112,6 +1112,25 @@ function mountInternalRefs(content, urlPath) {
   return walk(content, true);
 }
 
+/**
+ * A mount's root, when its directory has no data.json of its own: a plain
+ * folder. Its content sits under it, @search lists it, and breadcrumbs name it
+ * as an ancestor -- so it answers, as real Plone's folders do. Null for any
+ * other path.
+ */
+function mountRootFolder(urlPath) {
+  if (urlPath === '/' || !CONTENT_MOUNTS.some(({ mountPath }) => mountPath === urlPath)) return null;
+  const id = urlPath.split('/').filter(Boolean).pop();
+  return {
+    '@type': 'Folder',
+    id,
+    UID: `virtual-mount-${id}`,
+    title: id.replace(/[_-]/g, ' ').trim().replace(/\b\w/g, (c) => c.toUpperCase()),
+    description: '',
+    review_state: 'published',
+  };
+}
+
 function loadRawContentFromDisk(urlPath) {
   // Read from the loaded caches: a markdown item, or a JSON data.json on disk.
   // Markdown is a whole-tree cache; JSON is read per-path here.
@@ -1131,7 +1150,7 @@ function loadRawContentFromDisk(urlPath) {
         return mountInternalRefs(JSON.parse(fs.readFileSync(dataPath, 'utf-8')), urlPath);
       }
     }
-    return null;
+    return mountRootFolder(urlPath);
   };
 
   // A miss is a miss: content added since startup is the watcher's to reload
@@ -5889,17 +5908,17 @@ app.get('*/@search', (req, res) => {
         if (mountPath === '/') return;
         const mountParts = mountPath.split('/').filter(Boolean);
         if (mountParts.length !== 1) return; // Only top-level mounts
-        const mountName = mountParts[0];
         // Skip if already in contentDirMap (has its own data.json)
         if (contentDirMap[mountPath]) return;
+        const { '@type': type, id, title, description, review_state, UID } = mountRootFolder(mountPath);
         items.push({
           '@id': `${baseUrl}${mountPath}`,
-          '@type': 'Folder',
-          'id': mountName,
-          'title': mountName.replace(/[_-]/g, ' ').trim().replace(/\b\w/g, c => c.toUpperCase()),
-          'description': '',
-          'review_state': 'published',
-          'UID': `virtual-mount-${mountName}`,
+          '@type': type,
+          id,
+          title,
+          description,
+          review_state,
+          UID,
           'is_folderish': true,
           'hasPreviewImage': false,
           'image_field': null,
