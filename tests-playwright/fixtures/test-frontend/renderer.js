@@ -407,10 +407,15 @@ async function renderBlock(blockId, block, { inListing = false } = {}) {
         case 'convTargetA':
         case 'convTargetB':
         case 'convAlien':
-            wrapper.innerHTML = `<p data-conv-type="${block['@type']}">${escapeHtml(block.title || block['@type'])}</p>`;
+            wrapper.innerHTML = `<p data-conv-type="${block['@type']}">${escapeHtml(block.title || block['@type'])}</p>`
+                // Only a source has a note field (a target may still carry the
+                // value from a conversion, unshown, for converting back).
+                + (block['@type'] === 'convSource' && block.note
+                    ? `<p data-conv-note>${escapeHtml(block.note)}</p>` : '');
             break;
         case 'convBox':
         case 'convBoxMulti':
+        case 'convBoxAll':
             wrapper.innerHTML = await renderConvBox(block);
             break;
         case 'convGroupSrc':

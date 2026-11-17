@@ -53,8 +53,8 @@ const TEMPLATE_MEMBERSHIP_KEYS = [
 ];
 
 // Inka's own bookkeeping, also stored on the block: the words it indexes
-// (searchableText.js writes it on save), the text it labels a block by
-// (blockDisplayTitle), copy-from-target's record (_pullFrom, and _customFields
+// (searchableText.js writes it on save), Volto's older copy of a Text block's
+// words that plone.restapi reads (plaintext: save removes it), copy-from-target's record (_pullFrom, and _customFields
 // before it), the anchors the bridge harvests, and the block's identity
 // (`@type`, `@uid`, any `@` key). A field of one of these names would be
 // overwritten by Inka, or read by it as something it is not.

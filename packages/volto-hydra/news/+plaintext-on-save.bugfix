@@ -1,0 +1,1 @@
+A page is found by the words it holds now. Save writes a Text block's words as its `searchableText`, with paragraphs and list items as separate words, and removes the `plaintext` Volto keeps beside them, which search read in its place and Inka never updated: a page stayed findable by words it no longer held. Edits through the MCP server are saved the same way.

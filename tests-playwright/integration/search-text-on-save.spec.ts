@@ -20,7 +20,9 @@ test('a save carries the search text of what was just typed', async ({ page }) =
   await helper.saveContent();
   const { blocks } = (await save).postDataJSON();
 
-  // A slate block whose `plaintext` already says it needs no copy: restapi reads either.
+  // Its words are its searchableText; the `plaintext` restapi would read instead, an old
+  // copy, is gone.
   const saved = blocks['block-1-uuid'];
-  expect(saved.searchableText ?? saved.plaintext).toContain(word);
+  expect(saved.searchableText).toContain(word);
+  expect(saved).not.toHaveProperty('plaintext');
 });

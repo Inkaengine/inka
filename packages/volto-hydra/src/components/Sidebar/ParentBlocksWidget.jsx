@@ -37,7 +37,8 @@ import DropdownMenu from '../Toolbar/DropdownMenu';
 import ReadOnlyForm from './ReadOnlyForm';
 import { getBlockById, updateBlockById, getResolvedSchema, getCommonAncestor } from '../../utils/blockPath';
 import { HydraSchemaProvider } from '../../context';
-import { getConvertibleTypes, convertBlockType, findTypeField } from '../../utils/blockSync';
+import { findTypeField } from '../../utils/blockSync';
+import BlockTypeMenu from './BlockTypeMenu';
 import { nestedStatus } from '@volto-hydra/helpers';
 import { buildIdFieldMap } from '../../utils/blockPath';
 import { PAGE_BLOCK_UID } from '@volto-hydra/hydra-js';
@@ -267,6 +268,8 @@ const ParentBlockSection = ({
   onDeleteBlock,
   onChangeBlock,
   onBlockAction,
+  convertTargetsFor,
+  onConvertBlock,
   formData,
   pathname,
   intl,
@@ -328,6 +331,21 @@ const ParentBlockSection = ({
   const menuButtonRef = React.useRef(null);
 
   const title = getBlockTypeTitle(blockType, blockPathMap, blockId);
+
+  // The types this block can be changed to (the toolbar's "Convert to…" list).
+  // A block that can't be edited, or has nowhere to go, keeps a plain title.
+  const [typeMenuRect, setTypeMenuRect] = React.useState(null);
+  const titleRef = React.useRef(null);
+  const convertTargets =
+    blockId !== PAGE_BLOCK_UID &&
+    convertTargetsFor &&
+    onConvertBlock &&
+    !isBlockReadonly(blockData, templateEditMode)
+      ? convertTargetsFor(blockId)
+      : [];
+  const openTypeMenu = () => {
+    if (titleRef.current) setTypeMenuRect(titleRef.current.getBoundingClientRect());
+  };
   // Use sidebar-properties for current block (backwards compat), parent-sidebar-{id} for parents
   const targetId = isCurrentBlock ? 'sidebar-properties' : `parent-sidebar-${blockId}`;
 
@@ -393,13 +411,41 @@ const ParentBlockSection = ({
               <Icon name={leftArrowSVG} size="24px" />
             </button>
           )}
-          <button
-            className="nav-title"
-            onClick={() => onSelectBlock(blockId)}
-            title={`Select ${title}`}
-          >
-            {title}
-          </button>
+          {/* The current block's title is its type: a dropdown of the types it
+              can be changed to. A parent's title selects that parent. */}
+          {isCurrentBlock && convertTargets.length > 0 ? (
+            <button
+              ref={titleRef}
+              type="button"
+              className="nav-title nav-title--type-menu"
+              data-testid="block-type-dropdown"
+              aria-haspopup="menu"
+              aria-expanded={!!typeMenuRect}
+              onClick={() => (typeMenuRect ? setTypeMenuRect(null) : openTypeMenu())}
+              title={`Change ${title} to another type`}
+            >
+              {title} <span aria-hidden="true">▾</span>
+            </button>
+          ) : (
+            <button
+              ref={titleRef}
+              className="nav-title"
+              onClick={() => onSelectBlock(blockId)}
+              title={`Select ${title}`}
+            >
+              {title}
+            </button>
+          )}
+          {typeMenuRect && (
+            <BlockTypeMenu
+              anchorRect={typeMenuRect}
+              anchorRef={titleRef}
+              currentTitle={title}
+              targets={convertTargets}
+              onPick={(newType) => onConvertBlock(blockId, newType)}
+              onClose={() => setTypeMenuRect(null)}
+            />
+          )}
           {/* What the blocks INSIDE need. A blind is collapsed, so a teaser
               three levels down that refuses to save — or still holds the
               language it was copied from — is invisible until someone goes
@@ -476,14 +522,6 @@ const ParentBlockSection = ({
           </button>
           {menuOpen && (() => {
             const pathInfo = blockPathMap?.[blockId];
-            const blocksConfig = config.blocks?.blocksConfig;
-            const convertibleTypes = getConvertibleTypes(blockType, blocksConfig, pathInfo?.allowedSiblingTypes);
-            const handleConvertBlock = (newType) => {
-              const newBlockData = convertBlockType(blockData, newType, blocksConfig, '@type', intl);
-              // Preserve the block ID
-              newBlockData['@uid'] = blockId;
-              onChangeBlock(blockId, newBlockData);
-            };
             return (
               <DropdownMenu
                 selectedBlock={blockId}
@@ -498,8 +536,9 @@ const ParentBlockSection = ({
                 addMode={pathInfo?.addMode}
                 parentAddMode={pathInfo?.parentAddMode}
                 addDirection={pathInfo?.addDirection}
-                convertibleTypes={convertibleTypes}
-                onConvertBlock={handleConvertBlock}
+                // "Convert to…" opens the same type list as the title.
+                convertibleTypes={convertTargets}
+                onOpenConvertChooser={openTypeMenu}
                 // Same rule as the canvas toolbar: `fixed` withholds removal
                 // from a PAGE, not from the template's own author. Once the
                 // template a block BELONGS to is unlocked, it is removable.
@@ -793,6 +832,8 @@ const ParentBlocksWidget = ({
   onDeleteBlock,
   onChangeBlock,
   onBlockAction,
+  convertTargetsFor,
+  onConvertBlock,
   templateEditMode,
   onChangeTemplateSettings,
   onToggleTemplateEditMode,
@@ -998,6 +1039,8 @@ const ParentBlocksWidget = ({
                 onDeleteBlock={onDeleteBlock}
                 onChangeBlock={handleBlockChange}
                 onBlockAction={onBlockAction}
+                convertTargetsFor={convertTargetsFor}
+                onConvertBlock={onConvertBlock}
                 formData={formData}
                 pathname={pathname}
                 intl={intl}
@@ -1026,6 +1069,8 @@ const ParentBlocksWidget = ({
             onDeleteBlock={onDeleteBlock}
             onChangeBlock={handleBlockChange}
             onBlockAction={onBlockAction}
+            convertTargetsFor={convertTargetsFor}
+            onConvertBlock={onConvertBlock}
             formData={formData}
             pathname={pathname}
             intl={intl}
@@ -1093,6 +1138,10 @@ ParentBlocksWidget.propTypes = {
   onDeleteBlock: PropTypes.func,
   onChangeBlock: PropTypes.func,
   onBlockAction: PropTypes.func,
+  // (blockId) → [{ type, title }]: what the block can be changed to.
+  convertTargetsFor: PropTypes.func,
+  // (blockId, newType): change it, asking first when content would be lost.
+  onConvertBlock: PropTypes.func,
 };
 
 export default ParentBlocksWidget;

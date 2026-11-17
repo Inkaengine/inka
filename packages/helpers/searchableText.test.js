@@ -3,8 +3,8 @@ import { searchTextOptions, withSearchableText } from './searchableText.js';
 /**
  * Inka #634: a page's search text holds what a visitor sees, from every block, once.
  * plone.restapi visits a block's `blocks` and `data.blocks`, and reads each block's
- * `searchableText`, else a slate block's `plaintext`. So each visited block carries its own
- * text and whatever the visit can't reach.
+ * `searchableText`. So each visited block carries its own text and whatever the visit can't
+ * reach.
  */
 const slate = (text) => [{ type: 'p', children: [{ text }] }];
 
@@ -89,13 +89,16 @@ const options = {
 };
 
 const pageOf = (blocks, items = Object.keys(blocks)) => ({ blocks, blocks_layout: { items } });
-const textOf = (block) => withSearchableText(pageOf({ b: block }), options).blocks.b.searchableText;
+// What restapi reads from a block. It falls back to a slate block's `plaintext`, which save
+// removes, so nothing stale is read.
+const read = (block) => block.searchableText;
+const textOf = (block) => read(withSearchableText(pageOf({ b: block }), options).blocks.b);
 
 // What plone.restapi's indexer does with a block: its children, then itself.
 function indexed(block) {
   const children = [...Object.values(block.data?.blocks ?? {})];
   if (block.blocks && !Array.isArray(block.blocks)) children.push(...Object.values(block.blocks));
-  return [...children.flatMap(indexed), block.searchableText || block.plaintext || ''].filter(Boolean);
+  return [...children.flatMap(indexed), read(block) || ''].filter(Boolean);
 }
 const allText = (block) => indexed(withSearchableText(pageOf({ b: block }), options).blocks.b);
 
@@ -123,6 +126,18 @@ describe('the text of a block', () => {
     expect(textOf({ '@type': 'slate', value })).toBe('Intro first item; and the second');
   });
 
+  test('a nested list starts new words, though its item has text before it', () => {
+    // A list item holds its own words and then the list nested under it.
+    const value = [{
+      type: 'ul',
+      children: [
+        { type: 'li', children: [{ text: 'One' }, { type: 'ul', children: [{ type: 'li', children: [{ text: 'Inner' }] }] }] },
+        { type: 'li', children: [{ text: 'Two' }] },
+      ],
+    }];
+    expect(textOf({ '@type': 'slate', value })).toBe('One Inner Two');
+  });
+
   test('inline elements inside slate run on with the text around them', () => {
     const value = [{
       type: 'p',
@@ -132,8 +147,22 @@ describe('the text of a block', () => {
     expect(textOf({ '@type': 'slate', value })).toBe('unbelievable here');
   });
 
-  test('a slate block restapi reads from its plaintext needs no copy', () => {
-    expect(textOf({ '@type': 'slate', value: slate('Typed'), plaintext: 'Typed' })).toBeUndefined();
+  test('a slate block\'s text is its searchableText, and a stored plaintext goes', () => {
+    const value = [{ type: 'ul', children: [{ type: 'li', children: [{ text: 'One' }] }, { type: 'li', children: [{ text: 'Two' }] }] }];
+    const block = withSearchableText(pageOf({ b: { '@type': 'slate', value, plaintext: 'An old version' } }), options).blocks.b;
+    expect(block.searchableText).toBe('One Two');
+    expect('plaintext' in block).toBe(false);
+  });
+
+  test('a plaintext at any depth goes, though the block has no text', () => {
+    const page = withSearchableText(pageOf({
+      s: {
+        '@type': 'section',
+        blocks: { c: { '@type': 'slate', value: slate(''), plaintext: 'Was here' } },
+        blocks_layout: { items: ['c'] },
+      },
+    }), options);
+    expect('plaintext' in page.blocks.s.blocks.c).toBe(false);
   });
 
   test('a container carries its own text; its children carry theirs', () => {
@@ -149,8 +178,8 @@ describe('the text of a block', () => {
       },
     }), options);
     expect(page.blocks.s.searchableText).toBe('Heading');
-    expect(page.blocks.s.blocks.a.searchableText).toBe('First');
-    expect(page.blocks.s.blocks.z.searchableText).toBe('Second');
+    expect(read(page.blocks.s.blocks.a)).toBe('First');
+    expect(read(page.blocks.s.blocks.z)).toBe('Second');
   });
 
   test('nothing is indexed twice, with containers at every depth', () => {
@@ -274,10 +303,12 @@ describe('template blocks', () => {
       title: 'Shared heading',
       ...locked,
       blocks: {
-        chrome: { '@type': 'slate', value: slate('Shared text'), ...locked },
+        chrome: { '@type': 'slate', value: slate('Shared text'), plaintext: 'Shared text', ...locked },
         mine: { '@type': 'slate', value: slate('Page text'), templateId: '/t', templateInstanceId: 'i', slotId: 's' },
       },
       blocks_layout: { items: ['chrome', 'mine'] },
+    // A locked Text block is the template's like any other: its stored plaintext, which
+    // restapi would read, goes too.
     })).toEqual(['Page text']);
   });
 });

@@ -10,7 +10,7 @@
  * (button/teaser overlap common patterns; containers need their tag).
  */
 const MATCHED = [
-  '<block type="slate" value="${p,h*,ul,ol,blockquote,strong,em,a/slate}" plaintext="${p,h*,ul,ol,blockquote,strong,em,a/text}" />',
+  '<block type="slate" value="${p,h*,ul,ol,blockquote,strong,em,a/slate}" />',
   '<block type="title" _="${h1}" />',
   '<block type="separator" _="${hr}" styles={"align":"full"} />',
   // One image form: the caption paragraph is an optional NODE (`${p?/textarea}`), so
@@ -39,7 +39,7 @@ const TAGGED = [
   [
     '<block type="callout">',
     '  <region name="items" widget="blocks_layout">',
-    '    <block type="slate" value="${p,h*,ul,ol,blockquote,strong,em,a/slate}" plaintext="${p,h*,ul,ol,blockquote,strong,em,a/text}" />',
+    '    <block type="slate" value="${p,h*,ul,ol,blockquote,strong,em,a/slate}" />',
     '  </region>',
     '</block>',
   ].join('\n'),
