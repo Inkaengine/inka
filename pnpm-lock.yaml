@@ -1678,6 +1678,8 @@ importers:
         specifier: 1.10.2
         version: 1.10.2
 
+  packages/compare: {}
+
   packages/content-validator:
     dependencies:
       '@volto-hydra/helpers':
