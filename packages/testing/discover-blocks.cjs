@@ -1416,12 +1416,24 @@ function styleExampleCases(cases, candidates) {
   return added;
 }
 
+/**
+ * The schemas content integrity is judged with: the frontend's blocks, and its
+ * page schema as `_page` (the validator's name for it). The page schema is
+ * where a layout forced across a region is named (`allowedLayouts`) — a site
+ * footer is in no page's blocks, so without it the check reads the footer as a
+ * template nothing uses.
+ */
+function integritySchemas(blocksConfig, pageSchema) {
+  return { ...blocksConfig, _page: { blockSchema: pageSchema } };
+}
+
 async function discoverBlocks(
   apiUrl,
   maxPages = Infinity,
   blocksConfig = {},
   frontendKeys = [],
   styleMenuClasses = [],
+  pageSchema = { properties: {} },
 ) {
   // What this frontend says an author can pick. See AUTHORABLE_SLATE_STYLES.
   AUTHORABLE_SLATE_STYLES = new Set(styleMenuClasses);
@@ -1916,7 +1928,7 @@ async function discoverBlocks(
     // that declares them. Without it the check falls back to recognising
     // references by shape, which cannot tell a link from a headline.
     const { errors } = checkIntegrity([...fetchedPages, ...stubs], {
-      schemasFor: () => blocksConfig,
+      schemasFor: () => integritySchemas(blocksConfig, pageSchema),
     });
     // A harness may mount extra content trees whose pages were authored for a
     // different root (the parent's /_test_data fixture mount): their internal
@@ -2040,6 +2052,7 @@ module.exports = {
   collectSlateIssues,
   collectWidgetShapeIssues,
   discoverBlocks,
+  integritySchemas,
   isUnregisteredType,
   extractBlocks,
   buildObjectListFieldsMap,
