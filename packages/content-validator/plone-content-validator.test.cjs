@@ -1668,7 +1668,7 @@ describe('checkBlockSchemas()', () => {
       page({
         b1: {
           '@type': 'contentBlock',
-          '@id': 'x',
+          '@uid': 'b1',
           title: 'T',
           blocks: { inner: { '@type': 'contentBlock', linkUrl: '/y' } },
           blocks_layout: { items: ['inner'] },

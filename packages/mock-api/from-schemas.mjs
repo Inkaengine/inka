@@ -2,8 +2,10 @@
  * What a served content tree gets from the frontend's block schemas, after it is
  * read. Markdown decodes from the page alone (blockmd never sees a schema); these
  * are the steps that need to know what a frontend's blocks are: which field is a
- * link to summarise, and what a block's schema is, for an example page to show.
+ * link to summarise, what a block's schema is, for an example page to show, and
+ * what a block's search text is.
  */
+import { searchTextOptions, withSearchableText } from '@volto-hydra/helpers/searchableText.js';
 
 /** Build a `schemaFor(type) -> blockSchema` lookup from a block-schema registry.
  *  Handles both shapes the project uses:
@@ -131,4 +133,51 @@ export function resolveLinkSummaries(items, { schemaFor, prefix = '' }) {
     }
   }
   return items;
+}
+
+const SEARCH_INTL = { formatMessage: (message) => message?.defaultMessage ?? '' };
+
+// `full`, with each `searchableText` the content already had kept in its place.
+function keepStored(stored, full) {
+  if (Array.isArray(full)) return full.map((item, i) => keepStored(stored?.[i], item));
+  if (!full || typeof full !== 'object') return full;
+  const out = { ...full };
+  for (const [key, value] of Object.entries(full)) {
+    if (key !== 'searchableText' && stored && key in stored) out[key] = keepStored(stored[key], value);
+  }
+  if (stored?.searchableText) out.searchableText = stored.searchableText;
+  return out;
+}
+
+/**
+ * The page with search text on every block that has none: the text the editor's
+ * save would write, from the frontend's blocks config (its schemas, and a block
+ * type's `searchableFields`). Content read from disk was never saved; a block
+ * whose content stores its search text keeps it.
+ */
+export function withMissingSearchText(page, blocksConfig) {
+  if (!page.blocks) return page;
+  return keepStored(page, withSearchableText(page, searchTextOptions(blocksConfig, SEARCH_INTL, page)));
+}
+
+// `stored` without each `searchableText` that `derived` has the same, at the same place.
+function dropDerived(stored, derived) {
+  if (Array.isArray(stored)) return stored.map((item, i) => dropDerived(item, derived?.[i]));
+  if (!stored || typeof stored !== 'object') return stored;
+  const out = {};
+  for (const [key, value] of Object.entries(stored)) {
+    if (key === 'searchableText' && value === derived?.searchableText) continue;
+    out[key] = dropDerived(value, derived?.[key]);
+  }
+  return out;
+}
+
+/**
+ * The page without the search text the frontend would give it anyway: what a markdown
+ * export leaves out, so a page reads clean and loads back the same (withMissingSearchText
+ * fills it again). Search text set to something else is the page's own, and is kept.
+ */
+export function withoutDefaultSearchText(page, blocksConfig) {
+  if (!page.blocks) return page;
+  return dropDerived(page, withSearchableText(page, searchTextOptions(blocksConfig, SEARCH_INTL, page)));
 }

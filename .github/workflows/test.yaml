@@ -97,7 +97,7 @@ jobs:
         # of every test job timing out waiting for a server that exited.
         run: pnpm check:content
       - name: Build Volto for production
-        run: pnpm build
+        run: pnpm build:test
         env:
           RAZZLE_API_PATH: http://localhost:${{ env.HYDRA_MOCK_API_PORT }}
           # RAZZLE_ vars are inlined into the CLIENT bundle at build time (webpack
@@ -466,6 +466,10 @@ jobs:
             done
           done
           echo "All servers ready"
+      - name: Comparison engine unit tests (node:test)
+        # @inka/compare. Here, not with test:api, because recording and
+        # replaying a source site needs a browser.
+        run: pnpm test:compare
       - name: Run tests
         run: pnpm exec playwright test --project=unit --project=unit-firefox --project=api-contract --project=mock --project=react --project=svelte --project=vue --project=astro
         env:
@@ -598,7 +602,6 @@ jobs:
           # A failing test's first retry records a Playwright trace (its own console,
           # network and DOM snapshots), uploaded below: what a flake needs.
           TRACE: '1'
-          USE_PREBUILT: true
       - name: Server logs
         if: failure()
         run: cat "$RUNNER_TEMP/servers.log"
@@ -734,7 +737,6 @@ jobs:
           # A failing test's first retry records a Playwright trace (its own console,
           # network and DOM snapshots), uploaded below: what a flake needs.
           TRACE: '1'
-          USE_PREBUILT: true
       - name: Server logs
         if: failure()
         run: cat "$RUNNER_TEMP/servers.log"
@@ -969,7 +971,6 @@ jobs:
           # A failing test's first retry records a Playwright trace (its own console,
           # network and DOM snapshots), uploaded below: what a flake needs.
           TRACE: '1'
-          USE_PREBUILT: true
       - name: Server logs
         if: failure()
         run: cat "$RUNNER_TEMP/servers.log"

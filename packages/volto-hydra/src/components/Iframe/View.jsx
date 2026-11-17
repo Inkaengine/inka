@@ -369,7 +369,8 @@ import {
   getConvertibleTypes,
   getConversionMap,
   convertBlockType,
-  reshapeContainerBlock,
+  convertBlockInPlace as convertBlockInPlaceIn,
+  getConvertTargets,
   fieldMappingProblems,
   reservedFieldProblems,
   validateFieldRulesPlacement,
@@ -5486,39 +5487,48 @@ const Iframe = (props) => {
     handleIframeAdd();
   }, [pendingFill, selectedBlock, handleIframeAdd, referenceElement]);
 
-  // Convert a block to newType IN PLACE (container-aware), returning new formData.
-  // Container blocks (any region with children) go through reshapeContainerBlock
-  // — it carries their children over AND cascade-converts each cell to a type the
-  // target region allows (pathMap-aware). A childless block converts its own fields.
-  // Shared by the chooser commit and the auto-convert-on-drop/paste paths.
-  const convertBlockInPlace = (props, bpm, blockId, newType) => {
-    const blockData = getBlockById(props, bpm, blockId);
-    if (!blockData) return props;
-    const hasChildren = getContainerRegionDescriptors(
-      blockData['@type'], blocksConfig, intl, blockData,
-    ).some((d) => getChildBlockEntries(blockData, d).length > 0);
-    if (hasChildren) {
-      return reshapeContainerBlock(props, bpm, blockId, newType, blocksConfig, intl);
-    }
-    const typeFieldName = bpm?.[blockId]?.typeField || '@type';
-    let newBlockData = convertBlockType(blockData, newType, blocksConfig, typeFieldName, intl);
-    // Converting a TEMPLATE-MEMBER block keeps it template content — carry its
-    // membership over. convertBlockType builds a fresh block from the type's
-    // fields, so without this, filling a locked empty (in template-edit-mode)
-    // would drop templateId/templateInstanceId/fixed/readOnly and the new block
-    // would become per-page (and lose its lock). No-op for normal page blocks.
-    for (const k of ['templateId', 'templateInstanceId', 'slotId', 'fixed', 'readOnly']) {
-      if (blockData[k] !== undefined) newBlockData = { ...newBlockData, [k]: blockData[k] };
-    }
-    // An object_list item is found by its idField, which is not one of its
-    // type's fields, so a conversion with no field mapping (filling an empty
-    // placeholder) drops it: the item then has no id and cannot be rendered,
-    // selected or edited. It is the same item, typed in place — keep its id.
-    const idField = bpm?.[blockId]?.isObjectListItem ? bpm[blockId].idField : null;
-    if (idField && blockData[idField] !== undefined) {
-      newBlockData = { ...newBlockData, [idField]: blockData[idField] };
-    }
-    return updateBlockById(props, bpm, blockId, newBlockData);
+  // Convert a block to newType IN PLACE (see convertBlockInPlace in blockSync):
+  // shared by the chooser commit and the auto-convert-on-drop/paste paths.
+  const convertBlockInPlace = (props, bpm, blockId, newType) =>
+    convertBlockInPlaceIn(props, bpm, blockId, newType, blocksConfig, intl);
+
+  // Save a conversion the editor asked for: run the `@type` rules in case the
+  // new type re-types it or a sibling, then hand the page on. No confirm here —
+  // the pick was the ask.
+  const commitConverted = (updatedProperties, doneTag = 'convert-block') => {
+    const settled = applySchemaDefaultsToFormData(
+      updatedProperties, buildBlockPathMap(updatedProperties, blocksConfig, intl), blocksConfig, intl,
+    );
+    onChangeFormData(settled);
+    setIframeSyncState(prev => ({
+      ...prev,
+      formData: settled,
+      blockPathMap: buildBlockPathMap(settled, blocksConfig, intl),
+      toolbarRequestDone: `${doneTag}-${Date.now()}`,
+    }));
+  };
+
+  // The types a block can be changed to where it stands — the one list the
+  // toolbar's "Convert to…" and the sidebar's controls all offer.
+  const convertTargetsFor = (blockId) => {
+    const bpm = iframeSyncState.blockPathMap;
+    const blockData = blockId ? getBlockById(properties, bpm, blockId) : null;
+    if (!blockData) return [];
+    return getConvertTargets(
+      blockData, blocksConfig, bpm?.[blockId]?.allowedSiblingTypes, intl,
+      bpm?.[blockId]?.typeField || '@type',
+    );
+  };
+
+  // Change a block's type because the editor asked to — from the toolbar's
+  // "Convert to…", the sidebar header's type dropdown or the sidebar's block
+  // menu. One conversion for all of them, done straight away: one change, so
+  // one undo. Nothing is lost — a value the new type has no field for stays on
+  // the block, and converting back brings it back.
+  const requestConvert = (blockId, newType) => {
+    commitConverted(
+      convertBlockInPlace(properties, iframeSyncState.blockPathMap, blockId, newType),
+    );
   };
 
   // Commits a chooser action (wrap or convert) once the user picks a target type.
@@ -5557,6 +5567,8 @@ const Iframe = (props) => {
           blockPathMap: buildBlockPathMap(updatedProperties, blocksConfig, intl),
           toolbarRequestDone: `paste-convert-${Date.now()}`,
         }));
+      } else if (chooser.kind === 'convert' && !chooser.pendingMove) {
+        requestConvert(chooser.blockId, newType);
       } else if (chooser.kind === 'convert') {
         const blockData = getBlockById(properties, bpm, chooser.blockId);
         if (blockData) {
@@ -5596,19 +5608,7 @@ const Iframe = (props) => {
             );
             updatedProperties = settledDrop.formData;
           }
-          // The pick placed the block; run `@type` rules in case its new position
-          // re-types it or a sibling. No second confirm — the pick was the ask.
-          updatedProperties = applySchemaDefaultsToFormData(
-            updatedProperties, buildBlockPathMap(updatedProperties, blocksConfig, intl), blocksConfig, intl,
-          );
-          onChangeFormData(updatedProperties);
-          const newBlockPathMap = buildBlockPathMap(updatedProperties, blocksConfig, intl);
-          setIframeSyncState(prev => ({
-            ...prev,
-            formData: updatedProperties,
-            blockPathMap: newBlockPathMap,
-            toolbarRequestDone: `convert-block-${Date.now()}`,
-          }));
+          commitConverted(updatedProperties);
         }
       }
     } catch (err) {
@@ -6781,98 +6781,15 @@ const Iframe = (props) => {
               // Set pending state to trigger object browser via OpenObjectBrowser component
               setPendingFieldMedia({ fieldName, blockUid });
             }}
-            convertibleTypes={(() => {
-              const bpm = iframeSyncState.blockPathMap;
-              const blockData = getBlockById(properties, bpm, selectedBlock);
-              const typeFieldName = bpm?.[selectedBlock]?.typeField || '@type';
-              const blockType = blockData?.[typeFieldName];
-              const allowedTypes = bpm?.[selectedBlock]?.allowedSiblingTypes;
-              const contentTargets = getConvertibleTypes(blockType, blocksConfig, allowedTypes);
-
-              // Container-to-container conversions: source is a container with children.
-              // For each OTHER container whose child field accepts all of source's
-              // children, offer it as a target. The existing getConvertibleTypes
-              // doesn't cover this because it relies on fieldMappings, which are
-              // content-level.
-              // Child types across ALL regions (blocks_layout + object_list), not just default.
-              const childEntries = blockType
-                ? getContainerRegionDescriptors(blockData['@type'], blocksConfig, intl, blockData).flatMap((d) =>
-                    getChildBlockEntries(blockData, d),
-                  )
-                : [];
-              if (childEntries.length === 0) return contentTargets;
-
-              const childTypes = childEntries
-                .map((e) => e.block?.['@type'])
-                .filter(Boolean);
-              const containerTargets = [];
-              const existingTypes = new Set(contentTargets.map(t => t.type));
-              for (const [type, cfg] of Object.entries(blocksConfig || {})) {
-                if (!cfg?.blockSchema) continue;
-                if (type === blockType) continue;
-                if (existingTypes.has(type)) continue;
-                let schema;
-                try {
-                  schema = typeof cfg.blockSchema === 'function'
-                    ? cfg.blockSchema({ blocksConfig, intl }) : cfg.blockSchema;
-                } catch { continue; }
-                const props = schema?.properties || {};
-                let tgtChildField = null;
-                for (const [fn, field] of Object.entries(props)) {
-                  if (field?.widget === 'blocks_layout') { tgtChildField = { region: fn, ...field }; break; }
-                }
-                if (!tgtChildField) continue;
-                if (!canContainAll(tgtChildField, childTypes, 0)) continue;
-                // Also respect parent's allowedBlocks — new container type must be allowed in its place.
-                if (allowedTypes && !allowedTypes.includes(type)) continue;
-                containerTargets.push({ type, title: cfg.title || type });
-              }
-              return [...contentTargets, ...containerTargets];
-            })()}
+            convertibleTypes={convertTargetsFor(selectedBlock)}
             onOpenConvertChooser={() => {
-              // Open BlockChooser overlay seeded with convertibleTypes for the
-              // currently selected block. commitChooser handles the actual
-              // mutation when the user picks a target.
-              const bpm = iframeSyncState.blockPathMap;
-              const blockData = getBlockById(properties, bpm, selectedBlock);
-              const typeFieldName = bpm?.[selectedBlock]?.typeField || '@type';
-              const blockType = blockData?.[typeFieldName];
-              const allowedTypes = bpm?.[selectedBlock]?.allowedSiblingTypes;
-              const contentTargets = getConvertibleTypes(blockType, blocksConfig, allowedTypes);
-
-              // Child types across ALL regions (blocks_layout + object_list), not just default.
-              const childEntries = blockType
-                ? getContainerRegionDescriptors(blockData['@type'], blocksConfig, intl, blockData).flatMap((d) =>
-                    getChildBlockEntries(blockData, d),
-                  )
-                : [];
-              const containerTargets = [];
-              if (childEntries.length > 0) {
-                const childTypes = childEntries
-                  .map((e) => e.block?.['@type']).filter(Boolean);
-                const existing = new Set(contentTargets.map(t => t.type));
-                for (const [type, cfg] of Object.entries(blocksConfig || {})) {
-                  if (!cfg?.blockSchema || type === blockType || existing.has(type)) continue;
-                  let schema;
-                  try {
-                    schema = typeof cfg.blockSchema === 'function'
-                      ? cfg.blockSchema({ blocksConfig, intl }) : cfg.blockSchema;
-                  } catch { continue; }
-                  let tgt = null;
-                  for (const [fn, field] of Object.entries(schema?.properties || {})) {
-                    if (field?.widget === 'blocks_layout') { tgt = { region: fn, ...field }; break; }
-                  }
-                  if (!tgt) continue;
-                  if (!canContainAll(tgt, childTypes, 0)) continue;
-                  if (allowedTypes && !allowedTypes.includes(type)) continue;
-                  containerTargets.push({ type });
-                }
-              }
-              const allTargets = [
-                ...contentTargets.map(t => t.type),
-                ...containerTargets.map(t => t.type),
-              ];
-              setChooser({ kind: 'convert', blockId: selectedBlock, allowedBlocks: allTargets });
+              // Open BlockChooser overlay seeded with the block's convert targets.
+              // commitChooser handles the actual mutation when the user picks one.
+              setChooser({
+                kind: 'convert',
+                blockId: selectedBlock,
+                allowedBlocks: convertTargetsFor(selectedBlock).map((t) => t.type),
+              });
             }}
             {...(() => {
               // Wrap action props — only when there's a multi-selection that
@@ -7226,6 +7143,8 @@ const Iframe = (props) => {
         templatePermissions={templateCacheRef.current}
         onSelectBlock={onSelectBlock}
         onDeleteBlock={onDeleteBlock}
+        convertTargetsFor={convertTargetsFor}
+        onConvertBlock={requestConvert}
         onBlockAction={(actionId, blockId) => {
           // Generic action handler - dispatches based on action type
           // Used by sidebar dropdowns to handle table/block actions

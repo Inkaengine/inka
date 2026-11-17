@@ -1218,8 +1218,10 @@ function collectWidgetShapeIssues(
   const declaredByType = (typeof typeSchema === 'function' ? null : typeSchema?.properties) || {};
   if (blockType) {
     for (const key of Object.keys(blockData)) {
-      if (key.startsWith('@') || UNDECLARED_EXEMPT.has(key) || props[key] || declaredByType[key]) continue;
-      if (key === idField || key === typeField) continue;
+      // A block's identity: its type and uid, and on a list item the keys its list
+      // names. Any other `@` key is stray: a schema can't declare one.
+      if (key === '@type' || key === '@uid' || key === idField || key === typeField) continue;
+      if (UNDECLARED_EXEMPT.has(key) || props[key] || declaredByType[key]) continue;
       if (defaultsPrefix && key.startsWith(defaultsPrefix)) continue;
       const dedupeKey = `${blockType} ${key}`;
       if (!undeclaredFields.has(dedupeKey)) {
