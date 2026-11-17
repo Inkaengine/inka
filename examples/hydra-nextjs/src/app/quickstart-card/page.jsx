@@ -1,9 +1,11 @@
 // app/[...slug]/page.jsx
 'use client'
 import { useState, useEffect } from 'react'
+import { useParams } from 'next/navigation'
 import { initBridge } from '@hydra-js/hydra.js'
 
-export default function Page({ params }) {
+export default function Page() {
+  const params = useParams()
   const [page, setPage] = useState(null)
   const [editing, setEditing] = useState(false)
 
