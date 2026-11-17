@@ -165,8 +165,8 @@ export function parsePrototypes(text, { explicit = false } = {}) {
       const t = top();
       if (!t || t.kind !== 'block') throw new Error('region outside a block');
       // idField/typeField are the object_list item's identity/type keys, named
-      // on the region because decode is schema-free (there's no blocksConfig to
-      // read them from). idField has no default: an unstated one once minted
+      // on the region because decode reads the page alone (there's no frontend
+      // config to read them from). idField has no default: an unstated one once minted
       // table ids into `@id` while frontends read `key`, and every table
       // rendered its last cell. typeField is settled when the region closes
       // (settleTypeField), once its item types are known.

@@ -23,6 +23,7 @@
   "files": [
     "api/",
     "env-port.cjs",
+    "from-schemas.mjs",
     "mock-api-server.cjs",
     "mock-plone-api.cjs",
     "mock-principals-and-rules.cjs",
