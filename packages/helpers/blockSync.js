@@ -56,6 +56,7 @@ import {
   isBlockReadonly,
   isBlockPositionLocked,
   getBlockAddability,
+  canContainAll,
 } from './index.js';
 import { getHydraSchemaContext, setHydraSchemaContext, getLiveBlockData } from './hydraSchemaContext.js';
 
@@ -2628,6 +2629,217 @@ export function reshapeContainerBlock(
     if (changed) setChildBlockEntries(container, region, next);
   }
   return updateBlockById(moved, movedMap, blockId, container);
+}
+
+/**
+ * The types a block can be converted to where it stands: the types its
+ * fieldMappings reach (getConvertibleTypes), and, for a container with
+ * children, every other container whose region takes all of those children.
+ * `allowedTypes` is what the block's place allows (the pathMap's
+ * allowedSiblingTypes); null allows any. The ONE list every "change the type"
+ * control offers: the toolbar's "Convert to…", the sidebar header's type
+ * dropdown and the sidebar's block menu.
+ *
+ * @returns {Array<{type: string, title: string}>}
+ */
+export function getConvertTargets(blockData, blocksConfig, allowedTypes, intl, typeFieldName = '@type') {
+  const blockType = blockData?.[typeFieldName];
+  if (!blockType) return [];
+  const contentTargets = getConvertibleTypes(blockType, blocksConfig, allowedTypes);
+
+  // Container → container: fieldMappings are about content, so a container
+  // whose children another container takes is offered that one as well.
+  // Child types across ALL regions (blocks_layout + object_list).
+  const childTypes = getContainerRegionDescriptors(blockData['@type'], blocksConfig, intl, blockData)
+    .flatMap((d) => getChildBlockEntries(blockData, d))
+    .map((e) => e.block?.['@type'])
+    .filter(Boolean);
+  if (childTypes.length === 0) return contentTargets;
+
+  const offered = new Set(contentTargets.map((t) => t.type));
+  const containerTargets = [];
+  for (const [type, cfg] of Object.entries(blocksConfig || {})) {
+    if (type === blockType || offered.has(type)) continue;
+    if (!cfg?.blockSchema) continue;
+    if (allowedTypes && !allowedTypes.includes(type)) continue;
+    const schema = getBlockTypeSchema(type, intl, blocksConfig);
+    const region = Object.entries(schema?.properties || {}).find(
+      ([, field]) => field?.widget === 'blocks_layout',
+    );
+    if (!region) continue;
+    if (!canContainAll({ region: region[0], ...region[1] }, childTypes, 0)) continue;
+    containerTargets.push({ type, title: cfg.title || type });
+  }
+  return [...contentTargets, ...containerTargets];
+}
+
+/**
+ * Convert a block to `newType` IN PLACE, returning the new formData. A
+ * container with children goes through reshapeContainerBlock, which carries
+ * the children over AND converts each to a type the target region allows; a
+ * block without children converts its own fields. Every conversion an editor
+ * asks for goes through here.
+ */
+export function convertBlockInPlace(formData, blockPathMap, blockId, newType, blocksConfig, intl = null) {
+  const blockData = getBlockById(formData, blockPathMap, blockId);
+  if (!blockData) {
+    throw new Error(`convertBlockInPlace: block ${blockId} not found`);
+  }
+  const hasChildren = getContainerRegionDescriptors(
+    blockData['@type'], blocksConfig, intl, blockData,
+  ).some((d) => getChildBlockEntries(blockData, d).length > 0);
+  if (hasChildren) {
+    return reshapeContainerBlock(formData, blockPathMap, blockId, newType, blocksConfig, intl);
+  }
+  const typeFieldName = blockPathMap?.[blockId]?.typeField || '@type';
+  let newBlockData = convertBlockType(blockData, newType, blocksConfig, typeFieldName, intl);
+  // Converting a TEMPLATE-MEMBER block keeps it template content — carry its
+  // membership over. convertBlockType builds a fresh block from the type's
+  // fields, so without this, filling a locked empty (in template-edit-mode)
+  // would drop templateId/templateInstanceId/fixed/readOnly and the new block
+  // would become per-page (and lose its lock). No-op for normal page blocks.
+  for (const k of ['templateId', 'templateInstanceId', 'slotId', 'fixed', 'readOnly']) {
+    if (blockData[k] !== undefined) newBlockData = { ...newBlockData, [k]: blockData[k] };
+  }
+  // An object_list item is found by its idField, which is not one of its
+  // type's fields, so a conversion with no field mapping (filling an empty
+  // placeholder) drops it: the item then has no id and cannot be rendered,
+  // selected or edited. It is the same item, typed in place — keep its id.
+  const idField = blockPathMap?.[blockId]?.isObjectListItem ? blockPathMap[blockId].idField : null;
+  if (idField && blockData[idField] !== undefined) {
+    newBlockData = { ...newBlockData, [idField]: blockData[idField] };
+  }
+  return updateBlockById(formData, blockPathMap, blockId, newBlockData);
+}
+
+/** Whether a slate value holds any text. */
+function slateHasText(nodes) {
+  return (nodes || []).some((node) =>
+    typeof node?.text === 'string' ? node.text.trim() !== '' : slateHasText(node?.children),
+  );
+}
+
+/** Whether a field holds something an editor put there: not empty, not its default. */
+function fieldHasValue(value, fieldDef) {
+  if (value === undefined || value === null || value === '') return false;
+  if (Array.isArray(value) && value.length === 0) return false;
+  if (typeof value === 'object' && !Array.isArray(value) && Object.keys(value).length === 0) {
+    return false;
+  }
+  if (fieldDef?.widget === 'slate' && Array.isArray(value) && !slateHasText(value)) return false;
+  // An object field holds something only when one of its sub-fields does: the
+  // editor fills sub-field defaults in (a teaser's styling alignment), and
+  // those are no more content than a top-level default.
+  const subFields = fieldDef?.widget === 'object' ? fieldDef.schema?.properties : null;
+  if (subFields && typeof value === 'object' && !Array.isArray(value)) {
+    return Object.entries(value).some(([key, sub]) => fieldHasValue(sub, subFields[key]));
+  }
+  if (fieldDef?.default !== undefined && JSON.stringify(value) === JSON.stringify(fieldDef.default)) {
+    return false;
+  }
+  return true;
+}
+
+/**
+ * The source fields whose values reach a field of `targetType` through the
+ * fieldMappings on the conversion path — the same steps convertBlockType takes
+ * (the source's inverted `@default`, then each target's mappings), followed by
+ * name instead of value.
+ */
+function fieldsCarriedByMappings(sourceType, targetType, blocksConfig, intl) {
+  const path = findConversionPath(sourceType, targetType, blocksConfig);
+  if (!path) return new Set();
+  const sourceSchema = getBlockTypeSchema(sourceType, intl, blocksConfig);
+  // Each field of the data so far → the source fields its value came from.
+  let origins = Object.fromEntries(
+    Object.keys(sourceSchema?.properties || {}).map((f) => [f, new Set([f])]),
+  );
+  for (let i = 1; i < path.length; i++) {
+    const fromType = path[i - 1];
+    const toType = path[i];
+    const canonical = { ...origins };
+    for (const [blockField, canonicalField] of Object.entries(
+      invertMapping(blocksConfig[fromType]?.fieldMappings?.['@default']),
+    )) {
+      if (origins[blockField]) canonical[canonicalField] = origins[blockField];
+    }
+    const targetMappings = blocksConfig[toType]?.fieldMappings;
+    const mappings = { ...targetMappings?.['@default'], ...targetMappings?.[fromType] };
+    const next = {};
+    const add = (field, from) => {
+      if (!from) return;
+      next[field] = new Set([...(next[field] || []), ...from]);
+    };
+    for (const [sourceField, target] of Object.entries(mappings)) {
+      const targetField = getMappingTarget(target);
+      const targetRp = parseRegionPath(targetField);
+      const sourceRp = parseRegionPath(sourceField);
+      const from = sourceRp ? canonical[sourceRp.region] : canonical[sourceField];
+      add(targetRp ? targetRp.region : targetField, from);
+    }
+    origins = next;
+  }
+  const targetSchema = getBlockTypeSchema(targetType, intl, blocksConfig);
+  const carried = new Set();
+  for (const field of Object.keys(targetSchema?.properties || {})) {
+    for (const source of origins[field] || []) carried.add(source);
+  }
+  return carried;
+}
+
+/** The fields of `block` (a `from` block) with a value no field of `to` receives. */
+function lostFields(block, from, to, blocksConfig, intl) {
+  const sourceSchema = getBlockTypeSchema(from, intl, blocksConfig);
+  const targetProps = getBlockTypeSchema(to, intl, blocksConfig)?.properties || {};
+  // A region's children are carried by the reshape and listed in their own right.
+  const regions = new Set(
+    getContainerRegionDescriptors(from, blocksConfig, intl, block).map(
+      (d) => d.regionPath?.[0] ?? d.region,
+    ),
+  );
+  const carried = fieldsCarriedByMappings(from, to, blocksConfig, intl);
+  const lost = [];
+  for (const [field, fieldDef] of Object.entries(sourceSchema?.properties || {})) {
+    if (regions.has(field)) continue;
+    if (!fieldHasValue(block[field], fieldDef)) continue;
+    if (targetProps[field] || carried.has(field)) continue;
+    lost.push({ field, title: fieldDef?.title || field });
+  }
+  return lost;
+}
+
+/**
+ * What converting `blockId` (formData `before` → `after`) loses: for the block
+ * and each block inside it whose type changed, the fields with a value that no
+ * field of its new type receives. An empty list means nothing is lost, so the
+ * conversion needs no confirming.
+ *
+ * @returns {Array<{blockId, from, to, fields: Array<{field, title}>}>} in page order
+ */
+export function getConversionLosses(before, after, blockId, blocksConfig, intl = null) {
+  const beforeMap = buildBlockPathMap(before, blocksConfig, intl);
+  const afterMap = buildBlockPathMap(after, blocksConfig, intl);
+  const isInside = (id) => {
+    for (let at = id; at && at !== PAGE_BLOCK_UID; at = beforeMap[at]?.parentId) {
+      if (at === blockId) return true;
+    }
+    return false;
+  };
+  const titleOf = (type) => blocksConfig?.[type]?.title || type;
+  const losses = [];
+  for (const id of Object.keys(beforeMap)) {
+    if (!isInside(id) || !afterMap[id]) continue;
+    const was = getBlockById(before, beforeMap, id);
+    const now = getBlockById(after, afterMap, id);
+    const from = was?.[beforeMap[id].typeField || '@type'];
+    const to = now?.[afterMap[id].typeField || '@type'];
+    if (!from || !to || from === to) continue;
+    const fields = lostFields(was, from, to, blocksConfig, intl);
+    if (fields.length > 0) {
+      losses.push({ blockId: id, from: titleOf(from), to: titleOf(to), fields });
+    }
+  }
+  return losses;
 }
 
 /**

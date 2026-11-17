@@ -2223,8 +2223,13 @@ export const sharedBlocksConfig = {
         group: 'common',
         fieldMappings: {}, // present (truthy) so it's a valid conversion source
         blockSchema: {
-            fieldsets: [{ id: 'default', title: 'Default', fields: ['title'] }],
-            properties: { title: { title: 'Title', type: 'string' } },
+            fieldsets: [{ id: 'default', title: 'Default', fields: ['title', 'note'] }],
+            properties: {
+                title: { title: 'Title', type: 'string' },
+                // No target has a note: converting a source that has one loses
+                // it, so the editor asks first (sidebar-type-dropdown.spec.ts).
+                note: { title: 'Note', type: 'string' },
+            },
             required: [],
         },
     },
@@ -2335,6 +2340,25 @@ export const sharedBlocksConfig = {
                 items: {
                     widget: 'blocks_layout',
                     allowedBlocks: ['convTargetA', 'convTargetB'],
+                },
+            },
+            required: [],
+        },
+    },
+
+    // Container that takes a source AND both its targets, so a source inside
+    // it can be changed to either from the sidebar (sidebar-type-dropdown.spec.ts).
+    convBoxAll: {
+        id: 'convBoxAll',
+        title: 'Convert Box (all)',
+        restricted: true,
+        group: 'common',
+        blockSchema: {
+            fieldsets: [{ id: 'default', title: 'Default', fields: [] }],
+            properties: {
+                items: {
+                    widget: 'blocks_layout',
+                    allowedBlocks: ['convSource', 'convTargetA', 'convTargetB'],
                 },
             },
             required: [],

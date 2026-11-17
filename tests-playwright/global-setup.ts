@@ -86,8 +86,9 @@ async function globalSetup() {
   // together they read as a containment violation — the page's allowed set is the
   // non-restricted types. Un-restricting them to satisfy this check breaks 28
   // tests: the option-counting those specs assert on ("one option -> auto-convert,
-  // two -> chooser") flows from that same flag.
-  process.env.CONTAINMENT_EXEMPT_PAGES = [process.env.CONTAINMENT_EXEMPT_PAGES, '/_test_data/dnd-convert-page']
+  // two -> chooser") flows from that same flag. The sidebar-convert page holds
+  // the same toy blocks (sidebar-type-dropdown.spec.ts), so the same applies.
+  process.env.CONTAINMENT_EXEMPT_PAGES = [process.env.CONTAINMENT_EXEMPT_PAGES, '/_test_data/dnd-convert-page', '/_test_data/sidebar-convert-page']
     .filter(Boolean)
     .join(',');
   // Only frontends block-sanity enforces. A frontend it skips yields cases

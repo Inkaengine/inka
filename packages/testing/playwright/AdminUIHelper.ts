@@ -4049,6 +4049,23 @@ export class AdminUIHelper {
   }
 
   /**
+   * A conversion that would leave content behind asks first ("Lose some
+   * content?"). Check the dialog names `lost` (e.g. "Hero → Image: Subheading")
+   * and go ahead with it.
+   */
+  async confirmConvertLoss(lost: string): Promise<void> {
+    const dialog = this.page.locator('[data-testid="convert-loss-confirm"]');
+    await expect(dialog).toBeVisible({ timeout: 5000 });
+    await expect(dialog).toContainText(lost);
+    await this.page
+      .locator('.ui.modal')
+      .filter({ has: dialog })
+      .getByRole('button', { name: 'Convert', exact: true })
+      .click();
+    await expect(dialog).toHaveCount(0);
+  }
+
+  /**
    * Returns block-type ids currently offered by the open BlockChooser.
    * Each block button has `class={block.id}`; we collect those ids after
    * expanding every accordion. Helper for tests that verify which targets
