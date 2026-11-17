@@ -58,7 +58,15 @@ function inAdminBuild(rel) {
   return true;
 }
 
-const git = (cwd, args) => execFileSync('git', args, { cwd, encoding: 'utf8', maxBuffer: 256 * 1024 * 1024 });
+// Read-only, and the checkout is the one being tested: trusted for these calls
+// alone. In a CI container the checkout belongs to another user, and git
+// otherwise refuses it ("dubious ownership").
+const git = (cwd, args) =>
+  execFileSync('git', ['-c', `safe.directory=${path.resolve(cwd)}`, ...args], {
+    cwd,
+    encoding: 'utf8',
+    maxBuffer: 256 * 1024 * 1024,
+  });
 
 /** `git status` paths that differ from HEAD, untracked included. */
 function changedPaths(cwd) {
