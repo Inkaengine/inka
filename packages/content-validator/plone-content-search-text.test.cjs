@@ -23,14 +23,16 @@ describe('plone-content search-text', () => {
     const dir = site({
       blocks: {
         a: { '@type': 'card', title: 'Card text' },
-        b: { '@type': 'slate', value: [{ type: 'p', children: [{ text: 'Typed' }] }] },
+        b: { '@type': 'slate', value: [{ type: 'p', children: [{ text: 'Typed' }] }], plaintext: 'Old' },
       },
       blocks_layout: { items: ['a', 'b'] },
     });
     execFileSync('node', [CLI, 'search-text', ...run(dir)]);
     const { blocks } = JSON.parse(fs.readFileSync(path.join(dir, 'content', 'page', 'data.json'), 'utf8'));
     assert.equal(blocks.a.searchableText, 'Card text');
+    // A Text block's words are its searchableText, and the old copy restapi would read goes.
     assert.equal(blocks.b.searchableText, 'Typed');
+    assert.equal('plaintext' in blocks.b, false);
   });
 
   it('fails on a block type the schemas do not hold', () => {
