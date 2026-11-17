@@ -25,6 +25,7 @@
       "send": false,
       "send_message": "Thank you, your form has been submitted.",
       "remove_data_after_days": -1,
+      "captcha": "honeypot",
       "subblocks": [
         {
           "field_id": "field-name",
