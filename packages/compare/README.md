@@ -12,6 +12,7 @@ The measures here so far:
 | `pixels` | Two screenshots compared in CIEDE2000, anti-aliased edges excused, the differing pixels clustered into boxes |
 | `geometry` | Two element trees walked together to the first element whose box differs, or that only one side has |
 | `markup` | A node as a canonical string: structure compared, instance data (text, URLs, ids) tokenised; a comparison may add its own rewrite |
+| `reading` | What a page still says: each side as markdown (its words, headings, and where links, images and videos point), diffed line by line, with URLs normalised; approved content lines, redirects the source followed, and the header, breadcrumb and footer lists. The design's reader rules, its chrome selectors and the HTML parser are the caller's |
 | `regions` | Where a difference is: the comparison's named regions (selectors on each side, and the parts within a block), each difference reported at the deepest region that differs, differing pixels given to the region that holds them, and the conversion's rules and approved exceptions applied. The mapping is the caller's |
 | `accessibility` | axe-core on both sides: which violations are new on ours, shared, or fixed |
 
