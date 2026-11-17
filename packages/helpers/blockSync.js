@@ -2595,7 +2595,27 @@ export function reshapeContainerBlock(
     intl,
     container,
   );
+  const targetProps = getBlockTypeSchema(targetType, intl, blocksConfig)?.properties || {};
   for (const region of regions) {
+    // A synced region: its item type is a same-named field, so the move carried
+    // the SOURCE's item type across, which this region may not take (a grid of
+    // cards becoming a grid of content blocks would still say "card", and then
+    // refuse its own items). Take the type field's default, or else the first
+    // item type the region allows.
+    const typeField = region.itemTypeField;
+    if (typeField && Array.isArray(region.allowedBlocks)
+        && !region.allowedBlocks.includes(container[typeField])) {
+      const preferred = targetProps[typeField]?.default;
+      const itemType = region.allowedBlocks.includes(preferred)
+        ? preferred
+        : region.allowedBlocks.find((t) => blocksConfig?.[t]?.fieldMappings?.['@default']);
+      if (!itemType) {
+        throw new Error(
+          `reshapeContainerBlock: region "${region.region}" of "${targetType}" syncs its items' type in "${typeField}" but allows no item type (allowed: ${region.allowedBlocks.join(', ')})`,
+        );
+      }
+      container[typeField] = itemType;
+    }
     // The addable set for THIS region — the SAME resolver add/DnD/type-sync use.
     const allowed = addableSiblingTypes(
       region.allowedBlocks,
@@ -2609,6 +2629,13 @@ export function reshapeContainerBlock(
     let changed = false;
     const next = entries.map(({ id, block }) => {
       const cellType = block?.['@type'];
+      // An item with an item type of its own (a listing) lists the region's
+      // type, as the container's type picker gives it (takeContainerItemType).
+      const ownTypeField = typeField && cellType && findTypeField(blocksConfig?.[cellType], intl);
+      if (ownTypeField && block[ownTypeField] !== container[typeField]) {
+        changed = true;
+        return { id, block: { ...block, [ownTypeField]: container[typeField] } };
+      }
       if (!cellType || allowed.includes(cellType)) return { id, block };
       // The cell's own fieldMappings decide the target — the first allowed type
       // it can reach (transitively). None ⇒ it can't legally live here ⇒ throw.
