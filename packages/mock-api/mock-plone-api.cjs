@@ -3596,7 +3596,14 @@ app.post('/@export', async (req, res) => {
       if (Array.isArray(node)) { node.forEach((n) => unresolveBlocks(n, baseSegs, m)); return; }
       if (!node || typeof node !== 'object') return;
       if (node.type === 'link' && node.data && typeof node.data.url === 'string') node.data.url = unresolve(node.data.url, baseSegs, m, false);
-      if ((node['@type'] === 'image' || node['@type'] === 'video') && typeof node.url === 'string') node.url = unresolve(node.url, baseSegs, m, true);
+      if (node['@type'] === 'image' && typeof node.url === 'string') node.url = unresolve(node.url, baseSegs, m, true);
+      // A link list's @id, the shape any link field holds: a page is written as its
+      // .md, a file (a name with an extension) as itself.
+      for (const [k, v] of Object.entries(node)) {
+        if (Array.isArray(v) && v.length && v.every((l) => l && typeof l === 'object' && typeof l['@id'] === 'string')) {
+          node[k] = v.map((l) => ({ ...l, '@id': unresolve(l['@id'], baseSegs, m, /\.[\w]+$/.test(l['@id'].split(/[#?]/)[0].split('/').pop())) }));
+        }
+      }
       for (const v of Object.values(node)) unresolveBlocks(v, baseSegs, m);
     };
 

@@ -30,7 +30,9 @@ const TAGGED = [
   // Maps: fundamentally a link (an embed URL). Emitting it as `[title](url)`
   // keeps the (long) URL in link syntax — no data-json blob, no attr-length
   // limit — with `align` etc. as tag attributes.
-  '<block type="maps" title="${a/text}" url="${a/href}" />',
+  '<block type="maps" title="${a/text}" url="${a/link}" />',
+  // Video: also a link, its preview an image -- each a link list, `[{'@id'}]`.
+  '<block type="video" url="${a/link}" preview_image="${img?/link}" />',
   // Callout (admonition): a `variation` attr + a body region of child blocks —
   // so it emits `<block type="callout" variation="note"> …markdown… </block>`
   // instead of a data-json blob.
