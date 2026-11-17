@@ -29,7 +29,8 @@
     "mock-principals-and-rules.cjs",
     "mock-tokens.cjs",
     "scaled-image.cjs",
-    "server-state.mjs"
+    "server-state.mjs",
+    "template-owned.cjs"
   ],
   "dependencies": {
     "@inka/blockmd": "workspace:*",

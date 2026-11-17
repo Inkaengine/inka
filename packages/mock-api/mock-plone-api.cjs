@@ -16,6 +16,7 @@ const os = require('os');
 const { execFileSync } = require('child_process');
 const principalsAndRules = require('./mock-principals-and-rules.cjs');
 const { mintToken, verifyToken } = require('./mock-tokens.cjs');
+const { withoutTemplateOwnedBlocks } = require('./template-owned.cjs');
 
 const app = express();
 const PORT = process.env.PORT || 8888;
@@ -3447,7 +3448,11 @@ function buildDistributionFromMemory(dest, { allowMissingBlobs = false, sitePath
  *     json     -> application/zip  (export.zip: content/**, siblings)
  *     markdown -> application/zip  (export-markdown.zip: docs/**, site/** trees)
  */
-app.post('/@export', async (req, res) => {
+// Express 4 doesn't catch a rejected handler: an error in an export would leave the
+// request hanging, so it is passed on, and answered as an error.
+app.post('/@export', (req, res, next) => exportContent(req, res).catch(next));
+
+async function exportContent(req, res) {
   await ready;
   const { format = 'json', prototypes = {}, allowMissingBlobs = false, sitePath } = req.body || {};
 
@@ -3628,9 +3633,15 @@ app.post('/@export', async (req, res) => {
         // The page's own directory (relative to the mount), for relative links.
         const rel = m.mountPath === '/' ? (p === '/' ? '' : p.replace(/^\//, '')) : p.replace(m.mountPath, '').replace(/^\//, '');
         const baseSegs = (folderish.has(p) ? rel : rel.replace(/\/?[^/]*$/, '')).split('/').filter(Boolean);
-        const blocks = structuredClone(c.blocks);
+        // The blocks the page's template owns are the template's: every reader merges
+        // the template in, so the page's markdown holds only what it says itself.
+        const own = withoutTemplateOwnedBlocks({ ...c, '@id': p }, {
+          pathOf: templateIdToPath,
+          load: (path) => loadRawContentFromDisk(path),
+        });
+        const blocks = structuredClone(own.blocks);
         unresolveBlocks(blocks, baseSegs, m);
-        const { markdown } = emitPage(protos, { blocks, blocks_layout: c.blocks_layout });
+        const { markdown } = emitPage(protos, { blocks, blocks_layout: own.blocks_layout });
         const used = collectTypes(c.blocks);
         // No blocks-assignments: decode auto-mints uids when they're absent, and
         // the current sources omit them — writing them back would churn every file.
@@ -3771,7 +3782,7 @@ app.post('/@export', async (req, res) => {
   } finally {
     fs.rmSync(staging, { recursive: true, force: true });
   }
-});
+}
 
 /**
  * The fields a create was SENT, minus the instructions to the create itself.
