@@ -29,8 +29,7 @@
             }
           ]
         }
-      ],
-      "plaintext": "This is a test paragraph"
+      ]
     },
     "block-2-uuid": {
       "@type": "image",
@@ -48,8 +47,7 @@
             }
           ]
         }
-      ],
-      "plaintext": "Another paragraph for testing"
+      ]
     },
     "block-4-hero": {
       "@type": "hero",
@@ -267,8 +265,7 @@
             }
           ]
         }
-      ],
-      "plaintext": "Footer text content"
+      ]
     },
     "footer-block-2": {
       "@type": "image",

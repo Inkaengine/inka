@@ -85,9 +85,9 @@ async function freshTemplatePage(token: string, { emptySection = false, framed =
     '@type': 'Document', id, title: 'A template of its own',
     blocks: {
       head: { '@type': 'slate', templateId: `/_test_data/templates/${id}`, slotId: 'head', fixed: true, readOnly: true,
-        value: [{ type: 'p', children: [{ text: 'Its own heading' }] }], plaintext: 'Its own heading' },
+        value: [{ type: 'p', children: [{ text: 'Its own heading' }] }] },
       body: { '@type': 'slate', templateId: `/_test_data/templates/${id}`, slotId: 'default',
-        value: [{ type: 'p', children: [{ text: 'Its slot' }] }], plaintext: 'Its slot' },
+        value: [{ type: 'p', children: [{ text: 'Its slot' }] }] },
       // A locked section with nothing in it yet: its one slot, empty, as a
       // template stores a slot nobody has filled (inka#708). A page stores none.
       ...(emptySection && { aside: { '@type': 'section', templateId: `/_test_data/templates/${id}`, slotId: 'aside', fixed: true, readOnly: true,
@@ -96,7 +96,7 @@ async function freshTemplatePage(token: string, { emptySection = false, framed =
       // A locked section holding a fixed heading of its own, as a layout's hero holds its title.
       ...(framed && { frame: { '@type': 'section', templateId: `/_test_data/templates/${id}`, slotId: 'frame', fixed: true, readOnly: true,
         blocks: { framed: { '@type': 'slate', templateId: `/_test_data/templates/${id}`, slotId: 'framed', fixed: true, readOnly: true,
-          value: [{ type: 'p', children: [{ text: 'Framed heading' }] }], plaintext: 'Framed heading' } },
+          value: [{ type: 'p', children: [{ text: 'Framed heading' }] }] } },
         blocks_layout: { items: ['framed'] } } }),
     },
     blocks_layout: { items: ['head', 'body', ...(emptySection ? ['aside'] : []), ...(framed ? ['frame'] : [])] },
@@ -106,18 +106,18 @@ async function freshTemplatePage(token: string, { emptySection = false, framed =
     '@type': 'Document', id: `own-page-${randomUUID()}`, title: 'A page using it',
     blocks: {
       h: { '@type': 'slate', templateId: template, templateInstanceId: instance, slotId: 'head', fixed: true, readOnly: true,
-        value: [{ type: 'p', children: [{ text: 'Its own heading' }] }], plaintext: 'Its own heading' },
+        value: [{ type: 'p', children: [{ text: 'Its own heading' }] }] },
       b: { '@type': 'slate', templateId: template, templateInstanceId: instance, slotId: 'default',
-        value: [{ type: 'p', children: [{ text: 'Page text' }] }], plaintext: 'Page text' },
+        value: [{ type: 'p', children: [{ text: 'Page text' }] }] },
       ...(emptySection && { s: { '@type': 'section', templateId: template, templateInstanceId: instance, slotId: 'aside', fixed: true, readOnly: true,
         blocks: {}, blocks_layout: { items: [] } } }),
       ...(framed && {
         f: { '@type': 'section', templateId: template, templateInstanceId: instance, slotId: 'frame', fixed: true, readOnly: true,
           blocks: { fh: { '@type': 'slate', templateId: template, templateInstanceId: instance, slotId: 'framed', fixed: true, readOnly: true,
-            value: [{ type: 'p', children: [{ text: 'Framed heading' }] }], plaintext: 'Framed heading' } },
+            value: [{ type: 'p', children: [{ text: 'Framed heading' }] }] } },
           blocks_layout: { items: ['fh'] } },
         // The page's own, outside the template.
-        own: { '@type': 'slate', value: [{ type: 'p', children: [{ text: 'Not the template' }] }], plaintext: 'Not the template' },
+        own: { '@type': 'slate', value: [{ type: 'p', children: [{ text: 'Not the template' }] }] },
       }),
     },
     blocks_layout: { items: ['h', 'b', ...(emptySection ? ['s'] : []), ...(framed ? ['f', 'own'] : [])] },
@@ -397,7 +397,7 @@ test.describe('a drop goes only where it is allowed, and where its indicator can
     // A page of its own: a columns block far taller than the window, and a
     // section after it. A section can't go in a column.
     const paras = Object.fromEntries(Array.from({ length: 40 }, (_, n) => [`p${n}`,
-      { '@type': 'slate', value: [{ type: 'p', children: [{ text: `Paragraph ${n}` }] }], plaintext: `Paragraph ${n}` }]));
+      { '@type': 'slate', value: [{ type: 'p', children: [{ text: `Paragraph ${n}` }] }] }]));
     const response = await fetch(`${URLS.mockApi}/_test_data`, {
       method: 'POST',
       headers: { Accept: 'application/json', 'Content-Type': 'application/json', Authorization: `Bearer ${helper.authToken}` },
@@ -405,7 +405,7 @@ test.describe('a drop goes only where it is allowed, and where its indicator can
         '@type': 'Document', id: `own-page-${randomUUID()}`, title: 'A tall page',
         blocks: {
           cols: { '@type': 'columns', blocks: { col: { '@type': 'column', blocks: paras, blocks_layout: { items: Object.keys(paras) } } }, blocks_layout: { columns: ['col'] } },
-          sec: { '@type': 'section', blocks: { inner: { '@type': 'slate', value: [{ type: 'p', children: [{ text: 'In the section' }] }], plaintext: 'In the section' } }, blocks_layout: { items: ['inner'] } },
+          sec: { '@type': 'section', blocks: { inner: { '@type': 'slate', value: [{ type: 'p', children: [{ text: 'In the section' }] }] } }, blocks_layout: { items: ['inner'] } },
         },
         blocks_layout: { items: ['cols', 'sec'] },
       }),
@@ -458,7 +458,7 @@ test.describe("a page's own field drawn in a locked template block", () => {
       blocks: {
         heading: { '@type': 'title', templateId: templatePath, slotId: 'heading', fixed: true, readOnly: true },
         body: { '@type': 'slate', templateId: templatePath, slotId: 'default',
-          value: [{ type: 'p', children: [{ text: 'Its slot' }] }], plaintext: 'Its slot' },
+          value: [{ type: 'p', children: [{ text: 'Its slot' }] }] },
       },
       blocks_layout: { items: ['heading', 'body'] },
     });
@@ -468,7 +468,7 @@ test.describe("a page's own field drawn in a locked template block", () => {
       blocks: {
         t: { '@type': 'title', templateId: template, templateInstanceId: instance, slotId: 'heading', fixed: true, readOnly: true },
         b: { '@type': 'slate', templateId: template, templateInstanceId: instance, slotId: 'default',
-          value: [{ type: 'p', children: [{ text: 'Page text' }] }], plaintext: 'Page text' },
+          value: [{ type: 'p', children: [{ text: 'Page text' }] }] },
       },
       blocks_layout: { items: ['t', 'b'] },
     });

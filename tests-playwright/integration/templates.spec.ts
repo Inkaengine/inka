@@ -96,7 +96,6 @@ test.describe('Templates', () => {
                 ]
               }
             ],
-            "plaintext": "Orphan Cell Header",
             "templateId": "/_test_data/templates/orphan-cell-layout",
             "templateInstanceId": "orphan-cell-def-instance",
             "slotId": "header",
@@ -123,7 +122,6 @@ test.describe('Templates', () => {
                     ]
                   }
                 ],
-                "plaintext": "Marked Grid Cell",
                 "templateId": "/_test_data/templates/orphan-cell-layout",
                 "templateInstanceId": "orphan-cell-def-instance",
                 "slotId": "oc-cell-1",
@@ -141,8 +139,7 @@ test.describe('Templates', () => {
                       }
                     ]
                   }
-                ],
-                "plaintext": "Unmarked Grid Cell"
+                ]
               }
             },
             "blocks_layout": {
@@ -164,7 +161,6 @@ test.describe('Templates', () => {
                 ]
               }
             ],
-            "plaintext": "",
             "templateId": "/_test_data/templates/orphan-cell-layout",
             "templateInstanceId": "orphan-cell-def-instance",
             "slotId": "primary",
@@ -196,7 +192,6 @@ test.describe('Templates', () => {
                 ]
               }
             ],
-            "plaintext": "Orphan Cell Header",
             "templateId": "/_test_data/templates/orphan-cell-layout",
             "templateInstanceId": "oc-inst",
             "slotId": "header",
@@ -215,7 +210,6 @@ test.describe('Templates', () => {
                 ]
               }
             ],
-            "plaintext": "The page content",
             "templateId": "/_test_data/templates/orphan-cell-layout",
             "templateInstanceId": "oc-inst",
             "slotId": "primary"

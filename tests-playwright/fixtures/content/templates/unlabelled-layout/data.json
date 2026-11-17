@@ -21,8 +21,7 @@
             }
           ]
         }
-      ],
-      "plaintext": "Template Header - From Template"
+      ]
     },
     "grid-block": {
       "@type": "gridBlock",
@@ -46,8 +45,7 @@
                 }
               ]
             }
-          ],
-          "plaintext": "Template Grid Cell 1"
+          ]
         },
         "tpl-grid-cell-2": {
           "@type": "slate",
@@ -60,8 +58,7 @@
                 }
               ]
             }
-          ],
-          "plaintext": "Template Grid Cell 2"
+          ]
         }
       },
       "blocks_layout": {
@@ -86,8 +83,7 @@
             }
           ]
         }
-      ],
-      "plaintext": "Default placeholder content"
+      ]
     },
     "slider-block": {
       "@type": "slider",
@@ -131,8 +127,7 @@
             }
           ]
         }
-      ],
-      "plaintext": "Template Footer - From Template"
+      ]
     }
   },
   "blocks_layout": {

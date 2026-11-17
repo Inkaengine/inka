@@ -16,8 +16,7 @@
             }
           ]
         }
-      ],
-      "plaintext": "Regular block before the grid"
+      ]
     },
     "nsp-grid": {
       "@type": "gridBlock",
@@ -38,8 +37,7 @@
                 }
               ]
             }
-          ],
-          "plaintext": "Stale Snippet Header"
+          ]
         },
         "nsp-snippet-content": {
           "@type": "slate",
@@ -57,8 +55,7 @@
                 }
               ]
             }
-          ],
-          "plaintext": "Nested snippet content"
+          ]
         }
       },
       "blocks_layout": {
@@ -79,8 +76,7 @@
             }
           ]
         }
-      ],
-      "plaintext": "Regular block after the grid"
+      ]
     }
   },
   "blocks_layout": {

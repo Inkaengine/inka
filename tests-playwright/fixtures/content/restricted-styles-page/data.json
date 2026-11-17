@@ -34,8 +34,7 @@
             }
           ]
         }
-      ],
-      "plaintext": "was bold"
+      ]
     },
     "target": {
       "@type": "slate",
@@ -48,8 +47,7 @@
             }
           ]
         }
-      ],
-      "plaintext": "paste here"
+      ]
     },
     "styled": {
       "@type": "slate",
@@ -67,8 +65,7 @@
             }
           ]
         }
-      ],
-      "plaintext": "Design-system styles, as the sidebar shows them."
+      ]
     },
     "cols": {
       "@type": "columns",
@@ -87,8 +84,7 @@
                     }
                   ]
                 }
-              ],
-              "plaintext": "Nested inside a column."
+              ]
             }
           },
           "blocks_layout": {
@@ -120,8 +116,7 @@
             }
           ]
         }
-      ],
-      "plaintext": "kept and kept"
+      ]
     },
     "linked": {
       "@type": "slate",
@@ -148,8 +143,7 @@
             }
           ]
         }
-      ],
-      "plaintext": "Read the guide today"
+      ]
     }
   },
   "blocks_layout": {

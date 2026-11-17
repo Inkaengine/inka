@@ -10,7 +10,6 @@
       "fixed": true,
       "readOnly": true,
       "value": [{ "type": "h1", "children": [{ "text": "Template Header - From Template" }] }],
-      "plaintext": "Template Header - From Template",
       "templateId": "resolveuid/test-layout-template-uid",
       "templateInstanceId": "tpl-instance-ss",
       "slotId": "header"
@@ -20,7 +19,6 @@
       "fixed": false,
       "readOnly": false,
       "value": [{ "type": "p", "children": [{ "text": "First primary content" }] }],
-      "plaintext": "First primary content",
       "templateId": "resolveuid/test-layout-template-uid",
       "templateInstanceId": "tpl-instance-ss",
       "slotId": "primary"
@@ -30,7 +28,6 @@
       "fixed": false,
       "readOnly": false,
       "value": [{ "type": "p", "children": [{ "text": "Middle primary content" }] }],
-      "plaintext": "Middle primary content",
       "templateId": "resolveuid/test-layout-template-uid",
       "templateInstanceId": "tpl-instance-ss",
       "slotId": "primary"
@@ -40,7 +37,6 @@
       "fixed": false,
       "readOnly": false,
       "value": [{ "type": "p", "children": [{ "text": "Last primary content" }] }],
-      "plaintext": "Last primary content",
       "templateId": "resolveuid/test-layout-template-uid",
       "templateInstanceId": "tpl-instance-ss",
       "slotId": "primary"
@@ -50,7 +46,6 @@
       "fixed": true,
       "readOnly": true,
       "value": [{ "type": "p", "children": [{ "text": "Template Footer - From Template" }] }],
-      "plaintext": "Template Footer - From Template",
       "templateId": "resolveuid/test-layout-template-uid",
       "templateInstanceId": "tpl-instance-ss",
       "slotId": "footer"

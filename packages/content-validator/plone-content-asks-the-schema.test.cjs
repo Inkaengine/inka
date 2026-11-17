@@ -278,3 +278,17 @@ describe('a stray `id` is reported', () => {
     assert.deepEqual(errors, []);
   });
 });
+
+/**
+ * `plaintext` was Volto's copy of a Text block's words. Inka no longer derives or
+ * reads it, and the save removes it at any depth, so a stored one is an old copy
+ * nothing keeps up to date: the content check reports it like any undeclared field.
+ */
+describe('a stored `plaintext` is reported', () => {
+  it('on a text block', () => {
+    const value = [{ type: 'p', children: [{ text: 'Words' }] }];
+    const schemas = { ...SCHEMAS, slate: { group: 'common', blockSchema: { properties: { value: { widget: 'slate' } } } } };
+    const { errors } = checkBlockSchemas([doc('page', 'PUID', { t: { '@type': 'slate', value, plaintext: 'Words' } })], fieldMapFromSchemas(schemas), { idFieldMap });
+    assert.match(errors.join('\n'), /slate\.plaintext/);
+  });
+});

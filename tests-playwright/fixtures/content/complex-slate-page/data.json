@@ -14,7 +14,6 @@
   "blocks": {
     "block-list-links": {
       "@type": "slate",
-      "plaintext": "NUXT.js Example Framework7 Example Next.js Example",
       "styles": {},
       "value": [
         {
@@ -79,8 +78,7 @@
           "type": "p",
           "children": [{"text": "Simple paragraph after the list"}]
         }
-      ],
-      "plaintext": "Simple paragraph after the list"
+      ]
     }
   },
   "blocks_layout": {

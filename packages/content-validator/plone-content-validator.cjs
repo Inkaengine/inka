@@ -61,7 +61,7 @@ const TEMPLATE_MEMBERSHIP_KEYS = [
 const BLOCK_BOOKKEEPING_KEYS = ['searchableText', 'plaintext', '_pullFrom', '_customFields', '_linkableAnchors'];
 
 const UNDECLARED_EXEMPT = new Set([
-  'blocks', 'blocks_layout', 'image_scales', 'plaintext', 'searchableText', 'value',
+  'blocks', 'blocks_layout', 'image_scales', 'searchableText', 'value',
   'styles', 'override', 'block',
   ...TEMPLATE_MEMBERSHIP_KEYS,
   // codeExample selector directives (single-source example pages): `source`

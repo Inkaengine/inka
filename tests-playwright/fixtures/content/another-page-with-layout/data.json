@@ -25,8 +25,7 @@
             }
           ]
         }
-      ],
-      "plaintext": "This is a standalone block before the template"
+      ]
     },
     "apl-template-header": {
       "@type": "slate",
@@ -42,7 +41,6 @@
           ]
         }
       ],
-      "plaintext": "Stale Header - Should Be Replaced By Merge",
       "templateId": "resolveuid/test-layout-template-uid",
       "templateInstanceId": "tpl-instance-1",
       "slotId": "header"
@@ -61,7 +59,6 @@
           ]
         }
       ],
-      "plaintext": "User content - different from template default",
       "templateId": "resolveuid/test-layout-template-uid",
       "templateInstanceId": "tpl-instance-1",
       "slotId": "primary"
@@ -80,7 +77,6 @@
           ]
         }
       ],
-      "plaintext": "Second user content block in placeholder",
       "templateId": "resolveuid/test-layout-template-uid",
       "templateInstanceId": "tpl-instance-1",
       "slotId": "primary"
@@ -131,7 +127,6 @@
           ]
         }
       ],
-      "plaintext": "Stale Footer - Should Be Replaced By Merge",
       "templateId": "resolveuid/test-layout-template-uid",
       "templateInstanceId": "tpl-instance-1",
       "slotId": "footer"
@@ -147,8 +142,7 @@
             }
           ]
         }
-      ],
-      "plaintext": "This is a standalone block after the template"
+      ]
     },
     "apl-footer-user-content": {
       "@type": "slate",
@@ -161,8 +155,7 @@
             }
           ]
         }
-      ],
-      "plaintext": "Footer user content on the page with a layout"
+      ]
     }
   },
   "blocks_layout": {

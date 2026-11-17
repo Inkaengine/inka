@@ -10,8 +10,7 @@
     "title-block": { "@type": "title" },
     "body": {
       "@type": "slate",
-      "value": [{ "type": "p", "children": [{ "text": "Body of page B." }] }],
-      "plaintext": "Body of page B."
+      "value": [{ "type": "p", "children": [{ "text": "Body of page B." }] }]
     }
   },
   "blocks_layout": { "items": ["title-block", "body"] }
