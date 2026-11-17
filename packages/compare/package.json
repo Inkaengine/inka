@@ -20,6 +20,7 @@
       "types": "./markup.d.ts",
       "default": "./markup.mjs"
     },
+    "./reading": "./reading.mjs",
     "./regions": "./regions.mjs",
     "./accessibility": "./accessibility.mjs",
     "./fetch": "./fetch.mjs",
@@ -34,6 +35,7 @@
     "README.md",
     "markup.mjs",
     "markup.d.ts",
-    "regions.mjs"
+    "regions.mjs",
+    "reading.mjs"
   ]
 }
