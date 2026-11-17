@@ -1,0 +1,1 @@
+The content check and block-sanity report an `@` key a block has no reason to carry, such as an `@id` on a page block. They skipped every `@` key as the block's identity, though a schema can't declare one: only `@type`, `@uid` and, on a list item, the key its list is keyed by belong. The content check applies this to every block, Inka's own included.
