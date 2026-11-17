@@ -2151,9 +2151,11 @@ function formatReport(title, result) {
     lines.push(`Mappings: ${result.stats.blocks} block types, ${result.stats.mappings} field mappings that don't make sense`);
   } else if (title === 'undeclared') {
     lines.push(`Declared: ${result.stats.blocks} block types, ${result.stats.undeclared} regions naming a block nobody declares`);
+  } else if (title === 'fieldsets') {
+    lines.push(`Fieldsets: ${result.stats.fields} fields, ${result.stats.unlisted} not in any fieldset`);
   } else if (title === 'validate') {
     lines.push(`Content export OK: ${result.stats.dataFiles} data files, ${result.stats.blobFiles} blob files`);
-  } else {
+  } else if (title === 'check') {
     lines.push(`Content: ${result.stats.items} items`);
     lines.push(
       `Images:  ${result.stats.imagesOk} ok, ${result.stats.imagesBroken} broken` +
@@ -2164,6 +2166,8 @@ function formatReport(title, result) {
     lines.push(`UIDs:    ${result.stats.resolveuidOk} resolved, ${result.stats.resolveuidBroken} broken`);
     lines.push(`Links:   ${result.stats.linksOk} ok, ${result.stats.linksBroken} broken`);
     lines.push(`Layout:  ${result.stats.layoutOk} ok, ${result.stats.layoutBroken} dangling`);
+  } else {
+    throw new Error(`formatReport: no summary for a "${title}" report`);
   }
   if (result.errors.length) {
     lines.push('');
