@@ -1908,13 +1908,15 @@ async function checkEditorRules(source, schemas, { exemptSlots = [], volto = loa
     ruleErrors: 0, ruleWarnings: 0,
   };
   if (!volto) {
-    stats.fieldErrors = null;
     stats.ruleErrors = null;
     warnings.push(
-      `  Field values were not checked: Volto's validators are not built. Build them in Inka with ` +
-        "`pnpm build:volto-validation` to check what the Volto admin's save refuses.",
+      `  Field values were checked against Inka's own rules only: Volto's validators are not built. ` +
+        "Build them in Inka with `pnpm build:volto-validation` to check what the Volto admin's save refuses.",
     );
   }
+  // Without the bundle, Volto's validators find nothing and Inka's own field
+  // rules (a link's shape, a rule's error on a region) still run.
+  const validateFieldsPerFieldset = volto ? volto.validateFieldsPerFieldset : () => ({});
   // A LAYOUT document holds the blocks of the region that names it in
   // `allowedLayouts` (a site footer's blocks are the footer region's, not the
   // page content's), so it is held to that region's rules: its own `items` are
@@ -2072,11 +2074,11 @@ async function checkEditorRules(source, schemas, { exemptSlots = [], volto = loa
       // (required, lengths, pattern, url, email, number limits, item counts)
       // and a fieldRules `error` — the save's own step, with Volto's own code.
       const lockedCopy = blockData && blockData.readOnly === true && !ownTemplate.has(blockData.templateId);
-      if (volto && schema && schema.properties && blockData && !lockedCopy) {
+      if (schema && schema.properties && blockData && !lockedCopy) {
         const refused = blockFieldErrors({
           schema,
           blockData,
-          validateFieldsPerFieldset: volto.validateFieldsPerFieldset,
+          validateFieldsPerFieldset,
           formatMessage: formatVoltoMessage,
           blocksConfig: schemas,
           // What a site's own catalog column holds (a listing's mapping):

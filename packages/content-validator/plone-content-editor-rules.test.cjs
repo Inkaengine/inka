@@ -286,14 +286,24 @@ describe('checkEditorRules()', () => {
   });
 
   describe("without Volto's validators", () => {
-    it('skips the field values, and says so', async () => {
+    it("skips Volto's own validators, and says so", async () => {
       const r = await checkEditorRules(page({ c: { '@type': 'card', description: 'D' } }, ['c']), SCHEMAS, {
         volto: null,
       });
       assert.deepEqual(r.errors, []);
       assert.equal(r.warnings.length, 1);
-      assert.match(r.warnings[0], /not checked/);
-      assert.equal(r.stats.fieldErrors, null);
+      assert.match(r.warnings[0], /Volto's validators/);
+    });
+
+    it("still applies Inka's own field rules: a link is a list", async () => {
+      const linkSchemas = {
+        ...SCHEMAS,
+        _page: { blockSchema: { properties: { items: { ...SCHEMAS._page.blockSchema.properties.items, allowedBlocks: ['card'] } } } },
+        card: { blockSchema: { properties: { title: { title: 'Title' }, url: { title: 'Link', widget: 'object_browser', mode: 'link' } } } },
+      };
+      const r = await checkEditorRules(page({ c: { '@type': 'card', title: 'T', url: '/components' } }, ['c']), linkSchemas, { volto: null });
+      assert.equal(r.errors.length, 1, r.errors.join('\n'));
+      assert.match(r.errors[0], /\[\{"@id"/);
     });
 
     it('still applies every other rule', async () => {

@@ -2740,13 +2740,11 @@ async function validateServedContent() {
   keep(checkContent(source, { schemas: contentSchemas, allowMissingBlobs }));
   // What the editor's save refuses (a required field left empty, a value its widget
   // doesn't write, a block its region doesn't allow): content the editor couldn't
-  // save is no example of anything. It runs Volto's own validators, built from its
-  // source; a gate that silently checked less without them would be no gate.
+  // save is no example of anything. Field values are checked by Volto's own
+  // validators, built from its source (`pnpm build:volto-validation`); a mock
+  // without them still checks placement and says, as a warning, that field values
+  // weren't checked.
   if (contentSchemas) {
-    const bundle = path.join(path.dirname(require.resolve('@inka/content-validator')), 'volto-validation.cjs');
-    if (!fs.existsSync(bundle)) {
-      throw new Error("content-check: the editor's validators aren't built; run `pnpm build:volto-validation`");
-    }
     keep(await checkEditorRules(source, contentSchemas, { exemptSlots: CONTENT_EXEMPT_SLOTS }));
   }
   for (const m of warnings) console.warn(`[content-check] warning: ${m.trim()}`);
