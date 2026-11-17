@@ -2409,7 +2409,9 @@ export function convertBlockType(blockData, newType, blocksConfig, typeFieldName
     const newData = { [typeFieldName]: toType };
     // Apply mappings: source-specific first, then default as fallback
     const mappings = { ...targetMappings?.['@default'], ...targetMappings?.[fromType] };
-    for (const [sourceField, targetField] of Object.entries(mappings)) {
+    for (const [sourceField, mapping] of Object.entries(mappings)) {
+      // A `{ field, type }` mapping names its field like a bare one does.
+      const targetField = getMappingTarget(mapping);
       // Value↔region: a `region/type/field` path (parseRegionPath) on one side
       // bridges a single scalar VALUE and a container region — the same bridge
       // convertValueContainer uses, via shared helpers.
