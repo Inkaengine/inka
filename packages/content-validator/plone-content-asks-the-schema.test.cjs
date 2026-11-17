@@ -240,6 +240,18 @@ describe('an `@` key a block has no reason to carry is reported', () => {
     assert.match(errors.join('\n'), /slide\.@anchor/);
   });
 
+  it('on an item typed by another field, in a list keyed by another field', () => {
+    // A form's questions: typed by `field_type`, keyed by `field_id`.
+    const schemas = {
+      ...SCHEMAS,
+      form: { group: 'common', blockSchema: { properties: { subblocks: { widget: 'object_list', idField: 'field_id', typeField: 'field_type', allowedBlocks: ['text'] } } } },
+      text: { group: 'common', blockSchema: { properties: { label: {} } } },
+    };
+    const page = doc('page', 'PUID', { f: { '@type': 'form', subblocks: [{ field_id: 'q-1', '@id': 'q-1', field_type: 'text', label: 'Q' }] } });
+    const { errors } = checkBlockSchemas([page], fieldMapFromSchemas(schemas), { idFieldMap: { form: { subblocks: 'field_id' } } });
+    assert.match(errors.join('\n'), /form\.subblocks item\.@id/);
+  });
+
   it('not `@id` on an item of a list keyed by it, nor `@type` or `@uid`', () => {
     const errors = errorsFor({
       s: { '@type': 'slider', '@uid': 's', slides: [{ '@id': 'one', '@type': 'slide', title: 'T' }] },

@@ -1518,32 +1518,35 @@ function checkBlockSchemas(source, fieldMap, { idFieldMap = null } = {}) {
   const findings = [];
   const found = new Set();
 
-  // `idField`: the key the list this block is an item of is keyed by, if it is one.
-  const visit = (block, rel, idField) => {
+  // `idField`: the key the list this block is an item of is keyed by, if it is one;
+  // `list`: that list (`form.subblocks`), which names an item typed by another field.
+  const visit = (block, rel, idField, list) => {
     if (!block || typeof block !== 'object') return;
     const type = block['@type'];
+    const strayKey = (name, field) => {
+      const key = `${name}.${field}`;
+      if (!strays.has(key)) strays.set(key, rel);
+      if (!found.has(`${rel}\0${key}`)) {
+        found.add(`${rel}\0${key}`);
+        findings.push({
+          rel, blockType: name, field,
+          message: `${rel}: ${key} is not declared by the block's schema — the field cannot be edited, and whatever reads it renders nothing`,
+        });
+      }
+    };
+    // An `@` key is never a schema field (checkReservedFields), so beyond a block's
+    // identity (identityKey) one is stray on any block or list item, whoever holds its
+    // schema and whatever field names its type.
+    for (const field of Object.keys(block)) {
+      if (field.startsWith('@') && !identityKey(field, idField)) strayKey(typeof type === 'string' ? type : `${list} item`, field);
+    }
     if (typeof type === 'string') {
       stats.blocks += 1;
       const entry = declaredFields[type];
       // `{ fields, defaultsPrefix }`, or a bare array from an older map.
       const declared = Array.isArray(entry) ? entry : entry && entry.fields;
       const defaultsPrefix = Array.isArray(entry) ? null : entry && entry.defaultsPrefix;
-      const report = (field) => {
-        const key = `${type}.${field}`;
-        if (!strays.has(key)) strays.set(key, rel);
-        if (!found.has(`${rel}\0${key}`)) {
-          found.add(`${rel}\0${key}`);
-          findings.push({
-            rel, blockType: type, field,
-            message: `${rel}: ${key} is not declared by the block's schema — the field cannot be edited, and whatever reads it renders nothing`,
-          });
-        }
-      };
-      // An `@` key is never a schema field (checkReservedFields), so beyond a block's
-      // identity (identityKey) one is stray on any block, whoever holds its schema.
-      for (const field of Object.keys(block)) {
-        if (field.startsWith('@') && !identityKey(field, idField)) report(field);
-      }
+      const report = (field) => strayKey(type, field);
       if (entry && entry.builtIn) {
         // Its fields are the admin's built-in schema's (fieldMapFromSchemas):
         // not checked here. Its children still are, below.
@@ -1594,7 +1597,7 @@ function checkBlockSchemas(source, fieldMap, { idFieldMap = null } = {}) {
     // the restapi's summary of the TARGET, was read as a child block and the
     // target's content type ("Document", "CaseStudy") reported as an
     // unrenderable block type.
-    for (const [, block, , idField] of walkAllBlocks(data.blocks, data, idFieldMap)) visit(block, rel, idField);
+    for (const [, block, , idField, list] of walkAllBlocks(data.blocks, data, idFieldMap)) visit(block, rel, idField, list);
   }
 
   for (const [key, rel] of [...strays.entries()].sort()) {
@@ -1680,9 +1683,9 @@ const PLONE_RESOLVES_BY_NAME = new Set(['url', 'href', 'preview_image']);
 function* walkAllBlocks(blocks, container = null, idFieldMap = null, where = null) {
   const seenIds = new Set();
   if (container) {
-    for (const { id, block, idField } of childEntries(container, idFieldMap)) {
+    for (const { id, block, idField, region } of childEntries(container, idFieldMap)) {
       seenIds.add(id);
-      yield [id, block, where, idField];
+      yield [id, block, where, idField, `${container['@type']}.${region}`];
       yield* walkAllBlocks(block.blocks, block, idFieldMap, id);
     }
   }
