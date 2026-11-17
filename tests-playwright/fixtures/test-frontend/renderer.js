@@ -1309,7 +1309,7 @@ function renderSuggestBlock(block, blockId) {
 }
 
 function renderHeadingBlock(block) {
-    const tag = block.tag || 'h2';
+    const tag = block.tag;
     const text = block.heading || '';
     return `<${tag} data-edit-text="heading">${text}</${tag}>`;
 }
@@ -1423,10 +1423,12 @@ function renderTocBlock(block) {
             const b = formData.blocks[id];
             if (!b) continue;
             if (b['@type'] === 'heading' && b.heading) {
-                entries.push({ id, level: parseInt((b.tag || 'h2').slice(1)), text: b.heading });
+                entries.push({ id, level: parseInt(b.tag.slice(1)), text: b.heading });
             } else if (b['@type'] === 'slate' && b.value?.[0]?.type?.match(/^h[1-6]$/)) {
                 const level = parseInt(b.value[0].type.slice(1));
-                const text = b.plaintext || b.value[0].children?.map(c => c.text).join('') || '';
+                // The heading's own words: inline ones (bold, a link) hold theirs in children.
+                const words = (nodes) => nodes.map((n) => (typeof n.text === 'string' ? n.text : words(n.children))).join('');
+                const text = words(b.value[0].children);
                 if (text.trim()) entries.push({ id, level, text });
             }
         }

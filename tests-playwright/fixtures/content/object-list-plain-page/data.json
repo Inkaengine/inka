@@ -83,7 +83,6 @@
       "subblocks": [
         {
           "field_id": "q-1",
-          "@id": "q-1",
           "field_type": "single_choice",
           "label": "How should we reply?",
           "input_values": [

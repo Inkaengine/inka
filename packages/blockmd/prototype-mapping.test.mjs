@@ -306,6 +306,25 @@ describe('emit multi-node', () => {
   });
 });
 
+describe('a field named as no HTML attribute can be', () => {
+  // CommonMark reads a line as an HTML tag only if its attribute names are
+  // legal; `@id` is not, so such a tag decodes as a paragraph of text.
+  const protos = parsePrototypes('<block type="slate" value="${p,h*/slate}" />');
+  const video = { '@type': 'video', '@id': 'v1', url: '/v.mp4', size: 'full' };
+  const heading = { '@type': 'slate', value: [{ type: 'h2', children: [{ text: 'Next' }] }] };
+
+  it('rides in the tag\'s data, so the block comes back', () => {
+    expect(matchBlocks(protos, emitBlocks(protos, [video]))).toEqual([video]);
+  });
+
+  it('leaves the block after it as markdown', () => {
+    const md = emitBlocks(protos, [video, heading]);
+    expect(matchBlocks(protos, md)).toEqual([video, heading]);
+    expect(md).toContain('## Next');
+    });
+  });
+});
+
 describe('`/text` of a text block reads its words as search text does', () => {
   // One rule for where a word ends, as the helpers' slateText has it: blocks
   // (paragraphs, list items) are separate words; inline content runs on, so a
@@ -428,6 +447,38 @@ describe('emit container', () => {
     const md = emitBlocks(protos, [block]);
     expect(md).toContain('## First');
     expect(md).toContain('<block type="accordion">');
+    expect(matchBlocks(protos, md)).toEqual([block]);
+  });
+});
+
+describe('emit a container with several regions', () => {
+  // A page layout: a sidebar and a main column, each a run of blocks. Its
+  // regions are keys of one blocks_layout, so nothing in the markdown of the
+  // blocks themselves says where one region ends and the next begins.
+  const protos = parsePrototypes([
+    '<block type="slate" value="${p/slate}" />',
+    '<block type="layout">',
+    '  <region name="sidebar" widget="blocks_layout" />',
+    '  <region name="main" widget="blocks_layout" />',
+    '</block>',
+  ].join('\n'), { explicit: true });
+  const para = (text) => ({ '@type': 'slate', value: [{ type: 'p', children: [{ text }] }] });
+
+  it('names each region, so its blocks read back into it', () => {
+    const block = { '@type': 'layout', sidebar: [para('Side.')], main: [para('First.'), para('Second.')] };
+    const md = emitBlocks(protos, [block]);
+    expect(md).toContain('<region name="sidebar">');
+    expect(md).toContain('<region name="main">');
+    expect(md).not.toContain('data-json');
+    expect(matchBlocks(protos, md)).toEqual([block]);
+  });
+
+  it('leaves out a region the block does not have, rather than give up on the block', () => {
+    // A layout with no sidebar stores no sidebar key at all.
+    const block = { '@type': 'layout', main: [para('Only.')] };
+    const md = emitBlocks(protos, [block]);
+    expect(md).not.toContain('data-json');
+    expect(md).not.toContain('<region name="sidebar">');
     expect(matchBlocks(protos, md)).toEqual([block]);
   });
 });
@@ -2228,3 +2279,12 @@ describe('markdown may hold a block\'s search text', () => {
   });
 });
 
+describe('trying a form lets a bug through', () => {
+  // A form that doesn't fit a block makes way for the next (NoFit). Anything else
+  // thrown while trying one is a bug in the content or the engine, and used to be
+  // swallowed: a broken Text value went out as a JSON tag as if nothing were wrong.
+  it('a Text block whose value holds a null fails the export', () => {
+    const protos = parsePrototypes('<block type="slate" value="${p/slate}" />');
+    expect(() => emitBlocks(protos, [{ '@type': 'slate', value: [null] }])).toThrow(TypeError);
+  });
+});

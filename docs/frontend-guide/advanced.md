@@ -113,7 +113,7 @@ const token = getAccessToken();
 // or sessionStorage (for SPA navigation)
 ```
 
-Example using Next.js 14 and ploneClient:
+Example using Next.js and ploneClient:
 
 ### Javascript
 

@@ -689,7 +689,7 @@ export const sharedBlocksConfig = {
         blockSchema: {
             properties: {
                 alignment: { title: 'Alignment', widget: 'align' },
-                tag: { title: 'Tag', widget: 'select', choices: [['h1','h1'],['h2','h2'],['h3','h3'],['h4','h4'],['h5','h5'],['h6','h6']] }, heading: { title: 'Heading', type: 'string' } },
+                tag: { title: 'Tag', widget: 'select', choices: [['h1','h1'],['h2','h2'],['h3','h3'],['h4','h4'],['h5','h5'],['h6','h6']], default: 'h2' }, heading: { title: 'Heading', type: 'string' } },
         },
     },
     // slateTable has inline-editable cells, so it MUST declare its nested

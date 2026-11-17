@@ -1,4 +1,5 @@
 import { describe, test, expect } from 'vitest';
+import { sharedBlocksConfig } from '../../tests-playwright/fixtures/shared-block-schemas.js';
 import {
   applySchemaDefaultsToBlock,
   applySchemaDefaultsToBlockWithContext,
@@ -228,5 +229,14 @@ describe('isValidValue — a mapping whose targets are limited (additionalProper
   test('a target outside the list is still refused, either form', () => {
     expect(isValidValue({ getURL: { field: 'nope', type: 'link' } }, def)).toBe(false);
     expect(isValidValue({ title: 'nope' }, def)).toBe(false);
+  });
+});
+
+describe("the heading block's level", () => {
+  // Frontends render `block.tag` as the element: a new heading gets its level from the
+  // schema's default, so no renderer has to guess one.
+  test('a new heading is an h2', () => {
+    const block = applySchemaDefaultsToBlock({ '@type': 'heading' }, sharedBlocksConfig.heading.blockSchema);
+    expect(block.tag).toBe('h2');
   });
 });

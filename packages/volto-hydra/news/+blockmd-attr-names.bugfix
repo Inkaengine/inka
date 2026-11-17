@@ -1,0 +1,1 @@
+Markdown export no longer turns a block with an `@id` field (a video, for one) into a paragraph of its tag's text: a field whose name can't be an HTML attribute rides in the tag's data. And export fails, rather than writing markdown that reads back differently, if a block can't be written in any form.

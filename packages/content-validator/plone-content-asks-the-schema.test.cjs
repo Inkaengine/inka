@@ -213,3 +213,49 @@ describe('a type with no schema is an error', () => {
     assert.deepEqual(r.warnings, [], r.warnings.join('\n'));
   });
 });
+
+/**
+ * A key starting with `@` is never a schema field: the validator refuses a schema that
+ * names one (checkReservedFields). So on a block the only legitimate ones are its
+ * identity: `@type`, `@uid`, and `@id` on an item of a list keyed by `@id`. The check
+ * once skipped every `@` key as "the block's identity", and a stray `@id` on six NSW
+ * docs blocks went unreported from August until an export tripped over it.
+ */
+describe('an `@` key a block has no reason to carry is reported', () => {
+  const errorsFor = (blocks) => checkBlockSchemas([doc('page', 'PUID', blocks)], fieldMapFromSchemas(SCHEMAS), { idFieldMap }).errors;
+
+  it('an `@id` on a page block', () => {
+    const errors = errorsFor({ v: { '@type': 'slide', '@id': 'footer-vid-edit', title: 'T' } });
+    assert.equal(errors.length, 1, errors.join('\n'));
+    assert.match(errors[0], /slide\.@id/);
+  });
+
+  it('on a block of Inka\'s own, which no frontend schema checks: the rule needs none', () => {
+    const errors = errorsFor({ t: { '@type': 'slate', '@id': 'tbl-nar-1', value: [] } });
+    assert.match(errors.join('\n'), /slate\.@id/);
+  });
+
+  it('any other `@` key', () => {
+    const errors = errorsFor({ v: { '@type': 'slide', '@anchor': 'x', title: 'T' } });
+    assert.match(errors.join('\n'), /slide\.@anchor/);
+  });
+
+  it('on an item typed by another field, in a list keyed by another field', () => {
+    // A form's questions: typed by `field_type`, keyed by `field_id`.
+    const schemas = {
+      ...SCHEMAS,
+      form: { group: 'common', blockSchema: { properties: { subblocks: { widget: 'object_list', idField: 'field_id', typeField: 'field_type', allowedBlocks: ['text'] } } } },
+      text: { group: 'common', blockSchema: { properties: { label: {} } } },
+    };
+    const page = doc('page', 'PUID', { f: { '@type': 'form', subblocks: [{ field_id: 'q-1', '@id': 'q-1', field_type: 'text', label: 'Q' }] } });
+    const { errors } = checkBlockSchemas([page], fieldMapFromSchemas(schemas), { idFieldMap: { form: { subblocks: 'field_id' } } });
+    assert.match(errors.join('\n'), /form\.subblocks item\.@id/);
+  });
+
+  it('not `@id` on an item of a list keyed by it, nor `@type` or `@uid`', () => {
+    const errors = errorsFor({
+      s: { '@type': 'slider', '@uid': 's', slides: [{ '@id': 'one', '@type': 'slide', title: 'T' }] },
+    });
+    assert.deepEqual(errors, []);
+  });
+});

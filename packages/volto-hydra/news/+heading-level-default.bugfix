@@ -1,0 +1,1 @@
+The heading block's level comes from its schema's default (`h2`), which Inka applies to a new heading and to one opened without a level. The example frontends render `block.tag` as stored instead of guessing `h2` when it is missing.

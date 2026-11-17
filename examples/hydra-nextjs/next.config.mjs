@@ -7,9 +7,9 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const nextConfig = {
   productionBrowserSourceMaps: true,
   reactStrictMode: false,
-  eslint: {
-    ignoreDuringBuilds: true,
-  },
+  // Built with webpack (`--webpack` in the scripts), not Next 16's default
+  // Turbopack: semantic-ui-css ships a selector Turbopack's CSS parser rejects
+  // (`[data-tooltip][data-inverted]:after .header`), and webpack accepts it.
   webpack: (config) => {
     // Always resolve hydra.js and helpers from workspace source —
     // webpack bundles their deps (tabbable for hydra-js, none for helpers).

@@ -5,6 +5,6 @@
  * dynamic-element pattern.
  */
 const { block } = Astro.props;
-const Tag = (block.tag || 'h2') as any;
+const Tag = block.tag as any;
 ---
 <Tag data-edit-text="heading">{block.heading}</Tag>
