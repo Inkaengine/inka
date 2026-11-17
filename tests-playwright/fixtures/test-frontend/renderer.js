@@ -1264,7 +1264,7 @@ function renderMapsBlock(block) {
     const url = getLinkAddress(block.url);
     const title = block.title || 'Map';
     if (url) {
-        return `<div class="maps-block">
+        return `<div class="maps-block" data-edit-link="url">
             <map-embed src="${url}" frame-title="${title}"></map-embed>
         </div>`;
     }
@@ -1275,13 +1275,13 @@ function renderVideoBlock(block) {
     const url = getLinkAddress(block.url);
     const ytMatch = url.match(/(?:youtu\.be\/|youtube\.com\/(?:watch\?v=|embed\/))([^&?/]+)/);
     if (ytMatch) {
-        return `<div class="video-block">
+        return `<div class="video-block" data-edit-link="url">
             <iframe src="https://www.youtube.com/embed/${ytMatch[1]}" allowfullscreen
                 style="width:100%;aspect-ratio:16/9;border:none" title="Video"></iframe>
         </div>`;
     }
     if (url) {
-        return `<div class="video-block">
+        return `<div class="video-block" data-edit-link="url">
             <video src="${url}" controls style="width:100%"></video>
         </div>`;
     }
