@@ -472,11 +472,17 @@ export function flatDictAttrs(field, obj) {
     cleanAttrStr(v) ? `${field}:${k}="${v}"` : `${field}:${k}=${v}`);
 }
 
+/** A name CommonMark reads as an attribute. A tag with any other (`@id`) is not
+ *  HTML to it, so the whole tag would decode as a paragraph of text. */
+export const attrName = (k) => /^[A-Za-z_:][\w.:-]*$/.test(k);
+
 export function fmtTagAttrs(fields) {
   const attrs = [], data = {};
   for (const [k, v] of Object.entries(fields)) {
     if (v === undefined) continue;          // an absent field is not an empty one
-    if (cleanAttrStr(v)) {
+    if (!attrName(k)) {
+      data[k] = v;
+    } else if (cleanAttrStr(v)) {
       attrs.push(`${k}="${v}"`);
     } else if (typeof v === 'boolean' || (typeof v === 'number' && Number.isFinite(v))) {
       attrs.push(`${k}=${v}`);              // unquoted -> read back as JSON (fixed=false, n=3)

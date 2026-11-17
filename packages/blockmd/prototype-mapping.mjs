@@ -20,7 +20,7 @@
 import YAML from 'yaml';
 import { getAtPath, ensureMutablePath } from '@volto-hydra/helpers';
 import { tagOf, mdParser, mdSerializer, blockToSlate, slateToMd, fmtTagAttrs, cleanAttrStr, normaliseTables, tableToMd, gridTableToMd, NoCellForm, slateBlockToMdast, isBrTag,
-         mdastToHtml, htmlToMd, htmlRichtext, isFlatDict, flatDictAttrs } from './slate-md.mjs';
+         mdastToHtml, htmlToMd, htmlRichtext, isFlatDict, flatDictAttrs, attrName } from './slate-md.mjs';
 
 // ${node[n]/part} -- node kind, optional match-index, optional accessor part.
 // No `/part` means match-only: consume the node, capture nothing (separator,
@@ -1263,7 +1263,7 @@ function emitRawTag(block) {
   // A flat dict field flattens to `field:key=value` attrs, so it no longer forces
   // the whole block to data-json — only a nested/array value does.
   const mixed = Object.values(rest).some((v) => v !== undefined && !cleanScalar(v) && !isFlatDict(v))
-    || Object.keys(rest).some((k) => TAG_ATTRS.has(k));
+    || Object.keys(rest).some((k) => TAG_ATTRS.has(k) || !attrName(k));
   const attrs = mixed
     ? `data-json='${JSON.stringify(rest).replace(/&/g, '&amp;').replace(/'/g, '&#39;')}'`
     : fmtTagAttrs(rest);
@@ -1483,8 +1483,14 @@ function emitSegments(prototypes, blocks, depth = 2) {
       ? [c, blocks.slice(0, 1)]
       : [`${parts[i - 1]}\n\n${c}`, blocks.slice(i - 1, i + 1)]);
   if (roundTrips(prototypes, local.join('\n\n'), blocks, depth)) return local;
-  return chooseForms(prototypes, blocks, depth, (parts, i, c) =>
+  const whole = chooseForms(prototypes, blocks, depth, (parts, i, c) =>
     [[...parts, c].join('\n\n'), blocks.slice(0, i + 1)]);
+  // The data tag is the last resort and is meant to read back whatever it holds;
+  // if it didn't, markdown would quietly lose a block.
+  if (!roundTrips(prototypes, whole.join('\n\n'), blocks, depth)) {
+    throw new Error(`blockmd: these blocks don't read back from any form: ${blocks.map((b) => b['@type']).join(', ')}`);
+  }
+  return whole;
 }
 
 /**

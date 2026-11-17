@@ -305,6 +305,24 @@ describe('emit multi-node', () => {
   });
 });
 
+describe('a field named as no HTML attribute can be', () => {
+  // CommonMark reads a line as an HTML tag only if its attribute names are
+  // legal; `@id` is not, so such a tag decodes as a paragraph of text.
+  const protos = parsePrototypes('<block type="slate" value="${p,h*/slate}" />');
+  const video = { '@type': 'video', '@id': 'v1', url: '/v.mp4', size: 'full' };
+  const heading = { '@type': 'slate', value: [{ type: 'h2', children: [{ text: 'Next' }] }] };
+
+  it('rides in the tag\'s data, so the block comes back', () => {
+    expect(matchBlocks(protos, emitBlocks(protos, [video]))).toEqual([video]);
+  });
+
+  it('leaves the block after it as markdown', () => {
+    const md = emitBlocks(protos, [video, heading]);
+    expect(matchBlocks(protos, md)).toEqual([video, heading]);
+    expect(md).toContain('## Next');
+  });
+});
+
 describe('optional NODE (absent) matching — one prototype, present or absent', () => {
   // A `${p?/text}` ref means the NODE is optional: the same prototype matches an
   // instance with OR without that node, so a caption/kicker no longer needs its
