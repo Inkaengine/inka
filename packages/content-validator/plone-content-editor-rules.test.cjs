@@ -174,6 +174,34 @@ describe('checkEditorRules()', () => {
     assert.match(r.errors[0], /column/);
   });
 
+  describe('a link field holds the link list, the one shape its widget writes', () => {
+    // An object_browser field stores `[{ "@id": "/path" }]`. A plain string worked only
+    // where a reader guessed at both shapes, and a markdown rule reads one.
+    const linkSchemas = {
+      ...SCHEMAS,
+      _page: { blockSchema: { properties: { items: { ...SCHEMAS._page.blockSchema.properties.items, allowedBlocks: ['card'] } } } },
+      card: { blockSchema: { properties: { title: { title: 'Title' }, url: { title: 'Link', widget: 'object_browser', mode: 'link' } } } },
+    };
+    const errorsFor = async (url) => (await checkEditorRules(page({ c: { '@type': 'card', title: 'T', url } }, ['c']), linkSchemas)).errors;
+
+    it('a string is reported', async () => {
+      const errors = await errorsFor('/components');
+      assert.equal(errors.length, 1, errors.join('\n'));
+      assert.match(errors[0], /card/);
+      assert.match(errors[0], /url/);
+      assert.match(errors[0], /\[\{"@id"/);
+    });
+
+    it('the link list is not, and neither is an empty one', async () => {
+      assert.deepEqual(await errorsFor([{ '@id': '/components' }]), []);
+      assert.deepEqual(await errorsFor([]), []);
+    });
+
+    it('a list whose item has no @id is reported', async () => {
+      assert.equal((await errorsFor([{ title: 'No address' }])).length, 1);
+    });
+  });
+
   it('reports a required field left empty', async () => {
     const r = await checkEditorRules(page({ c: { '@type': 'card', description: 'D' } }, ['c']), SCHEMAS);
     assert.equal(r.errors.length, 1);

@@ -424,6 +424,20 @@ The stored value is a name (`plone.app.vocabularies.Keywords`), not a URL, so co
 
 `@vocabularies/<name>` supports `?title=` (a case-insensitive substring filter, applied server-side) and `b_start` / `b_size` batching. A type-ahead should send `?title=` per keystroke rather than fetch every term — a long vocabulary is exactly the case where a list is the wrong control.
 
+## Link fields hold one shape
+
+A link field (`widget: "object_browser"`, and Inka's `url` widget) stores a list of links, `[{ "@id": "/about" }]`, whether the link is to a page on the site or an external URL. A link picked from the site may carry its summary as well (`title`, `@type`, …). That's the only shape: unset, or an empty list, means no link, and a plain string is never stored.
+
+Read the address from the first entry:
+
+### Javascript
+
+```javascript
+const href = block.href?.length ? block.href[0]['@id'] : null;
+```
+
+The editor writes this shape everywhere: the sidebar's link widget, an inline link edit, and a block conversion that maps a field onto a link. The editor's save and the content check refuse any other, so content from somewhere else (an import, a conversion script) has to be converted first. A field meant to hold a plain URL string is a plain string field, not a link field.
+
 ## Picking a block, and a value from it (`blockPicker`)
 
 A field that names **another block** — "show this question when THAT one is answered" — should offer a menu, not ask for a uid. `blockPicker` reads `blockPathMap`, the same container/region map the editor uses, and stores a **field of the block chosen**.

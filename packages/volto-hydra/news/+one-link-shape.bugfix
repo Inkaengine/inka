@@ -1,0 +1,1 @@
+A link field (`object_browser`) holds one shape, `[{ "@id": url }]`: the editor's save and the content check refuse a plain string, and the frontend guide says how to read it. The content check also reports a stray `id` on a block: it was on the list of fields never checked, though only a list keyed by it may carry one.

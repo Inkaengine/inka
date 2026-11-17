@@ -259,3 +259,22 @@ describe('an `@` key a block has no reason to carry is reported', () => {
     assert.deepEqual(errors, []);
   });
 });
+
+/**
+ * `id` was on the list of fields never checked, with no reason given: a stray `id` on 69
+ * NSW cards went unreported. A list keyed by `id` names it as its idField, which is
+ * identity already; anywhere else it's undeclared like any other field.
+ */
+describe('a stray `id` is reported', () => {
+  it('on a block', () => {
+    const { errors } = checkBlockSchemas([doc('page', 'PUID', { s: { '@type': 'slide', id: 'abc', title: 'T' } })], fieldMapFromSchemas(SCHEMAS), { idFieldMap });
+    assert.match(errors.join('\n'), /slide\.id/);
+  });
+
+  it('not on an item of a list keyed by it', () => {
+    const schemas = { ...SCHEMAS, slider: { group: 'common', blockSchema: { properties: { slides: { widget: 'object_list', idField: 'id', allowedBlocks: ['slide'], typeField: '@type' } } } } };
+    const page = doc('page', 'PUID', { s: { '@type': 'slider', slides: [{ id: 'one', '@type': 'slide', title: 'T' }] } });
+    const { errors } = checkBlockSchemas([page], fieldMapFromSchemas(schemas), { idFieldMap: { slider: { slides: 'id' } } });
+    assert.deepEqual(errors, []);
+  });
+});

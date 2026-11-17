@@ -260,11 +260,14 @@ function getImageSrcset(value, block) {
  * @param {Array|Object|string} value - Link value in various formats
  * @returns {string} Link URL
  */
+// A link field (object_browser) holds one shape: the list its widget writes,
+// `[{ '@id': url }]`. Unset or emptied, there is no link.
 function getLinkUrl(value) {
-    if (!value) return '';
-    // Extract @id from array or object format
-    const url = Array.isArray(value) ? value[0]?.['@id'] : value?.['@id'] || value;
-    return typeof url === 'string' ? stripApiOrigin(url) : '';
+    if (value == null || (Array.isArray(value) && value.length === 0)) return '';
+    if (!Array.isArray(value) || typeof value[0]?.['@id'] !== 'string') {
+        throw new Error(`a link is stored as [{"@id": url}], got ${JSON.stringify(value)}`);
+    }
+    return stripApiOrigin(value[0]['@id']);
 }
 
 /**
