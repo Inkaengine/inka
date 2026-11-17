@@ -736,12 +736,38 @@
       "label": "Topic",
       "suggestFrom": "plone.app.vocabularies.Keywords",
       "value": ""
+    },
+    "ex-slate-heading": {
+      "@type": "slate",
+      "value": [
+        {
+          "type": "h2",
+          "children": [
+            {
+              "text": "Plain "
+            },
+            {
+              "type": "strong",
+              "children": [
+                {
+                  "text": "bold"
+                }
+              ]
+            },
+            {
+              "text": " heading"
+            }
+          ]
+        }
+      ],
+      "plaintext": "An older version of this heading"
     }
   },
   "blocks_layout": {
     "items": [
       "ex-hero",
       "ex-slate",
+      "ex-slate-heading",
       "ex-slate-formatted",
       "ex-slate-list",
       "ex-slate-link",
