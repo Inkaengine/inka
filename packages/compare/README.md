@@ -16,11 +16,18 @@ The measures here so far:
 | `regions` | Where a difference is: the comparison's named regions (selectors on each side, and the parts within a block), each difference reported at the deepest region that differs, differing pixels given to the region that holds them, and the conversion's rules and approved exceptions applied. The mapping is the caller's |
 | `accessibility` | axe-core on both sides: which violations are new on ours, shared, or fixed |
 
+The runner, `inka-compare-sites --settings=<module>`, compares a converted site
+with its source page by page, with every measure, and writes a report. The
+settings module names the two sites, the API the pages are listed from, the
+conversion's findings, the region mapping, the reading options, the approved
+exceptions and the rest; the runner names none.
+
 And what a comparison runs on:
 
 | Module | |
 |---|---|
 | `fetch` | A request retried on a network failure, then failed loudly |
+| `pages` | Every page of the source site, or the fewest that still show every block it uses; a page's slug |
 | `source-archive` | A source site recorded once (HAR) and replayed with the network shut |
 
 Nothing here knows a design system or a site: a class prefix, the
