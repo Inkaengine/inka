@@ -27,8 +27,5 @@
     "fetch.mjs",
     "source-archive.mjs",
     "README.md"
-  ],
-  "peerDependencies": {
-    "@playwright/test": "*"
-  }
+  ]
 }
