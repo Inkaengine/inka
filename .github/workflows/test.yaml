@@ -466,6 +466,10 @@ jobs:
             done
           done
           echo "All servers ready"
+      - name: Comparison engine unit tests (node:test)
+        # @inka/compare. Here, not with test:api, because recording and
+        # replaying a source site needs a browser.
+        run: pnpm test:compare
       - name: Run tests
         run: pnpm exec playwright test --project=unit --project=unit-firefox --project=api-contract --project=mock --project=react --project=svelte --project=vue --project=astro
         env:
