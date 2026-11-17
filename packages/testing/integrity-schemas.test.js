@@ -12,7 +12,7 @@ import { integritySchemas } from './discover-blocks.cjs';
 const footer = {
   rel: 'templates/site-footer',
   data: {
-    '@id': 'http://localhost:8888/templates/site-footer',
+    '@id': 'https://site.example/templates/site-footer',
     '@type': 'Document',
     id: 'site-footer',
     UID: 'footer-uid',
@@ -25,7 +25,7 @@ const footer = {
 const page = {
   rel: 'about',
   data: {
-    '@id': 'http://localhost:8888/about',
+    '@id': 'https://site.example/about',
     '@type': 'Document',
     id: 'about',
     UID: 'about-uid',
