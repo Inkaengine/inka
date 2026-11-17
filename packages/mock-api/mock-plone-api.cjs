@@ -2664,7 +2664,12 @@ function loadMarkdownMount(mount) {
   const { mountPath, dirPath } = mount;
   // Pass the mountPath as the link prefix so hand-authored .md cross-links resolve
   // to the served @ids (a /docs mount serves its tree under /docs, not at root).
-  const { items, blobFiles, folderForm, order } = readTree(dirPath, { prefix: mountPath === '/' ? '' : mountPath, schemaFor: mdRuntime.schemaFor, isFolderish: isFolderishType });
+  const prefix = mountPath === '/' ? '' : mountPath;
+  // Markdown decodes from the page alone; what needs the frontend's schemas runs after.
+  const { items, blobFiles, folderForm, order } = readTree(dirPath, { prefix, isFolderish: isFolderishType });
+  const { resolveSchemaExamples, resolveLinkSummaries } = mdRuntime.fromSchemas;
+  for (const page of items.values()) resolveSchemaExamples(page, { schemaFor: mdRuntime.schemaFor });
+  resolveLinkSummaries(items, { schemaFor: mdRuntime.schemaFor, prefix });
   const urlFor = (p) => (mountPath === '/' ? p : mountPath + (p === '/' ? '' : p));
   // The authored `order:` is a CURATED list (it may deliberately omit asset
   // folders like images/static). Keep it so a re-export writes it back verbatim
@@ -2812,6 +2817,7 @@ async function initMarkdownMounts() {
   const { readTree } = await import('@inka/blockmd/markdown-mount.mjs');
   mdRuntime = {
     readTree,
+    fromSchemas: await import('./from-schemas.mjs'),
     schemaFor: (type) => contentSchemas?.[type]?.blockSchema ?? null,
   };
   for (const mount of mounts) loadMarkdownMount(mount);
