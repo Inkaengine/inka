@@ -1681,7 +1681,9 @@ function Block({ block, id, data, apiUrl, contextPath, inListing = false }) {
           tocEntries.push({ id: bid, level: parseInt((b.tag || "h2").slice(1)), text: b.heading });
         } else if (b["@type"] === "slate" && b.value?.[0]?.type?.match(/^h[1-6]$/)) {
           const level = parseInt(b.value[0].type.slice(1));
-          const text = b.plaintext || b.value[0].children?.map(c => c.text).join("") || "";
+          // The heading's own words: inline ones (bold, a link) hold theirs in children.
+          const words = (nodes) => nodes.map((n) => (typeof n.text === "string" ? n.text : words(n.children))).join("");
+          const text = words(b.value[0].children);
           if (text.trim()) tocEntries.push({ id: bid, level, text });
         }
       }
