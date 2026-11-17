@@ -2215,3 +2215,13 @@ describe('search text is derived, and markdown never carries it', () => {
       .toBe(emitBlocks(protos, [callout(slate, {})]));
   });
 });
+
+describe('trying a form lets a bug through', () => {
+  // A form that doesn't fit a block makes way for the next (NoFit). Anything else
+  // thrown while trying one is a bug in the content or the engine, and used to be
+  // swallowed: a broken Text value went out as a JSON tag as if nothing were wrong.
+  it('a Text block whose value holds a null fails the export', () => {
+    const protos = parsePrototypes('<block type="slate" value="${p/slate}" />');
+    expect(() => emitBlocks(protos, [{ '@type': 'slate', value: [null] }])).toThrow(TypeError);
+  });
+});

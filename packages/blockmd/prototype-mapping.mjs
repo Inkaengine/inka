@@ -19,7 +19,7 @@
  */
 import YAML from 'yaml';
 import { getAtPath, ensureMutablePath } from '@volto-hydra/helpers';
-import { tagOf, mdParser, mdSerializer, blockToSlate, slateToMd, fmtTagAttrs, cleanAttrStr, normaliseTables, tableToMd, gridTableToMd, NoCellForm, slateBlockToMdast, isBrTag,
+import { tagOf, mdParser, mdSerializer, blockToSlate, slateToMd, fmtTagAttrs, cleanAttrStr, normaliseTables, tableToMd, gridTableToMd, NoCellForm, NoFit, slateBlockToMdast, isBrTag,
          mdastToHtml, htmlToMd, htmlRichtext, isFlatDict, flatDictAttrs, attrName } from './slate-md.mjs';
 
 // ${node[n]/part} -- node kind, optional match-index, optional accessor part.
@@ -410,7 +410,7 @@ function resolvePart(node, ref) {
     // An empty target (`[Learn More]()`) is a link with no target yet.
     case 'link': {
       const u = findUrl(node) || null;
-      if (u === null) { if (ref.optional) return null; throw new Error(`no link url in ${kindOf(node)}`); }
+      if (u === null) { if (ref.optional) return null; throw new NoFit(`no link url in ${kindOf(node)}`); }
       return [{ '@id': u }];
     }
     // A link whose url is stored as a PLAIN STRING field (not the `[{'@id'}]`
@@ -418,7 +418,7 @@ function resolvePart(node, ref) {
     // link syntax instead of a data-json attr.
     case 'href': {
       const u = findUrl(node) || null;
-      if (u === null) { if (ref.optional) return null; throw new Error(`no link url in ${kindOf(node)}`); }
+      if (u === null) { if (ref.optional) return null; throw new NoFit(`no link url in ${kindOf(node)}`); }
       return u;
     }
     case 'title': return findTitle(node); // `![a](u "title")` / `[t](u "title")` -> a caption/tooltip
@@ -467,7 +467,7 @@ function runAt(nodes, i, slots, depth) {
 function resolveRef(run, ref, depth) {
   const kinds = ref.node.split(/[|,]/);
   const node = run.filter((n) => nodeInSlot(n, kinds, depth))[(ref.index ?? 1) - 1];
-  if (!node) throw new Error(`ref ${ref.node}[${ref.index ?? 1}] not in run`);
+  if (!node) throw new NoFit(`ref ${ref.node}[${ref.index ?? 1}] not in run`);
   return resolvePart(node, ref);
 }
 
@@ -486,7 +486,7 @@ function runResolves(proto, run, depth) {
     let v;
     // An optional NODE may be absent from the run entirely (resolveRef throws);
     // an optional PART may resolve to null. Either way `?` tolerates it.
-    try { v = resolveRef(run, ref, depth); } catch { if (ref.optional) continue; return false; }
+    try { v = resolveRef(run, ref, depth); } catch (e) { if (!(e instanceof NoFit)) throw e; if (ref.optional) continue; return false; }
     if (v === null && !ref.optional) return false;
   }
   return true;
@@ -506,7 +506,7 @@ function leafBlock(proto, run, depth) {
       let v;
       // An absent optional node -> the field is simply omitted (same as an
       // optional part that resolved to nothing).
-      try { v = resolveRef(run, ref, depth); } catch (e) { if (ref.optional) continue; throw e; }
+      try { v = resolveRef(run, ref, depth); } catch (e) { if (ref.optional && e instanceof NoFit) continue; throw e; }
       if (v != null && v !== '') block[field] = v;
     } else block[field] = val;
   }
@@ -524,7 +524,7 @@ function matchRun(protos, nodes, i, depth) {
     const run = runAt(nodes, i, slots, depth);
     if (run && runResolves(p, run, depth)) return { block: leafBlock(p, run, depth), len: run.length };
   }
-  throw new Error(`no prototype matches node kind: ${kindOf(nodes[i])} at depth ${depth}`);
+  throw new NoFit(`no prototype matches node kind: ${kindOf(nodes[i])} at depth ${depth}`);
 }
 
 // --------------------------------------------------------- scoped matching ---
@@ -553,7 +553,7 @@ function splitAt(nodes, delim, depth) {
   for (const [i, n] of nodes.entries()) {
     if (!nested[i] && isDelim(n)) groups.push([n]);
     else if (groups.length) groups[groups.length - 1].push(n);
-    else throw new Error(`content before first ${delim} delimiter`);
+    else throw new NoFit(`content before first ${delim} delimiter`);
   }
   return groups;
 }
@@ -564,7 +564,7 @@ function delimiterOf(item) {
     const r = parseRef(v);
     if (r && /^h([1-6])?$/.test(r.node)) return r.node;
   }
-  throw new Error('a repeating item needs a heading delimiter ref');
+  throw new NoFit('a repeating item needs a heading delimiter ref');
 }
 
 // An object_list item's delimiter sits at `depth`; its content is one deeper.
@@ -578,7 +578,7 @@ function decodeItem(protos, item, group, depth) {
     const ref = parseRef(val);
     if (!ref) { result[field] = val; continue; }
     const node = nodes.filter((n) => nodeInSlot(n, ref.node.split(/[|,]/), depth))[(ref.index ?? 1) - 1];
-    if (!node) { if (ref.optional) continue; throw new Error(`item ref ${ref.node} not found in item`); }
+    if (!node) { if (ref.optional) continue; throw new NoFit(`item ref ${ref.node} not found in item`); }
     consumed.add(node);
     if (field === '_' || ref.part === null) continue;
     const v = resolvePart(node, ref);
@@ -659,7 +659,7 @@ function decodeRegion(protos, region, inner, depth) {
       const nth = all.slice(0, i + 1).filter((c) => kindOf(c) === kindOf(child)).length;
       const fits = region.protos.filter((p) => slotsOf(p).some((s) => nodeInSlot(child, s.kinds, depth)));
       const proto = fits.find((p) => itemRefOf(p)?.index === nth) ?? fits.find((p) => itemRefOf(p)?.index == null);
-      if (!proto) throw new Error(`region "${region.name}" has no item prototype for ${kindOf(child)} ${nth}`);
+      if (!proto) throw new NoFit(`region "${region.name}" has no item prototype for ${kindOf(child)} ${nth}`);
       return typed(proto, decodeItemNode(protos, proto, child, depth));
     });
   }
@@ -818,7 +818,7 @@ function decodeTag(protos, attrs, inner, depth) {
       return finish(leafBlock(proto, content, depth));
     }
   }
-  throw new Error(`no leaf prototype for <block type="${type}"> matching its body`);
+  throw new NoFit(`no leaf prototype for <block type="${type}"> matching its body`);
 }
 
 /** A tier-3 self-closing data tag -> the raw block it stores. The `uid` is
@@ -897,7 +897,7 @@ function matchNodes(protos, nodes, depth = 2) {
         continue;
       }
       if (!tag || tag.name !== 'block' || tag.kind !== 'open') {
-        throw new Error(`unexpected html node: ${n.value}`);
+        throw new NoFit(`unexpected html node: ${n.value}`);
       }
       let nest = 1, j = i + 1;
       for (; j < nodes.length && nest; j++) {
@@ -954,7 +954,7 @@ export function decodePage(md, { ignoreAssignments = false } = {}) {
 /** Unwrap a link-widget value `[{'@id': url}]` back to its url. */
 function linkUrl(v) {
   if (!Array.isArray(v) || !v[0] || typeof v[0]['@id'] !== 'string') {
-    throw new Error(`not a link-widget value: ${JSON.stringify(v)}`);
+    throw new NoFit(`not a link-widget value: ${JSON.stringify(v)}`);
   }
   return v[0]['@id'];
 }
@@ -999,7 +999,7 @@ function emitNode(block, entry, depth) {
   if (entry.node === 'strong' && txt) return mdOf(para({ type: 'strong', children: text(txt) }));
   if (entry.node === 'em' && txt) return mdOf(para({ type: 'emphasis', children: text(txt) }));
   if ((entry.node === 'p' || entry.node === 'dd') && txt) return mdOf(para(...text(txt))); // a dd: emitFields adds the term
-  throw new Error(`cannot emit node ${entry.node}`);
+  throw new NoFit(`cannot emit node ${entry.node}`);
 }
 
 /** Reverse a set of prototype refs against an object, into markdown nodes. */
@@ -1113,7 +1113,7 @@ function itemKind(proto) {
 function itemProtoOf(region, item) {
   if (region.typeField === null) return pickVariant(region.protos, item);
   const proto = pickVariant(region.protos.filter((p) => p.type === item[region.typeField]), item);
-  if (!proto) throw new Error(`region "${region.name}" has no item prototype "${item[region.typeField]}"`);
+  if (!proto) throw new NoFit(`region "${region.name}" has no item prototype "${item[region.typeField]}"`);
   return proto;
 }
 
@@ -1129,7 +1129,7 @@ const MDAST_OF_KIND = { tr: 'tableRow', th: 'tableHeaderCell', td: 'tableCell' }
 function emitItemNode(protos, region, item, at, depth) {
   const proto = structuralProtoOf(region, item, at);
   const kind = itemKind(proto);
-  if (!MDAST_OF_KIND[kind]) throw new Error(`item "${proto.type}" is not a table row or cell`);
+  if (!MDAST_OF_KIND[kind]) throw new NoFit(`item "${proto.type}" is not a table row or cell`);
   const node = { type: MDAST_OF_KIND[kind], children: [] };
   const regionRoots = new Set(proto.regions.map((r) => r.path[0]));
   for (const [k, v] of Object.entries(item)) {
@@ -1137,7 +1137,7 @@ function emitItemNode(protos, region, item, at, depth) {
     const def = proto.fields[k];
     const ref = def === undefined ? null : parseRef(def);
     if (ref?.part === 'slate') node.children = v.map((b) => slateBlockToMdast(b));
-    else if (ref || def === undefined || !deepEqual(def, v)) throw new Error(`a ${kind} has no place for field "${k}"`);
+    else if (ref || def === undefined || !deepEqual(def, v)) throw new NoFit(`a ${kind} has no place for field "${k}"`);
   }
   for (const r of proto.regions) {
     const items = getAtPath(item, r.path) ?? [];
@@ -1167,13 +1167,13 @@ function emitContent(protos, region, items, depth) {
  */
 function structuralProtoOf(region, item, at) {
   const cands = region.typeField === null ? region.protos : region.protos.filter((p) => p.type === item[region.typeField]);
-  if (!cands.length) throw new Error(`region "${region.name}" has no item prototype "${item[region.typeField]}"`);
+  if (!cands.length) throw new NoFit(`region "${region.name}" has no item prototype "${item[region.typeField]}"`);
   if (cands.every((p) => itemKind(p) === 'tr')) return cands[0];
   const want = at.rowIndex === 0 ? 'th' : 'td';
   const fits = cands.filter((p) => itemRefOf(p)?.node === want);
   const at1 = fits.filter((p) => itemRefOf(p)?.index === at.cellIndex + 1);
   const proto = pickVariant(at1.length ? at1 : fits.filter((p) => itemRefOf(p)?.index == null), item);
-  if (!proto) throw new Error(`no ${item[region.typeField] ?? 'matching'} prototype for row ${at.rowIndex + 1}, cell ${at.cellIndex + 1}`);
+  if (!proto) throw new NoFit(`no ${item[region.typeField] ?? 'matching'} prototype for row ${at.rowIndex + 1}, cell ${at.cellIndex + 1}`);
   return proto;
 }
 
@@ -1423,7 +1423,7 @@ export const sameBlocks = (protos, a, b) =>
   semanticEqual(a.map((x) => authored(protos, x)), b.map((x) => authored(protos, x)));
 
 const roundTrips = (protos, md, expected, depth) => {
-  try { return sameBlocks(protos, matchBlocks(protos, md, depth), expected); } catch { return false; }
+  try { return sameBlocks(protos, matchBlocks(protos, md, depth), expected); } catch (e) { if (e instanceof NoFit) return false; throw e; }
 };
 
 /** The candidate forms for one block, lightest first. Lazy -- a form that can't
@@ -1450,7 +1450,7 @@ function chooseForms(prototypes, blocks, depth, context) {
   for (let i = 0; i < blocks.length; i += 1) {
     let chosen = null;
     for (const gen of candidateForms(prototypes, blocks[i], depth)) {
-      let c; try { c = gen(); } catch { continue; }
+      let c; try { c = gen(); } catch (e) { if (e instanceof NoFit) continue; throw e; }
       if (c == null) continue;
       const [md, expected] = context(parts, i, c);
       if (roundTrips(prototypes, md, expected, depth)) { chosen = c; break; }
@@ -1714,10 +1714,8 @@ export function emitPage(prototypes, keyed) {
   // makes that block fail its own round trip and fall back to a data-json tag;
   // the page still round-trips, but more of it is JSON. Keep the flat emission then.
   const rawTags = (md) => (md.match(/<block [^>]*data-json=/g) || []).length;
-  try {
-    const hoisted = hoistFields(prototypes, blocks);
-    if (hoisted && rawTags(hoisted) <= rawTags(markdown) && roundTrips(prototypes, hoisted, blocks, 2)) markdown = hoisted;
-  } catch { /* keep flat */ }
+  const hoisted = hoistFields(prototypes, blocks);
+  if (hoisted && rawTags(hoisted) <= rawTags(markdown) && roundTrips(prototypes, hoisted, blocks, 2)) markdown = hoisted;
   return { markdown, assignments };
 }
 

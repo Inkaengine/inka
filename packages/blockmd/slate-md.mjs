@@ -549,7 +549,10 @@ function cellBlocks(nodes) {
 
 /** A cell whose blocks have no GFM form (a list, a quote, a tagged block): the
  *  table is written as a grid table instead. */
-export class NoCellForm extends Error {}
+/** Content that doesn't fit a prototype or a markdown form: what trying the next form
+ *  answers. Anything else thrown while trying one is a bug, and is let through. */
+export class NoFit extends Error {}
+export class NoCellForm extends NoFit {}
 
 /** A cell's block nodes -> its inline nodes (the inverse of cellBlocks). A lone
  *  paragraph is bare; otherwise a heading is an `<hN>` tag and a paragraph
