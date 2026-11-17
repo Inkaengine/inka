@@ -3,8 +3,8 @@
  * then failed loudly.
  *
  * An API that auto-suspends times out a connection made while it wakes; a
- * source site, once in a long run, does not answer a connection in time (one
- * HEAD at page 373 once ended a whole run). Three tries, 2s then 4s
+ * source site, once in a long run, does not answer a connection in time, and
+ * one such request must not end the whole run. Three tries, 2s then 4s
  * apart. A network error is not an answer, so after the third it throws
  * Unreachable, naming the URL — which a run can blame on the one page that
  * asked. An HTTP error IS an answer and is returned for the caller to judge;

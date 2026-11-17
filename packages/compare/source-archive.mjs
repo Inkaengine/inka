@@ -3,9 +3,8 @@
  *
  * A source site is usually someone else's production site. Shooting it live
  * on every run asks it for every page again, and again for each change to an
- * exception's CSS: one comparison re-shot all 441 live pages that way, and
- * asked the live site for its redirects every run, until its owner called it
- * a denial of service.
+ * exception's CSS, and asks it for its redirects every run: to its owner, a
+ * comparison run is load they did not ask for.
  *
  * So each source page is a HAR archive (every request it made, bodies
  * embedded), recorded in one gentle pass (`--record-source`) and replayed with
@@ -47,7 +46,7 @@ export async function useArchive(context, file, { record }) {
 /**
  * A request still in flight when its page was saved (YouTube's ad_status.js)
  * is recorded as failed, status -1, and replaying that entry never answers:
- * the page's load never fired and 16 pages were not compared (2026-10-19).
+ * the page's load never fired, and the page went uncompared.
  * Without it, the request is refused like any other the recording lacks.
  */
 function dropFailedEntries(file) {

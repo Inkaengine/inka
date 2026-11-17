@@ -23,8 +23,8 @@ const scripted = (...steps) => {
 };
 
 test("a connection that times out is tried again, and its answer used", async () => {
-  // The 19 Oct full run ended 373 pages in: one HEAD to the source timed out
-  // connecting (UND_ERR_CONNECT_TIMEOUT) and took the whole run with it.
+  // One HEAD to the source timing out while connecting
+  // (UND_ERR_CONNECT_TIMEOUT) must not take a long run with it.
   const ok = { status: 200 };
   const { fn, calls } = scripted(networkError("UND_ERR_CONNECT_TIMEOUT"), ok);
   assert.equal(await fetchRetrying("https://x/a", {}, { fetch: fn, wait: 0 }), ok);

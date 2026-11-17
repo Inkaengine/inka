@@ -84,7 +84,7 @@ test("replaying asks the site for nothing, even what was not recorded", async ()
 test("a request the recording saw fail is refused at replay, not left hanging", async () => {
   // The recording keeps a request still in flight when the page was saved
   // (YouTube's ad_status.js) as status -1, and replaying that entry never
-  // answered: the page's load never fired and 16 pages were not compared.
+  // answered: the page's load never fired, and the page went uncompared.
   const browser = await chromium.launch();
   const { server, base } = await serve();
   const file = path.join(tmp(), "page.har");

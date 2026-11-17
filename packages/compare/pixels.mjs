@@ -208,8 +208,8 @@ export const COMPARE_JS = ({ aData, bData, deltaE, cell, maxPixels, regions = []
         // compared with the third card, not only the first), and without the
         // pixels any measured region inside it covers, which are that
         // region's to judge. Aligned only at the parent's corner, a list whose
-        // rows were each a pixel taller "differed" all the way down
-        // (/images/tiles, 1.21% of main content) though every row matched;
+        // rows were each a pixel taller "differed" all the way down (1.21%
+        // of a page's main content) though every row matched;
         // and a child an exception excuses no longer fails its parent.
         const allBoxes = (side) =>
           regions.flatMap((r) => (r[side]?.boxes ?? (r[side] ? [r[side]] : [])).map((box) => ({ box, name: r.name })));
@@ -263,10 +263,9 @@ export const COMPARE_JS = ({ aData, bData, deltaE, cell, maxPixels, regions = []
             return v <= lo || v >= hi;
           };
           // Not the outermost row and column: a region whose edge falls
-          // between pixels (the source's footer starts at y 2476.83 on
-          // /images/oversight) draws that row as a blend of it and what is
-          // behind it, which the other side draws whole — one row, 0.28% of
-          // the footer on four pages, with nothing in it differing.
+          // between pixels (a footer starting at y 2476.83) draws that row as
+          // a blend of it and what is behind it, which the other side draws
+          // whole — one row of differing pixels with nothing in it differing.
           let n = 0;
           let own = 0;
           for (let y = 1; y < h - 1; y++)
