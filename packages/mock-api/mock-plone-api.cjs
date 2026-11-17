@@ -833,9 +833,9 @@ function matchSearchableText(searchTerm, item, blocksText = '') {
  * The text of a page's blocks, as plone.restapi's blocks indexer adds it to
  * SearchableText (plone/restapi/indexers.py, blocks.py). It visits the blocks in a block's
  * `blocks` and `data.blocks`, children first, listed in a layout or not, and takes each
- * one's `searchableText`, else a Text block's `plaintext`. So object lists are not visited,
- * and other block types are found only by `searchableText`. A real save writes `plaintext`
- * from `value`; here `value` is read directly, which is what that would be.
+ * one's `searchableText`. So object lists are not visited, and a block is found by what its
+ * save wrote. A Text block that was never saved here (a JSON fixture) is read from its
+ * `value`, which is what its save would write.
  * test_search_text.py holds real Plone to the same cases (search-text-cases.json).
  */
 function blocksSearchableText(blocks) {
@@ -848,9 +848,8 @@ function blocksSearchableText(blocks) {
     if (isMap(block.data?.blocks)) Object.values(block.data.blocks).forEach(visit);
     if (isMap(block.blocks)) Object.values(block.blocks).forEach(visit);
     if (block.searchableText) texts.push(block.searchableText);
-    else if (block['@type'] === 'slate') {
-      texts.push(Array.isArray(block.value) ? slateText(block.value) : block.plaintext || '');
-    }
+    // A Text block nothing was typed in has no value, and no text.
+    else if (block['@type'] === 'slate' && 'value' in block) texts.push(slateText(block.value));
   };
   Object.values(blocks || {}).forEach(visit);
   return texts.join(' ');
@@ -1689,17 +1688,20 @@ function synthesizeVersion(cleanPath, content, version, total) {
   }
   // Swap the two longest words in one seeded slate paragraph — visibly
   // different copy without looking corrupted.
-  const slates = Object.values(old.blocks || {}).filter(
-    (b) => b && b['@type'] === 'slate' && typeof b.plaintext === 'string' && b.plaintext.split(' ').length > 6,
-  );
+  // A paragraph of plain words: its text is the one run it holds.
+  const wordsOf = (b) => (b?.['@type'] === 'slate' && b.value?.length === 1 && b.value[0].type === 'p'
+    && b.value[0].children.length === 1 && typeof b.value[0].children[0].text === 'string'
+    ? b.value[0].children[0].text.split(' ') : []);
+  const slates = Object.values(old.blocks || {}).filter((b) => wordsOf(b).length > 6);
   if (slates.length) {
     const target = slates[Math.floor(rand() * slates.length)];
-    const words = target.plaintext.split(' ');
+    const words = wordsOf(target);
     const byLen = words.map((w, i) => [w.length, i]).sort((a, b) => b[0] - a[0]);
     const [i, j] = [byLen[0][1], byLen[1][1]];
     [words[i], words[j]] = [words[j], words[i]];
     const swapped = words.join(' ');
-    target.plaintext = swapped;
+    delete target.plaintext;
+    delete target.searchableText;
     target.value = [{ type: 'p', children: [{ text: swapped }] }];
   }
   old.modified = new Date(Date.parse('2026-01-01T09:00:00Z') + version * 86400000).toISOString();
@@ -2664,7 +2666,13 @@ function loadMarkdownMount(mount) {
   const { mountPath, dirPath } = mount;
   // Pass the mountPath as the link prefix so hand-authored .md cross-links resolve
   // to the served @ids (a /docs mount serves its tree under /docs, not at root).
-  const { items, blobFiles, folderForm, order } = readTree(dirPath, { prefix: mountPath === '/' ? '' : mountPath, schemaFor: mdRuntime.schemaFor, isFolderish: isFolderishType });
+  // With the frontend's schemas, each page gets the search text the editor's save writes.
+  const { items, blobFiles, folderForm, order } = readTree(dirPath, {
+    prefix: mountPath === '/' ? '' : mountPath,
+    schemaFor: mdRuntime.schemaFor,
+    isFolderish: isFolderishType,
+    blocksConfig: contentSchemas,
+  });
   const urlFor = (p) => (mountPath === '/' ? p : mountPath + (p === '/' ? '' : p));
   // The authored `order:` is a CURATED list (it may deliberately omit asset
   // folders like images/static). Keep it so a re-export writes it back verbatim
@@ -3391,6 +3399,14 @@ function buildDistributionFromMemory(dest, { allowMissingBlobs = false, sitePath
     .filter((m) => m.mountPath === '/' || urlPath === m.mountPath || urlPath.startsWith(`${m.mountPath}/`))
     .sort((a, b) => b.mountPath.length - a.mountPath.length)[0];
 
+  // Markdown's search text is written as it is read, from the frontend's schemas
+  // (loadMarkdownMount). Without them, its pages would ship unfindable.
+  if (!contentSchemas && CONTENT_MOUNTS.some(isMarkdownMount)) {
+    throw new ExportRequestError(
+      'markdown content is exported with the search text its blocks are found by, which needs '
+      + "the frontend's block schemas: set CONTENT_SCHEMAS",
+    );
+  }
   const items = [];
   for (const urlPath of Object.keys(contentDirMap)) {
     const owner = ownerMount(urlPath);

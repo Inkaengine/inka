@@ -75,13 +75,9 @@ const getChildBlocks = (blockData, containerConfig) =>
 /**
  * Get the display title for a block
  */
-const getBlockTitle = (blockData) =>
-  // The same namer as everywhere else, with one rule kept: a FIXED template
-  // block is identified by its words, not by its type — every fixed heading in
-  // a template is a "Heading", and the author is looking for a particular one.
-  blockDisplayTitle(blockData, {
-    labelField: blockData?.fixed ? 'plaintext' : undefined,
-  });
+// The same namer as everywhere else: a fixed template block is identified by
+// its words, read live, like any other.
+const getBlockTitle = (blockData) => blockDisplayTitle(blockData);
 
 /**
  * Group template instance children into sections by slotId.

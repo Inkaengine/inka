@@ -568,3 +568,39 @@ describe('is_folderish comes from the caller', () => {
     rmSync(root, { recursive: true, force: true });
   });
 });
+
+describe('readTree writes search text when given the block schemas', () => {
+  // Markdown never goes through the editor's save, which is what writes a page's search
+  // text. So reading a tree with its blocks config writes it the same way, and a page
+  // deployed from markdown is found by its words.
+  const page = (fm, body) => `---\n${fm}\n---\n\n${body}\n`;
+  const blocksConfig = {
+    card: { blockSchema: { properties: { title: { type: 'string' } } } },
+  };
+  const tree = () => {
+    const root = mkdtempSync(join(tmpdir(), 'mm-search-'));
+    const fm = ['"@type": Document', 'UID: root', 'id: Plone', 'blocks-matched: |',
+      '  <block type="slate" value="${p,strong/slate}" />', 'blocks-tagged: |', '  <block type="card" title="${h2/text}" />'];
+    writeFileSync(join(root, 'index.md'), page(fm.join('\n'),
+      'Found by **these** words.\n\n<block type="card">\n\n## A card title\n\n</block>'));
+    return root;
+  };
+  const blocksOf = (items) => {
+    const p = items.get('/');
+    return p.blocks_layout.items.map((id) => p.blocks[id]);
+  };
+
+  it('each block has its searchableText', () => {
+    const root = tree();
+    const { items } = readTree(root, { isFolderish, blocksConfig });
+    expect(blocksOf(items).map((b) => b.searchableText)).toEqual(['Found by these words.', 'A card title']);
+    rmSync(root, { recursive: true, force: true });
+  });
+
+  it('without them, none', () => {
+    const root = tree();
+    const { items } = readTree(root, { isFolderish });
+    expect(blocksOf(items).map((b) => b.searchableText)).toEqual([undefined, undefined]);
+    rmSync(root, { recursive: true, force: true });
+  });
+});

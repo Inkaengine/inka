@@ -26,6 +26,7 @@ import { readFileSync, readdirSync, statSync, existsSync } from 'fs';
 import { join, dirname, relative, extname, basename } from 'path';
 import ignore from 'ignore';
 import { decodePage } from './prototype-mapping.mjs';
+import { searchTextOptions, withSearchableText } from '@volto-hydra/helpers/searchableText.js';
 
 /**
  * Decode one page to a content object. The one markdown source format is the
@@ -473,7 +474,12 @@ export function resolveCodeExampleSources(page, { schemaFor } = {}) {
   return page;
 }
 
-export function readTree(root, { decode = decodeAuto, prefix = '', schemaFor, isFolderish } = {}) {
+/**
+ * @param {Object} [options.blocksConfig] - the frontend's blocks config. Given, every page
+ *   gets the search text the editor's save would write (`withSearchableText`): markdown
+ *   never goes through that save, and a page deployed without it isn't found by its words.
+ */
+export function readTree(root, { decode = decodeAuto, prefix = '', schemaFor, isFolderish, blocksConfig } = {}) {
   // Which types are folderish is the site's (Plone computes it from the type),
   // so the caller says; the mount keeps no list of type names.
   if (typeof isFolderish !== 'function') {
@@ -586,8 +592,19 @@ export function readTree(root, { decode = decodeAuto, prefix = '', schemaFor, is
 
   normalizeInstanceTemplateFields(items);
   resolveLinkSummaries(items, { schemaFor, prefix });
+  if (blocksConfig) writeSearchText(items, blocksConfig);
   deriveServerState(items, order, isFolderish);
   return { items, blobFiles, order, folderForm };
+}
+
+// The text a block is found by, as written on save. It reads the resolved page: link
+// summaries are in, so a teaser is found by its target's title.
+const SEARCH_INTL = { formatMessage: (message) => message?.defaultMessage ?? '' };
+function writeSearchText(items, blocksConfig) {
+  for (const [id, page] of items) {
+    if (!page.blocks) continue;
+    items.set(id, withSearchableText(page, searchTextOptions(blocksConfig, SEARCH_INTL, page)));
+  }
 }
 
 // The markdown mount stores a link to a local object as the bare, non-stale

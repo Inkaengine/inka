@@ -306,31 +306,53 @@ describe('emit multi-node', () => {
   });
 });
 
-describe('a text block\'s plaintext reads its words as search text does', () => {
+describe('`/text` of a text block reads its words as search text does', () => {
   // One rule for where a word ends, as the helpers' slateText has it: blocks
   // (paragraphs, list items) are separate words; inline content runs on, so a
-  // bold syllable stays inside its word. The plaintext a page decodes to is the
-  // text search reads, so the two must not disagree.
+  // bold syllable stays inside its word. A field read with `/text` from rich text
+  // and the search text of that text must not disagree.
   const protos = parsePrototypes(
-    '<block type="slate" value="${p,ul,ol/slate}" plaintext="${p,ul,ol/text}" />',
+    '<block type="slate" value="${p,ul,ol/slate}" words="${p,ul,ol/text}" />',
   );
 
   it('a list: each item is its own words', () => {
     const [block] = matchBlocks(protos, '- Masterbrand – the default\n- Co-brand – a custom logo\n- Endorsed');
-    expect(block.plaintext).toBe('Masterbrand – the default Co-brand – a custom logo Endorsed');
-    expect(block.plaintext).toBe(fieldText(block.value));
+    expect(block.words).toBe('Masterbrand – the default Co-brand – a custom logo Endorsed');
+    expect(block.words).toBe(fieldText(block.value));
   });
 
   it('a nested list: its items are words too', () => {
     const [block] = matchBlocks(protos, '- One\n  - Inner\n- Two');
-    expect(block.plaintext).toBe(fieldText(block.value));
-    expect(block.plaintext).toBe('One Inner Two');
+    expect(block.words).toBe(fieldText(block.value));
+    expect(block.words).toBe('One Inner Two');
   });
 
   it('inline formatting and links run on inside a word', () => {
     const [block] = matchBlocks(protos, 'Un**bold**ed and [linked](https://example.org)ness.');
-    expect(block.plaintext).toBe('Unbolded and linkedness.');
-    expect(block.plaintext).toBe(fieldText(block.value));
+    expect(block.words).toBe('Unbolded and linkedness.');
+    expect(block.words).toBe(fieldText(block.value));
+  });
+
+  it('a space at a link\'s edge still parts two words', () => {
+    const [block] = matchBlocks(protos, 'If your agency requires[ Independent](https://example.org) branding');
+    expect(block.words).toBe('If your agency requires Independent branding');
+    expect(block.words).toBe(fieldText(block.value));
+  });
+
+  it('a link\'s text read into a field keeps its spaces: it is the value as written', () => {
+    const linkProtos = parsePrototypes('<block type="maps" title="${a/text}" url="${a/href}" />');
+    const [block] = matchBlocks(linkProtos, '[Namur, Belgium ](https://example.org/map)');
+    expect(block.title).toBe('Namur, Belgium ');
+  });
+
+  it('a space at the end of a paragraph is not a word', () => {
+    const value = [{ type: 'p', children: [{ text: 'Uploading of content. ' }] }];
+    const md = emitBlocks(protos, [{ '@type': 'slate', value, words: fieldText(value) }]);
+    expect(md).not.toContain('data-json');
+    const [block] = matchBlocks(protos, md);
+    expect(block.value).toEqual(value);
+    expect(block.words).toBe('Uploading of content.');
+    expect(block.words).toBe(fieldText(block.value));
   });
 });
 
@@ -1772,8 +1794,8 @@ describe("a container's own refs never reach into a nested block", () => {
   it('a grid with no headline whose first item is a heading slate', async () => {
     const protos = await protosP;
     const block = { '@type': 'gridBlock', items: [
-      { '@type': 'slate', value: [{ type: 'h2', children: [{ text: 'Title' }] }], plaintext: 'Title' },
-      { '@type': 'slate', value: [{ type: 'p', children: [{ text: 'Body.' }] }], plaintext: 'Body.' },
+      { '@type': 'slate', value: [{ type: 'h2', children: [{ text: 'Title' }] }] },
+      { '@type': 'slate', value: [{ type: 'p', children: [{ text: 'Body.' }] }] },
     ] };
     const md = emitBlocks(protos, [block]);
     expect(md).not.toMatch(/data-json/);
@@ -1814,27 +1836,34 @@ describe('a malformed ref is an error, never a literal', () => {
   });
 });
 
-describe('slate plaintext is derived by the prototype', () => {
-  // Volto stores a slate block's text again as `plaintext` (for search). It is
-  // the text of the same node the value comes from, so the prototype reads it
-  // from there — `plaintext="${…/text}"` — and it never has to be written.
+describe('a prototype can\'t make search text', () => {
+  // Markdown never carries it (it is written from the other fields), so a prototype
+  // that makes it would never match a block, and every such block would be JSON.
+  it.each(['plaintext', 'searchableText'])('%s', (field) => {
+    expect(() => parsePrototypes(`<block type="slate" value="\${p/slate}" ${field}="\${p/text}" />`))
+      .toThrow(new RegExp(`${field}.*written from`));
+  });
+});
+
+describe('a slate block\'s stored plaintext is left out', () => {
+  // Older content stores a slate block's text again as `plaintext`. Search text is
+  // written from the value (searchableText), so markdown neither carries nor makes it.
   const protosP = import('./default-prototypes.mjs').then(({ DEFAULT_PROTOTYPES: D }) => [
     ...parsePrototypes(D.matched), ...parsePrototypes(D.tagged, { explicit: true }),
   ]);
+  const value = [{ type: 'h2', children: [{ text: 'Title ' }, { type: 'strong', children: [{ text: 'bold' }] }] }];
 
-  it('a slate block with its plaintext is bare markdown', async () => {
+  it('a slate block with a plaintext, even an old one, is bare markdown', async () => {
     const protos = await protosP;
-    const block = { '@type': 'slate', value: [{ type: 'h2', children: [{ text: 'Title ' }, { type: 'strong', children: [{ text: 'bold' }] }] }], plaintext: 'Title bold' };
-    const md = emitBlocks(protos, [block]);
+    const md = emitBlocks(protos, [{ '@type': 'slate', value, plaintext: 'An older title' }]);
     expect(md).toBe('## Title **bold**');
-    expect(matchBlocks(protos, md)).toEqual([block]);
+    expect(matchBlocks(protos, md)).toEqual([{ '@type': 'slate', value }]);
   });
 
-  it('decoding markdown gives a slate block its plaintext', async () => {
+  it('decoding markdown gives a slate block no plaintext', async () => {
     const protos = await protosP;
     expect(matchBlocks(protos, 'Some *styled* text.')).toEqual([{ '@type': 'slate',
-      value: [{ type: 'p', children: [{ text: 'Some ' }, { type: 'em', children: [{ text: 'styled' }] }, { text: ' text.' }] }],
-      plaintext: 'Some styled text.' }]);
+      value: [{ type: 'p', children: [{ text: 'Some ' }, { type: 'em', children: [{ text: 'styled' }] }, { text: ' text.' }] }] }]);
   });
 });
 
@@ -1935,34 +1964,23 @@ describe('a paragraph that is only a link is its own node, like bold/italic', ()
   it('a paragraph that is only a link is still a slate block', async () => {
     const protos = await protosP;
     expect(matchBlocks(protos, '[See more](./more.md)')).toEqual([{ '@type': 'slate',
-      value: [{ type: 'p', children: [{ type: 'link', data: { url: './more.md' }, children: [{ text: 'See more' }] }] }],
-      plaintext: 'See more' }]);
+      value: [{ type: 'p', children: [{ type: 'link', data: { url: './more.md' }, children: [{ text: 'See more' }] }] }] }]);
   });
 });
 
 describe('a hand-wrapped paragraph stays markdown', () => {
   // Docs are written with paragraphs wrapped across lines. A soft wrap reads as
-  // a space in the slate value (CommonMark), so plaintext — Volto's text of the
-  // value — must read it the same way, or the two disagree and the block falls
-  // back to data-json. `/text` reads prose (a soft wrap is a space) — right for
-  // one-line fields and plaintext; `/textarea` keeps every line, for a textarea.
+  // a space in the slate value (CommonMark), so the block re-emits as one line.
   const protosP = import('./default-prototypes.mjs').then(({ DEFAULT_PROTOTYPES: D }) => [
     ...parsePrototypes(D.matched), ...parsePrototypes(D.tagged, { explicit: true }),
   ]);
 
-  it('decodes a wrapped paragraph with a one-line plaintext and re-emits it clean', async () => {
+  it('decodes a wrapped paragraph and re-emits it clean', async () => {
     const protos = await protosP;
     const [block] = matchBlocks(protos, 'A listing asking for **this folder**\nis asking the question\nplone.restapi answers.');
-    expect(block.plaintext).toBe('A listing asking for this folder is asking the question plone.restapi answers.');
     const md = emitBlocks(protos, [block]);
     expect(md).not.toMatch(/data-json/);
     expect(matchBlocks(protos, md)).toEqual([block]);
-  });
-
-  it('a hard break is a newline in plaintext, as in the value', async () => {
-    const protos = await protosP;
-    const [block] = matchBlocks(protos, 'Line one\\\nline two');
-    expect(block.plaintext).toBe('Line one\nline two');
   });
 });
 
@@ -1975,6 +1993,12 @@ describe('/text reads prose, /textarea keeps every line', () => {
     const [b] = matchBlocks(protos, '<block type="card">\n\n**A long\nwrapped kicker**\n\nFirst line\nsecond line\n\n</block>');
     expect(b.kicker).toBe('A long wrapped kicker');
     expect(b.body).toBe('First line\nsecond line');
+  });
+
+  it('a hard break is a newline in both', () => {
+    const [b] = matchBlocks(protos, '<block type="card">\n\n**One\\\ntwo**\n\nLine one\\\nline two\n\n</block>');
+    expect(b.kicker).toBe('One\ntwo');
+    expect(b.body).toBe('Line one\nline two');
   });
 
   it('a textarea value with newlines round-trips', () => {
@@ -2056,7 +2080,7 @@ describe('container-cell tables (cells that hold blocks; headerMode by prototype
     expect(md).not.toContain('<p>');
   });
 
-  it('a cell slate with derived plaintext round-trips (the text is re-derived, not written)', () => {
+  it('a cell slate\'s stored plaintext is left out', () => {
     const withText = parsePrototypes([
       '<block type="table" headerMode="row">',
       '  <region name="table.rows" idField="key">',
@@ -2065,7 +2089,7 @@ describe('container-cell tables (cells that hold blocks; headerMode by prototype
       '        <block type="tableHeaderCell" value="${th/slate}" />',
       '        <block type="tableCell" _="${td}">',
       '          <region name="blocks" widget="object_list" idField="@id" typeField="@type">',
-      '            <block type="slate" value="${p/slate}" plaintext="${p/text}" />',
+      '            <block type="slate" value="${p/slate}" />',
       '          </region>',
       '        </block>',
       '      </region>',
@@ -2073,10 +2097,10 @@ describe('container-cell tables (cells that hold blocks; headerMode by prototype
       '  </region>',
       '</block>',
     ].join('\n'), { explicit: true });
-    const block = table('row', [[h('Month')], [{ '@type': 'tableCell', blocks: [{ '@type': 'slate', value: [para('£85')], plaintext: '£85' }] }]]);
-    const md = emitBlocks(withText, [block]);
+    const cell = (extra) => ({ '@type': 'tableCell', blocks: [{ '@type': 'slate', value: [para('£85')], ...extra }] });
+    const md = emitBlocks(withText, [table('row', [[h('Month')], [cell({ plaintext: '£85' })]])]);
     expect(md).toContain('| £85 |');
-    expect(matchBlocks(withText, md)).toEqual([block]);
+    expect(matchBlocks(withText, md)).toEqual([table('row', [[h('Month')], [cell({})]])]);
   });
 
   // The stored (keyed) shape: rows and cells carry `key`, a cell's blocks are a

@@ -28,11 +28,15 @@ function slateText(nodes) {
     else if (!inline || holdsBlocks(node)) {
       parts.push(run, slateText(node?.children));
       run = '';
-    } else run += slateText(node?.children);
+    } else run += inlineText(node?.children);
   }
   parts.push(run);
   return joined(parts);
 }
+
+// Inline content, as it runs on: a space at a link's edge still parts two words.
+const inlineText = (nodes) =>
+  (Array.isArray(nodes) ? nodes : []).map((node) => (typeof node?.text === 'string' ? node.text : inlineText(node?.children))).join('');
 
 // Blocks hold only elements; an inline element (a link, bold) holds text.
 const holdsBlocks = (node) =>

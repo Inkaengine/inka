@@ -14,14 +14,10 @@ import config from '@plone/volto/registry';
  *   1. `labelField` — a field the schema nominates, for blocks whose name lives
  *      somewhere specific (a form question's `label`).
  *   2. `title`, then `label` — what most blocks call their own heading.
- *   3. `plaintext` — the block's indexed text, which is what a block that has
- *      no name but does have words is recognised by.
- *   4. the block's OWN rich text, read live. `plaintext` is written by the
- *      backend serializer at save time and by nothing in the editor, so while
- *      an author is typing it is the previous version — a heading renamed on
- *      the canvas would go on reading as its old self in every list until the
- *      page was saved and reloaded. Reading the slate value is what keeps the
- *      name honest between saves.
+ *   3. the block's OWN rich text, read live: a block with no name but with
+ *      words is recognised by them. Not a stored copy of them (`plaintext`,
+ *      `searchableText`): those are written on save, so a heading renamed on
+ *      the canvas would read as its old self until the page was saved.
  *   4. the block type's configured title, then the raw type — a last resort
  *      that at least says what kind of thing it is.
  *
@@ -55,9 +51,6 @@ export function blockDisplayTitle(data, { labelField, fallback } = {}) {
 
   const live = liveRichText(data);
   if (live) return live;
-
-  const stored = data?.plaintext;
-  if (typeof stored === 'string' && stored.trim()) return stored;
 
   const type = data?.['@type'];
   const configured = type

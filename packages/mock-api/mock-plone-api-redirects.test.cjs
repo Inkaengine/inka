@@ -48,6 +48,9 @@ function markdownMount(redirects) {
   return dir;
 }
 
+// A markdown mount is exported with its search text, which needs the block schemas.
+const SCHEMAS = path.join(__dirname, '../../tests-playwright/fixtures/shared-block-schemas.js');
+
 /** Load the mock with `mounts` and print what `expr` (over its exports, awaited) gives. */
 function evaluate(mounts, expr) {
   const run = spawnSync(
@@ -58,7 +61,7 @@ function evaluate(mounts, expr) {
         catch (e) { console.log('THREW ' + e.message); process.exit(0); }
       });`],
     {
-      env: { ...process.env, CONTENT_MOUNTS: mounts, PORT: '0' },
+      env: { ...process.env, CONTENT_MOUNTS: mounts, CONTENT_SCHEMAS: SCHEMAS, PORT: '0' },
       encoding: 'utf8',
       timeout: 60_000,
     },
