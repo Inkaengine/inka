@@ -101,7 +101,7 @@ There are two ways to change a block's type, and they offer the same types and c
 - **The block's title in the sidebar.** When the block can be changed into another type, its title at the top of the sidebar is a dropdown (`Cards ▾`). Pick a type and the block is converted. **Convert to…** in the sidebar's `•••` menu opens the same list.
 - **Convert to...** in the block toolbar dropdown.
 
-A conversion happens straight away, and one undo reverses it. When the new type has no field for something the block holds (a field with a value that no field of the new type receives), you're asked first, with the fields named; **Cancel** leaves the block as it was.
+A conversion happens straight away, and one undo reverses it. Nothing is lost: what the new type has no field for stays with the block, unseen, and comes back if you convert it back.
 
 For containers, conversion preserves the children:
 

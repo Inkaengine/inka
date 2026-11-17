@@ -1450,8 +1450,6 @@ test.describe('Block Type Conversion via fieldMappings', () => {
     // Convert Hero → Image (transitive via teaser)
     await helper.openConvertChooser();
     await helper.selectBlockType('image');
-    // The hero's fields the new type has no field for: asked first.
-    await helper.confirmConvertLoss('Hero → Image: Subheading, Button Text');
     await expect(breadcrumb).toContainText('Image', { timeout: 5000 });
 
     // Verify iframe renders as image block with a working image
@@ -1513,8 +1511,6 @@ test.describe('Block Type Conversion via fieldMappings', () => {
     // Convert Hero → Teaser
     await helper.openConvertChooser();
     await helper.selectBlockType('teaser');
-    // The hero's fields the new type has no field for: asked first.
-    await helper.confirmConvertLoss('Hero → Teaser: Button Text');
     await expect(breadcrumb).toContainText('Teaser', { timeout: 5000 });
 
     // Verify the teaser image renders (hero's image should map to preview_image)

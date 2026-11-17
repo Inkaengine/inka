@@ -370,7 +370,6 @@ import {
   getConversionMap,
   convertBlockType,
   convertBlockInPlace as convertBlockInPlaceIn,
-  getConversionLosses,
   getConvertTargets,
   fieldMappingProblems,
   reservedFieldProblems,
@@ -869,8 +868,6 @@ const Iframe = (props) => {
   // @type changed, we surface it here and wait for a confirm.
   //   { conversions: [{ blockId, from, to }], onConfirm: () => void }
   const [convertConfirm, setConvertConfirm] = useState(null);
-  // "This conversion loses these fields — convert anyway?" (requestConvert).
-  const [convertLossConfirm, setConvertLossConfirm] = useState(null);
   // "Remove these slots?" before a commit drops a slot pages may use (inka#708):
   // { slots, templateId, resolve(yes) }.
   const [slotRemovalConfirm, setSlotRemovalConfirm] = useState(null);
@@ -5497,7 +5494,7 @@ const Iframe = (props) => {
 
   // Save a conversion the editor asked for: run the `@type` rules in case the
   // new type re-types it or a sibling, then hand the page on. No confirm here —
-  // the pick was the ask (requestConvert asks first when something is lost).
+  // the pick was the ask.
   const commitConverted = (updatedProperties, doneTag = 'convert-block') => {
     const settled = applySchemaDefaultsToFormData(
       updatedProperties, buildBlockPathMap(updatedProperties, blocksConfig, intl), blocksConfig, intl,
@@ -5525,18 +5522,13 @@ const Iframe = (props) => {
 
   // Change a block's type because the editor asked to — from the toolbar's
   // "Convert to…", the sidebar header's type dropdown or the sidebar's block
-  // menu. One conversion for all of them. When it would lose a field that has
-  // a value (no field of the new type receives it), ask first and name what
-  // would be lost; otherwise it is done straight away. Either way one change,
-  // so one undo.
+  // menu. One conversion for all of them, done straight away: one change, so
+  // one undo. Nothing is lost — a value the new type has no field for stays on
+  // the block, and converting back brings it back.
   const requestConvert = (blockId, newType) => {
-    const converted = convertBlockInPlace(properties, iframeSyncState.blockPathMap, blockId, newType);
-    const losses = getConversionLosses(properties, converted, blockId, blocksConfig, intl);
-    if (losses.length === 0) {
-      commitConverted(converted);
-      return;
-    }
-    setConvertLossConfirm({ losses, onConfirm: () => commitConverted(converted) });
+    commitConverted(
+      convertBlockInPlace(properties, iframeSyncState.blockPathMap, blockId, newType),
+    );
   };
 
   // Commits a chooser action (wrap or convert) once the user picks a target type.
@@ -6092,36 +6084,6 @@ const Iframe = (props) => {
         onConfirm={() => {
           const cb = convertConfirm?.onConfirm;
           setConvertConfirm(null);
-          if (cb) cb();
-        }}
-      />
-      {/* "Converting loses these fields" gate (requestConvert): only shown when
-       * a field with a value has no field of the new type to go to. */}
-      <Confirm
-        open={!!convertLossConfirm}
-        header="Lose some content?"
-        content={
-          convertLossConfirm ? (
-            <div className="content" data-testid="convert-loss-confirm">
-              <p>These won't carry over:</p>
-              <ul>
-                {convertLossConfirm.losses.map((loss) => (
-                  <li key={loss.blockId} data-block-id={loss.blockId}>
-                    {loss.from} → {loss.to}:{' '}
-                    {loss.fields.map((f) => f.title).join(', ')}
-                  </li>
-                ))}
-              </ul>
-              <p>You can undo this.</p>
-            </div>
-          ) : null
-        }
-        confirmButton="Convert"
-        cancelButton="Cancel"
-        onCancel={() => setConvertLossConfirm(null)}
-        onConfirm={() => {
-          const cb = convertLossConfirm?.onConfirm;
-          setConvertLossConfirm(null);
           if (cb) cb();
         }}
       />

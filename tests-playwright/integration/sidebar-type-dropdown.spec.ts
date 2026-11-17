@@ -3,9 +3,9 @@
  *
  * The current block's title in the sidebar header is a dropdown of the types
  * it can be changed to — the same list, and the same conversion, as the
- * toolbar's "Convert to…". Picking a type converts straight away, unless a
- * field with a value has no field of the new type to go to: then it asks
- * first, naming the fields.
+ * toolbar's "Convert to…". Picking a type converts straight away. A value the
+ * new type has no field for stays on the block, so converting back brings it
+ * back.
  *
  * Fixtures: sidebar-convert-page — convSource (title + note) converts to
  * convTargetA / convTargetB (title only); boxall-1 takes all three: s-1 is a
@@ -21,9 +21,6 @@ const typeDropdown = (page: Page) =>
   page.locator('.parent-block-section [data-testid="block-type-dropdown"]');
 const typeOption = (page: Page, type: string) =>
   page.locator(`.volto-hydra-block-type-menu [data-testid="block-type-option"][data-type="${type}"]`);
-const lossConfirm = (page: Page) => page.locator('[data-testid="convert-loss-confirm"]');
-const lossConfirmButton = (page: Page, name: string) =>
-  page.locator('.ui.modal').filter({ has: lossConfirm(page) }).getByRole('button', { name, exact: true });
 const currentTitle = (page: Page) =>
   page.locator('.sidebar-section-header[data-is-current="true"] .nav-title');
 
@@ -53,7 +50,6 @@ test.describe('Sidebar: change a block type from its title', () => {
       await expect(typeOption(page, 'convTargetB')).toBeVisible();
       await typeOption(page, 'convTargetA').click();
 
-      await expect(lossConfirm(page)).toHaveCount(0);
       await expect(
         iframe.locator('[data-block-uid="s-2"] [data-conv-type="convTargetA"]'),
       ).toHaveText('Source without a note');
@@ -62,46 +58,31 @@ test.describe('Sidebar: change a block type from its title', () => {
       await expect(typeDropdown(page)).toHaveCount(0);
     });
 
-    test('a conversion that would lose a field asks first and names it', async ({ page }) => {
+    test('a block with a field the new type has no place for converts straight away; one undo brings it back', async ({ page }) => {
       const helper = new AdminUIHelper(page);
       await helper.login();
       await helper.navigateToEdit('/sidebar-convert-page');
       const iframe = helper.getIframe();
-      const source = iframe.locator('[data-block-uid="s-1"] [data-conv-type="convSource"]');
+      const note = iframe.locator('[data-block-uid="s-1"] [data-conv-note]');
 
       await helper.clickBlockInIframe('s-1');
       await helper.waitForSidebarOpen();
-      await expect(iframe.locator('[data-block-uid="s-1"] [data-conv-note]')).toHaveText(
-        'Only a source has a note',
-      );
-      await expect(typeDropdown(page)).toContainText('Conv Source');
+      await expect(note).toHaveText('Only a source has a note');
 
-      // Cancel leaves the block as it was.
+      // A target has no note: it converts straight away and the note is not shown.
       await typeDropdown(page).click();
       await typeOption(page, 'convTargetA').click();
-      await expect(lossConfirm(page)).toBeVisible();
-      await expect(lossConfirm(page)).toContainText('Conv Source → Conv Target A: Note');
-      await lossConfirmButton(page, 'Cancel').click();
-      await expect(lossConfirm(page)).toHaveCount(0);
-      await expect(source).toHaveText('Source with a note');
-      await expect(typeDropdown(page)).toContainText('Conv Source');
-
-      // Convert goes ahead.
-      await typeDropdown(page).click();
-      await typeOption(page, 'convTargetA').click();
-      await expect(lossConfirm(page)).toBeVisible();
-      await lossConfirmButton(page, 'Convert').click();
       await expect(
         iframe.locator('[data-block-uid="s-1"] [data-conv-type="convTargetA"]'),
       ).toHaveText('Source with a note');
-      await expect(source).toHaveCount(0);
+      await expect(note).toHaveCount(0);
 
-      // One undo brings the source back, note and all.
+      // One undo, and the source is back with its note.
       await page.locator('#toolbar-body .undo').click();
-      await expect(source).toHaveText('Source with a note');
-      await expect(iframe.locator('[data-block-uid="s-1"] [data-conv-note]')).toHaveText(
-        'Only a source has a note',
-      );
+      await expect(
+        iframe.locator('[data-block-uid="s-1"] [data-conv-type="convSource"]'),
+      ).toHaveText('Source with a note');
+      await expect(note).toHaveText('Only a source has a note');
     });
 
     test('"Convert to…" in the sidebar block menu opens the same list', async ({ page }) => {
@@ -149,7 +130,6 @@ test.describe('Sidebar: change a block type from its title', () => {
 
     await typeDropdown(page).click();
     await typeOption(page, 'section').click();
-    await expect(lossConfirm(page)).toHaveCount(0);
 
     await expect(iframe.locator('[data-block-uid="grid-cell-1"]').first()).toBeVisible();
     await expect(iframe.locator('[data-block-uid="grid-cell-2"]').first()).toBeVisible();

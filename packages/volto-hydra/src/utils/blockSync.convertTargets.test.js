@@ -8,18 +8,12 @@ vi.mock('../context/index.js', () => ({
   getLiveBlockData: () => null,
 }));
 
-import {
-  convertBlockInPlace,
-  getConversionLosses,
-  getConvertTargets,
-} from './blockSync.js';
-import { buildBlockPathMap } from '@volto-hydra/helpers/buildBlockPathMap.js';
+import { getConvertTargets } from './blockSync.js';
 
 // -----------------------------------------------------------------------------
-// One conversion for every place an editor changes a block's type (the toolbar's
-// "Convert to…", the sidebar header's type dropdown, the sidebar's block menu),
-// and what that conversion would lose: a field with a value that no field of
-// the new type receives.
+// One list of targets for every place an editor changes a block's type (the
+// toolbar's "Convert to…", the sidebar header's type dropdown, the sidebar's
+// block menu).
 // -----------------------------------------------------------------------------
 
 const intl = { formatMessage: (m) => m?.defaultMessage ?? '' };
@@ -109,109 +103,6 @@ const blocksConfig = {
     fieldMappings: { richList: { items: 'items' } },
   },
 };
-
-const page = (block) => ({
-  '@type': 'Document',
-  blocks: { b1: block },
-  blocks_layout: { items: ['b1'] },
-});
-
-const convert = (formData, newType) => {
-  const bpm = buildBlockPathMap(formData, blocksConfig, intl);
-  const after = convertBlockInPlace(formData, bpm, 'b1', newType, blocksConfig, intl);
-  return {
-    after,
-    losses: getConversionLosses(formData, after, 'b1', blocksConfig, intl),
-  };
-};
-
-describe('getConversionLosses', () => {
-  test('a field with a value that no field of the new type receives is lost', () => {
-    const { after, losses } = convert(
-      page({ '@type': 'note', title: 'Hi', href: '/a', extra: 'kept?' }),
-      'banner',
-    );
-    expect(after.blocks.b1.heading).toBe('Hi');
-    expect(losses).toEqual([
-      {
-        blockId: 'b1',
-        from: 'Note',
-        to: 'Banner',
-        fields: [{ field: 'extra', title: 'Extra' }],
-      },
-    ]);
-  });
-
-  test('an object field holding only its sub-fields defaults is not lost', () => {
-    const { losses } = convert(
-      page({ '@type': 'note', title: 'Hi', styles: { align: 'left' } }),
-      'banner',
-    );
-    expect(losses).toEqual([]);
-  });
-
-  test('an object field with a value of its own is lost', () => {
-    const { losses } = convert(
-      page({ '@type': 'note', title: 'Hi', styles: { align: 'right' } }),
-      'banner',
-    );
-    expect(losses[0].fields).toEqual([{ field: 'styles', title: 'Styling' }]);
-  });
-
-  test('renamed, same-named, empty and default fields are not lost', () => {
-    const { losses } = convert(
-      page({ '@type': 'note', title: 'Hi', href: '/a', extra: '', size: 'l' }),
-      'banner',
-    );
-    expect(losses).toEqual([]);
-  });
-
-  test("a container's own fields and its items' fields are both listed", () => {
-    const formData = page({
-      '@type': 'richList',
-      heading: 'Pick one',
-      options: ['drag'], // the default: nothing chosen
-      blocks: {
-        i1: { '@type': 'richItem', title: 'One', tag: 'New' },
-        i2: { '@type': 'richItem', title: 'Two' },
-      },
-      blocks_layout: { items: ['i1', 'i2'] },
-    });
-    const { after, losses } = convert(formData, 'plainList');
-
-    // The items are carried over, converted to the type the region allows.
-    const out = after.blocks.b1;
-    expect(out.blocks_layout.items).toEqual(['i1', 'i2']);
-    expect(out.blocks.i1['@type']).toBe('plainItem');
-    expect(out.blocks.i1.title).toBe('One');
-
-    expect(losses).toEqual([
-      {
-        blockId: 'b1',
-        from: 'Rich list',
-        to: 'Plain list',
-        fields: [{ field: 'heading', title: 'List heading' }],
-      },
-      {
-        blockId: 'i1',
-        from: 'Rich item',
-        to: 'Plain item',
-        fields: [{ field: 'tag', title: 'Tag' }],
-      },
-    ]);
-  });
-
-  test('converting the other way loses nothing', () => {
-    const formData = page({
-      '@type': 'plainList',
-      blocks: { i1: { '@type': 'plainItem', title: 'One' } },
-      blocks_layout: { items: ['i1'] },
-    });
-    const { after, losses } = convert(formData, 'richList');
-    expect(after.blocks.b1.blocks.i1['@type']).toBe('richItem');
-    expect(losses).toEqual([]);
-  });
-});
 
 describe('getConvertTargets', () => {
   test('a value block is offered the types its fieldMappings reach', () => {
