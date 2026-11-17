@@ -249,7 +249,7 @@ describe('an `@` key a block has no reason to carry is reported', () => {
     };
     const page = doc('page', 'PUID', { f: { '@type': 'form', subblocks: [{ field_id: 'q-1', '@id': 'q-1', field_type: 'text', label: 'Q' }] } });
     const { errors } = checkBlockSchemas([page], fieldMapFromSchemas(schemas), { idFieldMap: { form: { subblocks: 'field_id' } } });
-    assert.match(errors.join('\n'), /form\.subblocks item\.@id/);
+    assert.match(errors.join("\n"), /text\.@id/);
   });
 
   it('not `@id` on an item of a list keyed by it, nor `@type` or `@uid`', () => {
@@ -290,5 +290,28 @@ describe('a stored `plaintext` is reported', () => {
     const schemas = { ...SCHEMAS, slate: { group: 'common', blockSchema: { properties: { value: { widget: 'slate' } } } } };
     const { errors } = checkBlockSchemas([doc('page', 'PUID', { t: { '@type': 'slate', value, plaintext: 'Words' } })], fieldMapFromSchemas(schemas), { idFieldMap });
     assert.match(errors.join('\n'), /slate\.plaintext/);
+  });
+});
+
+/**
+ * A list item typed by another field (a form question's `field_type`) is checked
+ * like a block: block sanity reported the `id` the docs form's questions repeat
+ * from their `field_id`, and the content check passed it.
+ */
+describe('a list item typed by its own field is checked for undeclared fields', () => {
+  const schemas = {
+    ...SCHEMAS,
+    form: { group: 'common', blockSchema: { properties: { subblocks: { widget: 'object_list', idField: 'field_id', typeField: 'field_type' } } } },
+    text: { group: 'common', blockSchema: { properties: { label: {} } } },
+  };
+  const formPage = (question) => doc('page', 'PUID', { f: { '@type': 'form', subblocks: [question] } });
+  const check = (question) => checkBlockSchemas([formPage(question)], fieldMapFromSchemas(schemas), { idFieldMap: { form: { subblocks: 'field_id' } } }).errors;
+
+  it('a stray `id` on a question is reported', () => {
+    assert.match(check({ field_id: 'q1', field_type: 'text', id: 'q1', label: 'Name' }).join('\n'), /text\.id/);
+  });
+
+  it('a question with only its declared fields is not', () => {
+    assert.deepEqual(check({ field_id: 'q1', field_type: 'text', label: 'Name' }), []);
   });
 });

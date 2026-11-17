@@ -31,10 +31,11 @@ function SocialLinksBlock({ block }) {
     <div data-block-uid={block['@uid']} className="social-links" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '1rem', padding: '0.5rem 0' }}>
       <span style={{ fontSize: '0.875rem', color: '#6b7280' }}>Follow us:</span>
       {links.map((link) => {
-        const info = getSocialInfo(link.url);
+        const url = link.url?.[0]?.['@id'] ?? '';  // a link field: [{ '@id': url }]
+        const info = getSocialInfo(url);
         return (
           <a key={link['@uid']} data-block-uid={link['@uid']} data-block-add="right"
-             href={link.url} target="_blank" rel="noopener" data-edit-link="url"
+             href={url} target="_blank" rel="noopener" data-edit-link="url"
              title={info.name}
              style={{ color: '#9ca3af' }}
              dangerouslySetInnerHTML={{ __html: info.svg }}

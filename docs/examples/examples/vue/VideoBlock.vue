@@ -6,7 +6,7 @@
       allowfullscreen
       style="width: 100%; aspect-ratio: 16/9; border: none"
     />
-    <video v-else-if="block.url" :src="block.url" controls style="width: 100%" />
+    <video v-else-if="url" :src="url" controls style="width: 100%" />
     <p v-else>No video URL set</p>
   </div>
 </template>
@@ -14,8 +14,9 @@
 <script setup>
 import { computed } from 'vue';
 const props = defineProps({ block: Object });
-const youtubeId = computed(() => {
-  const url = props.block.url || '';
-  return url.match(/(?:youtu\.be\/|youtube\.com\/(?:watch\?v=|embed\/))([^&?/]+)/)?.[1];
-});
+// A link field: [{ '@id': url }].
+const url = computed(() => props.block.url?.[0]?.['@id'] ?? '');
+const youtubeId = computed(() =>
+  url.value.match(/(?:youtu\.be\/|youtube\.com\/(?:watch\?v=|embed\/))([^&?/]+)/)?.[1],
+);
 </script>

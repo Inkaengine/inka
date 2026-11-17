@@ -1520,9 +1520,14 @@ function checkBlockSchemas(source, fieldMap, { idFieldMap = null } = {}) {
 
   // `idField`: the key the list this block is an item of is keyed by, if it is one;
   // `list`: that list (`form.subblocks`), which names an item typed by another field.
+  // A list's own type field (`field_type` on a form's questions): an identity field
+  // other than `@id`/`@type` whose value names a declared block type.
+  const listTypeFields = [...identityFields].filter((f) => f !== '@id' && f !== '@type');
   const visit = (block, rel, idField, list) => {
     if (!block || typeof block !== 'object') return;
-    const type = block['@type'];
+    const typedBy = typeof block['@type'] === 'string' || !list ? null
+      : listTypeFields.find((f) => typeof block[f] === 'string' && declaredFields[block[f]]);
+    const type = typedBy ? block[typedBy] : block['@type'];
     const strayKey = (name, field) => {
       const key = `${name}.${field}`;
       if (!strays.has(key)) strays.set(key, rel);
