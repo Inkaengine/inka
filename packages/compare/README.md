@@ -11,6 +11,7 @@ The measures here so far:
 |---|---|
 | `pixels` | Two screenshots compared in CIEDE2000, anti-aliased edges excused, the differing pixels clustered into boxes |
 | `geometry` | Two element trees walked together to the first element whose box differs, or that only one side has |
+| `markup` | A node as a canonical string: structure compared, instance data (text, URLs, ids) tokenised; a comparison may add its own rewrite |
 | `accessibility` | axe-core on both sides: which violations are new on ours, shared, or fixed |
 
 And what a comparison runs on:

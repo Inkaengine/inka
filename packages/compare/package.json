@@ -16,6 +16,10 @@
   "exports": {
     "./pixels": "./pixels.mjs",
     "./geometry": "./geometry.mjs",
+    "./markup": {
+      "types": "./markup.d.ts",
+      "default": "./markup.mjs"
+    },
     "./accessibility": "./accessibility.mjs",
     "./fetch": "./fetch.mjs",
     "./source-archive": "./source-archive.mjs"
@@ -26,6 +30,8 @@
     "accessibility.mjs",
     "fetch.mjs",
     "source-archive.mjs",
-    "README.md"
+    "README.md",
+    "markup.mjs",
+    "markup.d.ts"
   ]
 }
