@@ -321,7 +321,6 @@ describe('a field named as no HTML attribute can be', () => {
     const md = emitBlocks(protos, [video, heading]);
     expect(matchBlocks(protos, md)).toEqual([video, heading]);
     expect(md).toContain('## Next');
-    });
   });
 });
 
