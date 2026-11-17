@@ -5,7 +5,7 @@ function TocBlock({ block, content }) {
       const b = content.blocks[id];
       if (!b) continue;
       if (b['@type'] === 'heading' && b.heading) {
-        entries.push({ id, level: parseInt((b.tag || 'h2').slice(1)), text: b.heading });
+        entries.push({ id, level: parseInt(b.tag.slice(1)), text: b.heading });
       } else if (b['@type'] === 'slate' && b.value?.[0]?.type?.match(/^h[1-6]$/)) {
         const level = parseInt(b.value[0].type.slice(1));
         // The heading's own words: inline ones (bold, a link) hold theirs in children.

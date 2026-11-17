@@ -1,5 +1,5 @@
 function HeadingBlock({ block }) {
-  const Tag = block.tag || 'h2';
+  const Tag = block.tag;
   const text = block.heading || '';
 
   return (

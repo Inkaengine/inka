@@ -581,7 +581,7 @@
     </template>
   </div>
 
-  <component v-else-if="block['@type'] == 'heading'" :is="block.tag || 'h2'"
+  <component v-else-if="block['@type'] == 'heading'" :is="block.tag"
     :data-block-uid="block_uid" data-edit-text="heading"
     :class="{ 'text-center': block.alignment === 'center', 'text-right': block.alignment === 'right' }">
     {{ block.heading }}
@@ -1548,7 +1548,7 @@ const tocEntries = computed(() => {
     const b = blocks[id];
     if (!b) continue;
     if (b['@type'] === 'heading' && b.heading) {
-      result.push({ id, level: parseInt((b.tag || 'h2').slice(1)), text: b.heading });
+      result.push({ id, level: parseInt(b.tag.slice(1)), text: b.heading });
     } else if (b['@type'] === 'slate' && b.value?.[0]?.type?.match(/^h[1-6]$/)) {
       const level = parseInt(b.value[0].type.slice(1));
       // The heading's own words: inline ones (bold, a link) hold theirs in children.
