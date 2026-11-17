@@ -64,13 +64,13 @@ For grid blocks, the font of the headlines are variable, depending on the number
 
 <block type="gridBlock">
 
+<fields styles:align="left">
+
 <block type="teaser">
 
 ### [Teaser Title (H3, 24/30px)](/docs/examples/content-types)
 
 **Teaser Headtitle (DIV, 14/18px)**
-
-<fields styles:align="left" />
 
 </block>
 
@@ -82,9 +82,9 @@ For grid blocks, the font of the headlines are variable, depending on the number
 
 Paragraph (p, 18px/24px). This section has a sample of content types available in this site.
 
-<fields styles:align="left" />
-
 </block>
+
+</fields>
 
 </block>
 
