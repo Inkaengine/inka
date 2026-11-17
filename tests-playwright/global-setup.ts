@@ -123,7 +123,8 @@ async function globalSetup() {
     return;
   }
 
-  // In production mode (USE_PREBUILT), check SSR server directly
+  // The built admin (the default): check the SSR server, and that it was built
+  // from this checkout. ADMIN_DEV=1: the dev server's webpack health.
   // In dev mode, check webpack-dev-server health endpoint
   // Consumers running Volto on non-default ports (e.g. parallel test stacks)
   // can override with VOLTO_HEALTH_URL.

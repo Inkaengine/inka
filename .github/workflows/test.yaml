@@ -97,7 +97,7 @@ jobs:
         # of every test job timing out waiting for a server that exited.
         run: pnpm check:content
       - name: Build Volto for production
-        run: pnpm build
+        run: pnpm build:test
         env:
           RAZZLE_API_PATH: http://localhost:${{ env.HYDRA_MOCK_API_PORT }}
           # RAZZLE_ vars are inlined into the CLIENT bundle at build time (webpack
@@ -598,7 +598,6 @@ jobs:
           # A failing test's first retry records a Playwright trace (its own console,
           # network and DOM snapshots), uploaded below: what a flake needs.
           TRACE: '1'
-          USE_PREBUILT: true
       - name: Server logs
         if: failure()
         run: cat "$RUNNER_TEMP/servers.log"
@@ -734,7 +733,6 @@ jobs:
           # A failing test's first retry records a Playwright trace (its own console,
           # network and DOM snapshots), uploaded below: what a flake needs.
           TRACE: '1'
-          USE_PREBUILT: true
       - name: Server logs
         if: failure()
         run: cat "$RUNNER_TEMP/servers.log"
@@ -969,7 +967,6 @@ jobs:
           # A failing test's first retry records a Playwright trace (its own console,
           # network and DOM snapshots), uploaded below: what a flake needs.
           TRACE: '1'
-          USE_PREBUILT: true
       - name: Server logs
         if: failure()
         run: cat "$RUNNER_TEMP/servers.log"
