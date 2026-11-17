@@ -76,21 +76,11 @@ Compliance or engagement is a false choice. You decide where the dial sits for e
 
 <block type="gridBlock">
 
-**Visual Editing**
+**Visual Editing.** True WYSIWYG with drag-and-drop blocks. No special frontend framework required — just HTML attributes.
 
-True WYSIWYG with drag-and-drop blocks. No special frontend framework required — just HTML attributes.
+**Multi frontend, multi backend.** Use React, Vue, Nuxt, Next.js, or any stack. Switch between frontends mid-edit for omni-channel delivery. Your frontend is independent code you own. Upgrade the CMS without rewriting your site; switch frameworks and get the same editing experience.
 
-**Multi frontend, multi backend**
-
-Use React, Vue, Nuxt, Next.js, or any stack. Switch between frontends mid-edit for omni-channel delivery.
-
-Use React, Vue, Nuxt, Next.js or any stack, and switch channels mid-edit.
-
-Your frontend is independent code you own. Upgrade the CMS without rewriting your site; switch frameworks and get the same editing experience.
-
-**Open Source**
-
-Secure, scalable Plone backend. Host anywhere, control your costs and security.
+**Open Source.** Secure, scalable Plone backend. Host anywhere, control your costs and security.
 
 </block>
 
@@ -413,9 +403,7 @@ Frontend freedom makes it easy to create beautiful and fast experiences
 
 </block>
 
-<block type="gridBlock">
-
-<block type="slate" data-json='{"value":[{"children":[{"text":""},{"children":[{"text":""}],"type":"strong"},{"text":"You can use this site to test Inka Edit."}],"type":"p"}]}' />
+You can use this site to test Inka Edit.
 
 **Disclaimer**: This instance is reset every night, so all changes will be lost afterwards.
 
@@ -429,8 +417,6 @@ This site uses some recommended **add-ons**:
 
 - Some blocks that are suitable to be used with volto-light-theme.
 - [volto-form-block](https://github.com/collective/volto-form-block)
-
-</block>
 
 ---
 
