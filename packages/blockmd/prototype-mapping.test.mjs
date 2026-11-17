@@ -1836,12 +1836,11 @@ describe('a malformed ref is an error, never a literal', () => {
   });
 });
 
-describe('a prototype can\'t make search text', () => {
-  // Markdown never carries it (it is written from the other fields), so a prototype
-  // that makes it would never match a block, and every such block would be JSON.
-  it.each(['plaintext', 'searchableText'])('%s', (field) => {
-    expect(() => parsePrototypes(`<block type="slate" value="\${p/slate}" ${field}="\${p/text}" />`))
-      .toThrow(new RegExp(`${field}.*written from`));
+describe('a prototype can\'t make a plaintext', () => {
+  // Markdown no longer carries it: save writes a Text block's words as its searchableText.
+  it('is refused', () => {
+    expect(() => parsePrototypes('<block type="slate" value="${p/slate}" plaintext="${p/text}" />'))
+      .toThrow(/plaintext/);
   });
 });
 
@@ -2191,30 +2190,41 @@ describe('a block field named like a tag attribute (`type`)', () => {
   });
 });
 
-describe('search text is derived, and markdown never carries it', () => {
-  // `searchableText` is written from a block's fields on save, like `@uid` at render. A saved
-  // page's export has to read as the page reads: an unknown field turned a paragraph into a
-  // <block> wrapper and a callout into a data-json blob.
+describe('markdown may hold a block\'s search text', () => {
+  // `searchableText` is the block's own field to blockmd: stored, it is written and read
+  // back like any other. What the frontend would derive anyway is left out by whoever
+  // knows that default (the mock API's export, with the frontend's config) before emit.
   const protosP = import('./default-prototypes.mjs').then(({ DEFAULT_PROTOTYPES: D }) => [
     ...parsePrototypes(D.matched), ...parsePrototypes(D.tagged, { explicit: true }),
   ]);
   const value = [{ type: 'p', children: [{ text: 'Hello' }] }];
-  const slate = { '@type': 'slate', value, plaintext: 'Hello' };
 
-  it('a block with it emits as the same block without it', async () => {
+  it('a block with it round-trips with it', async () => {
     const protos = await protosP;
-    expect(emitBlocks(protos, [{ ...slate, searchableText: 'Hello' }])).toBe(emitBlocks(protos, [slate]));
+    const block = { '@type': 'slate', value, searchableText: 'Hello greetings' };
+    expect(matchBlocks(protos, emitBlocks(protos, [block]))).toEqual([block]);
   });
 
   it('at any depth', async () => {
     const protos = await protosP;
-    const callout = (child, own) => ({
-      '@type': 'callout',
-      ...own,
-      blocks: { a: child },
+    const callout = {
+      '@type': 'callout', searchableText: 'Note',
+      blocks: { a: { '@type': 'slate', value, searchableText: 'Hello greetings' } },
       blocks_layout: { items: ['a'] },
-    });
-    expect(emitBlocks(protos, [callout({ ...slate, searchableText: 'Hello' }, { searchableText: 'X' })]))
-      .toBe(emitBlocks(protos, [callout(slate, {})]));
+    };
+    const md = emitBlocks(protos, [callout]);
+    const [back] = matchBlocks(protos, md);
+    expect(back.searchableText).toBe('Note');
+    expect(JSON.stringify(back)).toContain('"searchableText":"Hello greetings"');
+    expect(emitBlocks(protos, [back])).toBe(md);
+  });
+
+  it('a prototype may make it from the page\'s own words, and then it is bare markdown', () => {
+    const protos = parsePrototypes('<block type="slate" value="${p/slate}" searchableText="${p/text}" />');
+    const block = { '@type': 'slate', value, searchableText: 'Hello' };
+    const md = emitBlocks(protos, [block]);
+    expect(md).toBe('Hello');
+    expect(matchBlocks(protos, md)).toEqual([block]);
   });
 });
+

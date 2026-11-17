@@ -301,7 +301,7 @@ const markdownBlobs = new Map();   // url path -> absolute blob file
 const markdownOrder = new Map();   // folder url path -> authored child order (curated)
 let ready = Promise.resolve();
 // The prototype engine, imported once for the /@export endpoint's markdown mode.
-let engine = null; // { emitPage, parsePrototypes }
+let engine = null; // { emitPage, parsePrototypes, withoutDefaultSearchText }
 
 // Map UIDs to URL paths (for resolveuid endpoint)
 const uidToPathMap = {};
@@ -2666,13 +2666,17 @@ function loadMarkdownMount(mount) {
   const { mountPath, dirPath } = mount;
   // Pass the mountPath as the link prefix so hand-authored .md cross-links resolve
   // to the served @ids (a /docs mount serves its tree under /docs, not at root).
-  // With the frontend's schemas, each page gets the search text the editor's save writes.
-  const { items, blobFiles, folderForm, order } = readTree(dirPath, {
-    prefix: mountPath === '/' ? '' : mountPath,
-    schemaFor: mdRuntime.schemaFor,
-    isFolderish: isFolderishType,
-    blocksConfig: contentSchemas,
-  });
+  const prefix = mountPath === '/' ? '' : mountPath;
+  // Markdown decodes from the page alone; what needs the frontend's schemas runs after.
+  const { items, blobFiles, folderForm, order } = readTree(dirPath, { prefix, isFolderish: isFolderishType });
+  const { resolveSchemaExamples, resolveLinkSummaries } = mdRuntime.fromSchemas;
+  for (const page of items.values()) resolveSchemaExamples(page, { schemaFor: mdRuntime.schemaFor });
+  resolveLinkSummaries(items, { schemaFor: mdRuntime.schemaFor, prefix });
+  // The text search finds each block by, where the markdown stores none: the
+  // editor's save writes it, and a tree read from disk was never saved.
+  if (contentSchemas) {
+    for (const [p, page] of items) items.set(p, mdRuntime.fromSchemas.withMissingSearchText(page, contentSchemas));
+  }
   const urlFor = (p) => (mountPath === '/' ? p : mountPath + (p === '/' ? '' : p));
   // The authored `order:` is a CURATED list (it may deliberately omit asset
   // folders like images/static). Keep it so a re-export writes it back verbatim
@@ -2799,7 +2803,8 @@ function reloadMount(mount) {
 async function getEngine() {
   if (!engine) {
     const { emitPage, parsePrototypes } = await import('@inka/blockmd/prototype-mapping.mjs');
-    engine = { emitPage, parsePrototypes };
+    const { withoutDefaultSearchText } = await import('./from-schemas.mjs');
+    engine = { emitPage, parsePrototypes, withoutDefaultSearchText };
   }
   return engine;
 }
@@ -2820,6 +2825,7 @@ async function initMarkdownMounts() {
   const { readTree } = await import('@inka/blockmd/markdown-mount.mjs');
   mdRuntime = {
     readTree,
+    fromSchemas: await import('./from-schemas.mjs'),
     schemaFor: (type) => contentSchemas?.[type]?.blockSchema ?? null,
   };
   for (const mount of mounts) loadMarkdownMount(mount);
@@ -3399,14 +3405,6 @@ function buildDistributionFromMemory(dest, { allowMissingBlobs = false, sitePath
     .filter((m) => m.mountPath === '/' || urlPath === m.mountPath || urlPath.startsWith(`${m.mountPath}/`))
     .sort((a, b) => b.mountPath.length - a.mountPath.length)[0];
 
-  // Markdown's search text is written as it is read, from the frontend's schemas
-  // (loadMarkdownMount). Without them, its pages would ship unfindable.
-  if (!contentSchemas && CONTENT_MOUNTS.some(isMarkdownMount)) {
-    throw new ExportRequestError(
-      'markdown content is exported with the search text its blocks are found by, which needs '
-      + "the frontend's block schemas: set CONTENT_SCHEMAS",
-    );
-  }
   const items = [];
   for (const urlPath of Object.keys(contentDirMap)) {
     const owner = ownerMount(urlPath);
@@ -3462,7 +3460,7 @@ app.post('/@export', async (req, res) => {
   const { format = 'json', prototypes = {}, allowMissingBlobs = false, sitePath } = req.body || {};
 
   if (format === 'markdown') {
-    const { emitPage, parsePrototypes } = await getEngine();
+    const { emitPage, parsePrototypes, withoutDefaultSearchText } = await getEngine();
     const YAML = (await import('yaml')).default;
     const { SERVER_STATE } = await import('./server-state.mjs');
     const { BLOB_FIELD, blobDefaults } = await import('@inka/blockmd/markdown-mount.mjs');
@@ -3638,7 +3636,10 @@ app.post('/@export', async (req, res) => {
         // The page's own directory (relative to the mount), for relative links.
         const rel = m.mountPath === '/' ? (p === '/' ? '' : p.replace(/^\//, '')) : p.replace(m.mountPath, '').replace(/^\//, '');
         const baseSegs = (folderish.has(p) ? rel : rel.replace(/\/?[^/]*$/, '')).split('/').filter(Boolean);
-        const blocks = structuredClone(c.blocks);
+        // Search text the frontend would give the page anyway stays out of the markdown
+        // (loading fills it again); search text set to something else is kept.
+        const own = contentSchemas ? withoutDefaultSearchText(c, contentSchemas) : c;
+        const blocks = structuredClone(own.blocks);
         unresolveBlocks(blocks, baseSegs, m);
         const { markdown } = emitPage(protos, { blocks, blocks_layout: c.blocks_layout });
         const used = collectTypes(c.blocks);

@@ -1,9 +1,9 @@
 /**
  * A page deployed from markdown is found by its words. The editor's save is what writes a
- * page's search text (`searchableText` on each block), and markdown never goes through it,
- * so the export writes it, from the frontend's block schemas (CONTENT_SCHEMAS). Without
- * them it can't say what a block's text is, so it refuses rather than ship pages search
- * can't find.
+ * page's search text (`searchableText` on each block), and markdown never goes through it.
+ * Given the frontend's block config (CONTENT_SCHEMAS), the mock fills it after reading the
+ * markdown, and the export ships it. Without it the markdown still loads and exports as
+ * it is: decoding needs nothing but the page.
  */
 const { describe, it } = require('node:test');
 const assert = require('node:assert/strict');
@@ -83,9 +83,9 @@ describe('@export of markdown writes search text', () => {
     assert.deepEqual(texts, ['Found by these words.', 'A card title']);
   });
 
-  it('refuses without the block schemas', () => {
-    const result = exportRoot({ CONTENT_MOUNTS: `/:${markdownMount()}`, CONTENT_SCHEMAS: '' });
-    assert.equal(result.status, 400, JSON.stringify(result));
-    assert.match(result.body, /CONTENT_SCHEMAS/);
+  it('without the block config, exports the markdown as it is', () => {
+    const root = exportRoot({ CONTENT_MOUNTS: `/:${markdownMount()}`, CONTENT_SCHEMAS: '' });
+    const texts = root.blocks_layout.items.map((id) => root.blocks[id].searchableText);
+    assert.deepEqual(texts, [undefined, undefined]);
   });
 });

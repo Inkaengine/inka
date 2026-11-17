@@ -150,12 +150,10 @@ export function parsePrototypes(text, { explicit = false } = {}) {
       // common one (a heading-link is also a teaser) does not silently grab it.
       // Bare stays the implicit/common (`blocks-matched:`) reading.
       const { type, ...fields } = attrs;
-      // Search text is written from a block's other fields and markdown never carries
-      // it, so a prototype that made it would match no block it was meant for.
-      for (const k of Object.keys(fields)) {
-        if (DERIVED_FIELDS.has(k)) {
-          throw new Error(`<block type="${type}"> ${k} is written from the block's other fields (search text), so a prototype can't make it: drop it`);
-        }
+      // Markdown no longer carries a Text block's `plaintext` (save writes its words as
+      // its searchableText), so a prototype that made it would match no block.
+      if ('plaintext' in fields) {
+        throw new Error(`<block type="${type}"> plaintext is no longer stored (a Text block's words are its searchableText), so a prototype can't make it: drop it`);
       }
       // A value that starts a ref must BE one: a typo'd ref would otherwise be
       // a literal, silently stamped onto every block this prototype decodes.
@@ -173,8 +171,8 @@ export function parsePrototypes(text, { explicit = false } = {}) {
       const t = top();
       if (!t || t.kind !== 'block') throw new Error('region outside a block');
       // idField/typeField are the object_list item's identity/type keys, named
-      // on the region because decode is schema-free (there's no blocksConfig to
-      // read them from). idField has no default: an unstated one once minted
+      // on the region because decode reads the page alone (there's no frontend
+      // config to read them from). idField has no default: an unstated one once minted
       // table ids into `@id` while frontends read `key`, and every table
       // rendered its last cell. typeField is settled when the region closes
       // (settleTypeField), once its item types are known.
@@ -1508,19 +1506,17 @@ function emitSegments(prototypes, blocks, depth = 2) {
 }
 
 /**
- * Without the search text written from a block's other fields. Markdown never carries it:
- * it isn't authored, and as an unknown field it would turn a paragraph into a <block>
- * wrapper and a container into a data-json blob. `searchableText` is written again on save,
- * when a markdown tree is read with its block schemas, or by `plone-content search-text`.
- * A slate block's `plaintext` is the older copy of the same, which save removes.
+ * Without a Text block's `plaintext`: Volto's older copy of its words, which save removes
+ * (its words are its searchableText). A block's `searchableText` is its own to keep:
+ * stored, markdown carries it like any field; whoever knows the frontend's default leaves
+ * out what matches it before emit (the mock API's export).
  */
-const DERIVED_FIELDS = new Set(['searchableText', 'plaintext']);
 function withoutDerivedFields(value) {
   if (Array.isArray(value)) return value.map(withoutDerivedFields);
   if (!value || typeof value !== 'object') return value;
   const out = {};
   for (const [key, child] of Object.entries(value)) {
-    if (!DERIVED_FIELDS.has(key)) out[key] = withoutDerivedFields(child);
+    if (key !== 'plaintext') out[key] = withoutDerivedFields(child);
   }
   return out;
 }
