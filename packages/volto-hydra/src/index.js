@@ -56,16 +56,21 @@ import { regionGatedLinkButton } from './components/Toolbar/regionRules';
 import { installLinkEditor } from './components/Toolbar/LinkEditor';
 import { noStore } from './express-middleware/noStore';
 import { apiAcceptEncoding } from './express-middleware/apiAcceptEncoding';
+import { idleExit, idleExitMinutes } from './express-middleware/idleExit';
 import { registerRuleErrorValidators } from '@volto-hydra/helpers/blockFieldErrors.js';
 import { INKA_BLOCK_TYPES } from '@volto-hydra/helpers/inkaBlocks.js';
 
 const applyConfig = (config) => {
   // No shared cache keeps an editor's page (express-middleware/noStore.js).
   if (__SERVER__) {
+    // A test admin stops itself once idle, when its start script asks
+    // (express-middleware/idleExit.js). Read at the server's start, not built in.
+    const idleMinutes = idleExitMinutes(process.env);
     config.settings.expressMiddleware = [
       // First: it sets what the API proxy (Volto's devproxy) asks the API
       // for, so it must run before it (express-middleware/apiAcceptEncoding.js).
       apiAcceptEncoding,
+      ...(idleMinutes ? [idleExit({ minutes: idleMinutes, stopParent: __DEVELOPMENT__ })] : []),
       ...(config.settings.expressMiddleware || []),
       noStore,
     ];
