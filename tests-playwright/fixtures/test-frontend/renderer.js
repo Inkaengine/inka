@@ -254,20 +254,22 @@ function getImageSrcset(value, block) {
         .join(', ');
 }
 
-/**
- * Extract URL from various formats for links.
- * Handles: array of objects [{@id: '/path'}], object {@id: '/path'}, or string '/path'
- * @param {Array|Object|string} value - Link value in various formats
- * @returns {string} Link URL
- */
 // A link field (object_browser) holds one shape: the list its widget writes,
 // `[{ '@id': url }]`. Unset or emptied, there is no link.
 function getLinkUrl(value) {
+    return stripApiOrigin(getLinkAddress(value));
+}
+
+/**
+ * The address a link field holds, exactly as stored: for an embed or a media
+ * file, which is loaded from where it is, not navigated to on this site.
+ */
+function getLinkAddress(value) {
     if (value == null || (Array.isArray(value) && value.length === 0)) return '';
     if (!Array.isArray(value) || typeof value[0]?.['@id'] !== 'string') {
         throw new Error(`a link is stored as [{"@id": url}], got ${JSON.stringify(value)}`);
     }
-    return stripApiOrigin(value[0]['@id']);
+    return value[0]['@id'];
 }
 
 /**
@@ -1250,11 +1252,11 @@ defineMapEmbedElement();
 
 /**
  * Render a maps block.
- * @param {Object} block - Maps block data with url
+ * @param {Object} block - Maps block data; `url` is a link list
  * @returns {string} HTML string
  */
 function renderMapsBlock(block) {
-    const url = block.url || '';
+    const url = getLinkAddress(block.url);
     const title = block.title || 'Map';
     if (url) {
         return `<div class="maps-block">
@@ -1265,7 +1267,7 @@ function renderMapsBlock(block) {
 }
 
 function renderVideoBlock(block) {
-    const url = block.url || '';
+    const url = getLinkAddress(block.url);
     const ytMatch = url.match(/(?:youtu\.be\/|youtube\.com\/(?:watch\?v=|embed\/))([^&?/]+)/);
     if (ytMatch) {
         return `<div class="video-block">
@@ -2591,8 +2593,8 @@ function renderSocialLinksBlock(block) {
     for (const link of links) {
         const uid = link['@id'];
         html += `<a data-block-uid="${uid}" data-block-add="right" data-edit-link="url" ` +
-            `href="${escapeAttr(link.url || '')}" target="_blank" rel="noopener noreferrer">` +
-            `${escapeHtml(link.url || '')}</a>`;
+            `href="${escapeAttr(getLinkUrl(link.url))}" target="_blank" rel="noopener noreferrer">` +
+            `${escapeHtml(getLinkUrl(link.url))}</a>`;
     }
     return html;
 }

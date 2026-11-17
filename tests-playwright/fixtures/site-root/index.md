@@ -95,7 +95,7 @@ Compliance or engagement is a false choice. You decide where the dial sits for e
   <div v-for="id in page?.blocks_layout?.items" :key="id"
        :data-block-uid="editing ? id : undefined">
     <!-- data-edit-link: click to edit link URL in sidebar -->
-    <a :href="page.blocks[id].link"
+    <a :href="page.blocks[id].link?.[0]?.['@id']"
        :data-edit-link="editing ? 'link' : undefined">
       <!-- data-edit-media: click to pick/upload image in sidebar -->
       <img :src="page.blocks[id].image"
@@ -129,7 +129,7 @@ onMounted(async () => {
           image: { widget: 'image' },
           title: { type: 'string' },
           description: { type: 'string' },
-          link: { widget: 'url' },
+          link: { widget: 'object_browser', mode: 'link', allowExternals: true },
         }}}
       },
       // Receive live updates as editor changes content
@@ -168,7 +168,7 @@ export default function Page() {
             image: { widget: 'image' },
             title: { type: 'string' },
             description: { type: 'string' },
-            link: { widget: 'url' },
+            link: { widget: 'object_browser', mode: 'link', allowExternals: true },
           }}}
         },
         // Receive live updates as editor changes content
@@ -188,7 +188,7 @@ export default function Page() {
       // data-block-uid: makes block selectable, draggable, and editable
       <div key={id} data-block-uid={editing ? id : undefined}>
         {/* data-edit-link: click to edit link URL in sidebar */}
-        <a href={block.link}
+        <a href={block.link?.[0]?.['@id']}
            data-edit-link={editing ? 'link' : undefined}>
           {/* data-edit-media: click to pick/upload image in sidebar */}
           <img src={block.image}
@@ -229,7 +229,7 @@ export default function Page() {
             image: { widget: 'image' },
             title: { type: 'string' },
             description: { type: 'string' },
-            link: { widget: 'url' },
+            link: { widget: 'object_browser', mode: 'link', allowExternals: true },
           }}}
         },
         // Receive live updates as editor changes content
@@ -247,7 +247,7 @@ export default function Page() {
     <!-- data-block-uid: makes block selectable, draggable, and editable -->
     <div data-block-uid={editing ? id : undefined}>
       <!-- data-edit-link: click to edit link URL in sidebar -->
-      <a href={page.blocks[id].link}
+      <a href={page.blocks[id].link?.[0]?.['@id']}
          data-edit-link={editing ? 'link' : undefined}>
         <!-- data-edit-media: click to pick/upload image in sidebar -->
         <img src={page.blocks[id].image}
@@ -285,7 +285,7 @@ export default function Page() {
           image: { widget: 'image' },
           title: { type: 'string' },
           description: { type: 'string' },
-          link: { widget: 'url' },
+          link: { widget: 'object_browser', mode: 'link', allowExternals: true },
         }}}
       },
       // Receive live updates as editor changes content
@@ -304,7 +304,7 @@ export default function Page() {
         <!-- data-block-uid: makes block selectable, draggable, and editable -->
         <div ${editing ? `data-block-uid="${id}"` : ''}>
           <!-- data-edit-link: click to edit link URL in sidebar -->
-          <a href="${b.link}"
+          <a href="${b.link?.[0]?.['@id']}"
              ${editing ? 'data-edit-link="link"' : ''}>
             <!-- data-edit-media: click to pick/upload image in sidebar -->
             <img src="${b.image}"
@@ -345,7 +345,7 @@ export default function Page() {
               image: { widget: 'image' },
               title: { type: 'string' },
               description: { type: 'string' },
-              link: { widget: 'url' },
+              link: { widget: 'object_browser', mode: 'link', allowExternals: true },
             }}}
           },
           // Server-render mode (Storyblok-style): the bridge POSTs each

@@ -48,19 +48,19 @@ A vertical navigation list for grouped pages — a left sidebar on desktop and a
 
 <block type="navItem">
 
-[Architecture](/docs/architecture)
+[Architecture](../architecture.md)
 
 </block>
 
 <block type="navItem">
 
-[Custom blocks](/docs/frontend-guide/custom-blocks)
+[Custom blocks](../frontend-guide/custom-blocks.md)
 
 </block>
 
 <block type="navItem">
 
-[Listings](/docs/frontend-guide/listings)
+[Listings](../frontend-guide/listings.md)
 
 </block>
 

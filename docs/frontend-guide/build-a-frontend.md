@@ -90,7 +90,7 @@ if (window.name.startsWith('hydra')) {
           blockSchema: {
             properties: {
               image: { widget: 'image' },
-              url: { widget: 'url' },
+              url: { widget: 'object_browser', mode: 'link', allowExternals: true },
               caption: { type: 'string' },
             }
           }

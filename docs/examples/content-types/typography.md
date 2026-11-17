@@ -52,7 +52,7 @@ blocks-tagged: |
 
 <block type="teaser">
 
-### [Teaser Title (H2, 30/36px)](/docs/examples/content-types)
+### [Teaser Title (H2, 30/36px)](./index.md)
 
 For grid blocks, the font of the headlines are variable, depending on the number of cells in the grid.
 
@@ -66,7 +66,7 @@ For grid blocks, the font of the headlines are variable, depending on the number
 
 <block type="teaser">
 
-### [Teaser Title (H3, 24/30px)](/docs/examples/content-types)
+### [Teaser Title (H3, 24/30px)](./index.md)
 
 **Teaser Headtitle (DIV, 14/18px)**
 
@@ -76,7 +76,7 @@ For grid blocks, the font of the headlines are variable, depending on the number
 
 <block type="teaser">
 
-### [Teaser Title (H3, 24/30px)](/docs/examples/content-types)
+### [Teaser Title (H3, 24/30px)](./index.md)
 
 **Teaser Headtitle (DIV, 14/18px)**
 

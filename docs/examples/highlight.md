@@ -57,7 +57,7 @@ A prominent content section with a background image, overlay, title, rich text b
 
 Lorem ipsum dolor sit amet, [consetetur sadipscing](./button.md) elitr, sed diam nonumy eirmod tempor invidunt ut labore et dolore magna aliquyam erat, sed diam voluptua. Lorem ipsum dolor sit amet, consetetur sadipscing elitr, sed diam nonumy eirmod tempor invidunt.
 
-[](/docs/examples/content-types/page)
+[](./content-types/page.md)
 
 <fields styles:descriptionColor="highlight-custom-color-1" />
 
@@ -67,7 +67,7 @@ Lorem ipsum dolor sit amet, [consetetur sadipscing](./button.md) elitr, sed diam
 
 Lorem ipsum dolor sit amet, [consetetur sadipscing](./button.md) elitr, sed diam nonumy eirmod tempor invidunt ut labore et dolore magna aliquyam erat, sed diam voluptua. Lorem ipsum dolor sit amet, consetetur sadipscing elitr, sed diam nonumy eirmod tempor invidunt.
 
-[](/docs/examples/content-types/page)
+[](./content-types/page.md)
 
 <fields styles:descriptionColor="highlight-custom-color-2" />
 
@@ -77,7 +77,7 @@ Lorem ipsum dolor sit amet, [consetetur sadipscing](./button.md) elitr, sed diam
 
 Lorem ipsum dolor sit amet, [consetetur sadipscing](./button.md) elitr, sed diam nonumy eirmod tempor invidunt ut labore et dolore magna aliquyam erat, sed diam voluptua. Lorem ipsum dolor sit amet, consetetur sadipscing elitr, sed diam nonumy eirmod tempor invidunt.
 
-[](/docs/examples/content-types/page)
+[](./content-types/page.md)
 
 <fields styles:descriptionColor="highlight-custom-color-3" />
 
@@ -87,7 +87,7 @@ Lorem ipsum dolor sit amet, [consetetur sadipscing](./button.md) elitr, sed diam
 
 Lorem ipsum dolor sit amet, [consetetur sadipscing](./button.md) elitr, sed diam nonumy eirmod tempor invidunt ut labore et dolore magna aliquyam erat, sed diam voluptua. Lorem ipsum dolor sit amet, consetetur sadipscing elitr, sed diam nonumy eirmod tempor invidunt.
 
-[](/docs/examples/content-types/page)
+[](./content-types/page.md)
 
 <fields styles:descriptionColor="highlight-custom-color-4" />
 
@@ -97,7 +97,7 @@ Lorem ipsum dolor sit amet, [consetetur sadipscing](./button.md) elitr, sed diam
 
 Lorem ipsum dolor sit amet, [consetetur sadipscing](./button.md) elitr, sed diam nonumy eirmod tempor invidunt ut labore et dolore magna aliquyam erat, sed diam voluptua. Lorem ipsum dolor sit amet, consetetur sadipscing elitr, sed diam nonumy eirmod tempor invidunt.
 
-[](/docs/examples/content-types/page)
+[](./content-types/page.md)
 
 <fields styles:descriptionColor="highlight-custom-color-5" />
 

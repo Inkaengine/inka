@@ -276,7 +276,7 @@ const bridge = initBridge({
             title: 'Slide',
             blockSchema: {
                 properties: {
-                    url: { title: 'Link', widget: 'url' },
+                    url: { title: 'Link', widget: 'object_browser', mode: 'link', allowExternals: true },
                     title: { title: 'Title' },
                     image: { title: 'Image', widget: 'image' },
                     description: { title: 'Description',
@@ -426,7 +426,9 @@ The stored value is a name (`plone.app.vocabularies.Keywords`), not a URL, so co
 
 ## Link fields hold one shape
 
-A link field (`widget: "object_browser"`, and Inka's `url` widget) stores a list of links, `[{ "@id": "/about" }]`, whether the link is to a page on the site or an external URL. A link picked from the site may carry its summary as well (`title`, `@type`, …). That's the only shape: unset, or an empty list, means no link, and a plain string is never stored.
+A link field is `widget: "object_browser"` with `mode: "link"`; add `allowExternals: true` when an address outside the site is allowed too. It stores a list of links, `[{ "@id": "/about" }]`, whether the link is to a page on the site or an external URL: an address typed in is stored as `[{ "@id": "https://example.com", "title": "example.com" }]`. A link picked from the site may carry its summary as well (`title`, `@type`, …). That's the only shape: unset, or an empty list, means no link, and a plain string is never stored.
+
+The `url` widget is deprecated: declare a link as above instead.
 
 Read the address from the first entry:
 

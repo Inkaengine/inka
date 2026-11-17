@@ -1689,7 +1689,7 @@ test.describe('fieldRules - a rule that refuses a value', () => {
             }
           },
           "@type": "rssFeed",
-          "feedUrl": "http://localhost:8888/rss-stub",
+          "feedUrl": [{ "@id": `${urls.mockApi}/rss-stub` }],
           "count": -1,
           "variation": "summary"
         }
@@ -1820,7 +1820,7 @@ test.describe('fieldRules - a rule that refuses a value', () => {
     await helper.login();
     await createPage(page, urls, {
       "@type": "Document",
-      "id": "nested-bad-url-page",
+      "id": "nested-bad-value-page",
       "title": "A bad value inside a container",
       "blocks": {
         "intro-1": {
@@ -1830,7 +1830,7 @@ test.describe('fieldRules - a rule that refuses a value', () => {
               "type": "p",
               "children": [
                 {
-                  "text": "The feed inside the column below has a url that is not one. Core's validation walked the top level and would never have opened this container."
+                  "text": "The feed inside the column below has a count that is not a number. Core's validation walked the top level and would never have opened this container."
                 }
               ]
             }
@@ -1844,8 +1844,8 @@ test.describe('fieldRules - a rule that refuses a value', () => {
               "blocks": {
                 "rss-nested": {
                   "@type": "rssFeed",
-                  "feedUrl": "not a url at all",
-                  "count": 6,
+                  "feedUrl": [{ "@id": `${urls.mockApi}/rss-stub` }],
+                  "count": "lots",
                   "variation": "summary"
                 }
               },
@@ -1870,7 +1870,7 @@ test.describe('fieldRules - a rule that refuses a value', () => {
         ]
       }
     });
-    await helper.navigateToEdit('/nested-bad-url-page');
+    await helper.navigateToEdit('/nested-bad-value-page');
     await expect(
       helper.getIframe().locator('[data-block-uid="intro-1"]'),
     ).toBeVisible({ timeout: 15000 });
