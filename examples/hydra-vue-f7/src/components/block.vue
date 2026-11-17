@@ -400,7 +400,7 @@
   </section>
 
   <!-- Video -->
-  <div v-else-if="block['@type'] == 'video'" :data-block-uid="block_uid" class="video-block">
+  <div v-else-if="block['@type'] == 'video'" :data-block-uid="block_uid" data-edit-link="url" class="video-block">
     <iframe v-if="getYouTubeId(linkUrl(block.url))"
             :src="`https://www.youtube.com/embed/${getYouTubeId(linkUrl(block.url))}`"
             allowfullscreen style="width:100%; aspect-ratio:16/9; border:none" />

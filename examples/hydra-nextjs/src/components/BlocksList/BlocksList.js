@@ -1646,7 +1646,7 @@ function Block({ block, id, data, apiUrl, contextPath, inListing = false }) {
       const videoUrl = rawVideoUrl.startsWith("/") ? `${apiUrl}${rawVideoUrl}` : rawVideoUrl;
       const ytId = getYouTubeId(videoUrl);
       return (
-        <div data-block-uid={id} className="video-block">
+        <div data-block-uid={id} data-edit-link="url" className="video-block">
           {ytId ? (
             <iframe
               src={`https://www.youtube.com/embed/${ytId}`}

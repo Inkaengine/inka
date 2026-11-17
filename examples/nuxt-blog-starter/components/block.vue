@@ -640,7 +640,7 @@
     </NuxtLink>
   </div>
 
-  <div v-else-if="block['@type'] == 'video'" :data-block-uid="block_uid" class="my-4">
+  <div v-else-if="block['@type'] == 'video'" :data-block-uid="block_uid" data-edit-link="url" class="my-4">
     <div v-if="getYouTubeId(linkUrl(block.url))" class="relative w-full pb-[56.25%]">
       <iframe class="absolute inset-0 w-full h-full rounded-lg"
           :src="`https://www.youtube.com/embed/${getYouTubeId(linkUrl(block.url))}`"
@@ -648,7 +648,6 @@
     </div>
     <video v-else-if="linkUrl(block.url)"
            class="w-full h-auto max-w-full rounded-lg"
-           data-edit-media="url"
            :controls="block.controls !== false"
            :autoplay="!!block.autoplay"
            :loop="!!block.loop"
