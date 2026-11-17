@@ -28,6 +28,8 @@ export interface FrontendRegistry {
   blocksConfig: Record<string, any>;
   frontendKeys: string[];
   styleMenuClasses: string[];
+  /** The frontend's page schema (`{ properties }`), as the mock parent uses it. */
+  pageSchema: { properties: Record<string, any> };
 }
 
 /**
@@ -55,7 +57,7 @@ export async function fetchBlocksConfig(
         const sm = mp?.getStyleMenuClasses?.() || [];
         // Wait past mock-parent's own baseline (~10 types) for the frontend's INIT to land
         return c && Object.keys(c).length > 10
-          ? { blocksConfig: c, frontendKeys: fk, styleMenuClasses: sm }
+          ? { blocksConfig: c, frontendKeys: fk, styleMenuClasses: sm, pageSchema: mp.getPageSchema() }
           : null;
       });
       if (result) return result;
@@ -66,7 +68,7 @@ export async function fetchBlocksConfig(
   } finally {
     await browser.close();
   }
-  return { blocksConfig: {}, frontendKeys: [], styleMenuClasses: [] };
+  return { blocksConfig: {}, frontendKeys: [], styleMenuClasses: [], pageSchema: { properties: {} } };
 }
 
 /** Is a frontend actually serving in this job? */
@@ -147,7 +149,12 @@ export interface DiscoveryOptions {
 export interface PerFrontendSteps {
   reachable: (url: string) => Promise<boolean>;
   fetchRegistry: (url: string) => Promise<FrontendRegistry>;
-  discover: (blocksConfig: Record<string, any>, frontendKeys: string[], styleMenuClasses: string[]) => Promise<any[]>;
+  discover: (
+    blocksConfig: Record<string, any>,
+    frontendKeys: string[],
+    styleMenuClasses: string[],
+    pageSchema: FrontendRegistry['pageSchema'],
+  ) => Promise<any[]>;
 }
 
 /**
@@ -171,12 +178,12 @@ export async function discoverPerFrontend(
   let frontendKeys: string[] = [];
   for (const [project, url] of targets) {
     if (!(await isUp(url))) continue;
-    const { blocksConfig: cfg, frontendKeys: keys, styleMenuClasses } = await fetchRegistry(url);
+    const { blocksConfig: cfg, frontendKeys: keys, styleMenuClasses, pageSchema } = await fetchRegistry(url);
     if (Object.keys(cfg).length === 0) {
       console.warn(`[SETUP] ${project} (${url}) returned no schemas — skipped`);
       continue;
     }
-    const found = await discover(cfg, keys, styleMenuClasses);
+    const found = await discover(cfg, keys, styleMenuClasses, pageSchema);
     for (const b of found) blocks.push({ ...b, frontend: project });
     perFrontend[project] = found.length;
     blocksConfig = cfg;      // last one wins for the single-config uses below
@@ -236,7 +243,7 @@ export async function discoverForFrontends(options: DiscoveryOptions): Promise<v
   const { blocks, perFrontend, blocksConfig, frontendKeys } = await discoverPerFrontend(targets, {
     reachable,
     fetchRegistry: (url) => fetchBlocksConfig(mockParent, url, schemaApi),
-    discover: (cfg, keys, menu) => discoverBlocks(discoverApi, maxPages, cfg, keys, menu),
+    discover: (cfg, keys, menu, page) => discoverBlocks(discoverApi, maxPages, cfg, keys, menu, page),
   });
   if (blocks.length === 0) {
     throw new Error(

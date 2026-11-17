@@ -1194,6 +1194,13 @@
       // list that is wrong for every frontend but one.
       getStyleMenuClasses: () => Array.from(styleMenuClasses),
       getFrontendBlockKeys: () => Array.from(frontendBlockKeys),
+      // The page schema in use: the frontend's (INIT `page`) merged over the
+      // baseline. Its regions name the layouts forced across them
+      // (allowedLayouts), which no page's blocks name — so discovery's
+      // integrity check needs it to know a site footer is a template in use.
+      // As data: `_page` in getBlocksConfig() is a function, which a caller
+      // reading it across page.evaluate never receives.
+      getPageSchema: () => mockBlocksConfig._page.schema(),
       getBlock: (blockId) => mockFormData.blocks[blockId],
       buildBlockPathMap: () => postableBlockPathMap(mockFormData),
       setTransformDelay: (delay) => { window.mockTransformDelay = delay; },

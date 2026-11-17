@@ -12,6 +12,7 @@ const registry = (styleMenuClasses: string[]): FrontendRegistry => ({
   blocksConfig: Object.fromEntries(Array.from({ length: 11 }, (_, i) => [`type${i}`, {}])),
   frontendKeys: ['type0'],
   styleMenuClasses,
+  pageSchema: { properties: {} },
 });
 
 describe('discoverPerFrontend', () => {
@@ -32,13 +33,30 @@ describe('discoverPerFrontend', () => {
     expect(discover.mock.calls.map((call) => call[2])).toEqual([['callout', 'lead'], ['quote']]);
   });
 
+  test("hands discovery each frontend's own page schema", async () => {
+    const pages: Record<string, FrontendRegistry['pageSchema']> = {
+      'http://nuxt': { properties: { footer: { widget: 'blocks_layout', allowedLayouts: ['/templates/footer'] } } },
+      'http://next': { properties: { items: { widget: 'blocks_layout' } } },
+    };
+    const discover = vi.fn(async () => [{ type: 'slate' }]);
+    await discoverPerFrontend(
+      [['nuxt', 'http://nuxt'], ['next', 'http://next']],
+      {
+        reachable: async () => true,
+        fetchRegistry: async (url) => ({ ...registry([]), pageSchema: pages[url] }),
+        discover,
+      },
+    );
+    expect(discover.mock.calls.map((call) => call[3])).toEqual([pages['http://nuxt'], pages['http://next']]);
+  });
+
   test('tags each block with the frontend it came from, and skips one that is down or gives no schemas', async () => {
     const result = await discoverPerFrontend(
       [['nuxt', 'http://nuxt'], ['down', 'http://down'], ['empty', 'http://empty']],
       {
         reachable: async (url) => url !== 'http://down',
         fetchRegistry: async (url) => (url === 'http://empty'
-          ? { blocksConfig: {}, frontendKeys: [], styleMenuClasses: [] }
+          ? { blocksConfig: {}, frontendKeys: [], styleMenuClasses: [], pageSchema: { properties: {} } }
           : registry(['lead'])),
         discover: async () => [{ type: 'slate' }, { type: 'image' }],
       },
