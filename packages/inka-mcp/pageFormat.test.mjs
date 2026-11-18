@@ -43,9 +43,9 @@ describe('agent page format', () => {
     });
   }
 
-  it('gives each block its uid, and rich text as markdown', () => {
+  it('gives each block its uid, and rich text as markdown, without the search text save writes', () => {
     const stored = {
-      blocks: { a: { '@type': 'slate', value: [{ type: 'p', children: [{ text: 'Hi ' }, { text: 'there', bold: true }] }], plaintext: 'Hi there' } },
+      blocks: { a: { '@type': 'slate', value: [{ type: 'p', children: [{ text: 'Hi ' }, { text: 'there', bold: true }] }], plaintext: 'Hi there', searchableText: 'Hi there' } },
       blocks_layout: { items: ['a'] },
     };
     expect(toAgentBlocks(stored)).toEqual([{ '@uid': 'a', '@type': 'slate', value: { md: 'Hi **there**' } }]);
@@ -63,10 +63,10 @@ describe('agent page format', () => {
     expect(columns.columns[0].blocks).toEqual([]);
   });
 
-  it('accepts a plain markdown string for a rich-text field, and recomputes plaintext', () => {
+  it('accepts a plain markdown string for a rich-text field, and adds no search text: save writes it', () => {
     const block = toStoredBlock({ '@type': 'slate', value: 'Hello *world*' }, { blocksConfig: sharedBlocksConfig, mintId: () => 'x' });
     expect(block.value[0].type).toBe('p');
-    expect(block.plaintext).toBe('Hello world');
+    expect(Object.keys(block)).toEqual(['@type', 'value']);
   });
 
   it('mints ids for new blocks and new list items that hold blocks', () => {

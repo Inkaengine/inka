@@ -86,8 +86,9 @@ async function globalSetup() {
   // together they read as a containment violation — the page's allowed set is the
   // non-restricted types. Un-restricting them to satisfy this check breaks 28
   // tests: the option-counting those specs assert on ("one option -> auto-convert,
-  // two -> chooser") flows from that same flag.
-  process.env.CONTAINMENT_EXEMPT_PAGES = [process.env.CONTAINMENT_EXEMPT_PAGES, '/_test_data/dnd-convert-page']
+  // two -> chooser") flows from that same flag. The sidebar-convert page holds
+  // the same toy blocks (sidebar-type-dropdown.spec.ts), so the same applies.
+  process.env.CONTAINMENT_EXEMPT_PAGES = [process.env.CONTAINMENT_EXEMPT_PAGES, '/_test_data/dnd-convert-page', '/_test_data/sidebar-convert-page']
     .filter(Boolean)
     .join(',');
   // Only frontends block-sanity enforces. A frontend it skips yields cases
@@ -123,7 +124,8 @@ async function globalSetup() {
     return;
   }
 
-  // In production mode (USE_PREBUILT), check SSR server directly
+  // The built admin (the default): check the SSR server, and that it was built
+  // from this checkout. ADMIN_DEV=1: the dev server's webpack health.
   // In dev mode, check webpack-dev-server health endpoint
   // Consumers running Volto on non-default ports (e.g. parallel test stacks)
   // can override with VOLTO_HEALTH_URL.

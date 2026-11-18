@@ -10,7 +10,6 @@
       "fixed": true,
       "readOnly": true,
       "value": [{ "type": "h1", "children": [{ "text": "Template Header - From Template" }] }],
-      "plaintext": "Template Header - From Template",
       "templateId": "resolveuid/test-layout-template-uid",
       "templateInstanceId": "tpl-instance-two",
       "slotId": "header"
@@ -20,7 +19,6 @@
       "fixed": false,
       "readOnly": false,
       "value": [{ "type": "p", "children": [{ "text": "Primary content one" }] }],
-      "plaintext": "Primary content one",
       "templateId": "resolveuid/test-layout-template-uid",
       "templateInstanceId": "tpl-instance-two",
       "slotId": "primary"
@@ -30,7 +28,6 @@
       "fixed": false,
       "readOnly": false,
       "value": [{ "type": "p", "children": [{ "text": "Primary content two" }] }],
-      "plaintext": "Primary content two",
       "templateId": "resolveuid/test-layout-template-uid",
       "templateInstanceId": "tpl-instance-two",
       "slotId": "primary"
@@ -40,7 +37,6 @@
       "fixed": true,
       "readOnly": true,
       "value": [{ "type": "p", "children": [{ "text": "Fixed divider between the slots" }] }],
-      "plaintext": "Fixed divider between the slots",
       "templateId": "resolveuid/test-layout-template-uid",
       "templateInstanceId": "tpl-instance-two",
       "slotId": "mid"
@@ -50,7 +46,6 @@
       "fixed": false,
       "readOnly": false,
       "value": [{ "type": "p", "children": [{ "text": "Secondary content one" }] }],
-      "plaintext": "Secondary content one",
       "templateId": "resolveuid/test-layout-template-uid",
       "templateInstanceId": "tpl-instance-two",
       "slotId": "secondary"
@@ -60,7 +55,6 @@
       "fixed": true,
       "readOnly": true,
       "value": [{ "type": "p", "children": [{ "text": "Template Footer - From Template" }] }],
-      "plaintext": "Template Footer - From Template",
       "templateId": "resolveuid/test-layout-template-uid",
       "templateInstanceId": "tpl-instance-two",
       "slotId": "footer"

@@ -56,6 +56,7 @@ import {
   isBlockReadonly,
   isBlockPositionLocked,
   getBlockAddability,
+  canContainAll,
 } from './index.js';
 import { getHydraSchemaContext, setHydraSchemaContext, getLiveBlockData } from './hydraSchemaContext.js';
 
@@ -2408,7 +2409,9 @@ export function convertBlockType(blockData, newType, blocksConfig, typeFieldName
     const newData = { [typeFieldName]: toType };
     // Apply mappings: source-specific first, then default as fallback
     const mappings = { ...targetMappings?.['@default'], ...targetMappings?.[fromType] };
-    for (const [sourceField, targetField] of Object.entries(mappings)) {
+    for (const [sourceField, mapping] of Object.entries(mappings)) {
+      // A `{ field, type }` mapping names its field like a bare one does.
+      const targetField = getMappingTarget(mapping);
       // Value↔region: a `region/type/field` path (parseRegionPath) on one side
       // bridges a single scalar VALUE and a container region — the same bridge
       // convertValueContainer uses, via shared helpers.
@@ -2594,7 +2597,27 @@ export function reshapeContainerBlock(
     intl,
     container,
   );
+  const targetProps = getBlockTypeSchema(targetType, intl, blocksConfig)?.properties || {};
   for (const region of regions) {
+    // A synced region: its item type is a same-named field, so the move carried
+    // the SOURCE's item type across, which this region may not take (a grid of
+    // cards becoming a grid of content blocks would still say "card", and then
+    // refuse its own items). Take the type field's default, or else the first
+    // item type the region allows.
+    const typeField = region.itemTypeField;
+    if (typeField && Array.isArray(region.allowedBlocks)
+        && !region.allowedBlocks.includes(container[typeField])) {
+      const preferred = targetProps[typeField]?.default;
+      const itemType = region.allowedBlocks.includes(preferred)
+        ? preferred
+        : region.allowedBlocks.find((t) => blocksConfig?.[t]?.fieldMappings?.['@default']);
+      if (!itemType) {
+        throw new Error(
+          `reshapeContainerBlock: region "${region.region}" of "${targetType}" syncs its items' type in "${typeField}" but allows no item type (allowed: ${region.allowedBlocks.join(', ')})`,
+        );
+      }
+      container[typeField] = itemType;
+    }
     // The addable set for THIS region — the SAME resolver add/DnD/type-sync use.
     const allowed = addableSiblingTypes(
       region.allowedBlocks,
@@ -2608,6 +2631,13 @@ export function reshapeContainerBlock(
     let changed = false;
     const next = entries.map(({ id, block }) => {
       const cellType = block?.['@type'];
+      // An item with an item type of its own (a listing) lists the region's
+      // type, as the container's type picker gives it (takeContainerItemType).
+      const ownTypeField = typeField && cellType && findTypeField(blocksConfig?.[cellType], intl);
+      if (ownTypeField && block[ownTypeField] !== container[typeField]) {
+        changed = true;
+        return { id, block: { ...block, [ownTypeField]: container[typeField] } };
+      }
       if (!cellType || allowed.includes(cellType)) return { id, block };
       // The cell's own fieldMappings decide the target — the first allowed type
       // it can reach (transitively). None ⇒ it can't legally live here ⇒ throw.
@@ -2628,6 +2658,89 @@ export function reshapeContainerBlock(
     if (changed) setChildBlockEntries(container, region, next);
   }
   return updateBlockById(moved, movedMap, blockId, container);
+}
+
+/**
+ * The types a block can be converted to where it stands: the types its
+ * fieldMappings reach (getConvertibleTypes), and, for a container with
+ * children, every other container whose region takes all of those children.
+ * `allowedTypes` is what the block's place allows (the pathMap's
+ * allowedSiblingTypes); null allows any. The ONE list every "change the type"
+ * control offers: the toolbar's "Convert to…", the sidebar header's type
+ * dropdown and the sidebar's block menu.
+ *
+ * @returns {Array<{type: string, title: string}>}
+ */
+export function getConvertTargets(blockData, blocksConfig, allowedTypes, intl, typeFieldName = '@type') {
+  const blockType = blockData?.[typeFieldName];
+  if (!blockType) return [];
+  const contentTargets = getConvertibleTypes(blockType, blocksConfig, allowedTypes);
+
+  // Container → container: fieldMappings are about content, so a container
+  // whose children another container takes is offered that one as well.
+  // Child types across ALL regions (blocks_layout + object_list).
+  const childTypes = getContainerRegionDescriptors(blockData['@type'], blocksConfig, intl, blockData)
+    .flatMap((d) => getChildBlockEntries(blockData, d))
+    .map((e) => e.block?.['@type'])
+    .filter(Boolean);
+  if (childTypes.length === 0) return contentTargets;
+
+  const offered = new Set(contentTargets.map((t) => t.type));
+  const containerTargets = [];
+  for (const [type, cfg] of Object.entries(blocksConfig || {})) {
+    if (type === blockType || offered.has(type)) continue;
+    if (!cfg?.blockSchema) continue;
+    if (allowedTypes && !allowedTypes.includes(type)) continue;
+    const schema = getBlockTypeSchema(type, intl, blocksConfig);
+    const region = Object.entries(schema?.properties || {}).find(
+      ([, field]) => field?.widget === 'blocks_layout',
+    );
+    if (!region) continue;
+    if (!canContainAll({ region: region[0], ...region[1] }, childTypes, 0)) continue;
+    containerTargets.push({ type, title: cfg.title || type });
+  }
+  return [...contentTargets, ...containerTargets];
+}
+
+/**
+ * Convert a block to `newType` IN PLACE, returning the new formData. A
+ * container with children goes through reshapeContainerBlock, which carries
+ * the children over AND converts each to a type the target region allows; a
+ * block without children converts its own fields. Every conversion an editor
+ * asks for goes through here, straight away: a value no field of the new type
+ * receives stays on the block (convertBlockType keeps it), so converting back
+ * brings it back.
+ */
+export function convertBlockInPlace(formData, blockPathMap, blockId, newType, blocksConfig, intl = null) {
+  const blockData = getBlockById(formData, blockPathMap, blockId);
+  if (!blockData) {
+    throw new Error(`convertBlockInPlace: block ${blockId} not found`);
+  }
+  const hasChildren = getContainerRegionDescriptors(
+    blockData['@type'], blocksConfig, intl, blockData,
+  ).some((d) => getChildBlockEntries(blockData, d).length > 0);
+  if (hasChildren) {
+    return reshapeContainerBlock(formData, blockPathMap, blockId, newType, blocksConfig, intl);
+  }
+  const typeFieldName = blockPathMap?.[blockId]?.typeField || '@type';
+  let newBlockData = convertBlockType(blockData, newType, blocksConfig, typeFieldName, intl);
+  // Converting a TEMPLATE-MEMBER block keeps it template content — carry its
+  // membership over. convertBlockType builds a fresh block from the type's
+  // fields, so without this, filling a locked empty (in template-edit-mode)
+  // would drop templateId/templateInstanceId/fixed/readOnly and the new block
+  // would become per-page (and lose its lock). No-op for normal page blocks.
+  for (const k of ['templateId', 'templateInstanceId', 'slotId', 'fixed', 'readOnly']) {
+    if (blockData[k] !== undefined) newBlockData = { ...newBlockData, [k]: blockData[k] };
+  }
+  // An object_list item is found by its idField, which is not one of its
+  // type's fields, so a conversion with no field mapping (filling an empty
+  // placeholder) drops it: the item then has no id and cannot be rendered,
+  // selected or edited. It is the same item, typed in place — keep its id.
+  const idField = blockPathMap?.[blockId]?.isObjectListItem ? blockPathMap[blockId].idField : null;
+  if (idField && blockData[idField] !== undefined) {
+    newBlockData = { ...newBlockData, [idField]: blockData[idField] };
+  }
+  return updateBlockById(formData, blockPathMap, blockId, newBlockData);
 }
 
 /**

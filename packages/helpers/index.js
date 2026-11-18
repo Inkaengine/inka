@@ -1297,6 +1297,18 @@ const SEARCH_SHORTCUT_INDEX_VOCAB = {
 };
 
 /**
+ * The address a link field holds. A link field stores one shape, a list of
+ * links, `[{ '@id': url }]`, for a page on the site and an outside address
+ * alike; anything else is refused rather than read a second way.
+ */
+function _linkUrl(value, field) {
+  if (!Array.isArray(value) || typeof value[0]?.['@id'] !== 'string') {
+    throw new Error(`${field}: a link is stored as [{"@id": url}], got ${JSON.stringify(value)}`);
+  }
+  return value[0]['@id'];
+}
+
+/**
  * Fetcher for the Search Shortcuts example block. Produces one result per value,
  * each a shortcut LINK into a search: `@id` is set to
  * `${searchUrl}?facet.${index}=${value}` so expandListingBlocks' default
@@ -1309,7 +1321,7 @@ export function searchShortcutsFetcher({ apiUrl, contextPath = '/' } = {}) {
   if (!apiUrl) throw new Error('searchShortcutsFetcher requires apiUrl');
   return async function fetchItems(block, { start, size }) {
     const index = block.index || 'Subject';
-    const searchUrl = block.searchUrl || '';
+    const searchUrl = _linkUrl(block.searchUrl, 'searchUrl');
     const headers = _getAuthHeaders();
 
     let values;
@@ -1378,11 +1390,15 @@ function _parseRssEntries(xml) {
  */
 export function rssFetcher() {
   return async function fetchItems(block, { start, size }) {
+    const feedUrl = _linkUrl(block.feedUrl, 'feedUrl');
     let entries = [];
     try {
-      const res = await fetch(block.feedUrl);
+      const res = await fetch(feedUrl);
       entries = _parseRssEntries(await res.text());
-    } catch {
+    } catch (err) {
+      // fetch rejects with a TypeError when the feed can't be reached (CORS,
+      // network): that degrades to an empty feed; anything else is a bug.
+      if (!(err instanceof TypeError)) throw err;
       return { items: [], total: 0 };
     }
     if (block.count != null) entries = entries.slice(0, block.count);

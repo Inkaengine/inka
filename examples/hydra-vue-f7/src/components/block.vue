@@ -400,18 +400,18 @@
   </section>
 
   <!-- Video -->
-  <div v-else-if="block['@type'] == 'video'" :data-block-uid="block_uid" class="video-block">
-    <iframe v-if="getYouTubeId(block.url)"
-            :src="`https://www.youtube.com/embed/${getYouTubeId(block.url)}`"
+  <div v-else-if="block['@type'] == 'video'" :data-block-uid="block_uid" data-edit-link="url" class="video-block">
+    <iframe v-if="getYouTubeId(linkUrl(block.url))"
+            :src="`https://www.youtube.com/embed/${getYouTubeId(linkUrl(block.url))}`"
             allowfullscreen style="width:100%; aspect-ratio:16/9; border:none" />
-    <video v-else-if="block.url" :src="block.url" controls style="width:100%" />
+    <video v-else-if="linkUrl(block.url)" :src="linkUrl(block.url)" controls style="width:100%" />
     <p v-else>No video URL set</p>
   </div>
 
   <!-- Maps -->
   <div v-else-if="block['@type'] == 'maps'" :data-block-uid="block_uid" class="maps-block">
     <h3 v-if="block.title" data-edit-text="title">{{ block.title }}</h3>
-    <iframe v-if="block.url" :src="block.url" data-edit-link="url"
+    <iframe v-if="linkUrl(block.url)" :src="linkUrl(block.url)" data-edit-link="url"
             :title="block.title || 'Map'" allowfullscreen loading="lazy"
             style="width:100%; height:450px; border:none" />
     <p v-else>No map URL configured</p>
@@ -648,10 +648,10 @@
     <span style="font-size:0.875rem; color:#6b7280">Follow us:</span>
     <a v-for="link in expand(block.links || [], null, '@id')" :key="link['@uid']"
        :data-block-uid="link['@uid']" data-block-add="right"
-       :href="link.url" target="_blank" rel="noopener noreferrer"
-       data-edit-link="url" :title="socialInfo(link.url).name"
+       :href="linkUrl(link.url)" target="_blank" rel="noopener noreferrer"
+       data-edit-link="url" :title="socialInfo(linkUrl(link.url)).name"
        style="color:#9ca3af; transition:color 0.2s">
-      <span v-html="socialInfo(link.url).svg" />
+      <span v-html="socialInfo(linkUrl(link.url)).svg" />
     </a>
   </div>
 
@@ -1019,6 +1019,15 @@ export default {
         opts.minute = '2-digit';
       }
       return new Date(dateStr).toLocaleDateString(undefined, opts);
+    },
+    // The address a link field holds: one shape, `[{ '@id': url }]`, for a page
+    // on the site and an outside address alike; unset or empty is no link.
+    linkUrl(value) {
+      if (value == null || (Array.isArray(value) && value.length === 0)) return '';
+      if (!Array.isArray(value) || typeof value[0]?.['@id'] !== 'string') {
+        throw new Error(`a link is stored as [{"@id": url}], got ${JSON.stringify(value)}`);
+      }
+      return value[0]['@id'];
     },
     getYouTubeId(url) {
       if (!url) return null;

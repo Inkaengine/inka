@@ -19,6 +19,7 @@
  */
 import YAML from 'yaml';
 import { getAtPath, ensureMutablePath } from '@volto-hydra/helpers';
+import { joined } from '@volto-hydra/helpers/blockText.js';
 import { tagOf, mdParser, mdSerializer, blockToSlate, slateToMd, fmtTagAttrs, cleanAttrStr, normaliseTables, tableToMd, gridTableToMd, NoCellForm, NoFit, slateBlockToMdast, isBrTag,
          mdastToHtml, htmlToMd, htmlRichtext, isFlatDict, flatDictAttrs, attrName } from './slate-md.mjs';
 
@@ -149,6 +150,11 @@ export function parsePrototypes(text, { explicit = false } = {}) {
       // common one (a heading-link is also a teaser) does not silently grab it.
       // Bare stays the implicit/common (`blocks-matched:`) reading.
       const { type, ...fields } = attrs;
+      // Markdown no longer carries a Text block's `plaintext` (save writes its words as
+      // its searchableText), so a prototype that made it would match no block.
+      if ('plaintext' in fields) {
+        throw new Error(`<block type="${type}"> plaintext is no longer stored (a Text block's words are its searchableText), so a prototype can't make it: drop it`);
+      }
       // A value that starts a ref must BE one: a typo'd ref would otherwise be
       // a literal, silently stamped onto every block this prototype decodes.
       for (const [k, v] of Object.entries(fields)) {
@@ -321,8 +327,33 @@ const proseText = (node) => {
   if (node.type === 'break') return '\n';
   if (node.type === 'html' && isBrTag(node.value)) return '\n';
   if (node.type === 'text') return node.value.replace(/[ \t]*\n[ \t]*/g, ' ');
-  return node.value !== undefined ? node.value : (node.children || []).map(proseText).join('');
+  if (node.value !== undefined) return node.value;
+  // Where one word ends, as search text reads a slate value (the helpers'
+  // slateText): inline content runs on, so a bold syllable stays inside its
+  // word; blocks -- paragraphs, list items, a list nested in its item -- are
+  // separate words; a space at either end is not a word.
+  const parts = [];
+  let run = '';
+  for (const child of node.children || []) {
+    if (PHRASING.has(child.type)) run += phrasingText(child);
+    else { parts.push(run, proseText(child)); run = ''; }
+  }
+  parts.push(run);
+  return joined(parts);
 };
+
+/** Inline content as it runs on, its edge spaces kept: they part words. */
+const phrasingText = (node) => {
+  if (node.type === 'break') return '\n';
+  if (node.type === 'html' && isBrTag(node.value)) return '\n';
+  if (node.type === 'text') return node.value.replace(/[ \t]*\n[ \t]*/g, ' ');
+  if (node.value !== undefined) return node.value;
+  return (node.children || []).map(phrasingText).join('');
+};
+
+/** Markdown's inline (phrasing) nodes; anything else is a block. */
+const PHRASING = new Set(['text', 'emphasis', 'strong', 'delete', 'link', 'linkReference', 'inlineCode',
+  'break', 'image', 'imageReference', 'html', 'footnoteReference']);
 
 /**
  * A string field's value as inline mdast: text, with each line break a
@@ -399,7 +430,9 @@ function resolvePart(node, ref) {
     // Volto RichText shape — NOT slate. (Slate FIELDS, e.g. a hero description
     // with `widget: 'slate'`, use `${…/slate}` for a bare array instead.)
     case 'richtext': return htmlRichtext(mdastToHtml(node));
-    case 'text': return proseText(node);
+    // Inline content (a link's text) is a field's value as written; a block's
+    // text is its words, as search reads them.
+    case 'text': return PHRASING.has(node.type) ? phrasingText(node) : proseText(node);
     case 'textarea': return nodeText(node);
     case 'src': return node.url;
     case 'alt': return node.alt;
@@ -1504,17 +1537,17 @@ function emitSegments(prototypes, blocks, depth = 2) {
 }
 
 /**
- * Without the fields written from a block's other fields on save. Markdown never carries
- * them: `searchableText` isn't authored, and as an unknown field it would turn a paragraph
- * into a <block> wrapper and a container into a data-json blob. It's written again on save,
- * or by `plone-content search-text` for content that skips the editor.
+ * Without a Text block's `plaintext`: Volto's older copy of its words, which save removes
+ * (its words are its searchableText). A block's `searchableText` is its own to keep:
+ * stored, markdown carries it like any field; whoever knows the frontend's default leaves
+ * out what matches it before emit (the mock API's export).
  */
 function withoutDerivedFields(value) {
   if (Array.isArray(value)) return value.map(withoutDerivedFields);
   if (!value || typeof value !== 'object') return value;
   const out = {};
   for (const [key, child] of Object.entries(value)) {
-    if (key !== 'searchableText') out[key] = withoutDerivedFields(child);
+    if (key !== 'plaintext') out[key] = withoutDerivedFields(child);
   }
   return out;
 }

@@ -115,8 +115,10 @@ test.describe('Nuxt site footer', () => {
     // Link item should NOT be readonly in template edit mode
     await helper.waitForBlockEditable(linkBlockUid!);
 
-    // Sidebar: the URL field should be editable
-    await expect(page.locator('#sidebar-properties .field-wrapper-url input')).toBeVisible({ timeout: 5000 });
+    // Sidebar: the URL field should be editable. It's a link field, so it offers
+    // the link picker, not a plain text box.
+    const urlField = page.locator('#sidebar-properties .field-wrapper-url');
+    await expect(urlField.locator('button[aria-label="Open object browser"]')).toBeVisible({ timeout: 5000 });
 
     // Iframe: add button should be visible on the selected link item
     const addButton = page.locator('.volto-hydra-add-button');

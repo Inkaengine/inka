@@ -56,7 +56,7 @@ describe('searchShortcutsFetcher', () => {
     mockContent({ subjects: ['news', 'plone'] });
     const fetcher = searchShortcutsFetcher({ apiUrl: API, contextPath: '/page' });
     const { items, total } = await fetcher(
-      { pageField: 'subjects', index: 'Subject', searchUrl: '/search' },
+      { pageField: 'subjects', index: 'Subject', searchUrl: [{ '@id': '/search' }] },
       { start: 0, size: 10 },
     );
     expect(total).toBe(2);
@@ -76,7 +76,7 @@ describe('searchShortcutsFetcher', () => {
     });
     const fetcher = searchShortcutsFetcher({ apiUrl: API, contextPath: '/page' });
     const { items, total } = await fetcher(
-      { index: 'Subject', searchUrl: '/search' },
+      { index: 'Subject', searchUrl: [{ '@id': '/search' }] },
       { start: 0, size: 10 },
     );
     expect(total).toBe(2);
@@ -88,10 +88,20 @@ describe('searchShortcutsFetcher', () => {
     mockContent({ subjects: ['a b & c'] });
     const fetcher = searchShortcutsFetcher({ apiUrl: API, contextPath: '/page' });
     const { items } = await fetcher(
-      { pageField: 'subjects', index: 'Subject', searchUrl: '/search' },
+      { pageField: 'subjects', index: 'Subject', searchUrl: [{ '@id': '/search' }] },
       { start: 0, size: 10 },
     );
     expect(items[0]['@id']).toBe('/search?facet.Subject=a%20b%20%26%20c');
+  });
+
+  test('a search page stored as a string is refused', async () => {
+    // A link field holds [{'@id'}]; a string would be a second shape to read.
+    mockContent({ subjects: ['news'] });
+    const fetcher = searchShortcutsFetcher({ apiUrl: API, contextPath: '/page' });
+    await expect(fetcher(
+      { pageField: 'subjects', index: 'Subject', searchUrl: '/search' },
+      { start: 0, size: 10 },
+    )).rejects.toThrow(/\[\{"@id"/);
   });
 });
 
@@ -105,7 +115,7 @@ describe('rssFetcher', () => {
   test('parses feed items into raw results (@id = entry link), paged', async () => {
     global.fetch = async () => ({ ok: true, text: async () => RSS });
     const { items, total } = await rssFetcher()(
-      { feedUrl: 'http://x/feed', count: 10 },
+      { feedUrl: [{ '@id': 'http://x/feed' }], count: 10 },
       { start: 0, size: 10 },
     );
     expect(total).toBe(2);
@@ -121,19 +131,31 @@ describe('rssFetcher', () => {
   test('honours block.count as an upper bound', async () => {
     global.fetch = async () => ({ ok: true, text: async () => RSS });
     const { items, total } = await rssFetcher()(
-      { feedUrl: 'http://x/feed', count: 1 },
+      { feedUrl: [{ '@id': 'http://x/feed' }], count: 1 },
       { start: 0, size: 10 },
     );
     expect(total).toBe(1);
     expect(items).toHaveLength(1);
   });
 
+  test('a bug in reading the feed is not swallowed as an empty feed', async () => {
+    global.fetch = async () => ({ ok: true, text: async () => { throw new RangeError('boom'); } });
+    await expect(rssFetcher()({ feedUrl: [{ '@id': 'http://x/feed' }] }, { start: 0, size: 10 }))
+      .rejects.toThrow('boom');
+  });
+
+  test('a feed address stored as a string is refused', async () => {
+    global.fetch = async () => ({ ok: true, text: async () => RSS });
+    await expect(rssFetcher()({ feedUrl: 'http://x/feed' }, { start: 0, size: 10 }))
+      .rejects.toThrow(/\[\{"@id"/);
+  });
+
   test('degrades to empty on fetch failure (best-effort CORS)', async () => {
     global.fetch = async () => {
-      throw new Error('CORS');
+      throw new TypeError('Failed to fetch');
     };
     const { items, total } = await rssFetcher()(
-      { feedUrl: 'http://x/feed' },
+      { feedUrl: [{ '@id': 'http://x/feed' }] },
       { start: 0, size: 10 },
     );
     expect(items).toEqual([]);

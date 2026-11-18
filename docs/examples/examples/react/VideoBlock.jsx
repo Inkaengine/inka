@@ -1,5 +1,5 @@
 function VideoBlock({ block }) {
-  const url = block.url || '';
+  const url = block.url?.[0]?.['@id'] ?? '';  // a link field: [{ '@id': url }]
   const youtubeId = url.match(/(?:youtu\.be\/|youtube\.com\/(?:watch\?v=|embed\/))([^&?/]+)/)?.[1];
 
   return (

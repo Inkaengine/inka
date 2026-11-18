@@ -23,7 +23,7 @@ subjects:
   - content
 title: Content as Markdown
 blocks-matched: |
-  <block type="slate" value="${p,h*,ul,ol,blockquote,strong,em,a/slate}" plaintext="${p,h*,ul,ol,blockquote,strong,em,a/text}" />
+  <block type="slate" value="${p,h*,ul,ol,blockquote,strong,em,a/slate}" />
   <block type="title" _="${h1}" />
   <block type="codeExample">
     <region name="tabs" widget="object_list" idField="@id" typeField="@type">
@@ -111,7 +111,7 @@ The accessor after the slash says what to read:
 - `lang`, `textarea`, `meta` — a fenced block's language, code, or info string
 - `level` — a heading's depth, for composing a tag name
 
-Pick `text` or `textarea` by the widget of the field it fills. They differ only in a paragraph wrapped across lines: `text` reads the wrap as a space, as markdown and a rich value do, while `textarea` keeps every line, because a textarea's newlines are the author's own. A hard break (a trailing `\`) is a newline in both. A slate block's `plaintext` uses `text`, so it always matches its value.
+Pick `text` or `textarea` by the widget of the field it fills. They differ only in a paragraph wrapped across lines: `text` reads the wrap as a space, as markdown and a rich value do, while `textarea` keeps every line, because a textarea's newlines are the author's own. A hard break (a trailing `\`) is a newline in both.
 
 Note that `src` and `link` name different fields, not two spellings of one: `src` is a bare source url (an image's `url`), while `link` is a link target in the object-browser form (a button or teaser `href`).
 

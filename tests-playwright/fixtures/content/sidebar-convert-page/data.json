@@ -1,0 +1,38 @@
+{
+    "@id": "http://localhost:8888/sidebar-convert-page",
+    "@type": "Document",
+    "UID": "sidebar-convert-page-uid",
+    "id": "sidebar-convert-page",
+    "title": "Sidebar Convert Page",
+    "blocks": {
+        "title-block": {
+            "@type": "title"
+        },
+        "boxall-1": {
+            "@type": "convBoxAll",
+            "blocks": {
+                "s-1": {
+                    "@type": "convSource",
+                    "title": "Source with a note",
+                    "note": "Only a source has a note"
+                },
+                "s-2": {
+                    "@type": "convSource",
+                    "title": "Source without a note"
+                }
+            },
+            "blocks_layout": {
+                "items": [
+                    "s-1",
+                    "s-2"
+                ]
+            }
+        }
+    },
+    "blocks_layout": {
+        "items": [
+            "title-block",
+            "boxall-1"
+        ]
+    }
+}

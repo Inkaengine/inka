@@ -23,7 +23,7 @@ subjects:
   - frontend
 title: Custom Blocks
 blocks-matched: |
-  <block type="slate" value="${p,h*,ul,ol,blockquote,strong,em,a/slate}" plaintext="${p,h*,ul,ol,blockquote,strong,em,a/text}" />
+  <block type="slate" value="${p,h*,ul,ol,blockquote,strong,em,a/slate}" />
   <block type="title" _="${h1}" />
   <block type="codeExample">
     <region name="tabs" widget="object_list" idField="@id" typeField="@type">
@@ -276,7 +276,7 @@ const bridge = initBridge({
             title: 'Slide',
             blockSchema: {
                 properties: {
-                    url: { title: 'Link', widget: 'url' },
+                    url: { title: 'Link', widget: 'object_browser', mode: 'link', allowExternals: true },
                     title: { title: 'Title' },
                     image: { title: 'Image', widget: 'image' },
                     description: { title: 'Description',
@@ -424,6 +424,22 @@ The stored value is a name (`plone.app.vocabularies.Keywords`), not a URL, so co
 
 `@vocabularies/<name>` supports `?title=` (a case-insensitive substring filter, applied server-side) and `b_start` / `b_size` batching. A type-ahead should send `?title=` per keystroke rather than fetch every term — a long vocabulary is exactly the case where a list is the wrong control.
 
+## Link fields hold one shape
+
+A link field is `widget: "object_browser"` with `mode: "link"`; add `allowExternals: true` when an address outside the site is allowed too. It stores a list of links, `[{ "@id": "/about" }]`, whether the link is to a page on the site or an external URL: an address typed in is stored as `[{ "@id": "https://example.com", "title": "example.com" }]`. A link picked from the site may carry its summary as well (`title`, `@type`, …). That's the only shape: unset, or an empty list, means no link, and a plain string is never stored.
+
+The `url` widget is deprecated: declare a link as above instead.
+
+Read the address from the first entry:
+
+### Javascript
+
+```javascript
+const href = block.href?.length ? block.href[0]['@id'] : null;
+```
+
+The editor writes this shape everywhere: the sidebar's link widget, an inline link edit, and a block conversion that maps a field onto a link. The editor's save and the content check refuse any other, so content from somewhere else (an import, a conversion script) has to be converted first. A field meant to hold a plain URL string is a plain string field, not a link field.
+
 ## Picking a block, and a value from it (`blockPicker`)
 
 A field that names **another block** — "show this question when THAT one is answered" — should offer a menu, not ask for a uid. `blockPicker` reads `blockPathMap`, the same container/region map the editor uses, and stores a **field of the block chosen**.
@@ -448,11 +464,11 @@ show_when_when: {
 
 ### What a candidate reads as
 
-`labelField` only nominates where THIS kind of block keeps its name. Without it, a block is named by the shared `blockDisplayTitle` — `title`, then `label`, then the block's own rich text read live, then the stored `plaintext`, then the block type's configured title, then the raw type.
+`labelField` only nominates where THIS kind of block keeps its name. Without it, a block is named by the shared `blockDisplayTitle` — `title`, then `label`, then the block's own rich text read live, then the block type's configured title, then the raw type.
 
-Live text comes before `plaintext` on purpose. Nothing in the editor writes `plaintext`: the backend serializer does, at save time. Preferring it would name a heading by its previous wording for as long as the author kept typing, so the slate value is read directly (`slateNodesText`) and the stored text is the fallback for blocks whose words are not slate.
+The rich text is read as it is now (`slateNodesText`), never from a copy stored on save, so a heading renamed on the canvas is named by its new words straight away.
 
-That is the same function the sidebar's child list uses, deliberately: a question that reads "Your name" in one list and "Text" in another is confusing in a way nobody reports. Set `labelField` when a block's name lives somewhere the chain would not look — a form question's `label` beats its `plaintext`.
+That is the same function the sidebar's child list uses, deliberately: a question that reads "Your name" in one list and "Text" in another is confusing in a way nobody reports. Set `labelField` when a block's name lives somewhere the chain would not look — a form question's `label` beats the words of its description.
 
 ### Not the same as `schemaFieldSelect`
 
@@ -1113,7 +1129,9 @@ A block field may not be **named** `@id`, at any depth (in an object field, in a
 
 ## Search text
 
-A page is found by the text of its blocks. When the page is saved, Inka stores each block's text as its `searchableText`, which plone.restapi's indexer reads. It visits a block's `blocks` and `data.blocks` itself, so a block carries only its own text, plus whatever that visit can't reach: object lists, such as table cells and form questions, and regions in any other object. Search text belongs to the page, so a block a template owns (`fixed` and `readOnly`) gets none.
+A page is found by the text of its blocks. When the page is saved, Inka stores each block's text as its `searchableText`, which plone.restapi's indexer reads. It visits a block's `blocks` and `data.blocks` itself, so a block carries only its own text, plus whatever that visit can't reach: object lists, such as table cells and form questions, and regions in any other object. Search text belongs to the page, so a block a template owns (`fixed` and `readOnly`) gets none. The core text block is no exception: its paragraphs and list items are separate words, and inline formatting runs on with the words around it. Save removes the `plaintext` Volto keeps on a text block, which plone.restapi would otherwise read as an old copy of its words.
+
+Content that never goes through the editor gets its search text the same way. A markdown tree is given it as it is read, from the frontend's block schemas (`CONTENT_SCHEMAS` for the mock API, which refuses to export markdown without them), and `plone-content search-text <content-dir> --schemas <schemas>` writes it into an exported tree.
 
 A block's own text is the fields a person writes, in schema order: fields with no widget or a `text`, `textarea` or `slate` widget, with no fixed set of choices and not marked `multilingual_options.language_independent`. Mark a plain string that holds a token, such as a width or an anchor, with that flag. A field its `fieldRules` hide is left out. If another order suits your block, or its text is in a picked item's title or a list of strings, name its fields:
 
