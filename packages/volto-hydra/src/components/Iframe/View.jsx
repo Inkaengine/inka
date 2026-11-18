@@ -325,6 +325,7 @@ function isSelectionValidForValue(selection, slateValue) {
 import './styles.css';
 import { useIntl } from 'react-intl';
 import { withoutUndeclaredFields } from '../../utils/withoutUndeclaredFields';
+import { assertCanAddTo } from '../../utils/templateFolderPermission';
 import config from '@plone/volto/registry';
 import { BlockChooser, Icon, Toast } from '@plone/volto/components';
 import { Menu, Dimmer, Loader, Confirm } from 'semantic-ui-react';
@@ -1665,19 +1666,7 @@ const Iframe = (props) => {
         const parentFolder = lastSlash > 0 ? templateId.slice(0, lastSlash) : '/';
         const id = templateId.slice(lastSlash + 1);
         // Creating a template needs "Add portal content" on the chosen folder.
-        let targetFolder = null;
-        try {
-          targetFolder = await api.get(parentFolder);
-        } catch {
-          // Couldn't read permissions — let the backend 403 be the authority.
-        }
-        if (targetFolder?.can_add === false) {
-          const err = new Error(
-            `You don't have permission to add templates in "${parentFolder}" (requires “Add portal content”).`,
-          );
-          err.isPermissionError = true;
-          throw err;
-        }
+        await assertCanAddTo(api, parentFolder);
         await api.post(parentFolder, {
           data: {
             '@type': template['@type'],
