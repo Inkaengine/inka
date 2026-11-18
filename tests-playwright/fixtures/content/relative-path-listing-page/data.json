@@ -8,17 +8,6 @@
     "grid-1": {
       "@type": "gridBlock",
       "blocks": {
-        "teaser-1": {
-          "@type": "teaser",
-          "title": "Manual Item",
-          "description": "This is a manually added teaser",
-          "href": [
-            {
-              "@id": "/_test_data/target-page",
-              "title": "Target Page"
-            }
-          ]
-        },
         "children-listing": {
           "@type": "listing",
           "headline": "This page's children",
@@ -90,7 +79,6 @@
       },
       "blocks_layout": {
         "items": [
-          "teaser-1",
           "children-listing",
           "parent-listing"
         ]
