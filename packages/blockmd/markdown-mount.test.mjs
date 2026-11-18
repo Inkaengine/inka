@@ -103,6 +103,22 @@ describe('resolveLiteralIncludes', () => {
       expect(shown['@uid']).toBeUndefined();     // runtime uid filtered out
     });
 
+    it('shows a link as the site serves it, given where the tree is mounted', () => {
+      // The JSON is what a frontend receives, so a link authored relative to the
+      // included file reads as its served path, not as `./page.md`.
+      const docs = join(mdDir, 'docs', 'examples');
+      mkdirSync(docs, { recursive: true });
+      writeFileSync(join(docs, 'teaser.md'), [
+        '---', 'title: T', 'blocks-tagged: |', '  <block type="teaser" title="${h/text}" href="${h/link}" />', '---', '',
+        '<block type="teaser">', '', '## [Go](./content-types/page.md)', '', '</block>', '',
+      ].join('\n'));
+      const directive = '```{literalinclude} ./teaser.md\n:block: teaser\n:as: json\n```';
+      const served = parseFence(resolveLiteralIncludes(directive, docs, { root: join(mdDir, 'docs'), prefix: '/docs' }));
+      expect(served.href).toEqual([{ '@id': '/docs/examples/content-types/page' }]);
+      // Without a mount, the link is shown as authored.
+      expect(parseFence(resolveLiteralIncludes(directive, docs)).href).toEqual([{ '@id': './content-types/page.md' }]);
+    });
+
     it('a .md include WITHOUT :as: json still inlines the raw markdown text', () => {
       const out = resolveLiteralIncludes(
         '```{literalinclude} example.md\n:start-after: <!-- example:start -->\n:end-before: <!-- example:end -->\n```',
@@ -201,16 +217,29 @@ describe('resolveMediaUrl', () => {
     for (const u of ['https://x.io/a.png', 'data:image/svg+xml,<svg/>', '/architecture.svg', '/docs/static/demo.mp4'])
       expect(resolveMediaUrl(u, 'examples', '/docs')).toBe(u);
   });
-  it('rewrites image and video block urls when walking blocks', () => {
+  it('rewrites image block urls when walking blocks', () => {
     const blocks = {
-      'v-1': { '@type': 'video', url: './docs/static/demo.mp4' },
       'i-1': { '@type': 'image', url: '/architecture.svg' },
       'i-2': { '@type': 'image', url: 'shot.png' },
     };
     resolveMarkdownLinksInBlocks(blocks, '');
-    expect(blocks['v-1'].url).toBe('/docs/static/demo.mp4');
     expect(blocks['i-1'].url).toBe('/architecture.svg'); // absolute untouched
     expect(blocks['i-2'].url).toBe('/shot.png');
+  });
+  it('rewrites a relative link in any link list, whatever block or field holds it', () => {
+    // A link field holds [{'@id'}]; the reader goes by that shape, not by the
+    // block's type, so a video, a teaser or a custom block's link all resolve.
+    const blocks = {
+      'v-1': { '@type': 'video', url: [{ '@id': './static/demo.mp4' }] },
+      'c-1': { '@type': 'anyBlock', target: [{ '@id': '../other.md#part' }], keep: [{ '@id': 'https://keep.me' }] },
+      // An object list's items carry their own id in `@id`: not an address.
+      's-1': { '@type': 'socialLinks', links: [{ '@id': 'link-1', url: [{ '@id': 'https://github.com' }] }] },
+    };
+    resolveMarkdownLinksInBlocks(blocks, 'docs/examples', '');
+    expect(blocks['v-1'].url).toEqual([{ '@id': '/docs/examples/static/demo.mp4' }]);
+    expect(blocks['c-1'].target).toEqual([{ '@id': '/docs/other#part' }]);
+    expect(blocks['c-1'].keep).toEqual([{ '@id': 'https://keep.me' }]);
+    expect(blocks['s-1'].links[0]['@id']).toBe('link-1');
   });
 });
 

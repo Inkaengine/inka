@@ -25,8 +25,7 @@
             }
           ]
         }
-      ],
-      "plaintext": "This is the second forced-footer page"
+      ]
     },
     "ap2-footer-user-content": {
       "@type": "slate",
@@ -39,8 +38,7 @@
             }
           ]
         }
-      ],
-      "plaintext": "Page 2 footer user content - no layout markers"
+      ]
     }
   },
   "blocks_layout": {

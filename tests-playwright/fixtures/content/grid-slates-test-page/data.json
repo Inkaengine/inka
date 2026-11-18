@@ -82,8 +82,7 @@
       }
      ]
     }
-   ],
-   "plaintext": "Grid Slates"
+   ]
   },
   "gs-grid": {
    "@type": "gridBlock",
@@ -99,8 +98,7 @@
         }
        ]
       }
-     ],
-     "plaintext": "First grid slate"
+     ]
     },
     "gs-slate-2": {
      "@type": "slate",
@@ -113,8 +111,7 @@
         }
        ]
       }
-     ],
-     "plaintext": "Second grid slate"
+     ]
     },
     "gs-slate-3": {
      "@type": "slate",
@@ -127,8 +124,7 @@
         }
        ]
       }
-     ],
-     "plaintext": "Third grid slate"
+     ]
     }
    },
    "blocks_layout": {
@@ -150,8 +146,7 @@
       }
      ]
     }
-   ],
-   "plaintext": "Text after the grid"
+   ]
   }
  },
  "blocks_layout": {

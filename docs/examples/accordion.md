@@ -209,7 +209,7 @@ Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincid
 
 <block type="teaser">
 
-### [Teaser Title H2](/docs/examples/content-types/page)
+### [Teaser Title H2](./content-types/page.md)
 
 Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincidunt ut laoreet dolore magna aliquam erat volutpat. Ut wisi enim ad minim veniam, quis nostrud exerci tation ullamcorper suscipit lobortis nisl ut aliquip ex ea commodo
 
@@ -219,7 +219,7 @@ Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincid
 
 <block type="teaser">
 
-### [Teaser Title H2](/docs/examples/content-types/image-light.jpg)
+### [Teaser Title H2](./content-types/image-light.jpg)
 
 Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincidunt ut laoreet dolore magna aliquam erat volutpat. Ut wisi enim ad minim veniam, quis nostrud exerci tation ullamcorper
 
@@ -229,7 +229,7 @@ Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincid
 
 <block type="teaser">
 
-### [Teaser Title H2](/docs/examples/content-types/page)
+### [Teaser Title H2](./content-types/page.md)
 
 Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincidunt ut laoreet dolore magna aliquam erat volutpat. Ut wisi enim ad minim veniam, quis nostrud exerci tation ullamcorper
 

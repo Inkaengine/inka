@@ -52,7 +52,7 @@ A content preview card that links to another page. Selecting a target page via t
 
 <block type="teaser">
 
-## [Headline H2](/docs/examples/content-types/page)
+## [Headline H2](./content-types/page.md)
 
 **Head title**
 
@@ -64,7 +64,7 @@ Lorem ipsum dolor sit amet, consetetur sadipscing elitr, sed diam nonumy eirmod 
 
 <block type="teaser">
 
-## [Headline H2](/docs/examples/content-types/page)
+## [Headline H2](./content-types/page.md)
 
 **Head title**
 
@@ -76,7 +76,7 @@ Lorem ipsum dolor sit amet, consetetur sadipscing elitr, sed diam nonumy eirmod 
 
 <block type="teaser">
 
-## [Headline H2](/docs/examples/content-types/page)
+## [Headline H2](./content-types/page.md)
 
 **Head title**
 
@@ -88,7 +88,7 @@ Lorem ipsum dolor sit amet, consetetur sadipscing elitr, sed diam nonumy eirmod 
 
 <block type="teaser">
 
-## [Headline H2](/docs/examples/content-types/page)
+## [Headline H2](./content-types/page.md)
 
 Lorem ipsum dolor sit amet, consetetur sadipscing elitr, sed diam nonumy eirmod tempor invidunt ut labore et dolore magna aliquyam erat, sed diam voluptua. At vero eos et accusam et justo duo dolores et ea rebum.
 
@@ -98,7 +98,7 @@ Lorem ipsum dolor sit amet, consetetur sadipscing elitr, sed diam nonumy eirmod 
 
 <block type="teaser">
 
-## [Headline H2](/docs/examples/content-types/page)
+## [Headline H2](./content-types/page.md)
 
 Lorem ipsum dolor sit amet, consetetur sadipscing elitr, sed diam nonumy eirmod tempor invidunt ut labore et dolore magna aliquyam erat, sed diam voluptua. At vero eos et accusam et justo duo dolores et ea rebum. Stet clita kasd gubergren, no sea.
 
@@ -108,7 +108,7 @@ Lorem ipsum dolor sit amet, consetetur sadipscing elitr, sed diam nonumy eirmod 
 
 <block type="teaser">
 
-## [Headline H2](/docs/examples/content-types/page)
+## [Headline H2](./content-types/page.md)
 
 Lorem ipsum dolor sit amet, consetetur sadipscing elitr, sed diam nonumy eirmod tempor invidunt ut labore et dolore magna aliquyam erat, sed diam voluptua. At vero eos et accusam et justo duo dolores et ea rebum. Stet clita kasd gubergren, no sea.
 

@@ -236,7 +236,9 @@ onMounted(() => {
                                     properties: {
                                         url: {
                                             title: 'URL',
-                                            widget: 'url',
+                                            widget: 'object_browser',
+                                            mode: 'link',
+                                            allowExternals: true,
                                         },
                                     },
                                 },

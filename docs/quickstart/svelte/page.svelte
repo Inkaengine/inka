@@ -16,7 +16,7 @@
           image: { widget: 'image' },
           title: { type: 'string' },
           description: { type: 'string' },
-          link: { widget: 'url' },
+          link: { widget: 'object_browser', mode: 'link', allowExternals: true },
         } } } },
         // Re-render on every edit.
         onEditChange: (data) => { page = data },
@@ -34,7 +34,7 @@
     {#if page.blocks[id]['@type'] === 'card'}
       <!-- The card block is rendered editable. -->
       <div data-block-uid={editing ? id : undefined}>
-        <a href={page.blocks[id].link} data-edit-link={editing ? 'link' : undefined}>
+        <a href={page.blocks[id].link?.[0]?.['@id']} data-edit-link={editing ? 'link' : undefined}>
           <img src={page.blocks[id].image} data-edit-media={editing ? 'image' : undefined} />
           <h3 data-edit-text={editing ? 'title' : undefined}>{page.blocks[id].title}</h3>
           <p data-edit-text={editing ? 'description' : undefined}>{page.blocks[id].description}</p>

@@ -1,5 +1,5 @@
 function MapsBlock({ block }) {
-  const url = block.url || '';
+  const url = block.url?.[0]?.['@id'] ?? '';  // a link field: [{ '@id': url }]
 
   return (
     <div data-block-uid={block['@uid']} className="maps-block">

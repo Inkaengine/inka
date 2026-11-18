@@ -93,16 +93,34 @@ export function resolveMediaUrl(url, base, prefix = '') {
   return prefix && prefix !== '/' ? prefix + (treePath === '/' ? '' : treePath) : treePath;
 }
 
+/** An `@id` written as a path relative to the page (`./x`, `../x`, `x.md`), not
+ *  an object list item's own id (`link-1`). */
+const isRelativePath = (id) => /^\.\.?\//.test(id) || id.split('#')[0].endsWith('.md');
+
+/** A link's relative address: a `.md` target is a page, anything else a file. */
+const resolveLinkId = (id, base, prefix) => {
+  if (!isRelativePath(id)) return id;
+  return id.split('#')[0].endsWith('.md') ? resolveMarkdownLink(id, base, prefix) : resolveMediaUrl(id, base, prefix);
+};
+
+/** A list of `{ '@id' }` entries: a link field's value (the one shape a link is stored in). */
+const isLinkList = (value) => Array.isArray(value) && value.length > 0
+  && value.every((v) => v && typeof v === 'object' && !Array.isArray(v) && typeof v['@id'] === 'string');
+
 /** Walk a decoded page and rewrite hand-authored relative references against
  *  `base`, prefixed by the mount path so they match the served @ids: every
- *  slate link's `.md` url, and every image/video block's media `url`. */
+ *  slate link's `.md` url, every link list's `@id`, and every image block's
+ *  media `url`. */
 export function resolveMarkdownLinksInBlocks(node, base, prefix = '') {
   if (Array.isArray(node)) { node.forEach((n) => resolveMarkdownLinksInBlocks(n, base, prefix)); return node; }
   if (!node || typeof node !== 'object') return node;
   if (node.type === 'link' && node.data && typeof node.data.url === 'string') {
     node.data.url = resolveMarkdownLink(node.data.url, base, prefix);
   }
-  if ((node['@type'] === 'image' || node['@type'] === 'video') && typeof node.url === 'string') {
+  for (const [key, value] of Object.entries(node)) {
+    if (isLinkList(value)) node[key] = value.map((link) => ({ ...link, '@id': resolveLinkId(link['@id'], base, prefix) }));
+  }
+  if (node['@type'] === 'image' && typeof node.url === 'string') {
     node.url = resolveMediaUrl(node.url, base, prefix);
   }
   for (const value of Object.values(node)) resolveMarkdownLinksInBlocks(value, base, prefix);
@@ -316,8 +334,12 @@ function sliceJsObject(code, name) {
  *  engine (and the rendered docs) show the referenced file's real code with no
  *  copy in the markdown. Honors :language:, :start-after:/:end-before:, :lines:,
  *  matching Sphinx so both renderers show the identical slice. Paths are relative
- *  to `baseDir` (the markdown file's directory). Fails loudly on a missing file. */
-export function resolveLiteralIncludes(text, baseDir) {
+ *  to `baseDir` (the markdown file's directory). Fails loudly on a missing file.
+ * @param {{ root: string, prefix?: string }} [mount] - where the tree is served
+ *   from: with it, an `:as: json` include shows its links as the site serves
+ *   them (as readTree resolves the page's own); without it, as authored.
+ */
+export function resolveLiteralIncludes(text, baseDir, mount) {
   return text.replace(/```\{literalinclude\}[ \t]+(\S+)[ \t]*\n([\s\S]*?)```/g, (_m, relPath, body) => {
     const opts = {};
     for (const line of body.split('\n')) {
@@ -351,6 +373,7 @@ export function resolveLiteralIncludes(text, baseDir) {
       const fm = fmMatch ? fmMatch[0] : '---\n---\n';
       const body = fmMatch ? full.slice(fmMatch[0].length) : full;
       const decoded = decodePage(`${fm}${sliceInclude(body, opts)}\n`, { ignoreAssignments: true });
+      if (mount && decoded.blocks) resolveMarkdownLinksInBlocks(decoded.blocks, relative(mount.root, dirname(file)), mount.prefix ?? '');
       const entries = Object.values(decoded.blocks || {});
       // `:block: <uid-or-@type>` selects one block by identity (the `:pyobject:`
       // analog) — source= parity with no text anchors, robust across re-emit.
@@ -476,7 +499,7 @@ export function readTree(root, { decode = decodeAuto, prefix = '', isFolderish }
     if (!file.endsWith('.md')) continue;
     // `{literalinclude}` references are resolved to inline code before decoding,
     // so a codeExample tab shows the referenced file's real code with no copy.
-    const page = decode(resolveLiteralIncludes(readFileSync(file, 'utf8'), dirname(file)));
+    const page = decode(resolveLiteralIncludes(readFileSync(file, 'utf8'), dirname(file), { root, prefix }));
     const id = idFor(root, file);
     page['@id'] = id;
     if (/(?:^|[/\\])(index|README)\.md$/i.test(file)) folderForm.add(id);

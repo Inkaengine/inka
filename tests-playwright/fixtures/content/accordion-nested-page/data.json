@@ -33,8 +33,7 @@
                     }
                   ]
                 }
-              ],
-              "plaintext": "Visible without opening anything."
+              ]
             }
           },
           "blocks_layout": {
@@ -62,8 +61,7 @@
                         }
                       ]
                     }
-                  ],
-                  "plaintext": "Two levels under the panel handle."
+                  ]
                 }
               },
               "blocks_layout": {
@@ -106,8 +104,7 @@
                             }
                           ]
                         }
-                      ],
-                      "plaintext": "Inner panel that starts open."
+                      ]
                     }
                   },
                   "blocks_layout": {
@@ -131,8 +128,7 @@
                             }
                           ]
                         }
-                      ],
-                      "plaintext": "Two closed containers deep."
+                      ]
                     }
                   },
                   "blocks_layout": {
