@@ -536,3 +536,50 @@ def test_the_site_root_is_the_export_root_whatever_the_site_is_called(tmp_path):
     assert tree["plone_site_root"]["UID"] == "root"
     assert tree["Plone"]["UID"] == "aaa"
     assert dirs == {"plone_site_root": "plone_site_root", "Plone": "aaa"}
+
+
+def test_a_field_at_its_types_default_is_unset():
+    """The live serializer writes a field its type gives a default
+    (`exclude_from_nav: false`) where a layout leaves it out. The default and
+    unset are the same state, as `null`, `""` and `[]` are; any other value is
+    a choice and still counts. Matched by type too: `0` is not `false`."""
+    rules = CompareRules(field_defaults={"Document": {"exclude_from_nav": False, "count": 0}})
+    disk = {k: v for k, v in doc("components/form", UID_X).items() if k != "exclude_from_nav"}
+    at_default = doc("components/form", UID_X, exclude_from_nav=False)
+    chosen = doc("components/form", UID_X, exclude_from_nav=True)
+    assert cleaned_for_compare(at_default, rules) == cleaned_for_compare(disk, rules)
+    assert cleaned_for_compare(chosen, rules) != cleaned_for_compare(disk, rules)
+    not_the_default = doc("components/form", UID_X, count=False)
+    assert "count" in cleaned_for_compare(not_the_default, rules)
+    # Another type's defaults are not this one's.
+    other = doc("components/form", UID_X, **{"@type": "News Item", "exclude_from_nav": False})
+    assert "exclude_from_nav" in cleaned_for_compare(other, rules)
+
+
+def test_a_default_the_live_page_writes_is_not_an_editor_edit():
+    """A deploy refused a docs page as a live editor edit over this alone: the
+    base, recorded from the layout, has no `exclude_from_nav`; the live page,
+    never edited, serializes its default `false`; the layout changed something
+    else. That is an update, not a clobber. A page an editor really hid still
+    warns."""
+    rules = CompareRules(field_defaults={"Document": {"exclude_from_nav": False}})
+    base = {k: v for k, v in doc("components/form", UID_X).items() if k != "exclude_from_nav"}
+    disk = dict(base, title="Forms, revised")
+    live = dict(base, exclude_from_nav=False)
+    plan = classify(
+        tree(("components/form", base)),
+        tree(("components/form", disk)),
+        tree(("components/form", live)),
+        rules,
+    )
+    assert plan.actions_for("components/form") == Action.UPDATE
+    assert plan.warnings == []
+
+    hidden = dict(base, exclude_from_nav=True)
+    plan = classify(
+        tree(("components/form", base)),
+        tree(("components/form", disk)),
+        tree(("components/form", hidden)),
+        rules,
+    )
+    assert plan.warnings == ["components/form"]

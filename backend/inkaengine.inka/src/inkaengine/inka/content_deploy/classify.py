@@ -162,10 +162,18 @@ class CompareRules:
 
     `default_views`: each content type's default view, as the site's type
     settings give it (delta.default_views_of). An item on it has no view of its
-    own, whichever way a copy spells that."""
+    own, whichever way a copy spells that.
+
+    `field_defaults`: each content type's fields and their schema defaults
+    (delta.field_defaults_of). A field at its default is unset, whichever way
+    a copy spells that: the live serializer writes `exclude_from_nav: false`
+    where a layout leaves it out."""
 
     ignored_fields: frozenset[str] = frozenset()
     default_views: Mapping[str, str] = field(
+        default_factory=lambda: MappingProxyType({})
+    )
+    field_defaults: Mapping[str, Mapping[str, Any]] = field(
         default_factory=lambda: MappingProxyType({})
     )
 
@@ -226,6 +234,17 @@ def cleaned_for_compare(
     layout = cleaned.get("layout")
     if layout is not None and layout == rules.default_views.get(cleaned.get("@type")):
         cleaned.pop("layout")
+    # A field at its type's default is the same unset state: the live
+    # serializer writes `exclude_from_nav: false` on a page nobody touched,
+    # where the layout leaves the field out, and a deploy refused such a page
+    # as an editor's edit. Same value AND same type: `false` is not `0`.
+    defaults = rules.field_defaults.get(cleaned.get("@type"), {})
+    for key in [
+        k
+        for k, v in cleaned.items()
+        if k in defaults and type(v) is type(defaults[k]) and v == defaults[k]
+    ]:
+        cleaned.pop(key)
     # A file's `blob_path` is where an export put its bytes: `<uid>/file/x` from
     # the exporter, `videos/x/file/x` in a layout whose folders are named by
     # path. Every such file warned as a live edit. Its name, type and size are
