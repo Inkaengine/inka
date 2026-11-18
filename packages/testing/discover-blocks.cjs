@@ -104,6 +104,41 @@ function regionFields(blocksConfig) {
 }
 
 /**
+ * Does this block hold blocks in this region? A blocks_layout region lists them
+ * in `blocks_layout[field]` (or `field.items`); an object_list region is the
+ * array itself.
+ */
+function holdsBlocksIn(blockData, field) {
+  const data = blockData || {};
+  const list = data.blocks_layout?.[field] ?? data[field];
+  const items = Array.isArray(list) ? list : list?.items;
+  return Array.isArray(items) && items.length > 0;
+}
+
+/**
+ * A case for each region that some container fills and no kept example does.
+ *
+ * Discovery keeps a rich and a simple example per type, and the empty-region
+ * sweep chooses among the kept cases only. A region one container alone fills —
+ * a layout's right sidebar when every other example uses the left — would be
+ * emptied on an example that doesn't draw it. That container is rendered too.
+ *
+ * @param kept - the cases discovery kept
+ * @param holders - "blockType|field" -> the first editable container filling it
+ */
+function regionHolderCases(kept, holders) {
+  const added = [];
+  const covered = (type, field) =>
+    [...kept, ...added].some((b) => b.blockType === type && holdsBlocksIn(b.blockData, field));
+  for (const [key, example] of holders) {
+    const [type, field] = key.split('|');
+    if (covered(type, field)) continue;
+    added.push({ ...example, kind: `holds:${field}` });
+  }
+  return added;
+}
+
+/**
  * Pair each region with a real discovered container example, so the sanity test
  * has a page and block to load and empty. Regions whose container has no content
  * example anywhere are skipped (nothing to empty). Plus one case for the PAGE's
@@ -124,12 +159,7 @@ function buildEmptyRegionCases(blocksConfig, blocks) {
   // of its regions (a layout whose setting picks the left or the right
   // sidebar), and one that has content in a region draws it. Emptying a region
   // its example doesn't draw checks nothing but that setting.
-  const holds = (b, field) => {
-    const data = b.blockData || {};
-    const list = data.blocks_layout?.[field] ?? data[field];
-    const items = Array.isArray(list) ? list : list?.items;
-    return Array.isArray(items) && items.length > 0;
-  };
+  const holds = (b, field) => holdsBlocksIn(b.blockData, field);
   const rank = (b, field) => (isLocked(b) ? 0 : 2) + (holds(b, field) ? 1 : 0);
   const cases = [];
   for (const { parentType, field } of regionFields(blocksConfig)) {
@@ -1531,6 +1561,15 @@ async function discoverBlocks(
   // the block itself (its usual render check), not as its parent.
   const placementExamples = new Map();
 
+  // "blockType|field" -> the first editable container holding blocks in that
+  // region (see regionHolderCases).
+  const regionHolders = new Map();
+  const regionsOf = new Map();
+  for (const { parentType, field } of regionFields(blocksConfig)) {
+    if (!regionsOf.has(parentType)) regionsOf.set(parentType, []);
+    regionsOf.get(parentType).push(field);
+  }
+
   // style -> the first block carrying it, for styleExampleCases.
   const styleCandidates = new Map();
   // style -> where it is first offered: every style an author can pick in a
@@ -1763,6 +1802,15 @@ async function discoverBlocks(
             isListing: blockType === 'listing', needsUnlock: editable.needsUnlock,
           });
         }
+        for (const field of regionsOf.get(blockType) || []) {
+          const holderKey = `${blockType}|${field}`;
+          if (!regionHolders.has(holderKey) && holdsBlocksIn(blockData, field)) {
+            regionHolders.set(holderKey, {
+              blockType, variation, blockId, pagePath, blockData, placement,
+              isListing: blockType === 'listing', needsUnlock: editable.needsUnlock,
+            });
+          }
+        }
 
         for (const kind of ['rich', 'simple']) {
           const key = `${blockType}:${variation}:${kind}`;
@@ -1817,6 +1865,11 @@ async function discoverBlocks(
     placed.add(placementKey);
     console.log(`[DISCOVER] Found ${example.blockType} in ${example.placement} block "${example.blockId}" on ${example.pagePath} (adds that place)`);
     seen.set(`in:${placementKey}`, { ...example, kind: `in:${example.placement}`, _score: 0 });
+  }
+
+  for (const holder of regionHolderCases([...seen.values()], regionHolders)) {
+    console.log(`[DISCOVER] Found ${holder.blockType} block "${holder.blockId}" on ${holder.pagePath} (adds its ${holder.kind.slice(6)} region)`);
+    seen.set(`${holder.kind}:${holder.blockType}`, { ...holder, _score: 0 });
   }
 
   // Dedupe by blockId — when the same parent uid shows up as rich AND as a
@@ -2083,6 +2136,7 @@ module.exports = {
   extractBlocks,
   buildObjectListFieldsMap,
   buildEmptyRegionCases,
+  regionHolderCases,
   collectListingContainerIssues,
   isContainmentExempt,
   readContainmentRules,
