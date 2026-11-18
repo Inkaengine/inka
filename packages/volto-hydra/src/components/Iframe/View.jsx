@@ -324,6 +324,7 @@ function isSelectionValidForValue(selection, slateValue) {
 }
 import './styles.css';
 import { useIntl } from 'react-intl';
+import { withoutUndeclaredFields } from '../../utils/withoutUndeclaredFields';
 import { assertCanAddTo } from '../../utils/templateFolderPermission';
 import config from '@plone/volto/registry';
 import { BlockChooser, Icon, Toast } from '@plone/volto/components';
@@ -1649,6 +1650,12 @@ const Iframe = (props) => {
     // A new template (Make template) is not on the site yet, so it differs.
     if (templateStoredRef.current[templateId] ===
         JSON.stringify({ blocks: template.blocks, blocks_layout: template.blocks_layout })) return;
+    // Each block holds what its schema declares, as on the page's own save
+    // (a conversion's leftovers stay in the editor's copy, for the way back).
+    const { blocks, blocks_layout } = withoutUndeclaredFields(
+      { blocks: template.blocks, blocks_layout: template.blocks_layout },
+      { blocksConfig: config.blocks.blocksConfig, intl },
+    );
     try {
       if (template._isNew) {
         // New template: POST to parent folder so Plone creates it (as the type
@@ -1665,8 +1672,8 @@ const Iframe = (props) => {
             '@type': template['@type'],
             id,
             title: template.title || id,
-            blocks: template.blocks,
-            blocks_layout: template.blocks_layout,
+            blocks,
+            blocks_layout,
           },
         });
         // Mutate in place so the cached reference stays valid; next save PATCHes.
@@ -1674,10 +1681,7 @@ const Iframe = (props) => {
         rememberStored(templateId, template);
       } else {
         await api.patch(templateId, {
-          data: {
-            blocks: template.blocks,
-            blocks_layout: template.blocks_layout,
-          },
+          data: { blocks, blocks_layout },
         });
         rememberStored(templateId, template);
       }
@@ -1687,7 +1691,7 @@ const Iframe = (props) => {
       error.templateId = templateId;
       throw error;
     }
-  }, []);
+  }, [intl]);
 
   // Resolve each object_list field's idField ONCE from the schema (a form's subblocks are keyed
   // by field_id, not @id) and pass it to every walk of the containers, which names each list's

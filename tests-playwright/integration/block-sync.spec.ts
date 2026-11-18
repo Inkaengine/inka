@@ -1492,6 +1492,39 @@ test.describe('Block Type Conversion via fieldMappings', () => {
     await expect(buttonTextInput).toHaveValue('Click Me', { timeout: 5000 });
   });
 
+  /**
+   * The editor keeps a converted block's other fields so switching back restores
+   * them (the test above); the save stores only what the final type declares, as
+   * the content check requires. A hero's button text has no place on an image.
+   */
+  test('saving a converted block stores only what its new type declares', async ({ page, urls }) => {
+    const helper = new AdminUIHelper(page);
+    await helper.login();
+    await helper.navigateToEdit('/test-page');
+
+    await expect(helper.getIframe().locator('[data-block-uid="block-4-hero"]')).toBeVisible({ timeout: 10000 });
+    await helper.clickBlockInIframe('block-4-hero');
+    await helper.waitForSidebarOpen();
+    await helper.openSidebarTab('Block');
+    const breadcrumb = page.locator('.parent-block-section .parent-nav').last();
+    await expect(breadcrumb).toContainText('Hero', { timeout: 5000 });
+
+    await helper.openConvertChooser();
+    await helper.selectBlockType('image');
+    await expect(breadcrumb).toContainText('Image', { timeout: 5000 });
+
+    await helper.saveContent();
+
+    const token = (await page.context().cookies()).find((c) => c.name === 'auth_token')!.value;
+    const stored = await (await page.request.get(`${urls.mockApi}/_test_data/test-page`, {
+      headers: { Accept: 'application/json', Authorization: `Bearer ${token}` },
+    })).json();
+    const image = stored.blocks['block-4-hero'];
+    expect(image['@type']).toBe('image');
+    expect(image, 'a hero-only field is not stored on the image').not.toHaveProperty('buttonText');
+    expect(image, 'nor the subheading').not.toHaveProperty('subheading');
+  });
+
   test('hero to teaser and back preserves image rendering', async ({ page }) => {
     const helper = new AdminUIHelper(page);
 

@@ -2480,7 +2480,9 @@ export function convertBlockType(blockData, newType, blocksConfig, typeFieldName
 
   // Preserve unmapped fields from the original block that aren't in the final result
   // This enables roundtrip conversion (hero → image → hero) to retain fields like buttonText
-  // that exist in source and target but aren't explicitly mapped through intermediate types
+  // that exist in source and target but aren't explicitly mapped through intermediate types.
+  // Kept for editing only: the save stores what the final type declares
+  // (withoutUndeclaredFields).
   const { [typeFieldName]: _originalType, ...originalFields } = blockData;
   const { [typeFieldName]: finalType, ...convertedFields } = currentData;
 

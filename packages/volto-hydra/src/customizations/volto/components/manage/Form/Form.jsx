@@ -89,6 +89,7 @@ import SlotRenderer from '@plone/volto/components/theme/SlotRenderer/SlotRendere
 import Iframe from '../../../../../components/Iframe/View';
 import { ReadOnlyField } from '../../../../../components/Sidebar/ReadOnlyForm';
 import { validateBlocksAgainstSchemas } from '../../../../../utils/validateBlocks';
+import { withoutUndeclaredFields } from '../../../../../utils/withoutUndeclaredFields';
 import { loadContentTypeSchemas } from '../../../../../utils/contentTypeSchemas';
 import { reportBlockErrors } from '../../../../../utils/reportBlockErrors';
 import './styles.css';
@@ -789,6 +790,13 @@ class Form extends Component {
         toast.error(<Toast error title="Can't save yet" content={error.message} />);
         return;
       }
+      // Each block holds what its schema declares. A conversion keeps a block's
+      // other fields while editing, so switching the type back restores them;
+      // they stop here, as the content check requires of stored content.
+      pageFormData = withoutUndeclaredFields(pageFormData, {
+        blocksConfig: config.blocks.blocksConfig,
+        intl: this.props.intl,
+      });
       // What a region refuses never reaches the server, however it got into the
       // form: the sidebar's slate editor writes to it with no rules of its own.
       pageFormData = normalizeSlateStylesForSave(
