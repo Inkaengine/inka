@@ -28,7 +28,6 @@
           ]
         }
       ],
-      "plaintext": "Stale Header - Should Be Replaced By Merge",
       "templateId": "resolveuid/test-layout-template-uid",
       "templateInstanceId": "tpl-instance-1",
       "slotId": "header"
@@ -79,7 +78,6 @@
           ]
         }
       ],
-      "plaintext": "Stale Footer - Should Be Replaced By Merge",
       "templateId": "resolveuid/test-layout-template-uid",
       "templateInstanceId": "tpl-instance-1",
       "slotId": "footer"
@@ -135,8 +133,7 @@
             }
           ]
         }
-      ],
-      "plaintext": "Conv footer page footer content"
+      ]
     }
   },
   "blocks_layout": {

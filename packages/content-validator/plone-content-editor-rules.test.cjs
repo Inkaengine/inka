@@ -174,6 +174,55 @@ describe('checkEditorRules()', () => {
     assert.match(r.errors[0], /column/);
   });
 
+  describe('an empty block is where the editor seeds one', () => {
+    // A region's seed is its defaultBlockType, else its one allowed type, else `empty`
+    // (getEmptyBlockType). So `empty` belongs wherever the seed is `empty`, listed or not.
+    const regionSchemas = (items) => ({
+      ...SCHEMAS,
+      box: { blockSchema: { properties: { items: { widget: 'blocks_layout', ...items } } } },
+      _page: { blockSchema: { properties: { items: { ...SCHEMAS._page.blockSchema.properties.items, allowedBlocks: ['box'] } } } },
+    });
+    const boxWithEmpty = page({ b: { '@type': 'box', blocks: { e: { '@type': 'empty' } }, blocks_layout: { items: ['e'] } } }, ['b']);
+    const misplaced = async (items) => (await checkEditorRules(boxWithEmpty, regionSchemas(items))).errors.filter((e) => /does not allow it/.test(e));
+
+    it('allowed in a region with no default and a choice of types', async () => {
+      assert.deepEqual(await misplaced({ allowedBlocks: ['card', 'text'] }), []);
+    });
+
+    it('refused where the region seeds another type', async () => {
+      assert.equal((await misplaced({ allowedBlocks: ['card', 'text'], defaultBlockType: 'text' })).length, 1);
+      assert.equal((await misplaced({ allowedBlocks: ['card'] })).length, 1);
+    });
+  });
+
+  describe('a link field holds the link list, the one shape its widget writes', () => {
+    // An object_browser field stores `[{ "@id": "/path" }]`. A plain string worked only
+    // where a reader guessed at both shapes, and a markdown rule reads one.
+    const linkSchemas = {
+      ...SCHEMAS,
+      _page: { blockSchema: { properties: { items: { ...SCHEMAS._page.blockSchema.properties.items, allowedBlocks: ['card'] } } } },
+      card: { blockSchema: { properties: { title: { title: 'Title' }, url: { title: 'Link', widget: 'object_browser', mode: 'link' } } } },
+    };
+    const errorsFor = async (url) => (await checkEditorRules(page({ c: { '@type': 'card', title: 'T', url } }, ['c']), linkSchemas)).errors;
+
+    it('a string is reported', async () => {
+      const errors = await errorsFor('/components');
+      assert.equal(errors.length, 1, errors.join('\n'));
+      assert.match(errors[0], /card/);
+      assert.match(errors[0], /url/);
+      assert.match(errors[0], /\[\{"@id"/);
+    });
+
+    it('the link list is not, and neither is an empty one', async () => {
+      assert.deepEqual(await errorsFor([{ '@id': '/components' }]), []);
+      assert.deepEqual(await errorsFor([]), []);
+    });
+
+    it('a list whose item has no @id is reported', async () => {
+      assert.equal((await errorsFor([{ title: 'No address' }])).length, 1);
+    });
+  });
+
   it('reports a required field left empty', async () => {
     const r = await checkEditorRules(page({ c: { '@type': 'card', description: 'D' } }, ['c']), SCHEMAS);
     assert.equal(r.errors.length, 1);
@@ -237,14 +286,24 @@ describe('checkEditorRules()', () => {
   });
 
   describe("without Volto's validators", () => {
-    it('skips the field values, and says so', async () => {
+    it("skips Volto's own validators, and says so", async () => {
       const r = await checkEditorRules(page({ c: { '@type': 'card', description: 'D' } }, ['c']), SCHEMAS, {
         volto: null,
       });
       assert.deepEqual(r.errors, []);
       assert.equal(r.warnings.length, 1);
-      assert.match(r.warnings[0], /not checked/);
-      assert.equal(r.stats.fieldErrors, null);
+      assert.match(r.warnings[0], /Volto's validators/);
+    });
+
+    it("still applies Inka's own field rules: a link is a list", async () => {
+      const linkSchemas = {
+        ...SCHEMAS,
+        _page: { blockSchema: { properties: { items: { ...SCHEMAS._page.blockSchema.properties.items, allowedBlocks: ['card'] } } } },
+        card: { blockSchema: { properties: { title: { title: 'Title' }, url: { title: 'Link', widget: 'object_browser', mode: 'link' } } } },
+      };
+      const r = await checkEditorRules(page({ c: { '@type': 'card', title: 'T', url: '/components' } }, ['c']), linkSchemas, { volto: null });
+      assert.equal(r.errors.length, 1, r.errors.join('\n'));
+      assert.match(r.errors[0], /\[\{"@id"/);
     });
 
     it('still applies every other rule', async () => {

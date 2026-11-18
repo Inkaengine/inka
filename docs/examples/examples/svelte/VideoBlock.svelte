@@ -1,6 +1,6 @@
 <script>
   export let block;
-  $: url = block.url || '';
+  $: url = block.url?.[0]?.['@id'] ?? '';  // a link field: [{ '@id': url }]
   $: youtubeId = url.match(/(?:youtu\.be\/|youtube\.com\/(?:watch\?v=|embed\/))([^&?/]+)/)?.[1];
 </script>
 

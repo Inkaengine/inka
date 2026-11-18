@@ -1,0 +1,47 @@
+{
+  "name": "@inka/compare",
+  "version": "0.0.1",
+  "private": true,
+  "description": "Compares two renders of a site, page by page or component by component: pixels, geometry, markup, reading and accessibility, narrowed to named regions; and the runner that compares a converted site with its source.",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Inkaengine/inka.git",
+    "directory": "packages/compare"
+  },
+  "license": "MIT",
+  "type": "module",
+  "engines": {
+    "node": ">=20.19.0"
+  },
+  "exports": {
+    "./pixels": "./pixels.mjs",
+    "./geometry": "./geometry.mjs",
+    "./markup": {
+      "types": "./markup.d.ts",
+      "default": "./markup.mjs"
+    },
+    "./reading": "./reading.mjs",
+    "./regions": "./regions.mjs",
+    "./accessibility": "./accessibility.mjs",
+    "./fetch": "./fetch.mjs",
+    "./source-archive": "./source-archive.mjs",
+    "./pages": "./pages.mjs"
+  },
+  "bin": {
+    "inka-compare-sites": "./compare-sites.mjs"
+  },
+  "files": [
+    "pixels.mjs",
+    "geometry.mjs",
+    "accessibility.mjs",
+    "fetch.mjs",
+    "source-archive.mjs",
+    "README.md",
+    "markup.mjs",
+    "markup.d.ts",
+    "regions.mjs",
+    "reading.mjs",
+    "pages.mjs",
+    "compare-sites.mjs"
+  ]
+}

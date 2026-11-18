@@ -747,15 +747,15 @@ export const sharedBlocksConfig = {
             fieldsets: [{ id: 'default', title: 'Default', fields: ['title', 'url', 'align'] }],
             properties: {
                 title: { title: 'Title', type: 'string' },
-                url: { title: 'Map URL', widget: 'url' },
+                url: { title: 'Map URL', widget: 'object_browser', mode: 'link', allowExternals: true },
                 align: { title: 'Alignment', type: 'string', factory: 'Choice' },
             },
             required: [],
         },
     },
     video: { id: 'video', title: 'Video', group: 'common', mostUsed: true, blockSchema: { properties: {
-        url: { title: 'Video URL', widget: 'url' },
-        preview_image: { title: 'Preview image URL', widget: 'url' },
+        url: { title: 'Video URL', widget: 'object_browser', mode: 'link', allowExternals: true },
+        preview_image: { title: 'Preview image URL', widget: 'object_browser', mode: 'image', allowExternals: true },
         align: { title: 'Alignment', widget: 'align' },
         autoplay: { title: 'Autoplay', type: 'boolean' },
         controls: { title: 'Show controls', type: 'boolean' },
@@ -1015,7 +1015,7 @@ export const sharedBlocksConfig = {
                     widget: 'schemaFieldSelect',
                     fieldType: 'keyword',
                 },
-                searchUrl: { title: 'Search page URL', widget: 'url' },
+                searchUrl: { title: 'Search page URL', widget: 'object_browser', mode: 'link', allowExternals: true },
                 variation: { title: 'Item Type', widget: 'blockTypeSelect', filterConvertibleFrom: '@default', blocksField: '..', default: 'default' },
                 // The mapping's sources: each shortcut's search link and value (searchShortcutsFetcher). The item type's default
                 // is stored with the block when the type is picked, as a
@@ -1038,7 +1038,7 @@ export const sharedBlocksConfig = {
         blockSchema: {
             fieldsets: [{ id: 'default', title: 'Default', fields: ['feedUrl', 'count', 'variation', 'fieldMapping'] }],
             properties: {
-                feedUrl: { title: 'Feed URL', widget: 'url' },
+                feedUrl: { title: 'Feed URL', widget: 'object_browser', mode: 'link', allowExternals: true },
                 count: { title: 'Max items', type: 'number', default: 6 },
                 variation: { title: 'Item Type', widget: 'blockTypeSelect', filterConvertibleFrom: '@default', blocksField: '..', default: 'summary' },
                 // The mapping's sources: an entry's link, title and description (rssFetcher). The item type's default
@@ -1085,10 +1085,10 @@ export const sharedBlocksConfig = {
         },
         blockSchema: {
             properties: {
-                href:        { title: 'Link', widget: 'url' },
+                href:        { title: 'Link', widget: 'object_browser', mode: 'link', allowExternals: true },
                 title:       { title: 'Title' },
                 description: { title: 'Description', widget: 'textarea' },
-                image:       { title: 'Image', widget: 'url' },
+                image:       { title: 'Image', widget: 'object_browser', mode: 'image', allowExternals: true },
                 date:        { title: 'Date', widget: 'date' },
             },
         },
@@ -1102,7 +1102,7 @@ export const sharedBlocksConfig = {
         },
         blockSchema: {
             properties: {
-                href:        { title: 'Link', widget: 'url' },
+                href:        { title: 'Link', widget: 'object_browser', mode: 'link', allowExternals: true },
                 title:       { title: 'Title' },
                 description: { title: 'Description', widget: 'textarea' },
             },
@@ -2145,7 +2145,7 @@ export const sharedBlocksConfig = {
             idField: '@id',
             schema: {
               fieldsets: [{ id: 'default', title: 'Default', fields: ['url'] }],
-              properties: { url: { title: 'URL', widget: 'url' } },
+              properties: { url: { title: 'URL', widget: 'object_browser', mode: 'link', allowExternals: true } },
               required: [],
             },
           },
@@ -2162,7 +2162,7 @@ export const sharedBlocksConfig = {
       restricted: true, // Only used inside socialLinks' typed object_list
       blockSchema: {
         fieldsets: [{ id: 'default', title: 'Default', fields: ['url'] }],
-        properties: { url: { title: 'URL', widget: 'url' } },
+        properties: { url: { title: 'URL', widget: 'object_browser', mode: 'link', allowExternals: true } },
         required: [],
       },
     },
@@ -2223,8 +2223,13 @@ export const sharedBlocksConfig = {
         group: 'common',
         fieldMappings: {}, // present (truthy) so it's a valid conversion source
         blockSchema: {
-            fieldsets: [{ id: 'default', title: 'Default', fields: ['title'] }],
-            properties: { title: { title: 'Title', type: 'string' } },
+            fieldsets: [{ id: 'default', title: 'Default', fields: ['title', 'note'] }],
+            properties: {
+                title: { title: 'Title', type: 'string' },
+                // No target has a note: converting a source that has one loses
+                // it, so the editor asks first (sidebar-type-dropdown.spec.ts).
+                note: { title: 'Note', type: 'string' },
+            },
             required: [],
         },
     },
@@ -2335,6 +2340,25 @@ export const sharedBlocksConfig = {
                 items: {
                     widget: 'blocks_layout',
                     allowedBlocks: ['convTargetA', 'convTargetB'],
+                },
+            },
+            required: [],
+        },
+    },
+
+    // Container that takes a source AND both its targets, so a source inside
+    // it can be changed to either from the sidebar (sidebar-type-dropdown.spec.ts).
+    convBoxAll: {
+        id: 'convBoxAll',
+        title: 'Convert Box (all)',
+        restricted: true,
+        group: 'common',
+        blockSchema: {
+            fieldsets: [{ id: 'default', title: 'Default', fields: [] }],
+            properties: {
+                items: {
+                    widget: 'blocks_layout',
+                    allowedBlocks: ['convSource', 'convTargetA', 'convTargetB'],
                 },
             },
             required: [],

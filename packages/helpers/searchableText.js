@@ -15,13 +15,16 @@ import { buildBlockPathMap, getBlockSchema } from './buildBlockPathMap.js';
  * config: plain data, because a frontend's config crosses the bridge as JSON).
  */
 
-// A copy with no search text at any depth: what follows sets it where it belongs.
+// A copy with no search text at any depth: what follows sets it where it belongs. A slate
+// block's `plaintext` goes too: restapi reads it when a block has no searchableText, and
+// nothing keeps it up to date, so it could only be read as an old version.
+const DERIVED = new Set(['searchableText', 'plaintext']);
 function withoutText(value) {
   if (Array.isArray(value)) return value.map(withoutText);
   if (!value || typeof value !== 'object') return value;
   const out = {};
   for (const [key, child] of Object.entries(value)) {
-    if (key !== 'searchableText') out[key] = withoutText(child);
+    if (!DERIVED.has(key)) out[key] = withoutText(child);
   }
   return out;
 }
@@ -48,8 +51,7 @@ function withText(block, id, options) {
   });
   const text = joined(parts);
   let out = block;
-  // A slate block's text is what restapi reads from it anyway.
-  if (text && text !== block.plaintext) out = { ...out, searchableText: text };
+  if (text) out = { ...out, searchableText: text };
   if (out.blocks?.constructor === Object) out = withBlockTexts(out, options);
   if (out.data?.blocks) out = { ...out, data: withBlockTexts(out.data, options) };
   return out;

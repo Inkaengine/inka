@@ -20,7 +20,7 @@ export default function Page() {
             image: { widget: 'image' },
             title: { type: 'string' },
             description: { type: 'string' },
-            link: { widget: 'url' },
+            link: { widget: 'object_browser', mode: 'link', allowExternals: true },
           } } },
         },
         // Re-render on every edit.
@@ -45,7 +45,7 @@ export default function Page() {
       )
     return (
       <div key={id} data-block-uid={editing ? id : undefined}>
-        <a href={block.link} data-edit-link={editing ? 'link' : undefined}>
+        <a href={block.link?.[0]?.['@id']} data-edit-link={editing ? 'link' : undefined}>
           <img src={block.image} data-edit-media={editing ? 'image' : undefined} />
           <h3 data-edit-text={editing ? 'title' : undefined}>{block.title}</h3>
           <p data-edit-text={editing ? 'description' : undefined}>{block.description}</p>

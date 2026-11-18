@@ -1678,6 +1678,8 @@ importers:
         specifier: 1.10.2
         version: 1.10.2
 
+  packages/compare: {}
+
   packages/content-validator:
     dependencies:
       '@volto-hydra/helpers':
@@ -1768,6 +1770,9 @@ importers:
       '@inka/content-validator':
         specifier: workspace:*
         version: link:../content-validator
+      '@volto-hydra/helpers':
+        specifier: workspace:*
+        version: link:../helpers
       cors:
         specifier: ^2.8.5
         version: 2.8.5
@@ -1777,10 +1782,6 @@ importers:
       yaml:
         specifier: 1.10.2
         version: 1.10.2
-    devDependencies:
-      '@volto-hydra/helpers':
-        specifier: workspace:*
-        version: link:../helpers
 
   packages/testing:
     dependencies:

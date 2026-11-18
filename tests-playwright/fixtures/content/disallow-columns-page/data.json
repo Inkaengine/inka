@@ -23,8 +23,7 @@
           "blocks": {
             "inner-1": {
               "@type": "slate",
-              "value": [{ "type": "p", "children": [{ "text": "inner content" }] }],
-              "plaintext": "inner content"
+              "value": [{ "type": "p", "children": [{ "text": "inner content" }] }]
             }
           },
           "blocks_layout": { "items": ["inner-1"] }
@@ -42,8 +41,7 @@
           "blocks": {
             "src-slate": {
               "@type": "slate",
-              "value": [{ "type": "p", "children": [{ "text": "source content" }] }],
-              "plaintext": "source content"
+              "value": [{ "type": "p", "children": [{ "text": "source content" }] }]
             }
           },
           "blocks_layout": { "items": ["src-slate"] }

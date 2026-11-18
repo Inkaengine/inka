@@ -16,8 +16,7 @@
             }
           ]
         }
-      ],
-      "plaintext": "This is a standalone block before the template"
+      ]
     },
     "template-header": {
       "@type": "slate",
@@ -33,7 +32,6 @@
           ]
         }
       ],
-      "plaintext": "Stale Header - Should Be Replaced By Merge",
       "templateId": "resolveuid/test-layout-template-uid",
       "templateInstanceId": "tpl-instance-1",
       "slotId": "header"
@@ -52,7 +50,6 @@
           ]
         }
       ],
-      "plaintext": "User content - different from template default",
       "templateId": "resolveuid/test-layout-template-uid",
       "templateInstanceId": "tpl-instance-1",
       "slotId": "primary"
@@ -103,7 +100,6 @@
           ]
         }
       ],
-      "plaintext": "Stale Footer - Should Be Replaced By Merge",
       "templateId": "resolveuid/test-layout-template-uid",
       "templateInstanceId": "tpl-instance-1",
       "slotId": "footer"
@@ -119,8 +115,7 @@
             }
           ]
         }
-      ],
-      "plaintext": "This is a standalone block after the template"
+      ]
     },
     "old-grp": {
       "@type": "gridBlock",
@@ -143,8 +138,7 @@
                 }
               ]
             }
-          ],
-          "plaintext": "Old group child"
+          ]
         }
       },
       "blocks_layout": {

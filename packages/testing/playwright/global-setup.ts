@@ -15,12 +15,17 @@
  * the same ones; an option given in code wins.
  */
 import * as fs from 'node:fs';
+import * as path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { createRequire } from 'node:module';
 import { chromium } from '@playwright/test';
 import { harnessUrls } from '../ports';
 import { discoveryPath } from '../discovery';
 
 const require = createRequire(import.meta.url);
+const { checkRunningAdmin } = require('../admin-build-stamp.cjs');
+/** The Inka checkout this harness is part of: the admin a consumer runs is built from it. */
+const INKA_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../..');
 const { discoverBlocks, buildEmptyRegionCases, collectListingContainerIssues } =
   require('../discover-blocks.cjs');
 
@@ -306,11 +311,16 @@ export async function discoverForFrontends(options: DiscoveryOptions): Promise<v
 export interface AdminOptions {
   /**
    * The URL to poll. Default: VOLTO_HEALTH_URL, else the admin itself when
-   * prebuilt (USE_PREBUILT=true) or its webpack dev server's /health.
+   * built, or its webpack dev server's /health (ADMIN_DEV=1).
    */
   healthUrl?: string;
-  /** A production build: any 200 means ready. Default: USE_PREBUILT=true. */
+  /**
+   * A built admin (`pnpm build:test`): ready on any 200, and refused unless
+   * it was built from this checkout. Default: built, unless ADMIN_DEV=1.
+   */
   prebuilt?: boolean;
+  /** The Inka checkout the admin is built from. Default: the one holding this harness. */
+  inkaRoot?: string;
   /** Give up after this long. Default: 5 minutes. */
   timeoutMs?: number;
 }
@@ -334,7 +344,7 @@ export async function waitForAdmin(options: AdminOptions = {}): Promise<void> {
   const retryDelay = 5000;
   const maxRetries = Math.ceil((options.timeoutMs ?? 5 * 60_000) / retryDelay);
 
-  const usePrebuilt = options.prebuilt ?? process.env.USE_PREBUILT === 'true';
+  const usePrebuilt = options.prebuilt ?? process.env.ADMIN_DEV !== '1';
   const healthUrl =
     options.healthUrl ??
     process.env.VOLTO_HEALTH_URL ??
@@ -351,7 +361,11 @@ export async function waitForAdmin(options: AdminOptions = {}): Promise<void> {
       if (usePrebuilt) {
         // For production server, any 200 response means ready
         if (response.status === 200) {
-          console.log('[SETUP] ✓ Volto production server ready');
+          // A server left running from before a pull or a branch switch
+          // answers too, and reuseExistingServer would use it: refuse one
+          // built from other code (admin-build-stamp.cjs).
+          await checkRunningAdmin(healthUrl, options.inkaRoot ?? INKA_ROOT);
+          console.log('[SETUP] ✓ Volto production server ready, built from this checkout');
           return;
         }
       } else {

@@ -21,13 +21,13 @@ rights: ""
 subjects: []
 title: Containers
 blocks-matched: |
-  <block type="slate" value="${p,h*,ul,ol,blockquote,strong,em,a/slate}" plaintext="${p,h*,ul,ol,blockquote,strong,em,a/text}" />
+  <block type="slate" value="${p,h*,ul,ol,blockquote,strong,em,a/slate}" />
   <block type="title" _="${h1}" />
   <block type="image" description="${p?/textarea}" url="${img/src}" alt="${img?/alt}" title="${img?/title}" align="center" size="l" />
 blocks-tagged: |
   <block type="callout">
     <region name="items" widget="blocks_layout">
-      <block type="slate" value="${p,h*,ul,ol,blockquote,strong,em,a/slate}" plaintext="${p,h*,ul,ol,blockquote,strong,em,a/text}" />
+      <block type="slate" value="${p,h*,ul,ol,blockquote,strong,em,a/slate}" />
     </region>
   </block>
 ---
@@ -96,7 +96,14 @@ Edge handles only appear when the container is selected. They don't render on ed
 
 ## Convert (change container type)
 
-In the block toolbar dropdown, **Convert to...** lists block types this block can be converted to. For containers, conversion preserves the children:
+There are two ways to change a block's type, and they offer the same types and convert the same way:
+
+- **The block's title in the sidebar.** When the block can be changed into another type, its title at the top of the sidebar is a dropdown (`Cards ▾`). Pick a type and the block is converted. **Convert to…** in the sidebar's `•••` menu opens the same list.
+- **Convert to...** in the block toolbar dropdown.
+
+A conversion happens straight away, and one undo reverses it. Nothing is lost: what the new type has no field for stays with the block, unseen, and comes back if you convert it back.
+
+For containers, conversion preserves the children:
 
 - **Layout shape conversion** — children move into the new container's layout field automatically (whether the source uses `blocks_layout` or `object_list`).
 - **Recursive child conversion** — if some children's `@type` isn't in the target's `allowedBlocks`, those children are themselves converted (using their `fieldMappings`) so they fit. If no path exists, the conversion target is shown disabled with a tooltip.

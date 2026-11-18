@@ -212,6 +212,19 @@ function formatDate(dateStr, showTime) {
 }
 
 /**
+ * The address a link field holds. A link field stores one shape, a list of
+ * links, `[{ "@id": url }]`, for a page on the site and an outside address
+ * alike; unset or empty is no link. Anything else is refused, not guessed at.
+ */
+function linkUrl(value) {
+  if (value == null || (Array.isArray(value) && value.length === 0)) return "";
+  if (!Array.isArray(value) || typeof value[0]?.["@id"] !== "string") {
+    throw new Error(`a link is stored as [{"@id": url}], got ${JSON.stringify(value)}`);
+  }
+  return value[0]["@id"];
+}
+
+/**
  * YouTube ID extraction
  */
 function getYouTubeId(url) {
@@ -1629,11 +1642,11 @@ function Block({ block, id, data, apiUrl, contextPath, inListing = false }) {
       // to the nextjs origin (:3007) and 404s — the backend serves it, so prepend
       // the API base for a root-relative URL, exactly as imageProps does. An
       // absolute URL (a YouTube link) is left untouched.
-      const rawVideoUrl = block.url || "";
+      const rawVideoUrl = linkUrl(block.url);
       const videoUrl = rawVideoUrl.startsWith("/") ? `${apiUrl}${rawVideoUrl}` : rawVideoUrl;
       const ytId = getYouTubeId(videoUrl);
       return (
-        <div data-block-uid={id} className="video-block">
+        <div data-block-uid={id} data-edit-link="url" className="video-block">
           {ytId ? (
             <iframe
               src={`https://www.youtube.com/embed/${ytId}`}
@@ -1654,9 +1667,9 @@ function Block({ block, id, data, apiUrl, contextPath, inListing = false }) {
       return (
         <div data-block-uid={id} className="maps-block">
           {block.title && <h3 data-edit-text="title">{block.title}</h3>}
-          {block.url ? (
+          {linkUrl(block.url) ? (
             <iframe
-              src={block.url}
+              src={linkUrl(block.url)}
               data-edit-link="url"
               title={block.title || "Map"}
               allowFullScreen
@@ -1775,13 +1788,13 @@ function Block({ block, id, data, apiUrl, contextPath, inListing = false }) {
         <div data-block-uid={id} className="social-links">
           <span>Follow us:</span>
           {links.map((link, i) => {
-            const info = getSocialInfo(link.url);
+            const info = getSocialInfo(linkUrl(link.url));
             return (
               <a
                 key={link["@uid"] || i}
                 data-block-uid={link["@uid"]}
                 data-block-add="right"
-                href={link.url}
+                href={linkUrl(link.url)}
                 target="_blank"
                 rel="noopener noreferrer"
                 data-edit-link="url"

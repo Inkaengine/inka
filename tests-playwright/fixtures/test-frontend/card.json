@@ -10,7 +10,7 @@
       "image": "data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 width=%27400%27 height=%27200%27%3E%3Crect width=%27100%25%27 height=%27100%25%27 fill=%27%232563eb%27/%3E%3C/svg%3E",
       "title": "A card",
       "description": "One editable block; everything else is shown as JSON.",
-      "link": "/somewhere"
+      "link": [{ "@id": "/somewhere" }]
     },
     "other-1": {
       "@type": "slate",

@@ -39,7 +39,7 @@ blocks-tagged: |
 
 <block type="teaser">
 
-### [Teaser Title H2](/docs/examples/content-types/page)
+### [Teaser Title H2](../content-types/page.md)
 
 **Head title**
 
@@ -55,7 +55,7 @@ Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincid
 
 <block type="teaser">
 
-### [Teaser Title H2](/docs/examples/content-types/page)
+### [Teaser Title H2](../content-types/page.md)
 
 **Head title**
 
@@ -67,7 +67,7 @@ Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincid
 
 <block type="teaser">
 
-### [Teaser Title H2](/docs/examples/content-types/page)
+### [Teaser Title H2](../content-types/page.md)
 
 **Head title**
 
@@ -83,7 +83,7 @@ Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincid
 
 <block type="teaser">
 
-### [Teaser Title H2](/docs/examples/content-types/page)
+### [Teaser Title H2](../content-types/page.md)
 
 **Head title**
 
@@ -95,7 +95,7 @@ Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincid
 
 <block type="teaser">
 
-### [Teaser Title H2](/docs/examples/content-types/page)
+### [Teaser Title H2](../content-types/page.md)
 
 **Head title**
 
@@ -107,7 +107,7 @@ Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincid
 
 <block type="teaser">
 
-### [Teaser Title H2](/docs/examples/content-types/page)
+### [Teaser Title H2](../content-types/page.md)
 
 **Head title**
 
@@ -123,7 +123,7 @@ Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincid
 
 <block type="teaser">
 
-### [Teaser Title H2](/docs/examples/content-types/page)
+### [Teaser Title H2](../content-types/page.md)
 
 **Head title**
 
@@ -135,7 +135,7 @@ Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincid
 
 <block type="teaser">
 
-### [Teaser Title H2](/docs/examples/content-types/page)
+### [Teaser Title H2](../content-types/page.md)
 
 **Head title**
 
@@ -147,7 +147,7 @@ Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincid
 
 <block type="teaser">
 
-### [Teaser Title H2](/docs/examples/content-types/page)
+### [Teaser Title H2](../content-types/page.md)
 
 **Head title**
 
@@ -159,7 +159,7 @@ Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincid
 
 <block type="teaser">
 
-### [Teaser Title H2](/docs/examples/content-types/page)
+### [Teaser Title H2](../content-types/page.md)
 
 **Head title**
 
@@ -179,7 +179,7 @@ Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincid
 
 <block type="teaser">
 
-### [Teaser Title H2](/docs/examples/content-types/page)
+### [Teaser Title H2](../content-types/page.md)
 
 **Head title**
 
@@ -195,7 +195,7 @@ Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincid
 
 <block type="teaser">
 
-### [Teaser Title H2](/docs/examples/content-types/page)
+### [Teaser Title H2](../content-types/page.md)
 
 **Head title**
 
@@ -207,7 +207,7 @@ Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincid
 
 <block type="teaser">
 
-### [Teaser Title H2](/docs/examples/content-types/page)
+### [Teaser Title H2](../content-types/page.md)
 
 **Head title**
 
@@ -223,7 +223,7 @@ Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincid
 
 <block type="teaser">
 
-### [Teaser Title H2](/docs/examples/content-types/page)
+### [Teaser Title H2](../content-types/page.md)
 
 **Head title**
 
@@ -235,7 +235,7 @@ Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincid
 
 <block type="teaser">
 
-### [Teaser Title H2](/docs/examples/content-types/page)
+### [Teaser Title H2](../content-types/page.md)
 
 **Head title**
 
@@ -247,7 +247,7 @@ Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincid
 
 <block type="teaser">
 
-### [Teaser Title H2](/docs/examples/content-types/page)
+### [Teaser Title H2](../content-types/page.md)
 
 **Head title**
 
@@ -263,7 +263,7 @@ Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincid
 
 <block type="teaser">
 
-### [Teaser Title H2](/docs/examples/content-types/page)
+### [Teaser Title H2](../content-types/page.md)
 
 **Head title**
 
@@ -275,7 +275,7 @@ Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincid
 
 <block type="teaser">
 
-### [Teaser Title H2](/docs/examples/content-types/page)
+### [Teaser Title H2](../content-types/page.md)
 
 **Head title**
 
@@ -287,7 +287,7 @@ Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincid
 
 <block type="teaser">
 
-### [Teaser Title H2](/docs/examples/content-types/page)
+### [Teaser Title H2](../content-types/page.md)
 
 **Head title**
 
@@ -299,7 +299,7 @@ Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincid
 
 <block type="teaser">
 
-### [Teaser Title H2](/docs/examples/content-types/page)
+### [Teaser Title H2](../content-types/page.md)
 
 **Head title**
 

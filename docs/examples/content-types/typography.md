@@ -20,7 +20,7 @@ subjects:
   - content
 title: Typography - Page Title (H1, 48/56px)
 blocks-matched: |
-  <block type="slate" value="${p,h*,ul,ol,blockquote,strong,em,a/slate}" plaintext="${p,h*,ul,ol,blockquote,strong,em,a/text}" />
+  <block type="slate" value="${p,h*,ul,ol,blockquote,strong,em,a/slate}" />
   <block type="title" _="${h1}" />
   <block type="image" description="${p?/textarea}" url="${img/src}" alt="${img?/alt}" title="${img?/title}" align="center" size="l" />
 blocks-tagged: |
@@ -52,7 +52,7 @@ blocks-tagged: |
 
 <block type="teaser">
 
-### [Teaser Title (H2, 30/36px)](/docs/examples/content-types)
+### [Teaser Title (H2, 30/36px)](./index.md)
 
 For grid blocks, the font of the headlines are variable, depending on the number of cells in the grid.
 
@@ -66,7 +66,7 @@ For grid blocks, the font of the headlines are variable, depending on the number
 
 <block type="teaser">
 
-### [Teaser Title (H3, 24/30px)](/docs/examples/content-types)
+### [Teaser Title (H3, 24/30px)](./index.md)
 
 **Teaser Headtitle (DIV, 14/18px)**
 
@@ -76,7 +76,7 @@ For grid blocks, the font of the headlines are variable, depending on the number
 
 <block type="teaser">
 
-### [Teaser Title (H3, 24/30px)](/docs/examples/content-types)
+### [Teaser Title (H3, 24/30px)](./index.md)
 
 **Teaser Headtitle (DIV, 14/18px)**
 

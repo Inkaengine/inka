@@ -53,15 +53,15 @@ const TEMPLATE_MEMBERSHIP_KEYS = [
 ];
 
 // Inka's own bookkeeping, also stored on the block: the words it indexes
-// (searchableText.js writes it on save), the text it labels a block by
-// (blockDisplayTitle), copy-from-target's record (_pullFrom, and _customFields
+// (searchableText.js writes it on save), Volto's older copy of a Text block's
+// words that plone.restapi reads (plaintext: save removes it), copy-from-target's record (_pullFrom, and _customFields
 // before it), the anchors the bridge harvests, and the block's identity
 // (`@type`, `@uid`, any `@` key). A field of one of these names would be
 // overwritten by Inka, or read by it as something it is not.
 const BLOCK_BOOKKEEPING_KEYS = ['searchableText', 'plaintext', '_pullFrom', '_customFields', '_linkableAnchors'];
 
 const UNDECLARED_EXEMPT = new Set([
-  'id', 'blocks', 'blocks_layout', 'image_scales', 'plaintext', 'searchableText', 'value',
+  'blocks', 'blocks_layout', 'image_scales', 'searchableText', 'value',
   'styles', 'override', 'block',
   ...TEMPLATE_MEMBERSHIP_KEYS,
   // codeExample selector directives (single-source example pages): `source`
@@ -140,7 +140,7 @@ function childEntries(container, idFieldMap = null) {
   const out = [];
   for (const descriptor of getChildFields(container, idFieldMap, { allObjectLists: true })) {
     for (const entry of getChildBlockEntries(container, descriptor)) {
-      if (entry.block && typeof entry.block === 'object') out.push({ ...entry, region: descriptor.region });
+      if (entry.block && typeof entry.block === 'object') out.push({ ...entry, region: descriptor.region, idField: descriptor.idField });
     }
   }
   return out;
@@ -1488,6 +1488,13 @@ function imageDimensions(file) {
  * INKA_BLOCK_TYPES): the frontend declares every block it renders, so an
  * unknown type is one the editor can't edit and the site can't draw.
  */
+/**
+ * Is this `@` key part of a block's identity? Its type and uid, and on an item of a list,
+ * the key the list is keyed by (`@id` for most). An `@id` anywhere else is not the
+ * block's: a page block is keyed by its uid, and nothing reads one.
+ */
+const identityKey = (field, idField) => field === '@type' || field === '@uid' || field === idField;
+
 function checkBlockSchemas(source, fieldMap, { idFieldMap = null } = {}) {
   // `{ blocks: { type: { fields, defaultsPrefix } }, identityFields: [...] }`.
   // A bare `{ type: [fields] }` map still works, for a caller that has one.
@@ -1511,15 +1518,40 @@ function checkBlockSchemas(source, fieldMap, { idFieldMap = null } = {}) {
   const findings = [];
   const found = new Set();
 
-  const visit = (block, rel) => {
+  // `idField`: the key the list this block is an item of is keyed by, if it is one;
+  // `list`: that list (`form.subblocks`), which names an item typed by another field.
+  // A list's own type field (`field_type` on a form's questions): an identity field
+  // other than `@id`/`@type` whose value names a declared block type.
+  const listTypeFields = [...identityFields].filter((f) => f !== '@id' && f !== '@type');
+  const visit = (block, rel, idField, list) => {
     if (!block || typeof block !== 'object') return;
-    const type = block['@type'];
+    const typedBy = typeof block['@type'] === 'string' || !list ? null
+      : listTypeFields.find((f) => typeof block[f] === 'string' && declaredFields[block[f]]);
+    const type = typedBy ? block[typedBy] : block['@type'];
+    const strayKey = (name, field) => {
+      const key = `${name}.${field}`;
+      if (!strays.has(key)) strays.set(key, rel);
+      if (!found.has(`${rel}\0${key}`)) {
+        found.add(`${rel}\0${key}`);
+        findings.push({
+          rel, blockType: name, field,
+          message: `${rel}: ${key} is not declared by the block's schema — the field cannot be edited, and whatever reads it renders nothing`,
+        });
+      }
+    };
+    // An `@` key is never a schema field (checkReservedFields), so beyond a block's
+    // identity (identityKey) one is stray on any block or list item, whoever holds its
+    // schema and whatever field names its type.
+    for (const field of Object.keys(block)) {
+      if (field.startsWith('@') && !identityKey(field, idField)) strayKey(typeof type === 'string' ? type : `${list} item`, field);
+    }
     if (typeof type === 'string') {
       stats.blocks += 1;
       const entry = declaredFields[type];
       // `{ fields, defaultsPrefix }`, or a bare array from an older map.
       const declared = Array.isArray(entry) ? entry : entry && entry.fields;
       const defaultsPrefix = Array.isArray(entry) ? null : entry && entry.defaultsPrefix;
+      const report = (field) => strayKey(type, field);
       if (entry && entry.builtIn) {
         // Its fields are the admin's built-in schema's (fieldMapFromSchemas):
         // not checked here. Its children still are, below.
@@ -1538,16 +1570,16 @@ function checkBlockSchemas(source, fieldMap, { idFieldMap = null } = {}) {
         }
       } else {
         for (const field of Object.keys(block)) {
-          // `@`-prefixed keys are the block's identity, and UNDECLARED_EXEMPT is
-          // the same set block-sanity uses: fields that ride on a block without
-          // being schema fields. Template machinery is the big one —
+          // A block's identity (identityKey), and UNDECLARED_EXEMPT, the same set
+          // block-sanity uses: fields that ride on a block without being schema
+          // fields. Template machinery is the big one —
           // `templateId`, `templateInstanceId`, `slotId`, `fixed`, `readOnly` —
           // and it is not unchecked, it is checked by the pass that owns it
           // (a template's blocks must carry templateId AND slotId, above).
           // Reporting them here would bury the real findings under three lines
           // for every block on every templated page: 151 of them on content
           // that has nothing wrong with it.
-          if (field.startsWith('@') || UNDECLARED_EXEMPT.has(field)) continue;
+          if (field.startsWith('@') || UNDECLARED_EXEMPT.has(field)) continue; // `@` keys: above
           // A container's per-item defaults (`itemDefaults_colour`) are not
           // properties of the container, and which are valid depends on the
           // item type — resolvable only with the bridge's registry, which is
@@ -1555,15 +1587,7 @@ function checkBlockSchemas(source, fieldMap, { idFieldMap = null } = {}) {
           if (defaultsPrefix && field.startsWith(defaultsPrefix)) continue;
           if (identityFields.has(field)) continue;
           if (declared.includes(field)) continue;
-          const key = `${type}.${field}`;
-          if (!strays.has(key)) strays.set(key, rel);
-          if (!found.has(`${rel}\0${key}`)) {
-            found.add(`${rel}\0${key}`);
-            findings.push({
-              rel, blockType: type, field,
-              message: `${rel}: ${key} is not declared by the block's schema — the field cannot be edited, and whatever reads it renders nothing`,
-            });
-          }
+          report(field);
         }
       }
     }
@@ -1578,7 +1602,7 @@ function checkBlockSchemas(source, fieldMap, { idFieldMap = null } = {}) {
     // the restapi's summary of the TARGET, was read as a child block and the
     // target's content type ("Document", "CaseStudy") reported as an
     // unrenderable block type.
-    for (const [, block] of walkAllBlocks(data.blocks, data, idFieldMap)) visit(block, rel);
+    for (const [, block, , idField, list] of walkAllBlocks(data.blocks, data, idFieldMap)) visit(block, rel, idField, list);
   }
 
   for (const [key, rel] of [...strays.entries()].sort()) {
@@ -1664,9 +1688,9 @@ const PLONE_RESOLVES_BY_NAME = new Set(['url', 'href', 'preview_image']);
 function* walkAllBlocks(blocks, container = null, idFieldMap = null, where = null) {
   const seenIds = new Set();
   if (container) {
-    for (const { id, block } of childEntries(container, idFieldMap)) {
+    for (const { id, block, idField, region } of childEntries(container, idFieldMap)) {
       seenIds.add(id);
-      yield [id, block, where];
+      yield [id, block, where, idField, `${container['@type']}.${region}`];
       yield* walkAllBlocks(block.blocks, block, idFieldMap, id);
     }
   }
@@ -1868,6 +1892,7 @@ async function checkEditorRules(source, schemas, { exemptSlots = [], volto = loa
   const { createFieldRulesEnhancer } = await import('@volto-hydra/helpers/fieldRules.js');
   const { blockFieldErrors, registerRuleErrorValidators } = await import('@volto-hydra/helpers/blockFieldErrors.js');
   const { mergeTemplatesIntoPage } = await import('@volto-hydra/helpers/mergeTemplates.js');
+  const { getEmptyBlockType } = await import('@volto-hydra/helpers/blockPath.js');
   if (volto) registerRuleErrorValidators(volto.config);
   // A schemas file carries schemaEnhancer RECIPES (plain data), and
   // buildBlockPathMap runs only enhancer FUNCTIONS — in the admin, blockSync
@@ -1888,13 +1913,15 @@ async function checkEditorRules(source, schemas, { exemptSlots = [], volto = loa
     ruleErrors: 0, ruleWarnings: 0,
   };
   if (!volto) {
-    stats.fieldErrors = null;
     stats.ruleErrors = null;
     warnings.push(
-      `  Field values were not checked: Volto's validators are not built. Build them in Inka with ` +
-        "`pnpm build:volto-validation` to check what the Volto admin's save refuses.",
+      `  Field values were checked against Inka's own rules only: Volto's validators are not built. ` +
+        "Build them in Inka with `pnpm build:volto-validation` to check what the Volto admin's save refuses.",
     );
   }
+  // Without the bundle, Volto's validators find nothing and Inka's own field
+  // rules (a link's shape, a rule's error on a region) still run.
+  const validateFieldsPerFieldset = volto ? volto.validateFieldsPerFieldset : () => ({});
   // A LAYOUT document holds the blocks of the region that names it in
   // `allowedLayouts` (a site footer's blocks are the footer region's, not the
   // page content's), so it is held to that region's rules: its own `items` are
@@ -2012,8 +2039,17 @@ async function checkEditorRules(source, schemas, { exemptSlots = [], volto = loa
       // PLACEMENT is not checked, and it does not count against maxLength.
       // Every other rule below still applies to it.
       const placementExempt = Boolean(blockData && exempt.has(blockData.slotId));
+      // `empty` is the seed of a region that names no default and offers a choice
+      // (getEmptyBlockType, as the editor seeds it): allowed there, listed or not.
+      const parentSchema = info.parentId
+        ? pathMap._schemas[pathMap[info.parentId]?._schemaRef]
+        : withRules._page?.blockSchema;
+      const regionDef = parentSchema?.properties?.[info.region];
+      const seeded = info.blockType === 'empty'
+        && getEmptyBlockType({ defaultBlockType: regionDef?.defaultBlockType, allowedBlocks: info.allowedSiblingTypes }) === 'empty';
       if (
         !placementExempt &&
+        !seeded &&
         !isEmptySlot(blockData) &&
         !info.allowedSiblingTypesDerived &&
         Array.isArray(info.allowedSiblingTypes) &&
@@ -2043,11 +2079,11 @@ async function checkEditorRules(source, schemas, { exemptSlots = [], volto = loa
       // (required, lengths, pattern, url, email, number limits, item counts)
       // and a fieldRules `error` — the save's own step, with Volto's own code.
       const lockedCopy = blockData && blockData.readOnly === true && !ownTemplate.has(blockData.templateId);
-      if (volto && schema && schema.properties && blockData && !lockedCopy) {
+      if (schema && schema.properties && blockData && !lockedCopy) {
         const refused = blockFieldErrors({
           schema,
           blockData,
-          validateFieldsPerFieldset: volto.validateFieldsPerFieldset,
+          validateFieldsPerFieldset,
           formatMessage: formatVoltoMessage,
           blocksConfig: schemas,
           // What a site's own catalog column holds (a listing's mapping):
@@ -2122,9 +2158,11 @@ function formatReport(title, result) {
     lines.push(`Mappings: ${result.stats.blocks} block types, ${result.stats.mappings} field mappings that don't make sense`);
   } else if (title === 'undeclared') {
     lines.push(`Declared: ${result.stats.blocks} block types, ${result.stats.undeclared} regions naming a block nobody declares`);
+  } else if (title === 'fieldsets') {
+    lines.push(`Fieldsets: ${result.stats.fields} fields, ${result.stats.unlisted} not in any fieldset`);
   } else if (title === 'validate') {
     lines.push(`Content export OK: ${result.stats.dataFiles} data files, ${result.stats.blobFiles} blob files`);
-  } else {
+  } else if (title === 'check') {
     lines.push(`Content: ${result.stats.items} items`);
     lines.push(
       `Images:  ${result.stats.imagesOk} ok, ${result.stats.imagesBroken} broken` +
@@ -2135,6 +2173,8 @@ function formatReport(title, result) {
     lines.push(`UIDs:    ${result.stats.resolveuidOk} resolved, ${result.stats.resolveuidBroken} broken`);
     lines.push(`Links:   ${result.stats.linksOk} ok, ${result.stats.linksBroken} broken`);
     lines.push(`Layout:  ${result.stats.layoutOk} ok, ${result.stats.layoutBroken} dangling`);
+  } else {
+    throw new Error(`formatReport: no summary for a "${title}" report`);
   }
   if (result.errors.length) {
     lines.push('');

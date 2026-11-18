@@ -105,3 +105,41 @@ describe('a codeExample that shows a block type\'s schema', () => {
     assert.equal(flat('nope'), undefined);
   });
 });
+
+describe('search text where the content stores none', () => {
+  // The editor's save writes each block's search text; content read from disk was
+  // never saved. With the frontend's config, the mock fills what is missing, by the
+  // same rule as save, and keeps what the content stores.
+  let withMissingSearchText;
+  before(async () => { ({ withMissingSearchText } = await import('./from-schemas.mjs')); });
+  const blocksConfig = { card: { blockSchema: { properties: { title: { type: 'string' } } } } };
+  const slate = (text) => [{ type: 'p', children: [{ text }] }];
+  const page = (blocks) => ({ blocks, blocks_layout: { items: Object.keys(blocks) } });
+
+  it('fills a block that has none', () => {
+    const out = withMissingSearchText(page({ a: { '@type': 'card', title: 'A card' }, b: { '@type': 'slate', value: slate('Words') } }), blocksConfig);
+    assert.equal(out.blocks.a.searchableText, 'A card');
+    assert.equal(out.blocks.b.searchableText, 'Words');
+  });
+
+  it('keeps one the content stores', () => {
+    const out = withMissingSearchText(page({ a: { '@type': 'card', title: 'A card', searchableText: 'Chosen words' } }), blocksConfig);
+    assert.equal(out.blocks.a.searchableText, 'Chosen words');
+  });
+});
+
+describe('a markdown export leaves out the search text the frontend would give anyway', () => {
+  let withoutDefaultSearchText;
+  before(async () => { ({ withoutDefaultSearchText } = await import('./from-schemas.mjs')); });
+  const blocksConfig = { card: { blockSchema: { properties: { title: { type: 'string' } } } } };
+  const page = (blocks) => ({ blocks, blocks_layout: { items: Object.keys(blocks) } });
+
+  it('drops a default one, and keeps one set to something else', () => {
+    const out = withoutDefaultSearchText(page({
+      a: { '@type': 'card', title: 'A card', searchableText: 'A card' },
+      b: { '@type': 'card', title: 'B card', searchableText: 'Chosen words' },
+    }), blocksConfig);
+    assert.equal('searchableText' in out.blocks.a, false);
+    assert.equal(out.blocks.b.searchableText, 'Chosen words');
+  });
+});

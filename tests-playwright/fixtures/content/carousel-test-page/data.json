@@ -52,8 +52,7 @@
             { "text": " to test getNodePath." }
           ]
         }
-      ],
-      "plaintext": "This text appears after the slider. Click on bold text to test getNodePath."
+      ]
     }
   },
   "blocks_layout": {

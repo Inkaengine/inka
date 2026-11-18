@@ -348,3 +348,32 @@ describe('inka-mock-api --check', () => {
     assert.equal(run.status, 0, run.stderr.slice(-2000));
   });
 });
+
+/**
+ * The content is checked against what the editor's save refuses (checkEditorRules):
+ * a required field left empty, a value its widget doesn't write, a block where its
+ * region doesn't allow it. This check was only in `plone-content schema`; the mock's
+ * own, the one Inka's CI runs, never had it.
+ */
+describe('mock API startup: the rules the editor saves by', () => {
+  const schemas = () => {
+    const file = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'save-rules-')), 'schemas.json');
+    fs.writeFileSync(file, JSON.stringify({
+      card: { blockSchema: { properties: { title: { title: 'Title' }, url: { title: 'Link', widget: 'object_browser', mode: 'link' } } } },
+    }));
+    return file;
+  };
+  const cardPage = (url) => jsonMount({ blocks: { c: { '@type': 'card', title: 'T', url } }, blocks_layout: { items: ['c'] } });
+
+  it('refuses a value the save refuses: a link stored as a string', () => {
+    const run = loadAndAwaitReady(`/:${cardPage('/page')}`, { CONTENT_SCHEMAS: schemas() });
+    assert.equal(run.status, 3, run.stderr.slice(-2000));
+    assert.match(run.stderr, /card/);
+    assert.match(run.stderr, /\[\{"@id"/);
+  });
+
+  it('starts on content the save accepts', () => {
+    const run = loadAndAwaitReady(`/:${cardPage([{ '@id': '/page' }])}`, { CONTENT_SCHEMAS: schemas() });
+    assert.equal(run.status, 0, run.stderr.slice(-2000));
+  });
+});
