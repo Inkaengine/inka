@@ -6,7 +6,7 @@
  * fixtures usually are.
  */
 import { describe, test, expect } from 'vitest';
-import { buildEmptyRegionCases } from './discover-blocks.cjs';
+import { buildEmptyRegionCases, regionHolderCases } from './discover-blocks.cjs';
 
 const block = (pagePath, blockData = {}) => ({ blockType: 'slate', pagePath, blockId: 'b1', blockData });
 const pageCase = (blocks) => buildEmptyRegionCases({}, blocks).find((c) => c.parentType === 'page');
@@ -93,5 +93,36 @@ describe('which example a region is emptied on', () => {
       layout('plain', {}),
     ];
     expect(caseFor(blocks, 'rightSidebar')).toMatchObject({ blockId: 'in-slot' });
+  });
+});
+
+describe('a container example for every region some content fills', () => {
+  // Discovery keeps one rich and one simple example of a type, and the
+  // empty-region sweep can only choose among those. A region only ONE container
+  // fills — a layout's right sidebar, when every other example uses the left —
+  // was emptied on an example that doesn't draw it.
+  const layoutConfig = {
+    layout: { blockSchema: { properties: { leftSidebar: { widget: 'blocks_layout' }, rightSidebar: { widget: 'blocks_layout' } } } },
+  };
+  const layout = (blockId, blocks_layout) => ({
+    blockType: 'layout', pagePath: '/dev/layout', blockId, blockData: { blocks_layout },
+  });
+
+  test('a region no kept example fills adds the first container that fills it', () => {
+    const kept = [layout('left-one', { leftSidebar: ['nav'] })];
+    const holders = new Map([
+      ['layout|leftSidebar', layout('left-one', { leftSidebar: ['nav'] })],
+      ['layout|rightSidebar', layout('right-one', { rightSidebar: ['aside'] })],
+    ]);
+    const added = regionHolderCases(kept, holders);
+    expect(added).toMatchObject([{ blockId: 'right-one', kind: 'holds:rightSidebar' }]);
+    const right = buildEmptyRegionCases(layoutConfig, [...kept, ...added]).find((c) => c.field === 'rightSidebar');
+    expect(right).toMatchObject({ blockId: 'right-one' });
+  });
+
+  test('a region a kept example already fills adds nothing', () => {
+    const kept = [layout('both', { leftSidebar: ['nav'], rightSidebar: ['aside'] })];
+    const holders = new Map([['layout|rightSidebar', layout('other', { rightSidebar: ['x'] })]]);
+    expect(regionHolderCases(kept, holders)).toEqual([]);
   });
 });
