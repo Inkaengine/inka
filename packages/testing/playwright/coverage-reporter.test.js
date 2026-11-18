@@ -6,6 +6,9 @@
  * This is the "does the reporter actually fail" guarantee — the aggregates
  * themselves are proven in field-coverage / text-style-coverage unit tests.
  */
+import * as fs from 'node:fs';
+import * as os from 'node:os';
+import * as path from 'node:path';
 import CoverageReporter from './coverage-reporter.ts';
 
 // SANITY_OPTION_EXAMPLES=false isolates these to the ATTACHED records (field +
@@ -106,4 +109,23 @@ test('FAILS CLOSED when block-sanity ran but recorded zero styles', async () => 
   const reporter = new CoverageReporter();
   feed(reporter, resultWith([{ kind: 'text', blockType: 'slate', field: 'value', editable: true, example: '[t1]' }], []));
   expect(await reporter.onEnd({ status: 'passed' })).toEqual({ status: 'failed' });
+});
+
+test('FAILS when an offered style has no example in the content', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'coverage-'));
+  fs.writeFileSync(
+    path.join(dir, '.discovered-blocks.json'),
+    JSON.stringify([{ blockType: 'slate', pagePath: '/a', style: 'sup', unexercisedStyle: true, frontend: 'nuxt' }]),
+  );
+  const reporter = new CoverageReporter({ discoveryDir: dir });
+  feed(reporter, resultWith([], [okStyle]));
+  const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
+  process.env.SANITY_OPTION_EXAMPLES = 'true';
+  try {
+    expect(await reporter.onEnd({ status: 'passed' })).toEqual({ status: 'failed' });
+  } finally {
+    process.env.SANITY_OPTION_EXAMPLES = 'false';
+  }
+  expect(errors.mock.calls.flat().join('\n')).toContain('[nuxt] sup (offered in slate on /a)');
+  errors.mockRestore();
 });

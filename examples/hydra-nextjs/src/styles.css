@@ -168,3 +168,20 @@ a:hover {
 .introduction-block {
   padding: 0.75rem 0;
 }
+
+/* The style menu's styles (styleMenu in app/[[...slug]]/PageClient.js): each
+   has to look like something, or choosing it changes nothing. */
+.lead {
+  font-size: 1.25em;
+  line-height: 1.6;
+}
+.dropcap {
+  float: left;
+  font-size: 3em;
+  font-weight: bold;
+  line-height: 1;
+  margin-right: 0.1em;
+}
+.list-spaced > li {
+  margin: 0.75em 0;
+}

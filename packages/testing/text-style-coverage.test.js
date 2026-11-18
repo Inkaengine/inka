@@ -227,3 +227,40 @@ describe('measureStylesInPage — fields the design system draws elsewhere', () 
     expect(out.p).not.toBeNull();
   });
 });
+
+describe('measureStylesInPage — an inline style against body text', () => {
+  // Body text is the paragraph element, which is laid out as a block, while an
+  // inline style is laid out inline. Comparing HOW each is laid out made every
+  // inline style differ from body text, so a superscript drawn as a plain span
+  // passed as visibly distinct.
+  const measure = (html) => {
+    document.body.innerHTML = `<div data-block-uid="uid" id="root">${html}</div>`;
+    return measureStylesInPage(document.getElementById('root'), {
+      wanted: [
+        { style: 'p', text: 'Water is H2O' },
+        { style: 'sub', text: '2' },
+      ],
+    });
+  };
+
+  test('a style drawn as a plain span looks like body text', () => {
+    const { out, baseline } = measure('<p>Water is H<span>2</span>O</p>');
+    expect(out.sub.sig).toBe(baseline.sig);
+  });
+
+  test("a style drawn by an element around the text's own still differs", () => {
+    // A frontend that wraps every text leaf in its own span draws a format AROUND
+    // it, and a strike or a raised baseline is not inherited, so the leaf alone
+    // reads as plain text.
+    const { out, baseline } = measure(
+      // The longhand: jsdom does not expand the shorthand, as a browser does.
+      '<p>Water is H<span style="text-decoration-line: line-through"><span>2</span></span>O</p>',
+    );
+    expect(out.sub.sig).not.toBe(baseline.sig);
+  });
+
+  test('a style drawn lowered does not', () => {
+    const { out, baseline } = measure('<p>Water is H<span style="vertical-align: sub">2</span>O</p>');
+    expect(out.sub.sig).not.toBe(baseline.sig);
+  });
+});

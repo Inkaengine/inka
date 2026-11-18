@@ -753,7 +753,7 @@ function renderChildren(children) {
     return children.map(child => {
         // Handle inline element nodes (new format from toggleInlineFormat)
         // Add data-node-id for selection restoration
-        if (child.type === 'strong') {
+        if (child.type === 'strong' || child.type === 'b') {
             const nodeId = child.nodeId !== undefined ? ` data-node-id="${child.nodeId}"` : '';
             return `<span style="font-weight: bold"${nodeId}>${renderChildren(child.children)}</span>`;
         }
@@ -768,6 +768,11 @@ function renderChildren(children) {
         if (child.type === 'u') {
             const nodeId = child.nodeId !== undefined ? ` data-node-id="${child.nodeId}"` : '';
             return `<span style="text-decoration: underline"${nodeId}>${renderChildren(child.children)}</span>`;
+        }
+        if (child.type === 'sub' || child.type === 'sup') {
+            const nodeId = child.nodeId !== undefined ? ` data-node-id="${child.nodeId}"` : '';
+            const align = child.type === 'sub' ? 'sub' : 'super';
+            return `<span style="vertical-align: ${align}; font-size: smaller"${nodeId}>${renderChildren(child.children)}</span>`;
         }
         if (child.type === 'code') {
             const nodeId = child.nodeId !== undefined ? ` data-node-id="${child.nodeId}"` : '';

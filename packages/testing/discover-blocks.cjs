@@ -704,6 +704,11 @@ let AUTHORABLE_SLATE_STYLES = new Set([]);
 // via dynamic import (it's ESM but dependency-free by design) in discoverBlocks.
 let isValidValueFn = null;
 
+// What an author can pick in a region (offeredSlateStyles, from
+// @volto-hydra/helpers/slateStyles.js — the rules the toolbar offers styles by).
+// ESM, so loaded in discoverBlocks. null until then.
+let offeredSlateStylesFn = null;
+
 // Hydra's REAL schema resolver, run offline. resolveEffectiveBlockSchema(blockId,
 // pageFormData, blockPathMap, blocksConfig, intl) returns a block's schema with
 // its schemaEnhancer applied — so `.required` is the DYNAMIC required set (a
@@ -1425,6 +1430,20 @@ function styleExampleCases(cases, candidates) {
 }
 
 /**
+ * The styles an author is offered that no content demonstrates. A style nobody
+ * uses is never rendered, so one that renders as nothing — or exactly like body
+ * text — passes unseen: each needs an example in the content.
+ *
+ * @param offered - style -> { blockType, pagePath } of the first block offering it
+ * @param candidates - style -> the first block in the content carrying it
+ */
+function undemonstratedStyles(offered, candidates) {
+  return [...offered]
+    .filter(([style]) => !candidates.has(style))
+    .map(([style, where]) => ({ ...where, style, unexercisedStyle: true }));
+}
+
+/**
  * The schemas content integrity is judged with: the frontend's blocks, and its
  * page schema as `_page` (the validator's name for it). The page schema is
  * where a layout forced across a region is named (`allowedLayouts`) — a site
@@ -1442,6 +1461,7 @@ async function discoverBlocks(
   frontendKeys = [],
   styleMenuClasses = [],
   pageSchema = { properties: {} },
+  slateOffer = {},
 ) {
   // What this frontend says an author can pick. See AUTHORABLE_SLATE_STYLES.
   AUTHORABLE_SLATE_STYLES = new Set(styleMenuClasses);
@@ -1456,6 +1476,7 @@ async function discoverBlocks(
   ({ isValidValue: isValidValueFn } = await import(
     '@volto-hydra/helpers/schemaValidation.js'
   ));
+  ({ offeredSlateStyles: offeredSlateStylesFn } = await import('@volto-hydra/helpers/slateStyles.js'));
 
   // Load Hydra's real schema resolver offline and install the
   // child-block enhancers + inject blocksConfig, exactly as the addon does at
@@ -1512,6 +1533,10 @@ async function discoverBlocks(
 
   // style -> the first block carrying it, for styleExampleCases.
   const styleCandidates = new Map();
+  // style -> where it is first offered: every style an author can pick in a
+  // region some block's text sits in (see undemonstratedStyles).
+  const offeredStyles = new Map();
+  const frontendKeySetForStyles = new Set(frontendKeys || []);
 
   // Step 1: Get all content paths via @search (b_size=9999 to avoid pagination)
   const searchUrl = `${apiUrl}/@search?b_size=9999&metadata_fields=UID`;
@@ -1641,6 +1666,17 @@ async function discoverBlocks(
           blockType ? blocksConfig[blockType] : undefined, blocksConfig, effectiveRequired,
           pathMap?.[blockId], optionUsage,
         );
+
+        // The styles offered where this block's text is: only the frontend's own
+        // types, for the reason the option coverage below gives.
+        if (
+          Object.values(schema?.properties || {}).some((def) => def?.widget === 'slate') &&
+          (!frontendKeySetForStyles.size || frontendKeySetForStyles.has(blockType))
+        ) {
+          for (const style of offeredSlateStylesFn(slateOffer, entry.slateRules || null)) {
+            if (!offeredStyles.has(style)) offeredStyles.set(style, { blockType, pagePath });
+          }
+        }
 
         // Unregistered block type: any real @type the frontend can't render is
         // a problem no matter how deep it sits — a nested unknown falls through
@@ -1796,6 +1832,8 @@ async function discoverBlocks(
     result.push(styleCase);
   }
   console.log(`[DISCOVER] Discovered ${result.length} unique (blockType, variation, kind) pairs from ${fetched} pages`);
+  // Not render cases: the coverage reporter reads them from the discovery file.
+  result.push(...undemonstratedStyles(offeredStyles, styleCandidates));
 
   if (missingSubTypes.length) {
     const lines = missingSubTypes.map(
@@ -2031,6 +2069,7 @@ module.exports = {
   paragraphShapeOf,
   editableInstance,
   styleExampleCases,
+  undemonstratedStyles,
   // Exported so the content validator asks the same question this does — a
   // second list of "fields that are not schema fields" would drift, and the
   // drift would show up as a validator shouting about `slotId` on every block.
