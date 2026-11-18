@@ -52,6 +52,12 @@ describe('the save keeps only what each block declares', () => {
     expect(saved.blocks.c).toEqual(block);
   });
 
+  test('a template instance, which the editor groups blocks by but nothing stores, is passed over', () => {
+    const block = { '@type': 'card', title: 'T', templateId: '/t', templateInstanceId: 'i1', slotId: 's', fixed: false, stray: 1 };
+    const saved = withoutUndeclaredFields(page({ a: block }), { blocksConfig, intl });
+    expect(saved.blocks.a).toEqual({ '@type': 'card', title: 'T', templateId: '/t', templateInstanceId: 'i1', slotId: 's', fixed: false });
+  });
+
   test("the page's own fields and the input are untouched", () => {
     const input = page({ c: { '@type': 'card', title: 'T', stray: 1 } });
     const before = JSON.stringify(input);

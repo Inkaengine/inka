@@ -23,8 +23,10 @@ export function withoutUndeclaredFields(formData, { blocksConfig, intl }) {
   const pathMap = buildBlockPathMap(formData, blocksConfig, intl);
   const out = structuredClone(formData);
   for (const [blockId, entry] of Object.entries(pathMap)) {
-    // `_page` and the map's own keys (`_schemas`) are not blocks.
-    if (blockId.startsWith('_') || !entry?.blockType) continue;
+    // `_page` and the map's own keys (`_schemas`) are not blocks, and nor is a
+    // template instance: the editor groups a template's blocks by it, and it has
+    // no path because nothing stores it.
+    if (blockId.startsWith('_') || !entry?.blockType || entry.path === null) continue;
     // The stored object itself, by its path (getBlockById may hand back a copy).
     const block = entry.path.reduce((node, key) => node?.[key], out);
     // A template's locked copy is the template's: the merge takes it from there.
