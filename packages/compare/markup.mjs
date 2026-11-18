@@ -4,7 +4,7 @@
  *
  * Attributes and class tokens are sorted and de-duplicated (order and
  * multiplicity are not structure); text, URLs, ids and form-control names are
- * tokens (instance data, not structure); inline styles have their punctuation
+ * tokens (instance data, not structure), and adjacent text nodes are one text; inline styles have their punctuation
  * normalised (never which properties, nor their values); and an editor's own
  * attributes (data-block-*, data-edit-*, data-linkable-* and the like) are
  * dropped, since a design system has no part in them.
@@ -43,6 +43,9 @@ function serialize(node){
     else if(x.name==='style')v=v.replace(/url\\([^)]*\\)/g,'url(§U§)').replace(/\\s*([:;])\\s*/g,'$1').replace(/;+$/,'').replace(/\\s+/g,' ').trim();
     a.push(x.name+'="'+v+'"');}
   a.sort();var inner='';for(var j=0;j<el.childNodes.length;j++)inner+=serialize(el.childNodes[j]);
+  // Adjacent text nodes are one text in the HTML (React splits adjacent
+  // strings, with a comment between them when server-rendered).
+  inner=inner.replace(/(§T§)+/g,'§T§');
   var t=el.tagName.toLowerCase();
   if(REWRITE){var r=REWRITE(el,t,a,inner);t=r.t;a=r.a;inner=r.inner;}
   return '<'+t+(a.length?' '+a.join(' '):'')+'>'+inner+'</'+t+'>';
