@@ -1,0 +1,105 @@
+{
+  "@id": "/relative-path-listing-page",
+  "@type": "Document",
+  "id": "relative-path-listing-page",
+  "title": "Relative path listings",
+  "description": "Listings whose Location is a path from this page: its own children (.::1), and its parent (..).",
+  "blocks": {
+    "grid-1": {
+      "@type": "gridBlock",
+      "blocks": {
+        "teaser-1": {
+          "@type": "teaser",
+          "title": "Manual Item",
+          "description": "This is a manually added teaser",
+          "href": [
+            {
+              "@id": "/_test_data/target-page",
+              "title": "Target Page"
+            }
+          ]
+        },
+        "children-listing": {
+          "@type": "listing",
+          "headline": "This page's children",
+          "variation": "teaser",
+          "fieldMapping": {
+            "getURL": {
+              "field": "href",
+              "type": "link"
+            },
+            "title": {
+              "field": "title",
+              "type": "string"
+            },
+            "description": {
+              "field": "description",
+              "type": "textarea"
+            },
+            "image": {
+              "field": "preview_image",
+              "type": "image_link"
+            }
+          },
+          "querystring": {
+            "query": [
+              {
+                "i": "path",
+                "o": "plone.app.querystring.operation.string.relativePath",
+                "v": ".::1"
+              }
+            ],
+            "sort_on": "sortable_title",
+            "sort_order": "ascending"
+          }
+        },
+        "parent-listing": {
+          "@type": "listing",
+          "headline": "The parent's tree",
+          "variation": "teaser",
+          "fieldMapping": {
+            "getURL": {
+              "field": "href",
+              "type": "link"
+            },
+            "title": {
+              "field": "title",
+              "type": "string"
+            },
+            "description": {
+              "field": "description",
+              "type": "textarea"
+            },
+            "image": {
+              "field": "preview_image",
+              "type": "image_link"
+            }
+          },
+          "querystring": {
+            "query": [
+              {
+                "i": "path",
+                "o": "plone.app.querystring.operation.string.relativePath",
+                "v": ".."
+              }
+            ],
+            "sort_on": "sortable_title",
+            "sort_order": "ascending"
+          }
+        }
+      },
+      "blocks_layout": {
+        "items": [
+          "teaser-1",
+          "children-listing",
+          "parent-listing"
+        ]
+      }
+    }
+  },
+  "blocks_layout": {
+    "items": [
+      "grid-1"
+    ]
+  }
+}
