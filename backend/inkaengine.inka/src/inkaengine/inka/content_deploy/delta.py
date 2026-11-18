@@ -37,6 +37,8 @@ from .classify import refresh_from_disk
 from collections.abc import Callable
 from pathlib import Path
 from types import MappingProxyType
+from plone.dexterity.interfaces import IDexterityFTI
+from plone.dexterity.utils import iterSchemataForType
 from plone.exportimport import settings as ei_settings
 from plone.exportimport import types as ei_types
 from plone.exportimport.exporters.content import ContentExporter
@@ -47,6 +49,8 @@ from plone.restapi.interfaces import IPloneRestapiLayer
 from typing import Any
 from zope.interface import directlyProvidedBy
 from zope.interface import directlyProvides
+from zope.interface.interfaces import ComponentLookupError
+from zope.schema import getFieldsInOrder
 
 import json
 import logging
@@ -123,6 +127,33 @@ def serialize_live_candidates(
         logger.info("content-delta: serialized %s (%.1fs)", rel, time.monotonic() - t)
     shutil.rmtree(blob_scratch, ignore_errors=True)
     return live
+
+
+def field_defaults_of(site) -> dict[str, dict[str, Any]]:
+    """Each content type's fields and their schema defaults, from the site's
+    types and their behaviors (classify.CompareRules): a field at its default
+    is unset. Plain values only (true/false, numbers, text).
+
+    A default a factory makes is read with the site as the context, as the
+    site would give it to a new item: `exclude_from_nav`'s is one. A factory
+    that cannot make it without the item itself (it cannot adapt the site) has
+    no default for the type, so that field is left out and compared."""
+    defaults: dict[str, dict[str, Any]] = {}
+    for fti in site.portal_types.listTypeInfo():
+        if not IDexterityFTI.providedBy(fti):
+            continue
+        of_type: dict[str, Any] = {}
+        for schema in iterSchemataForType(fti.getId()):
+            for name, schema_field in getFieldsInOrder(schema):
+                try:
+                    value = schema_field.bind(site).default
+                except (TypeError, ComponentLookupError):
+                    # "Could not adapt": a default that needs the item.
+                    continue
+                if isinstance(value, (bool, int, float, str)):
+                    of_type[name] = value
+        defaults[fti.getId()] = of_type
+    return defaults
 
 
 def default_views_of(site) -> dict[str, str]:
@@ -301,6 +332,7 @@ def run_delta(
     rules = CompareRules(
         ignored_fields=ignored_fields,
         default_views=MappingProxyType(default_views_of(site)),
+        field_defaults=MappingProxyType(field_defaults_of(site)),
     )
     live = serialize_live_candidates(
         site, request, base, disk, extra=refresh_rels, rules=rules
