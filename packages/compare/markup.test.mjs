@@ -36,6 +36,16 @@ test("text, links, ids and a form control's name are instance data, not structur
   assert.notEqual(s('<input type="text">'), s('<input type="checkbox">'), "the type is structure");
 });
 
+test("text split into adjacent text nodes is one text, as the HTML is", () => {
+  const s = serializer();
+  // React writes adjacent strings as separate text nodes, with a comment
+  // between them in server-rendered markup: the same HTML as one text.
+  assert.equal(s("<span>A<!-- -->B</span>"), s("<span>AB</span>"));
+  assert.equal(s("<span>A<!-- -->B</span>"), "<span>§T§</span>");
+  // An element between them still separates them.
+  assert.equal(s("<span>A<b>x</b>B</span>"), "<span>§T§<b>§T§</b>§T§</span>");
+});
+
 test("an inline style's punctuation is normalised, never its properties or values", () => {
   const s = serializer();
   assert.equal(s('<div style="color: red; margin: 0;"></div>'), s('<div style="color:red;margin:0"></div>'));
