@@ -1221,16 +1221,20 @@ function emitContainer(protos, proto, block, depth) {
   // region it isn't told about the same leftover content (see splitRegions).
   // A region the block doesn't have is left out, as the block left it out.
   const named = proto.regions.length > 1;
-  const render = (wrap, tableForm) => proto.regions
+  // `hoist`: fields a run of a region's blocks share (a template's membership on
+  // every block in its slot) are written once, in a `<fields>` wrapper, as a page's
+  // own blocks are (emitPage).
+  const render = (wrap, tableForm, hoist = false) => proto.regions
     .filter((region) => getAtPath(block, region.path) !== undefined)
     .map((region) => {
-      const body = renderRegion(region, wrap, tableForm);
+      const body = renderRegion(region, wrap, tableForm, hoist);
       return named ? `<region name="${region.name}">\n\n${body}\n\n</region>` : body;
     }).join('\n\n');
-  const renderRegion = (region, wrap, tableForm) => {
+  const renderRegion = (region, wrap, tableForm, hoist) => {
     const val = getAtPath(block, region.path);
     if (region.widget === 'blocks_layout') {
       const scope = [...protos, ...region.protos];
+      if (hoist) return hoistFields(scope, val, depth + 1);
       const parts = emitSegments(scope, val, depth + 1);
       return (wrap ? parts.map((part, i) => (/^<(block|fields)[\s>]/.test(part) ? part
         : `<block type="${val[i]['@type']}">\n\n${part}\n\n</block>`)) : parts).join('\n\n');
@@ -1257,7 +1261,13 @@ function emitContainer(protos, proto, block, depth) {
       let md;
       try { md = tag(render(wrap, form)); } catch (e) { if (e instanceof NoCellForm) break; throw e; }
       last = md;
-      if (roundTrips(protos, md, [block], depth)) return md;
+      const plain = roundTrips(protos, md, [block], depth);
+      // The hoisted form first, if it reads back the same and is no more JSON.
+      if (!wrap) {
+        const hoisted = tag(render(false, form, true));
+        if (hoisted !== md && (!plain || rawTags(hoisted) <= rawTags(md)) && roundTrips(protos, hoisted, [block], depth)) return hoisted;
+      }
+      if (plain) return md;
     }
   }
   if (last === null) throw new NoCellForm(`no table form for ${block['@type']}`);
@@ -1738,6 +1748,8 @@ function hoistFields(protos, blocks, depth = 2) {
   return render(plan);
 }
 
+const rawTags = (md) => (md.match(/<block [^>]*data-json=/g) || []).length;
+
 export function emitPage(prototypes, keyed) {
   const { blocks, assignments } = unkeyBlocks(withoutDerivedFields(keyed), prototypes);
   let markdown = emitBlocks(prototypes, blocks);
@@ -1746,7 +1758,6 @@ export function emitPage(prototypes, keyed) {
   // field the block's prototype supplies itself (accordion's right_arrows=true)
   // makes that block fail its own round trip and fall back to a data-json tag;
   // the page still round-trips, but more of it is JSON. Keep the flat emission then.
-  const rawTags = (md) => (md.match(/<block [^>]*data-json=/g) || []).length;
   const hoisted = hoistFields(prototypes, blocks);
   if (hoisted && rawTags(hoisted) <= rawTags(markdown) && roundTrips(prototypes, hoisted, blocks, 2)) markdown = hoisted;
   return { markdown, assignments };

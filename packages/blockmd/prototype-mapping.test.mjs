@@ -2287,3 +2287,32 @@ describe('trying a form lets a bug through', () => {
     expect(() => emitBlocks(protos, [{ '@type': 'slate', value: [null] }])).toThrow(TypeError);
   });
 });
+
+describe('fields shared by a run of blocks are written once, in a region too', () => {
+  // A page made from a template keeps its content in a slot inside a container (a
+  // layout's `main`), and every block there carries the same template membership.
+  // Written per block, each paragraph became a <block> tag holding five fields.
+  const protos = parsePrototypes([
+    '<block type="slate" value="${p,h*/slate}" />',
+    '<block type="section">',
+    '  <region name="items" widget="blocks_layout">',
+    '    <block type="slate" value="${p,h*/slate}" />',
+    '  </region>',
+    '</block>',
+  ].join('\n'));
+  const member = { slotId: 'default', fixed: false, readOnly: false, templateId: '/t', templateInstanceId: 'i' };
+  const para = (text) => ({ '@type': 'slate', value: [{ type: 'p', children: [{ text }] }], ...member });
+  const section = { '@type': 'section', items: [para('First.'), para('Second.')] };
+
+  it('a region\'s blocks share one <fields> wrapper and are bare markdown', () => {
+    const md = emitBlocks(protos, [section]);
+    expect(md.match(/<fields /g)).toHaveLength(1);
+    expect(md).not.toContain('<block type="slate"');
+    expect(md).toContain('First.');
+  });
+
+  it('and read back the same', () => {
+    const md = emitBlocks(protos, [section]);
+    expect(matchBlocks(protos, md)).toEqual([section]);
+  });
+});
