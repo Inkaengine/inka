@@ -210,6 +210,12 @@ function collectListingContainerIssues(blocksConfig, blocks) {
         seen.add(`${b.blockType}\u0000${field}\u0000${childType}`);
       }
     }
+    // A block picked where it sits (the placement pass) renders that pairing
+    // as itself: `placement` is its container type and region.
+    if (b.placement) {
+      const dot = b.placement.lastIndexOf('.');
+      seen.add(`${b.placement.slice(0, dot)}\u0000${b.placement.slice(dot + 1)}\u0000${b.blockType}`);
+    }
   }
 
   const issues = [];
@@ -1518,11 +1524,12 @@ async function discoverBlocks(
     console.log(`[DISCOVER] Using schemas for ${objectListFields.size} block types with object_list fields`);
   }
 
-  // subTypeExamples: key "parentType|field|subType" → first parent instance
-  // (uid + pagePath + blockData) that contains a sub-block of that subType.
-  // After the rich/simple pass, we use this to ensure every allowedBlocks
-  // sub-type has at least one parent covering it in the final test set.
-  const subTypeExamples = new Map();
+  // placementExamples: key "blockType|parentType.region" → the first editable
+  // instance of a block type in each place it sits. A block is rendered where it
+  // is, by its container's renderer; one that draws in one container may not in
+  // another. So each place a type is found in is a case of its own, checked as
+  // the block itself (its usual render check), not as its parent.
+  const placementExamples = new Map();
 
   // style -> the first block carrying it, for styleExampleCases.
   const styleCandidates = new Map();
@@ -1743,6 +1750,20 @@ async function discoverBlocks(
           }
         }
 
+        // Its container: the nearest real block above it. A template instance is in
+        // the map (the editor groups a template's blocks by it) but stores nothing
+        // and renders nothing of its own, so it's passed over.
+        let containerId = entry.parentId;
+        while (containerId && pathMap[containerId]?.path === null) containerId = pathMap[containerId]?.parentId;
+        const placement = `${pathMap[containerId]?.blockType || 'page'}.${entry.region || 'items'}`;
+        const placementKey = `${blockType}|${placement}`;
+        if (!placementExamples.has(placementKey)) {
+          placementExamples.set(placementKey, {
+            blockType, variation, blockId, pagePath, blockData, placement,
+            isListing: blockType === 'listing', needsUnlock: editable.needsUnlock,
+          });
+        }
+
         for (const kind of ['rich', 'simple']) {
           const key = `${blockType}:${variation}:${kind}`;
           const existing = seen.get(key);
@@ -1765,22 +1786,11 @@ async function discoverBlocks(
             // A locked block on its own definition page: the spec unlocks its
             // template instance (id read from the bridge) before checking.
             needsUnlock: editable.needsUnlock,
+            placement,
             _score: score,
           });
         }
 
-        // Record first-seen example of every (parentType, field, subType)
-        // tuple so the sub-type coverage pass can fill gaps the rich/simple
-        // picks don't happen to cover.
-        for (const { parentType, field } of allowedBlocksList) {
-          if (parentType !== blockType) continue;
-          for (const subType of subTypesInField(blockData, field)) {
-            const stKey = `${parentType}|${field}|${subType}`;
-            if (!subTypeExamples.has(stKey)) {
-              subTypeExamples.set(stKey, { blockId, pagePath, blockData, variation });
-            }
-          }
-        }
       }
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -1788,50 +1798,25 @@ async function discoverBlocks(
     }
   }
 
-  // Sub-type coverage pass: ensure every declared allowedBlocks sub-type has
-  // at least one test case via a parent instance containing it. If a rich or
-  // simple pick already covers it (same blockId appears in seen), no extra
-  // test is added. Uncovered sub-types with no content example anywhere are
-  // reported via missingSubTypes for a warning below.
+  // Allowed sub-types no content shows anywhere: their renderer paths are
+  // untested, which the warning below says (the placement pass covers every
+  // place a type IS found in).
   const missingSubTypes = [];
-  const coveredByBlockId = new Map(); // blockId → Set<"parentType|field|subType">
-  for (const entry of seen.values()) {
-    const covered = coveredByBlockId.get(entry.blockId) || new Set();
-    for (const { parentType, field } of allowedBlocksList) {
-      if (parentType !== entry.blockType) continue;
-      for (const subType of subTypesInField(entry.blockData, field)) {
-        covered.add(`${parentType}|${field}|${subType}`);
-      }
-    }
-    coveredByBlockId.set(entry.blockId, covered);
-  }
-  const allCovered = new Set();
-  for (const covered of coveredByBlockId.values()) {
-    for (const k of covered) allCovered.add(k);
-  }
-
   for (const { parentType, field, allowedBlocks } of allowedBlocksList) {
     for (const subType of allowedBlocks) {
-      const stKey = `${parentType}|${field}|${subType}`;
-      if (allCovered.has(stKey)) continue;
-      const example = subTypeExamples.get(stKey);
-      if (!example) {
-        missingSubTypes.push({ parentType, field, subType });
-        continue;
-      }
-      const key = `sub:${parentType}:${field}:${subType}`;
-      console.log(`[DISCOVER] Found ${parentType} [sub:${subType}] block "${example.blockId}" on ${example.pagePath} (adds ${subType} coverage)`);
-      seen.set(key, {
-        blockType: parentType,
-        variation: example.variation,
-        kind: `sub:${subType}`,
-        blockId: example.blockId,
-        pagePath: example.pagePath,
-        blockData: example.blockData,
-        isListing: parentType === 'listing',
-        _score: 0,
-      });
+      if (!placementExamples.has(`${subType}|${parentType}.${field}`)) missingSubTypes.push({ parentType, field, subType });
     }
+  }
+
+  // Placement pass: every place a block type sits in the content is rendered
+  // once, as that block. The rich/simple picks cover the places they sit in;
+  // each other place adds its first instance, checked like any other.
+  const placed = new Set([...seen.values()].map((e) => `${e.blockType}|${e.placement}`));
+  for (const [placementKey, example] of placementExamples) {
+    if (placed.has(placementKey)) continue;
+    placed.add(placementKey);
+    console.log(`[DISCOVER] Found ${example.blockType} in ${example.placement} block "${example.blockId}" on ${example.pagePath} (adds that place)`);
+    seen.set(`in:${placementKey}`, { ...example, kind: `in:${example.placement}`, _score: 0 });
   }
 
   // Dedupe by blockId — when the same parent uid shows up as rich AND as a
@@ -2030,17 +2015,17 @@ async function discoverBlocks(
     // contained a text, a textarea, a select, a single_choice, a checkbox and a
     // from. Turning that into a failure would have asked maintainers to add
     // fixtures that already exist.
-    // Sub-item examples live inside a parent, so they never appear in `result`
-    // under their own blockType. `allCovered` is the schema-driven record of
-    // which sub-types a selected example contains, from the same container
-    // helpers (buildAllowedBlocksList + subTypesInField).
+    // A sub-item type (a form question, a slide) is found where it sits, and the
+    // placement pass renders it there as itself, so every type found in any place
+    // has an example.
     //
     // Not a second buildBlockPathMap call: it populates a module-level schema
     // cache keyed by blockType alone, so schemas leak into any later walk with
     // a different registry. Keying that cache by registry fixes the leak and
     // breaks the editor — block-sync's inherited_fields fieldset stops
     // rendering — so it stays as it is.
-    for (const key of allCovered) discoveredTypes.add(key.split('|')[2]);
+    // Every type found in any place is rendered there as itself (the placement pass).
+    for (const key of placementExamples.keys()) discoveredTypes.add(key.split('|')[0]);
     for (const r of seen.values()) {
       if (typeof r.kind === 'string' && r.kind.startsWith('sub:')) {
         discoveredTypes.add(r.kind.slice(4));

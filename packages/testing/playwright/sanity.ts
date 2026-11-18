@@ -31,7 +31,7 @@
 import { test as playwrightTest, type FrameLocator } from '@playwright/test';
 import { test as base, expect } from './fixtures';
 import { AdminUIHelper } from './AdminUIHelper';
-import { verifyBlockRendering, revealBlock, checkEveryBlockOnPage, blocksToCheck } from './BlockVerificationHelper';
+import { verifyBlockRendering, revealBlock, checkEveryBlockOnPage, blocksToCheck, blockUidsShownAsText } from './BlockVerificationHelper';
 import { verifyPageIntegrity } from './PageIntegrityHelper';
 import { drainFieldCoverage } from '../field-coverage';
 import { measureTextStyles, recordTextStyles, slateStyles, drainStyleCoverage } from '../text-style-coverage';
@@ -575,6 +575,13 @@ export function defineBlockSanityTests(options: SanityOptions): void {
           // DOM can carry every annotation and still be impossible to type into.
           checkEditTextClicks: true,
         });
+
+        // No block on the page drew its raw data instead of itself: a uid, an
+        // internal key, never reaches a reader's eye (blockUidsShownAsText).
+        expect(
+          await blockUidsShownAsText(iframe),
+          `blocks on ${block.pagePath} drew as their raw data (their uid shows as text)`,
+        ).toEqual([]);
 
         // The page is drawn: check every other block on it too (see
         // checkEveryBlockOnPage). Before the text-style and a11y passes, which

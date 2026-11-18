@@ -7,6 +7,7 @@
  * Accepts blocksConfig in the same format frontends pass to initBridge():
  *   { hero: { blockSchema: { properties: { ... } } }, slider: { ... } }
  */
+import { uidsShownAsText } from './uidsShownAsText';
 import { expect } from '@playwright/test';
 import type { Page, FrameLocator, Locator, ElementHandle } from '@playwright/test';
 import { AdminUIHelper } from './AdminUIHelper';
@@ -1368,6 +1369,35 @@ export async function verifyPathMapCoverage(
  * and tip over a 20s budget. Every such failure named `locator.count`, on a
  * line whose only job was to skip the block.
  */
+/**
+ * The blocks on the page that drew their own raw data: a block whose uid shows
+ * in the text of its own element, leaving out the blocks nested in it
+ * (uidsShownAsText). A uid is an internal key, so shown there it means the
+ * block's data was drawn in place of the block, however the frontend chose to
+ * fail (a placeholder dumping its JSON, an error naming it). A uid in another
+ * block's text is that block's content: a code example showing a block's JSON,
+ * or authored words that happen to match.
+ */
+export async function blockUidsShownAsText(iframe: FrameLocator): Promise<string[]> {
+  const own = await iframe.locator('body').evaluate(() => {
+    const b = (window as any).__hydraBridge;
+    if (!b?.blockPathMap) throw new Error('blockUidsShownAsText: __hydraBridge.blockPathMap not available');
+    const known = new Set(Object.keys(b.blockPathMap).filter((uid) => !uid.startsWith('_')));
+    const out: Array<{ uid: string; text: string }> = [];
+    for (const el of document.querySelectorAll('[data-block-uid]')) {
+      const uid = el.getAttribute('data-block-uid')!;
+      if (!known.has(uid)) continue;
+      const copy = el.cloneNode(true) as Element;
+      for (const nested of copy.querySelectorAll('[data-block-uid]')) {
+        if (nested.getAttribute('data-block-uid') !== uid) nested.remove();
+      }
+      out.push({ uid, text: copy.textContent ?? '' });
+    }
+    return out;
+  });
+  return [...new Set(own.flatMap(({ uid, text }) => uidsShownAsText(text, [uid])))];
+}
+
 /**
  * How many drawn blocks a render test will check, split by who pays for them:
  * the sample's OWN descendants (verifyBlockRendering walks them, with their
