@@ -48,6 +48,9 @@ ENV PNPM_HOME="/pnpm"
 # Volto's `*` route, and the admin exited on start.
 ENV ADMIN="volto-hydra-dev..."
 ENV PATH="$PNPM_HOME:$PATH"
+# Cypress comes in as a dev dependency of Volto core, but nothing here runs
+# it, so its test browser is not downloaded.
+ENV CYPRESS_INSTALL_BINARY=0
 COPY ${INKA_PATH}/ /app
 RUN npm install -g corepack && corepack cache clean && corepack enable
 WORKDIR /app
