@@ -7,6 +7,7 @@
  * Accepts blocksConfig in the same format frontends pass to initBridge():
  *   { hero: { blockSchema: { properties: { ... } } }, slider: { ... } }
  */
+import { uidsShownAsText } from './uidsShownAsText';
 import { expect } from '@playwright/test';
 import type { Page, FrameLocator, Locator, ElementHandle } from '@playwright/test';
 import { AdminUIHelper } from './AdminUIHelper';
@@ -1368,6 +1369,24 @@ export async function verifyPathMapCoverage(
  * and tip over a 20s budget. Every such failure named `locator.count`, on a
  * line whose only job was to skip the block.
  */
+/**
+ * The page's block uids that show in its visible text (uidsShownAsText). A uid
+ * is an internal key: shown, it means a block's raw data was drawn in place of
+ * the block, however the frontend chose to fail (a placeholder dumping its
+ * JSON, an error naming it).
+ */
+export async function blockUidsShownAsText(iframe: FrameLocator): Promise<string[]> {
+  const { text, uids } = await iframe.locator('body').evaluate((body) => {
+    const b = (window as any).__hydraBridge;
+    if (!b?.blockPathMap) throw new Error('blockUidsShownAsText: __hydraBridge.blockPathMap not available');
+    return {
+      text: (body as HTMLElement).innerText,
+      uids: Object.keys(b.blockPathMap).filter((uid) => !uid.startsWith('_')),
+    };
+  });
+  return uidsShownAsText(text, uids);
+}
+
 /**
  * How many drawn blocks a render test will check, split by who pays for them:
  * the sample's OWN descendants (verifyBlockRendering walks them, with their
