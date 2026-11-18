@@ -103,6 +103,17 @@ export function blockFieldErrors({ schema, blockData, validateFieldsPerFieldset,
       errors[fieldName] = [field.hydraRuleError];
     }
   }
+  // A link field (object_browser) holds the list its widget writes, `[{ "@id": … }]`.
+  // One shape, so a reader, a conversion and a markdown rule read one thing.
+  for (const [fieldName, field] of Object.entries(schema.properties || {})) {
+    const value = blockData[fieldName];
+    if (field?.widget !== 'object_browser' || value == null) continue;
+    const isLinkList = Array.isArray(value) && value.every((item) => typeof item?.['@id'] === 'string');
+    if (!isLinkList) {
+      errors[fieldName] = [...(errors[fieldName] || []),
+        `a link is stored as [{"@id": "/path"}], not as ${JSON.stringify(value).slice(0, 60)}`];
+    }
+  }
   // A mapping widget's block always has a mapping, and a valid one: what is
   // stored is all its renderer converts by (fieldMappingErrors).
   for (const [fieldName, messages] of Object.entries(fieldMappingErrors({ schema, blockData, blocksConfig, site }))) {

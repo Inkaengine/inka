@@ -69,6 +69,10 @@ function parseContentMounts() {
 
 const CONTENT_MOUNTS = parseContentMounts();
 const CONTENT_SCHEMAS = process.env.CONTENT_SCHEMAS || null;
+// Template slots whose blocks are placed where the editor wouldn't put them, on
+// purpose (a docs site's examples): their placement and length go unchecked, every
+// other rule still applies. Comma-separated, as `plone-content --exempt-slot`.
+const CONTENT_EXEMPT_SLOTS = (process.env.CONTENT_EXEMPT_SLOTS || '').split(',').filter(Boolean);
 
 /** The prefix of the non-root mount a path is under (`/_test_data` for `/_test_data/x`), or null. */
 function prefixMountOf(urlPath) {
@@ -2709,8 +2713,8 @@ function loadMarkdownMount(mount) {
  * Mounts that are exportimport trees (have __metadata__.json) also get the
  * export-shape check, since they are what gets imported into a real Plone.
  */
-function validateServedContent() {
-  const { validate, checkContent } = require('@inka/content-validator');
+async function validateServedContent() {
+  const { validate, checkContent, checkEditorRules } = require('@inka/content-validator');
   // ALLOW_MISSING_BLOBS=true: a blob whose bytes are not on disk is a warning,
   // not an error — what `plone-content --allow-missing-blobs` does. For a pull
   // request whose content references a file CI makes only after the merge (a
@@ -2734,6 +2738,15 @@ function validateServedContent() {
     return { rel: urlPath, data: { ...data, '@id': urlPath } };
   });
   keep(checkContent(source, { schemas: contentSchemas, allowMissingBlobs }));
+  // What the editor's save refuses (a required field left empty, a value its widget
+  // doesn't write, a block its region doesn't allow): content the editor couldn't
+  // save is no example of anything. Field values are checked by Volto's own
+  // validators, built from its source (`pnpm build:volto-validation`); a mock
+  // without them still checks placement and says, as a warning, that field values
+  // weren't checked.
+  if (contentSchemas) {
+    keep(await checkEditorRules(source, contentSchemas, { exemptSlots: CONTENT_EXEMPT_SLOTS }));
+  }
   for (const m of warnings) console.warn(`[content-check] warning: ${m.trim()}`);
   return errors.map((m) => m.trim());
 }
@@ -2763,8 +2776,8 @@ function reportContentErrors(errors) {
 /** Startup: invalid content is fatal — tests must not run against a site that
  *  would not import, or that links to nothing. There is no way out: content a
  *  test needs broken is created at runtime (session content), never served. */
-function assertServedContentValid() {
-  const errors = validateServedContent();
+async function assertServedContentValid() {
+  const errors = await validateServedContent();
   if (errors.length) {
     reportContentErrors(errors);
     throw new Error(`${errors.length} content problem(s) — fix the content (listed above)`);
@@ -2773,8 +2786,8 @@ function assertServedContentValid() {
 
 /** A reload (watcher or cache miss) only reports: one bad edit mid-session
  *  should not take the dev server down. The next start is the gate. */
-function reportServedContentProblems() {
-  const errors = validateServedContent();
+async function reportServedContentProblems() {
+  const errors = await validateServedContent();
   if (errors.length) reportContentErrors(errors);
 }
 
@@ -2886,7 +2899,8 @@ function setupContentWatchers() {
       // Reload every mount through the format-agnostic seam -- markdown trees
       // reload and re-validate too, not just the JSON contentDirMap.
       for (const mount of CONTENT_MOUNTS) reloadMount(mount);
-      reportServedContentProblems();
+      // Reported, not fatal, mid-session; a failure of the check itself is shown too.
+      reportServedContentProblems().catch((err) => console.error(`[content-check] ${err.stack}`));
     }, debounceMs);
   };
   for (const { dirPath } of CONTENT_MOUNTS) {
@@ -3588,7 +3602,14 @@ app.post('/@export', async (req, res) => {
       if (Array.isArray(node)) { node.forEach((n) => unresolveBlocks(n, baseSegs, m)); return; }
       if (!node || typeof node !== 'object') return;
       if (node.type === 'link' && node.data && typeof node.data.url === 'string') node.data.url = unresolve(node.data.url, baseSegs, m, false);
-      if ((node['@type'] === 'image' || node['@type'] === 'video') && typeof node.url === 'string') node.url = unresolve(node.url, baseSegs, m, true);
+      if (node['@type'] === 'image' && typeof node.url === 'string') node.url = unresolve(node.url, baseSegs, m, true);
+      // A link list's @id, the shape any link field holds: a page is written as its
+      // .md, a file (a name with an extension) as itself.
+      for (const [k, v] of Object.entries(node)) {
+        if (Array.isArray(v) && v.length && v.every((l) => l && typeof l === 'object' && typeof l['@id'] === 'string')) {
+          node[k] = v.map((l) => ({ ...l, '@id': unresolve(l['@id'], baseSegs, m, /\.[\w]+$/.test(l['@id'].split(/[#?]/)[0].split('/').pop())) }));
+        }
+      }
       for (const v of Object.values(node)) unresolveBlocks(v, baseSegs, m);
     };
 

@@ -36,7 +36,7 @@ Renders a set of values as links into a faceted search — a "tag cloud" of shor
 
 ## Live example
 
-<block type="searchShortcuts" data-json='{"index":"Subject","searchUrl":"/search","variation":"default","fieldMapping":{"getURL":{"field":"href","type":"link"},"title":{"field":"title","type":"string"}}}' />
+<block type="searchShortcuts" data-json='{"index":"Subject","searchUrl":[{"@id":"/search"}],"variation":"default","fieldMapping":{"getURL":{"field":"href","type":"link"},"title":{"field":"title","type":"string"}}}' />
 
 <fields templateId="/inka-templates/block-reference-layout" templateInstanceId="tpl-inst-searchShortcuts" fixed=false readOnly=false>
 
@@ -84,7 +84,7 @@ export function searchShortcutsFetcher({ apiUrl, contextPath }) {
     }
     // Each value → a shortcut link; @id is the facet-search URL.
     const all = values.map((v) => ({
-      '@id': `${block.searchUrl}?facet.${index}=${encodeURIComponent(v)}`,
+      '@id': `${block.searchUrl[0]['@id']}?facet.${index}=${encodeURIComponent(v)}`,
       title: v,
     }));
     return { items: all.slice(start, start + size), total: all.length };

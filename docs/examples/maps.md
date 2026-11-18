@@ -31,7 +31,7 @@ blocks-matched: |
     </region>
   </block>
 blocks-tagged: |
-  <block type="maps" title="${a/text}" url="${a/href}" />
+  <block type="maps" title="${a/text}" url="${a/link}" />
 ---
 
 # Maps

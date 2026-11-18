@@ -65,7 +65,7 @@ A responsive grid that lays out child blocks in equal-width cells. The block use
 
 <block type="teaser">
 
-### [Design](/docs/architecture)
+### [Design](../../architecture.md)
 
 We craft beautiful interfaces that users love.
 
@@ -75,7 +75,7 @@ We craft beautiful interfaces that users love.
 
 <block type="teaser">
 
-### [Learn More](/docs)
+### [Learn More](../../index.md)
 
 Explore the full documentation.
 

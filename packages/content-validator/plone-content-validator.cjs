@@ -61,7 +61,7 @@ const TEMPLATE_MEMBERSHIP_KEYS = [
 const BLOCK_BOOKKEEPING_KEYS = ['searchableText', 'plaintext', '_pullFrom', '_customFields', '_linkableAnchors'];
 
 const UNDECLARED_EXEMPT = new Set([
-  'id', 'blocks', 'blocks_layout', 'image_scales', 'plaintext', 'searchableText', 'value',
+  'blocks', 'blocks_layout', 'image_scales', 'searchableText', 'value',
   'styles', 'override', 'block',
   ...TEMPLATE_MEMBERSHIP_KEYS,
   // codeExample selector directives (single-source example pages): `source`
@@ -1520,9 +1520,14 @@ function checkBlockSchemas(source, fieldMap, { idFieldMap = null } = {}) {
 
   // `idField`: the key the list this block is an item of is keyed by, if it is one;
   // `list`: that list (`form.subblocks`), which names an item typed by another field.
+  // A list's own type field (`field_type` on a form's questions): an identity field
+  // other than `@id`/`@type` whose value names a declared block type.
+  const listTypeFields = [...identityFields].filter((f) => f !== '@id' && f !== '@type');
   const visit = (block, rel, idField, list) => {
     if (!block || typeof block !== 'object') return;
-    const type = block['@type'];
+    const typedBy = typeof block['@type'] === 'string' || !list ? null
+      : listTypeFields.find((f) => typeof block[f] === 'string' && declaredFields[block[f]]);
+    const type = typedBy ? block[typedBy] : block['@type'];
     const strayKey = (name, field) => {
       const key = `${name}.${field}`;
       if (!strays.has(key)) strays.set(key, rel);
@@ -1887,6 +1892,7 @@ async function checkEditorRules(source, schemas, { exemptSlots = [], volto = loa
   const { createFieldRulesEnhancer } = await import('@volto-hydra/helpers/fieldRules.js');
   const { blockFieldErrors, registerRuleErrorValidators } = await import('@volto-hydra/helpers/blockFieldErrors.js');
   const { mergeTemplatesIntoPage } = await import('@volto-hydra/helpers/mergeTemplates.js');
+  const { getEmptyBlockType } = await import('@volto-hydra/helpers/blockPath.js');
   if (volto) registerRuleErrorValidators(volto.config);
   // A schemas file carries schemaEnhancer RECIPES (plain data), and
   // buildBlockPathMap runs only enhancer FUNCTIONS — in the admin, blockSync
@@ -1907,13 +1913,15 @@ async function checkEditorRules(source, schemas, { exemptSlots = [], volto = loa
     ruleErrors: 0, ruleWarnings: 0,
   };
   if (!volto) {
-    stats.fieldErrors = null;
     stats.ruleErrors = null;
     warnings.push(
-      `  Field values were not checked: Volto's validators are not built. Build them in Inka with ` +
-        "`pnpm build:volto-validation` to check what the Volto admin's save refuses.",
+      `  Field values were checked against Inka's own rules only: Volto's validators are not built. ` +
+        "Build them in Inka with `pnpm build:volto-validation` to check what the Volto admin's save refuses.",
     );
   }
+  // Without the bundle, Volto's validators find nothing and Inka's own field
+  // rules (a link's shape, a rule's error on a region) still run.
+  const validateFieldsPerFieldset = volto ? volto.validateFieldsPerFieldset : () => ({});
   // A LAYOUT document holds the blocks of the region that names it in
   // `allowedLayouts` (a site footer's blocks are the footer region's, not the
   // page content's), so it is held to that region's rules: its own `items` are
@@ -2031,8 +2039,17 @@ async function checkEditorRules(source, schemas, { exemptSlots = [], volto = loa
       // PLACEMENT is not checked, and it does not count against maxLength.
       // Every other rule below still applies to it.
       const placementExempt = Boolean(blockData && exempt.has(blockData.slotId));
+      // `empty` is the seed of a region that names no default and offers a choice
+      // (getEmptyBlockType, as the editor seeds it): allowed there, listed or not.
+      const parentSchema = info.parentId
+        ? pathMap._schemas[pathMap[info.parentId]?._schemaRef]
+        : withRules._page?.blockSchema;
+      const regionDef = parentSchema?.properties?.[info.region];
+      const seeded = info.blockType === 'empty'
+        && getEmptyBlockType({ defaultBlockType: regionDef?.defaultBlockType, allowedBlocks: info.allowedSiblingTypes }) === 'empty';
       if (
         !placementExempt &&
+        !seeded &&
         !isEmptySlot(blockData) &&
         !info.allowedSiblingTypesDerived &&
         Array.isArray(info.allowedSiblingTypes) &&
@@ -2062,11 +2079,11 @@ async function checkEditorRules(source, schemas, { exemptSlots = [], volto = loa
       // (required, lengths, pattern, url, email, number limits, item counts)
       // and a fieldRules `error` — the save's own step, with Volto's own code.
       const lockedCopy = blockData && blockData.readOnly === true && !ownTemplate.has(blockData.templateId);
-      if (volto && schema && schema.properties && blockData && !lockedCopy) {
+      if (schema && schema.properties && blockData && !lockedCopy) {
         const refused = blockFieldErrors({
           schema,
           blockData,
-          validateFieldsPerFieldset: volto.validateFieldsPerFieldset,
+          validateFieldsPerFieldset,
           formatMessage: formatVoltoMessage,
           blocksConfig: schemas,
           // What a site's own catalog column holds (a listing's mapping):
@@ -2141,9 +2158,11 @@ function formatReport(title, result) {
     lines.push(`Mappings: ${result.stats.blocks} block types, ${result.stats.mappings} field mappings that don't make sense`);
   } else if (title === 'undeclared') {
     lines.push(`Declared: ${result.stats.blocks} block types, ${result.stats.undeclared} regions naming a block nobody declares`);
+  } else if (title === 'fieldsets') {
+    lines.push(`Fieldsets: ${result.stats.fields} fields, ${result.stats.unlisted} not in any fieldset`);
   } else if (title === 'validate') {
     lines.push(`Content export OK: ${result.stats.dataFiles} data files, ${result.stats.blobFiles} blob files`);
-  } else {
+  } else if (title === 'check') {
     lines.push(`Content: ${result.stats.items} items`);
     lines.push(
       `Images:  ${result.stats.imagesOk} ok, ${result.stats.imagesBroken} broken` +
@@ -2154,6 +2173,8 @@ function formatReport(title, result) {
     lines.push(`UIDs:    ${result.stats.resolveuidOk} resolved, ${result.stats.resolveuidBroken} broken`);
     lines.push(`Links:   ${result.stats.linksOk} ok, ${result.stats.linksBroken} broken`);
     lines.push(`Layout:  ${result.stats.layoutOk} ok, ${result.stats.layoutBroken} dangling`);
+  } else {
+    throw new Error(`formatReport: no summary for a "${title}" report`);
   }
   if (result.errors.length) {
     lines.push('');

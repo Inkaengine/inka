@@ -37,8 +37,7 @@
             }
           ]
         }
-      ],
-      "plaintext": "Bold words and plain words"
+      ]
     },
     "plain": {
       "@type": "slate",
@@ -51,8 +50,7 @@
             }
           ]
         }
-      ],
-      "plaintext": "Only plain words"
+      ]
     }
   },
   "blocks_layout": {

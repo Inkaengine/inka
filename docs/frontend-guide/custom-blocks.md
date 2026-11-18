@@ -276,7 +276,7 @@ const bridge = initBridge({
             title: 'Slide',
             blockSchema: {
                 properties: {
-                    url: { title: 'Link', widget: 'url' },
+                    url: { title: 'Link', widget: 'object_browser', mode: 'link', allowExternals: true },
                     title: { title: 'Title' },
                     image: { title: 'Image', widget: 'image' },
                     description: { title: 'Description',
@@ -423,6 +423,22 @@ The stored value is a name (`plone.app.vocabularies.Keywords`), not a URL, so co
 ### Searching a vocabulary
 
 `@vocabularies/<name>` supports `?title=` (a case-insensitive substring filter, applied server-side) and `b_start` / `b_size` batching. A type-ahead should send `?title=` per keystroke rather than fetch every term — a long vocabulary is exactly the case where a list is the wrong control.
+
+## Link fields hold one shape
+
+A link field is `widget: "object_browser"` with `mode: "link"`; add `allowExternals: true` when an address outside the site is allowed too. It stores a list of links, `[{ "@id": "/about" }]`, whether the link is to a page on the site or an external URL: an address typed in is stored as `[{ "@id": "https://example.com", "title": "example.com" }]`. A link picked from the site may carry its summary as well (`title`, `@type`, …). That's the only shape: unset, or an empty list, means no link, and a plain string is never stored.
+
+The `url` widget is deprecated: declare a link as above instead.
+
+Read the address from the first entry:
+
+### Javascript
+
+```javascript
+const href = block.href?.length ? block.href[0]['@id'] : null;
+```
+
+The editor writes this shape everywhere: the sidebar's link widget, an inline link edit, and a block conversion that maps a field onto a link. The editor's save and the content check refuse any other, so content from somewhere else (an import, a conversion script) has to be converted first. A field meant to hold a plain URL string is a plain string field, not a link field.
 
 ## Picking a block, and a value from it (`blockPicker`)
 

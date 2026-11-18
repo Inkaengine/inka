@@ -63,8 +63,7 @@
     },
     "text-after": {
       "@type": "slate",
-      "value": [{"type": "p", "children": [{"text": "Text after table"}]}],
-      "plaintext": "Text after table"
+      "value": [{"type": "p", "children": [{"text": "Text after table"}]}]
     }
   },
   "blocks_layout": {
