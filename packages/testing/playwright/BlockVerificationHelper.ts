@@ -1370,21 +1370,32 @@ export async function verifyPathMapCoverage(
  * line whose only job was to skip the block.
  */
 /**
- * The page's block uids that show in its visible text (uidsShownAsText). A uid
- * is an internal key: shown, it means a block's raw data was drawn in place of
- * the block, however the frontend chose to fail (a placeholder dumping its
- * JSON, an error naming it).
+ * The blocks on the page that drew their own raw data: a block whose uid shows
+ * in the text of its own element, leaving out the blocks nested in it
+ * (uidsShownAsText). A uid is an internal key, so shown there it means the
+ * block's data was drawn in place of the block, however the frontend chose to
+ * fail (a placeholder dumping its JSON, an error naming it). A uid in another
+ * block's text is that block's content: a code example showing a block's JSON,
+ * or authored words that happen to match.
  */
 export async function blockUidsShownAsText(iframe: FrameLocator): Promise<string[]> {
-  const { text, uids } = await iframe.locator('body').evaluate((body) => {
+  const own = await iframe.locator('body').evaluate(() => {
     const b = (window as any).__hydraBridge;
     if (!b?.blockPathMap) throw new Error('blockUidsShownAsText: __hydraBridge.blockPathMap not available');
-    return {
-      text: (body as HTMLElement).innerText,
-      uids: Object.keys(b.blockPathMap).filter((uid) => !uid.startsWith('_')),
-    };
+    const known = new Set(Object.keys(b.blockPathMap).filter((uid) => !uid.startsWith('_')));
+    const out: Array<{ uid: string; text: string }> = [];
+    for (const el of document.querySelectorAll('[data-block-uid]')) {
+      const uid = el.getAttribute('data-block-uid')!;
+      if (!known.has(uid)) continue;
+      const copy = el.cloneNode(true) as Element;
+      for (const nested of copy.querySelectorAll('[data-block-uid]')) {
+        if (nested.getAttribute('data-block-uid') !== uid) nested.remove();
+      }
+      out.push({ uid, text: copy.textContent ?? '' });
+    }
+    return out;
   });
-  return uidsShownAsText(text, uids);
+  return [...new Set(own.flatMap(({ uid, text }) => uidsShownAsText(text, [uid])))];
 }
 
 /**

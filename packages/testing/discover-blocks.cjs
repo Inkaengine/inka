@@ -210,6 +210,12 @@ function collectListingContainerIssues(blocksConfig, blocks) {
         seen.add(`${b.blockType}\u0000${field}\u0000${childType}`);
       }
     }
+    // A block picked where it sits (the placement pass) renders that pairing
+    // as itself: `placement` is its container type and region.
+    if (b.placement) {
+      const dot = b.placement.lastIndexOf('.');
+      seen.add(`${b.placement.slice(0, dot)}\u0000${b.placement.slice(dot + 1)}\u0000${b.blockType}`);
+    }
   }
 
   const issues = [];
@@ -1708,7 +1714,12 @@ async function discoverBlocks(
           }
         }
 
-        const placement = `${pathMap[entry.parentId]?.blockType || 'page'}.${entry.region || 'items'}`;
+        // Its container: the nearest real block above it. A template instance is in
+        // the map (the editor groups a template's blocks by it) but stores nothing
+        // and renders nothing of its own, so it's passed over.
+        let containerId = entry.parentId;
+        while (containerId && pathMap[containerId]?.path === null) containerId = pathMap[containerId]?.parentId;
+        const placement = `${pathMap[containerId]?.blockType || 'page'}.${entry.region || 'items'}`;
         const placementKey = `${blockType}|${placement}`;
         if (!placementExamples.has(placementKey)) {
           placementExamples.set(placementKey, {
