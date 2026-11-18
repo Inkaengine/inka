@@ -13,6 +13,7 @@ const registry = (styleMenuClasses: string[]): FrontendRegistry => ({
   frontendKeys: ['type0'],
   styleMenuClasses,
   pageSchema: { properties: {} },
+  slateOffer: { blockFormats: undefined, styleMenu: undefined },
 });
 
 describe('discoverPerFrontend', () => {
@@ -31,6 +32,23 @@ describe('discoverPerFrontend', () => {
       },
     );
     expect(discover.mock.calls.map((call) => call[2])).toEqual([['callout', 'lead'], ['quote']]);
+  });
+
+  test("hands discovery each frontend's own slate offer", async () => {
+    const offers: Record<string, FrontendRegistry['slateOffer']> = {
+      'http://nuxt': { blockFormats: [{ type: 'h2', label: 'Heading' }], styleMenu: undefined },
+      'http://next': { blockFormats: undefined, styleMenu: { inlineStyles: [{ cssClass: 'lead' }] } },
+    };
+    const discover = vi.fn(async () => [{ type: 'slate' }]);
+    await discoverPerFrontend(
+      [['nuxt', 'http://nuxt'], ['next', 'http://next']],
+      {
+        reachable: async () => true,
+        fetchRegistry: async (url) => ({ ...registry([]), slateOffer: offers[url] }),
+        discover,
+      },
+    );
+    expect(discover.mock.calls.map((call) => call[4])).toEqual([offers['http://nuxt'], offers['http://next']]);
   });
 
   test("hands discovery each frontend's own page schema", async () => {
@@ -56,7 +74,7 @@ describe('discoverPerFrontend', () => {
       {
         reachable: async (url) => url !== 'http://down',
         fetchRegistry: async (url) => (url === 'http://empty'
-          ? { blocksConfig: {}, frontendKeys: [], styleMenuClasses: [], pageSchema: { properties: {} } }
+          ? { blocksConfig: {}, frontendKeys: [], styleMenuClasses: [], pageSchema: { properties: {} }, slateOffer: {} }
           : registry(['lead'])),
         discover: async () => [{ type: 'slate' }, { type: 'image' }],
       },

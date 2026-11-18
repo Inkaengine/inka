@@ -79,6 +79,40 @@ export const DEFAULT_SLATE_VOCABULARY = [
 ];
 
 /**
+ * The canvas toolbar as data, for runs with no Volto to ask (block-sanity judges
+ * "is every offered style demonstrated" from it). Kept honest by
+ * slateVocabulary.test.js, which reads both from the live config.
+ *
+ * TOOLBAR_BUTTON_FORMATS: each registered button that applies a format, and
+ * whether it is a block format (the format dropdown) or a text one (the
+ * toolbar) — what probeToolbarButtons finds.
+ */
+export const TOOLBAR_BUTTON_FORMATS = {
+  blockquote: { format: 'blockquote', block: true },
+  bold: { format: 'strong', block: false },
+  'bulleted-list': { format: 'ul', block: true },
+  callout: { format: 'callout', block: true },
+  code: { format: 'code', block: false },
+  'heading-four': { format: 'h4', block: true },
+  'heading-three': { format: 'h3', block: true },
+  'heading-two': { format: 'h2', block: true },
+  italic: { format: 'em', block: false },
+  'numbered-list': { format: 'ol', block: true },
+  strikethrough: { format: 'del', block: false },
+  sub: { format: 'sub', block: false },
+  sup: { format: 'sup', block: false },
+  underline: { format: 'u', block: false },
+};
+
+/** The buttons the toolbar lists when a frontend sends no `toolbarButtons` of its own. */
+export const DEFAULT_TOOLBAR_BUTTONS = [
+  'bold', 'italic', 'strikethrough', 'link', 'separator',
+  'heading-two', 'heading-three', 'separator',
+  'sub', 'sup', 'separator',
+  'numbered-list', 'bulleted-list', 'blockquote', 'styleMenu',
+];
+
+/**
  * Types the editor renders but never STORES: the block emitters
  * (`extractTables`, `extractImages`) lift them out of the slate value into
  * blocks of their own — hydra turns a pasted table into a `slateTable` BLOCK,
@@ -160,6 +194,39 @@ const RULE_NAMES = new Map([['link', 'a']]);
 export function isStyleAllowed(type, rules) {
   if (!rules) return true;
   return permits(RULE_NAMES.get(type) ?? type, rules.allowedStyles, rules.disallowedStyles);
+}
+
+/**
+ * Every style an author can pick in a region with these rules, the way the
+ * canvas toolbar offers them (SyncedSlateToolbar): the formats of its listed
+ * buttons — text ones on the toolbar, block ones in the format dropdown, which a
+ * frontend's declared `blockFormats` replace — and the style menu's paragraph
+ * and text styles, named by their dotted class. Each is offered only where the
+ * region allows it, and a paragraph style only where its paragraph type is
+ * allowed too (paragraphStyleItems).
+ *
+ * @param {{ toolbarButtons?: string[], blockFormats?: Array<{ type: string }>,
+ *   styleMenu?: object }} offer - what the frontend sends; with no
+ *   `toolbarButtons` the toolbar lists DEFAULT_TOOLBAR_BUTTONS
+ * @param {object|null} rules - the region's folded rules (foldSlateStyleRules)
+ * @returns {string[]}
+ */
+export function offeredSlateStyles({ toolbarButtons, blockFormats, styleMenu }, rules) {
+  const listed = (toolbarButtons ?? DEFAULT_TOOLBAR_BUTTONS)
+    .map((name) => TOOLBAR_BUTTON_FORMATS[name])
+    .filter(Boolean);
+  const textFormats = listed.filter((b) => !b.block).map((b) => b.format);
+  const blockTypes = Array.isArray(blockFormats)
+    ? blockFormats.map((f) => f.type)
+    : listed.filter((b) => b.block).map((b) => b.format);
+  const formats = [...textFormats, ...blockTypes].filter((t) => isStyleAllowed(t, rules));
+  const paragraphStyles = (styleMenu?.blockStyles || [])
+    .filter((d) => isStyleAllowed(`.${d.cssClass}`, rules) && isStyleAllowed(d.type || 'p', rules))
+    .map((d) => `.${d.cssClass}`);
+  const textStyles = (styleMenu?.inlineStyles || [])
+    .map((d) => `.${d.cssClass}`)
+    .filter((c) => isStyleAllowed(c, rules));
+  return [...new Set([...formats, ...paragraphStyles, ...textStyles])];
 }
 
 /** May a slate leaf carry this mark key here? */

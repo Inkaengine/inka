@@ -106,6 +106,8 @@ interface DiscoveredBlock {
   frontend?: string;
   integrityIssue?: boolean;
   unexercisedOption?: boolean;
+  /** A style the toolbar offers that no content demonstrates (reporter-only). */
+  unexercisedStyle?: boolean;
   undeclaredField?: boolean;
   /** Here only to show this text style, which no block case carries. */
   forStyle?: string;
@@ -164,7 +166,7 @@ export function defineBlockSanityTests(options: SanityOptions): void {
   // are checked once however many samples it holds, and always by the same test.
   const isRenderSample = (b: DiscoveredBlock) =>
     !b.unregistered && !b.noExample && !b.allowedBlocksViolation && !b.integrityIssue &&
-    !b.shapeIssue && !b.slateIssue && !b.unexercisedOption && !b.undeclaredField;
+    !b.shapeIssue && !b.slateIssue && !b.unexercisedOption && !b.unexercisedStyle && !b.undeclaredField;
   const checksItsPage = new Set<DiscoveredBlock>();
   {
     const pages = new Set<string>();
@@ -310,7 +312,7 @@ export function defineBlockSanityTests(options: SanityOptions): void {
       // reaches the render checks — skip it here. The coverage reporter reads these
       // straight from .discovered-blocks.json (they are identical in every worker)
       // and reports them alongside the never-editable fields.
-      if (block.unexercisedOption) {
+      if (block.unexercisedOption || block.unexercisedStyle) {
         continue;
       }
       // A field present in stored data but not declared in the block schema — one

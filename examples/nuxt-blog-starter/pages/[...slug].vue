@@ -282,7 +282,10 @@ onMounted(() => {
                             : {}),
                         slate: {
                             styleMenu: {
-                                blockStyles: [{ cssClass: 'lead', label: 'Lead' }],
+                                blockStyles: [
+                                    { cssClass: 'lead', label: 'Lead' },
+                                    { cssClass: 'list-spaced', label: 'Spaced list', appliesTo: ['ul', 'ol'] },
+                                ],
                                 inlineStyles: [{ cssClass: 'dropcap', label: 'Drop cap' }],
                             },
                         },

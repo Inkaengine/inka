@@ -201,6 +201,10 @@
     const frontendBlockKeys = new Set();
     // cssClasses of the style menu the frontend declares at INIT (#295).
     const styleMenuClasses = new Set();
+    // What the frontend sends about the toolbar an author picks styles from: its
+    // own button list, its declared block formats and its style menu
+    // (block-sanity's "is every offered style demonstrated" — offeredSlateStyles).
+    let frontendSlateOffer = {};
 
     // The block types the real admin has built in (Volto core's blocksConfig +
     // volto-hydra's index.js). A frontend entry for one of these ADDS to the
@@ -742,6 +746,11 @@
             message.page?.schema?.properties || mockBlocksConfig._page.schema().properties;
           {
             const menu = message.voltoConfig?.settings?.slate?.styleMenu;
+            frontendSlateOffer = {
+              toolbarButtons: message.voltoConfig?.settings?.slate?.toolbarButtons,
+              blockFormats: message.voltoConfig?.settings?.slate?.blockFormats,
+              styleMenu: menu,
+            };
             for (const d of [
               ...(menu?.blockStyles || []),
               ...(menu?.inlineStyles || []),
@@ -1193,6 +1202,7 @@
       // frontend knows which styles it offers — the alternative is a hardcoded
       // list that is wrong for every frontend but one.
       getStyleMenuClasses: () => Array.from(styleMenuClasses),
+      getSlateOffer: () => frontendSlateOffer,
       getFrontendBlockKeys: () => Array.from(frontendBlockKeys),
       // The page schema in use: the frontend's (INIT `page`) merged over the
       // baseline. Its regions name the layouts forced across them
