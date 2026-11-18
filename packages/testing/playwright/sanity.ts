@@ -24,7 +24,7 @@
  *                        - comma-separated template slot ids where a block may
  *                          sit outside its container's allowedBlocks on purpose
  *                          (e.g. a docs site's component showcase slot). See
- *                          readContainmentRules in discover-blocks.cjs.
+ *                          readContainmentRules in discover-blocks.js.
  *
  * Works against any Plone API — mock or remote.
  */

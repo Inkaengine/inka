@@ -7,10 +7,7 @@
  * measured, and the style coverage would only ever speak for `p`.
  */
 import { describe, test, expect } from 'vitest';
-import { createRequire } from 'module';
-
-const require = createRequire(import.meta.url);
-const { styleExampleCases, undemonstratedStyles } = require('./discover-blocks.cjs');
+import { styleExampleCases, undemonstratedStyles } from './discover-blocks.js';
 
 const para = (text, extra = {}) => ({ type: 'p', ...extra, children: [{ text }] });
 const slate = (...nodes) => ({ '@type': 'slate', value: nodes });

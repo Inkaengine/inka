@@ -7,7 +7,7 @@
  */
 import { describe, test, expect } from 'vitest';
 import { checkIntegrity } from '@inka/content-validator';
-import { integritySchemas } from './discover-blocks.cjs';
+import { integritySchemas } from './discover-blocks.js';
 
 const footer = {
   rel: 'templates/site-footer',

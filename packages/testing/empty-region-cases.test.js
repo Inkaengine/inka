@@ -6,7 +6,7 @@
  * fixtures usually are.
  */
 import { describe, test, expect } from 'vitest';
-import { buildEmptyRegionCases, regionHolderCases } from './discover-blocks.cjs';
+import { buildEmptyRegionCases, regionHolderCases } from './discover-blocks.js';
 
 const block = (pagePath, blockData = {}) => ({ blockType: 'slate', pagePath, blockId: 'b1', blockData });
 const pageCase = (blocks) => buildEmptyRegionCases({}, blocks).find((c) => c.parentType === 'page');

@@ -39,7 +39,7 @@
 
 const path = require('path');
 const fs = require('fs');
-const { validate, checkIntegrity, checkBlockSchemas, checkEditorRules, checkChooserGroups, checkFieldsetCoverage, checkReservedFields, checkFieldMappings, checkUndeclaredBlocks, fieldMapFromSchemas, idFieldMapFor, loadSchemas, formatReport } = require('./plone-content-validator.cjs');
+const { validate, checkIntegrity, checkBlockSchemas, checkEditorRules, checkChooserGroups, checkFieldsetCoverage, checkReservedFields, checkFieldMappings, checkUndeclaredBlocks, fieldMapFromSchemas, idFieldMapFor, loadSchemas, formatReport } = require('./plone-content-validator.js');
 
 function usage() {
   console.error(

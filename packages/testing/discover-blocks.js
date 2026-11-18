@@ -10,7 +10,7 @@
  * @typedef {{ blockType: string, variation: string, blockId: string, pagePath: string, blockData: Object, isListing: boolean }} DiscoveredBlock
  */
 
-const { isObjectListRegion, regionIdField } = require('@volto-hydra/helpers/regionWidgets.js');
+import { isObjectListRegion, regionIdField } from '@volto-hydra/helpers/regionWidgets.js';
 
 /**
  * Build a map of blockType → { fieldName → idField } for object_list fields.
@@ -713,8 +713,8 @@ function collectSlateIssues(blockData, pagePath, blockId, out, blockType, inTabl
  *    structural checks stay in collectSlateIssues)
  */
 // UNDECLARED_EXEMPT: the fields block data may carry that no schema declares.
-// It lives with the validator (packages/content-validator/plone-content-validator.cjs), which ships.
-const { UNDECLARED_EXEMPT } = require('@inka/content-validator');
+// It lives with the validator (packages/content-validator/plone-content-validator.js), which ships.
+import { UNDECLARED_EXEMPT, checkIntegrity } from '@inka/content-validator';
 
 // Slate STYLES a person can actually choose from the editor's style menu
 // (Volto's `settings.slate.styleMenu`, stored as a node's `styleName`). Any
@@ -731,12 +731,12 @@ let AUTHORABLE_SLATE_STYLES = new Set([]);
 // Hydra's own value validator (@volto-hydra/helpers/schemaValidation.js) —
 // the SAME `isValidValue` Hydra runs to strip un-authorable values on load, so
 // block-sanity and the editor agree on "is this a valid value?". Loaded lazily
-// via dynamic import (it's ESM but dependency-free by design) in discoverBlocks.
+// in discoverBlocks.
 let isValidValueFn = null;
 
 // What an author can pick in a region (offeredSlateStyles, from
 // @volto-hydra/helpers/slateStyles.js — the rules the toolbar offers styles by).
-// ESM, so loaded in discoverBlocks. null until then.
+// Loaded in discoverBlocks. null until then.
 let offeredSlateStylesFn = null;
 
 // Hydra's REAL schema resolver, run offline. resolveEffectiveBlockSchema(blockId,
@@ -845,15 +845,15 @@ async function loadMappingVocabularies(apiUrl, blocksConfig) {
 }
 
 // What can be mapped onto what, and how: the rule the mapping widget offers by
-// and the editor checks config with (Node require()s sync ESM).
-const { ADDRESS_SOURCE, RETIRED_ADDRESS_SOURCE } = require('@volto-hydra/helpers/catalogAddress.js');
-const {
+// and the editor checks config with.
+import { ADDRESS_SOURCE, RETIRED_ADDRESS_SOURCE } from '@volto-hydra/helpers/catalogAddress.js';
+import {
   CATALOG_SOURCE_KINDS,
   conversionFor,
   isAccepted,
   sourceKind,
   targetKind,
-} = require('@volto-hydra/helpers/mappingConversions.js');
+} from '@volto-hydra/helpers/mappingConversions.js';
 // What expandListingBlocks sets on every item it makes, and Plone's link key.
 const ITEM_IDENTITY_KEYS = new Set(['@uid', '@type', '@id', 'readOnly']);
 
@@ -1428,7 +1428,7 @@ function isContainmentExempt(entry, blockData, rules = { slots: [] }, pagePath =
   return !!slotId && (rules.slots || []).includes(slotId);
 }
 
-const { slateStyles } = require('./slate-styles.js');
+import { slateStyles } from './slate-styles.js';
 
 /** The text styles in every slate field of a block. */
 function stylesOfBlock(blockData) {
@@ -1498,7 +1498,6 @@ async function discoverBlocks(
   // Use hydra's canonical buildBlockPathMap to walk content — it knows
   // the schema-defined container fields (blocks_layout, object_list,
   // columns, …) and distinguishes real blocks from inline sub-items.
-  // Dynamically imported because the module is ESM and this helper is CJS.
   const { buildBlockPathMap } = await import('@volto-hydra/helpers/buildBlockPathMap.js');
   // Reuse Hydra's canonical value validator (choices/enum/actions) — same check
   // it strips content with, so block-sanity flags exactly what the editor can't
@@ -1987,7 +1986,6 @@ async function discoverBlocks(
   // One failing test per affected page, so a broken resolveuid or a
   // blocks_layout entry pointing at a deleted block fails by name.
   {
-    const { checkIntegrity } = require('@inka/content-validator');
     // Discovery only FETCHES page-like items, but references point at every
     // content type (an image block's url names an Image object). Register the
     // rest of the @search result as stubs — path + UID into the maps, no
@@ -2118,7 +2116,7 @@ async function discoverBlocks(
   return result;
 }
 
-module.exports = {
+export {
   paragraphShapeOf,
   editableInstance,
   styleExampleCases,

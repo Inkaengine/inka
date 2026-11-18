@@ -4,10 +4,7 @@
  * a frontend renders it but never registers it.
  */
 import { describe, test, expect } from 'vitest';
-import { createRequire } from 'module';
-
-const require = createRequire(import.meta.url);
-const { isUnregisteredType } = require('./discover-blocks.cjs');
+import { isUnregisteredType } from './discover-blocks.js';
 
 const registered = new Set(['slate', 'teaser']);
 

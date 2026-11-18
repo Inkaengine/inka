@@ -17,7 +17,7 @@ const { app } = require('@inka/mock-api/server');
 const {
   collectFieldMappingIssues,
   loadMappingVocabularies,
-} = require('./discover-blocks.cjs');
+} = require('./discover-blocks.js');
 
 let server;
 let baseUrl;

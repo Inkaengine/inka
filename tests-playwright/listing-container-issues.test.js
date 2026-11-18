@@ -8,11 +8,8 @@
  * listing renders blank items; call a derived default a pin and the check cries
  * wolf about the one configuration that is correct.
  */
-import { createRequire } from 'node:module';
 import { describe, expect, test } from 'vitest';
-
-const require = createRequire(import.meta.url);
-const { collectListingContainerIssues } = require('@inka/testing/discover-blocks');
+import { collectListingContainerIssues } from '@inka/testing/discover-blocks';
 
 const withListing = ({ variation = {} }) => ({
   listing: {

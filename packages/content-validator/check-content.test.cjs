@@ -9,7 +9,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
-const { checkContent, checkExport } = require('./plone-content-validator.cjs');
+const { checkContent, checkExport } = require('./plone-content-validator.js');
 
 const SCHEMAS = {
   hero: { blockSchema: { properties: { heading: { type: 'string' }, description: { widget: 'slate' } } } },

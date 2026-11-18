@@ -1,7 +1,7 @@
 /** Each check's summary line says what that check counted. */
 const { describe, it } = require('node:test');
 const assert = require('node:assert/strict');
-const { formatReport, checkFieldsetCoverage } = require('./plone-content-validator.cjs');
+const { formatReport, checkFieldsetCoverage } = require('./plone-content-validator.js');
 
 describe('formatReport', () => {
   it("summarises the fieldset check with its own counts, not the integrity check's", () => {

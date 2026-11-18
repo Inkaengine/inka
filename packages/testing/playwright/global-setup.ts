@@ -17,17 +17,18 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { createRequire } from 'node:module';
 import { chromium } from '@playwright/test';
 import { harnessUrls } from '../ports';
 import { discoveryPath } from '../discovery';
+import { checkRunningAdmin } from '../admin-build-stamp.cjs';
+import {
+  buildEmptyRegionCases,
+  collectListingContainerIssues,
+  discoverBlocks,
+} from '../discover-blocks.js';
 
-const require = createRequire(import.meta.url);
-const { checkRunningAdmin } = require('../admin-build-stamp.cjs');
 /** The Inka checkout this harness is part of: the admin a consumer runs is built from it. */
 const INKA_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../..');
-const { discoverBlocks, buildEmptyRegionCases, collectListingContainerIssues } =
-  require('../discover-blocks.cjs');
 
 export interface FrontendRegistry {
   blocksConfig: Record<string, any>;

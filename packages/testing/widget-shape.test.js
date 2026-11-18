@@ -3,10 +3,7 @@
  * control. Volto's internal_url widget is one: it holds a path on the site.
  */
 import { describe, test, expect } from 'vitest';
-import { createRequire } from 'module';
-
-const require = createRequire(import.meta.url);
-const { collectWidgetShapeIssues } = require('./discover-blocks.cjs');
+import { collectWidgetShapeIssues } from './discover-blocks.js';
 
 const issuesFor = (widget, value) => {
   const out = [];
