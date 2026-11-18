@@ -1,0 +1,1 @@
+A markdown export leaves out a page's copies of its template's locked blocks: they are the template's, and every reader merges the template in. A page made from a template now holds only what it says itself. And an error in an export is answered as an error, not left hanging.
