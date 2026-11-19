@@ -83,6 +83,7 @@ const LayoutSelector = ({
   formData,
   onChangeFormData,
   allowedLayouts, // Array of template URL strings from field config
+  region = 'items', // The page region the layout is applied to
 }) => {
   const intl = useIntl();
   const [loading, setLoading] = React.useState(false);
@@ -126,7 +127,7 @@ const LayoutSelector = ({
       const { merged: newFormData } = await mergeTemplatesIntoPage(formData, {
         loadTemplate: async (templateId) =>
           adoptTemplate(await api.get(templateId), templateId),
-        pageBlocksFields: { items: { allowedLayouts: [layoutToApply] } },
+        pageBlocksFields: { [region]: { allowedLayouts: [layoutToApply] } },
         uuidGenerator: uuid,
         firstInsert: true,
       });

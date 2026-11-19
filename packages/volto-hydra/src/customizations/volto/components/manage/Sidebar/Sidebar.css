@@ -253,19 +253,22 @@
 }
 
 /* Ensure accordion content in metadata section displays properly */
-.hydra-sidebar #sidebar-metadata .ui.styled.accordion {
+.hydra-sidebar #sidebar-metadata .ui.styled.accordion,
+.hydra-sidebar #sidebar-layouts .ui.styled.accordion {
   margin: 0;
   border-radius: 0;
   box-shadow: none;
 }
 
-.hydra-sidebar #sidebar-metadata .ui.styled.accordion .title {
+.hydra-sidebar #sidebar-metadata .ui.styled.accordion .title,
+.hydra-sidebar #sidebar-layouts .ui.styled.accordion .title {
   padding: 12px 16px;
   background: #fafafa;
   border-bottom: 1px solid #eee;
 }
 
-.hydra-sidebar #sidebar-metadata .ui.styled.accordion .content {
+.hydra-sidebar #sidebar-metadata .ui.styled.accordion .content,
+.hydra-sidebar #sidebar-layouts .ui.styled.accordion .content {
   padding: 16px;
 }
 
@@ -388,4 +391,49 @@
 .object-browser ul.object-listing li {
   display: flex;
   align-items: center;
+}
+
+/* Layouts section: one row per region — its name, then its layout choice. */
+.hydra-sidebar #sidebar-layouts .page-layout-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 4px 0;
+}
+
+.hydra-sidebar #sidebar-layouts .page-layout-region {
+  font-weight: 600;
+  font-size: 14px;
+}
+
+/* The page's Regions list: what it is, above the regions themselves. */
+.hydra-sidebar .child-blocks-widget .regions-heading {
+  padding: 12px 16px;
+  font-weight: 600;
+  font-size: 15px;
+  border-bottom: 1px solid #ddd;
+}
+
+/* A locked template's section: what it is, its layout, and the way to unlock. */
+.hydra-sidebar .template-locked-info {
+  padding: 12px 16px 16px;
+  border-bottom: 1px solid #eee;
+}
+
+.hydra-sidebar .template-locked-info p {
+  margin: 0 0 12px;
+}
+
+.hydra-sidebar .template-locked-info-layout {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin: 0 0 12px;
+}
+
+.hydra-sidebar .template-locked-info-label {
+  font-weight: 600;
+  font-size: 14px;
 }

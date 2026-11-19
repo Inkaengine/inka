@@ -31,7 +31,6 @@ import {
 } from '../../utils/blockPath';
 import { PAGE_BLOCK_UID } from '@volto-hydra/hydra-js';
 import { isBlockPositionLocked } from '@volto-hydra/helpers';
-import LayoutSelector from './LayoutSelector';
 
 const messages = defineMessages({
   blocks: {
@@ -167,14 +166,12 @@ const ContainerFieldSection = ({
   childBlocks,
   allowedBlocks,
   allowedTemplates,
-  allowedLayouts,
   canAdd, // From getAllContainerFields - considers readonly, maxLength, etc.
   onSelectBlock,
   onAddBlock,
   onMoveBlock,
   parentBlockId,
   formData,
-  onChangeFormData,
   blockPathMap,
 }) => {
   const intl = useIntl();
@@ -212,14 +209,6 @@ const ContainerFieldSection = ({
       <div className="widget-header">
         <span className="widget-title">{fieldTitle}</span>
         <div className="widget-actions">
-          {onChangeFormData && allowedLayouts?.length > 0 && (
-            <LayoutSelector
-              formData={formData}
-              onChangeFormData={onChangeFormData}
-              allowedLayouts={allowedLayouts}
-              targetBlockId={parentBlockId}
-            />
-          )}
           {canAdd && (
             <button
               onClick={(e) =>
@@ -367,7 +356,6 @@ const ChildBlocksWidget = ({
   onSelectBlock,
   onAddBlock,
   onMoveBlock,
-  onChangeFormData,
   templateEditMode,
 }) => {
   const intl = useIntl();
@@ -398,6 +386,9 @@ const ChildBlocksWidget = ({
 
     return createPortal(
       <div className="child-blocks-widget page-blocks-fields">
+        {/* Layouts are a page setting now (PageLayoutsSection); this list is
+            the page's regions and their blocks. */}
+        <div className="regions-heading">Regions</div>
         {fieldsConfig.map((fieldConfig) => {
           const childBlocks = getChildBlocksForPageField(formData, fieldConfig);
           return (
@@ -411,14 +402,12 @@ const ChildBlocksWidget = ({
               childBlocks={childBlocks}
               allowedBlocks={fieldConfig.allowedBlocks}
               allowedTemplates={fieldConfig.allowedTemplates}
-              allowedLayouts={fieldConfig.allowedLayouts}
               canAdd={fieldConfig.canAdd}
               onSelectBlock={onSelectBlock}
               onAddBlock={onAddBlock}
               onMoveBlock={onMoveBlock}
               parentBlockId={PAGE_BLOCK_UID}
               formData={formData}
-              onChangeFormData={onChangeFormData}
               blockPathMap={blockPathMap}
             />
           );
@@ -558,7 +547,6 @@ const ChildBlocksWidget = ({
                 onMoveBlock={wrappedMoveBlock}
                 parentBlockId={realParentId}
                 formData={formData}
-                onChangeFormData={onChangeFormData}
                 blockPathMap={blockPathMap}
               />
             );
@@ -576,14 +564,12 @@ const ChildBlocksWidget = ({
             childBlocks={childBlocks}
             allowedBlocks={field.allowedBlocks}
             allowedTemplates={field.allowedTemplates}
-            allowedLayouts={field.allowedLayouts}
             canAdd={field.canAdd}
             onSelectBlock={onSelectBlock}
             onAddBlock={onAddBlock}
             onMoveBlock={onMoveBlock}
             parentBlockId={selectedBlock}
             formData={formData}
-            onChangeFormData={onChangeFormData}
             blockPathMap={blockPathMap}
           />
         );
@@ -600,7 +586,6 @@ ChildBlocksWidget.propTypes = {
   onSelectBlock: PropTypes.func,
   onAddBlock: PropTypes.func,
   onMoveBlock: PropTypes.func,
-  onChangeFormData: PropTypes.func,
   templateEditMode: PropTypes.arrayOf(PropTypes.string),
 };
 

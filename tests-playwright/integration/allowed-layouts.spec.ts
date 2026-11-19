@@ -87,6 +87,42 @@ test.describe('allowedLayouts', () => {
     });
   });
 
+  // Layouts are page settings, beside Preview image and SEO, and there whatever
+  // is selected. The page's Regions list holds the regions' blocks only.
+  test.describe('Layouts in page settings', () => {
+    test('a Layouts section switches a region\'s layout, with or without a block selected', async ({ page }) => {
+      const helper = new AdminUIHelper(page);
+      const iframe = helper.getIframe();
+      await helper.login();
+      await helper.navigateToEdit('/test-page');
+      await helper.waitForIframeReady();
+      await page.locator('.sidebar-section-header .section-title').click();
+
+      // The regions list is labelled, and offers no layouts of its own.
+      const regions = page.locator('#sidebar-order .page-blocks-fields');
+      await expect(regions.locator('.regions-heading')).toHaveText('Regions');
+      await expect(regions.locator('.layout-selector')).toHaveCount(0);
+
+      // Page settings have a Layouts section, one row per region with layouts.
+      const layouts = page.locator('#sidebar-layouts .page-layouts');
+      await expect(layouts.locator('.title')).toContainText('Layouts');
+      const blocksRow = layouts.locator('.page-layout-row').filter({ hasText: 'Blocks' });
+      await blocksRow.locator('.layout-selector select').selectOption('Header Footer Layout');
+      await blocksRow.locator('.apply-layout-btn').click();
+      const { blockId: headerBlockId } = await helper.waitForBlockByContent('Layout Header');
+
+      // Still there with a block selected.
+      await helper.clickBlockInIframe('block-1-uuid');
+      await helper.waitForBlockSelectedInAdmin('block-1-uuid');
+      await blocksRow.locator('.layout-selector select').selectOption('Header Only Layout');
+      await blocksRow.locator('.apply-layout-btn').click();
+      await expect(
+        iframe.locator('main [data-block-uid], #content [data-block-uid]').filter({ hasText: 'Header Only' }),
+      ).toBeVisible({ timeout: 10000 });
+      await expect(iframe.locator(`[data-block-uid="${headerBlockId}"]`)).toHaveCount(0);
+    });
+  });
+
   test.describe('allowedLayouts vs allowedTemplates Independence', () => {
     test('template in allowedLayouts appears in Layout dropdown', async ({ page }) => {
       const helper = new AdminUIHelper(page);

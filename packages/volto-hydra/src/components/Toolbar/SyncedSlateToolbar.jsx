@@ -1386,6 +1386,21 @@ const SyncedSlateToolbar = ({
     toolbarTemplateInstanceId,
   );
 
+  // Open the settings sidebar (it may be collapsed — on a phone it always
+  // starts so), through the same trigger the sidebar's own button uses.
+  const expandSidebar = () => {
+    const sidebarContainer = document.querySelector('.sidebar-container');
+    if (sidebarContainer?.classList.contains('collapsed')) {
+      sidebarContainer.querySelector('.trigger')?.click();
+    }
+  };
+  // Take the author to a template: select it, so the sidebar shows its
+  // section — what it is, what unlocking it does, and the Unlock button.
+  const openTemplate = (instanceId) => {
+    onSelectBlock(instanceId);
+    expandSidebar();
+  };
+
   // Determine if we should show format buttons based on field type
   // Also hide for readonly blocks (e.g., fixed template blocks, or blocks outside template in edit mode)
   const blockType = block?.['@type'];
@@ -1588,12 +1603,14 @@ const SyncedSlateToolbar = ({
         );
       })()}
 
-      {/* Drag handle + template lock/unlock toggle — only for blocks, not page fields.
-          A template block the user can edit shows a lock/unlock toggle in a CONSISTENT
-          spot next to the drag handle: 🔒 to enter template edit (unlock), 🔓 to lock &
-          save. While editing the block is movable, so the drag handle sits beside it —
-          same location for both lock and unlock. Clicking raises the unlock-warning /
-          lock-decision modal, so a template can be saved WITHOUT opening the sidebar. */}
+      {/* Drag handle + template lock — only for blocks, not page fields.
+          A lock says the block is LOCKED: the page may not edit it. It stands in for
+          (or, if the block still moves, sits beside) the drag handle. A block in a
+          template's open slot, or a fixed block the page edits, shows no lock — it
+          needs no unlocking (inka#774). Clicking the lock never unlocks: it selects
+          the template, whose sidebar section says what unlocking does and holds the
+          Unlock button. While the template is unlocked, 🔓 locks it again (asking
+          what to do with the edits), so it can be saved without the sidebar. */}
       {(() => {
         if (!selectedBlock || selectedBlock === PAGE_BLOCK_UID) {
           return <div style={{ width: '8px' }} />; // Spacer for page-level fields
@@ -1620,50 +1637,52 @@ const SyncedSlateToolbar = ({
             ⠿
           </div>
         );
+        const beside = (...items) => (
+          <div style={{ display: 'flex', alignItems: 'center', gap: '2px' }}>
+            {items}
+          </div>
+        );
 
-        // The lock/unlock toggle shows for the template's fixed "chrome" (🔒, tap to
-        // edit) and for ANY block while its template is unlocked (🔓, tap to lock &
-        // save). Editable slot content in a LOCKED template is just normal movable
-        // content — it keeps the drag handle (below), no toggle.
         const isPositionLocked = isBlockPositionLocked(block, templateEditMode);
-        const canToggleTemplate =
-          !!instanceId && !!onToggleTemplateEditMode && canEditToolbarTemplate;
-        if (canToggleTemplate && (isPositionLocked || isEditingToolbarTemplate)) {
-          const editing = isEditingToolbarTemplate;
-          // The ONE shared template lock/unlock control (same component the sidebar
-          // renders) — a whole-template action.
-          const toggle = (
+        const isLocked = isBlockReadonly(block, templateEditMode);
+        // While editing the block is movable — the drag handle keeps its canonical
+        // (leftmost) position so DnD alignment is unaffected; the toggle sits to its
+        // right, next to it.
+        if (instanceId && onToggleTemplateEditMode && isEditingToolbarTemplate) {
+          return beside(
+            <React.Fragment key="drag">{dragHandle}</React.Fragment>,
             <TemplateLockToggle
+              key="lock"
               instanceId={instanceId}
-              editing={editing}
+              editing
               canEdit={canEditToolbarTemplate}
               onToggle={onToggleTemplateEditMode}
               variant="toolbar"
-            />
-          );
-          // While editing the block is movable — the drag handle keeps its canonical
-          // (leftmost) position so DnD alignment is unaffected; the toggle sits to its
-          // right, next to it.
-          return editing ? (
-            <div style={{ display: 'flex', alignItems: 'center', gap: '2px' }}>
-              {dragHandle}
-              {toggle}
-            </div>
-          ) : (
-            toggle
+            />,
           );
         }
-
-        // Fixed template block the user CANNOT toggle (no Modify permission) → static lock.
-        if (isPositionLocked) {
-          return (
+        if (isLocked && instanceId && onSelectBlock) {
+          const lock = (
+            <TemplateLockToggle
+              key="lock"
+              instanceId={instanceId}
+              editing={false}
+              onToggle={openTemplate}
+              opens
+              variant="toolbar"
+            />
+          );
+          return isPositionLocked
+            ? lock
+            : beside(<React.Fragment key="drag">{dragHandle}</React.Fragment>, lock);
+        }
+        // Locked, but with no template to open (a block the page itself flags).
+        if (isLocked) {
+          const lock = (
             <div
+              key="lock"
               className="lock-icon"
-              title={
-                instanceId && !canEditToolbarTemplate
-                  ? 'You don’t have permission to edit this template'
-                  : 'This block is part of a template and cannot be moved'
-              }
+              title="This block is locked"
               style={{
                 padding: '4px 6px',
                 display: 'flex',
@@ -1679,7 +1698,12 @@ const SyncedSlateToolbar = ({
               <Icon name={lockSVG} size="16px" color="#999" />
             </div>
           );
+          return isPositionLocked
+            ? lock
+            : beside(<React.Fragment key="drag">{dragHandle}</React.Fragment>, lock);
         }
+        // Fixed but editable: it can't be dragged, and there is nothing to unlock.
+        if (isPositionLocked) return <div style={{ width: '8px' }} />;
         return dragHandle;
       })()}
 
@@ -1914,14 +1938,7 @@ const SyncedSlateToolbar = ({
         onDeleteBlock={onDeleteBlock}
         menuButtonRect={menuButtonRect}
         onClose={() => setMenuOpen(false)}
-        onOpenSettings={() => {
-          // Expand sidebar if collapsed
-          const sidebarContainer = document.querySelector('.sidebar-container');
-          if (sidebarContainer?.classList.contains('collapsed')) {
-            const triggerButton = sidebarContainer.querySelector('.trigger');
-            triggerButton?.click();
-          }
-        }}
+        onOpenSettings={expandSidebar}
         overflowButtons={overflowButtons}
         showFormatDropdown={!showFormatDropdown}
         blockButtons={blockButtons}
@@ -1958,9 +1975,15 @@ const SyncedSlateToolbar = ({
         // while editing. Gated on Modify permission.
         isTemplateInstance={!!toolbarTemplateInstanceId && canEditToolbarTemplate && !!onToggleTemplateEditMode}
         isEditingTemplate={isEditingToolbarTemplate}
+        // Locked, "Edit template" takes the author to the template, where
+        // unlocking is explained and done (inka#774); unlocked, "Save template"
+        // locks it.
         onToggleTemplateEdit={
           toolbarTemplateInstanceId && onToggleTemplateEditMode
-            ? () => onToggleTemplateEditMode(toolbarTemplateInstanceId)
+            ? () =>
+                isEditingToolbarTemplate
+                  ? onToggleTemplateEditMode(toolbarTemplateInstanceId)
+                  : openTemplate(toolbarTemplateInstanceId)
             : null
         }
         multiSelectedUids={isMultiSelected ? blockUI.multiSelectedUids : null}

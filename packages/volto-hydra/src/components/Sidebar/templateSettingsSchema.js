@@ -4,8 +4,8 @@
  * it's a prominent button at the top of the parent-blocks panel (see getTemplateEditButtonState).
  *
  * A template's name/location IS the template's own metadata, so changing it is editing the
- * template — only allowed while that template is being edited. When locked, the sidebar renders
- * this schema through ReadOnlyForm (static text) instead of the editable form.
+ * template — only allowed while that template is being edited. When locked, the sidebar shows
+ * none of it: the template's section says what the template is and how to unlock it instead.
  *
  * `id` is the template's URL id / filename (the last path segment). An object_browser can only
  * SELECT existing content, so the id needs a plain text field. It's only editable for a not-yet-
