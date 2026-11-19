@@ -199,7 +199,7 @@ Plone has no such operation: `ploneFetchItems` resolves it for the page it fetch
 { "i": "path", "o": "plone.app.querystring.operation.string.relativePath", "v": "/*" }
 ```
 
-For `/our-reports/operation-askern` this is sent as `{ "o": "…absolutePath", "v": "/our-reports" }`.
+For `/news/2024/new-bridge-opens` this is sent as `{ "o": "…absolutePath", "v": "/news" }`.
 
 ## Example fetchers
 

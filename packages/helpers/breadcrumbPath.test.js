@@ -18,21 +18,21 @@ const ABSOLUTE = 'plone.app.querystring.operation.string.absolutePath';
 
 describe('resolveBreadcrumbPath', () => {
   test('each * is the page path segment at that step', () => {
-    expect(resolveBreadcrumbPath('/*', '/our-reports/operation-askern')).toBe('/our-reports');
+    expect(resolveBreadcrumbPath('/*', '/news/2024/new-bridge-opens')).toBe('/news');
     expect(resolveBreadcrumbPath('/*/*', '/about/careers/graduates/apply')).toBe('/about/careers');
   });
 
   test('the depth is kept', () => {
-    expect(resolveBreadcrumbPath('/*::2', '/our-reports/operation-askern')).toBe('/our-reports::2');
+    expect(resolveBreadcrumbPath('/*::2', '/news/2024/new-bridge-opens')).toBe('/news::2');
   });
 
   test('a page above the level resolves to itself', () => {
-    expect(resolveBreadcrumbPath('/*/*', '/our-reports')).toBe('/our-reports');
+    expect(resolveBreadcrumbPath('/*/*', '/news')).toBe('/news');
     expect(resolveBreadcrumbPath('/*', '/')).toBe('/');
   });
 
   test('anything but * steps is refused, not guessed', () => {
-    expect(() => resolveBreadcrumbPath('/our-reports/*', '/our-reports/x')).toThrow(/only \* steps/);
+    expect(() => resolveBreadcrumbPath('/news/*', '/news/x')).toThrow(/only \* steps/);
     expect(() => resolveBreadcrumbPath('/*/', '/a/b')).toThrow(/only \* steps/);
   });
 
@@ -62,12 +62,12 @@ describe('ploneFetchItems sends a breadcrumb step as an Absolute path', () => {
         ],
       },
     };
-    for (const page of ['/our-reports/operation-askern', '/our-reports/archive/2019/report']) {
+    for (const page of ['/news/2024/new-bridge-opens', '/news/archive/2019/old-bridge-closes']) {
       await ploneFetchItems({ apiUrl: 'http://api', contextPath: page })(block, { start: 0, size: 10 });
     }
     expect(bodies.map((b) => b.body.query.find((c) => c.i === 'path'))).toEqual([
-      { i: 'path', o: ABSOLUTE, v: '/our-reports' },
-      { i: 'path', o: ABSOLUTE, v: '/our-reports' },
+      { i: 'path', o: ABSOLUTE, v: '/news' },
+      { i: 'path', o: ABSOLUTE, v: '/news' },
     ]);
     // The other criteria go as they were.
     expect(bodies[0].body.query[0]).toEqual(block.querystring.query[0]);
