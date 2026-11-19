@@ -2834,7 +2834,7 @@ function reloadMount(mount) {
 async function getEngine() {
   if (!engine) {
     const { emitPage, parsePrototypes } = await import('@inka/blockmd/prototype-mapping.mjs');
-    const { withoutDefaultSearchText } = await import('./from-schemas.mjs');
+    const { withoutDefaultSearchText } = await import('./from-schemas.js');
     engine = { emitPage, parsePrototypes, withoutDefaultSearchText };
   }
   return engine;
@@ -2856,7 +2856,7 @@ async function initMarkdownMounts() {
   const { readTree } = await import('@inka/blockmd/markdown-mount.mjs');
   mdRuntime = {
     readTree,
-    fromSchemas: await import('./from-schemas.mjs'),
+    fromSchemas: await import('./from-schemas.js'),
     schemaFor: (type) => contentSchemas?.[type]?.blockSchema ?? null,
   };
   for (const mount of mounts) loadMarkdownMount(mount);
@@ -3498,7 +3498,7 @@ async function exportContent(req, res) {
   if (format === 'markdown') {
     const { emitPage, parsePrototypes, withoutDefaultSearchText } = await getEngine();
     const YAML = (await import('yaml')).default;
-    const { SERVER_STATE } = await import('./server-state.mjs');
+    const { SERVER_STATE } = await import('./server-state.js');
     const { BLOB_FIELD, blobDefaults } = await import('@inka/blockmd/markdown-mount.mjs');
 
     // The CALLER supplies the readability rules; this endpoint writes each page

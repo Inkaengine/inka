@@ -5,23 +5,23 @@
  * from a site's own catalog column is valid — and a column the site does not
  * have still is not.
  */
-const { describe, it, before, after } = require('node:test');
-const assert = require('node:assert/strict');
-const fs = require('node:fs');
-const os = require('node:os');
-const path = require('node:path');
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import { afterAll, beforeAll, describe, it } from 'vitest';
+import {
+  collectFieldMappingIssues,
+  loadMappingVocabularies,
+} from './discover-blocks.js';
 
 const mount = fs.mkdtempSync(path.join(os.tmpdir(), 'mock-field-mapping-'));
 process.env.CONTENT_MOUNTS = `/:${mount}`;
-const { app } = require('@inka/mock-api/server');
-const {
-  collectFieldMappingIssues,
-  loadMappingVocabularies,
-} = require('./discover-blocks.js');
+const { app } = await import('@inka/mock-api/server');
 
 let server;
 let baseUrl;
-before(
+beforeAll(
   () =>
     new Promise((resolve) => {
       server = app.listen(0, () => {
@@ -30,7 +30,7 @@ before(
       });
     }),
 );
-after(() => server.close());
+afterAll(() => server.close());
 
 const listingSchema = {
   properties: {
@@ -54,7 +54,7 @@ const issuesFor = (fieldMapping) => {
 };
 
 describe('field mapping sources from a vocabulary', () => {
-  before(() => loadMappingVocabularies(baseUrl, blocksConfig));
+  beforeAll(() => loadMappingVocabularies(baseUrl, blocksConfig));
 
   it("a site's own catalog column is a source the sidebar offers", () => {
     assert.deepEqual(issuesFor({ getURL: { field: 'href' }, EffectiveDate: { field: 'date' } }), []);
@@ -82,7 +82,7 @@ describe("a stored mapping keyed '@id', the address's old name", () => {
     collectFieldMappingIssues({ variation: 'link', fieldMapping }, listingSchema, blocksConfig, issues);
     return issues;
   };
-  before(() => loadMappingVocabularies(baseUrl, blocksConfig));
+  beforeAll(() => loadMappingVocabularies(baseUrl, blocksConfig));
 
   for (const entry of ['href', { field: 'href', type: 'link' }]) {
     it(`is refused as ${JSON.stringify(entry)}`, () => {
@@ -103,7 +103,7 @@ describe("a stored mapping onto an item's id or type", () => {
     collectFieldMappingIssues({ variation: 'link', fieldMapping }, listingSchema, blocksConfig, issues);
     return issues;
   };
-  before(() => loadMappingVocabularies(baseUrl, blocksConfig));
+  beforeAll(() => loadMappingVocabularies(baseUrl, blocksConfig));
 
   for (const target of ['@uid', '@type', '@id', 'readOnly']) {
     it(`"${target}" is refused`, () => {

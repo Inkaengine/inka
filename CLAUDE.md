@@ -158,7 +158,7 @@ server instead:
 3. Run tests (Playwright will wait for compilation)
 
 Otherwise run `pnpm build:test` once, and again after the admin's code changes.
-Each build records what it was built from (packages/testing/admin-build-stamp.cjs);
+Each build records what it was built from (packages/testing/admin-build-stamp.js);
 a test run refuses an admin built from anything else, so a stale one is never
 used quietly. Either admin stops itself after four idle hours.
 

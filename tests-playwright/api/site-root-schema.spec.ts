@@ -1,4 +1,4 @@
-import { mintToken } from '../../packages/mock-api/mock-tokens.js';
+import { mintToken } from '@inka/mock-api/tokens';
 import { expect, test } from '../fixtures';
 
 // The types are for a signed-in user, as in Plone.

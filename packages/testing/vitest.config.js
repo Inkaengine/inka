@@ -3,9 +3,15 @@ import { defineConfig } from 'vitest/config';
 /**
  * Tests of code that runs on Node, which need Node's environment. Playwright's
  * global setup runs on Node: what it gets from a refused fetch is Node's error
- * shape, not jsdom's.
+ * shape, not jsdom's. The others run git, a mock API server, or the
+ * inka-mock-parent bin.
  */
-const NODE_TESTS = ['playwright/waitForAdmin.test.ts'];
+const NODE_TESTS = [
+  'admin-build-stamp.test.js',
+  'field-mapping-vocabulary.test.js',
+  'mock-parent-server.test.js',
+  'playwright/waitForAdmin.test.ts',
+];
 
 export default defineConfig({
   test: {
@@ -23,6 +29,9 @@ export default defineConfig({
           name: 'node',
           environment: 'node',
           include: NODE_TESTS,
+          // inka-mock-parent takes up to 20s to serve its first page.
+          hookTimeout: 30_000,
+          testTimeout: 30_000,
         },
       },
     ],

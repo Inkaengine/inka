@@ -8,8 +8,8 @@
  * before a pull or a branch switch would quietly serve old code. The stamp
  * makes that loud instead of something to remember:
  *
- *   node packages/testing/admin-build-stamp.cjs --write   # after `pnpm build` (build:test)
- *   node packages/testing/admin-build-stamp.cjs --check   # before starting it
+ *   node packages/testing/admin-build-stamp.js --write   # after `pnpm build` (build:test)
+ *   node packages/testing/admin-build-stamp.js --check   # before starting it
  *
  * and waitForAdmin (playwright/global-setup.ts) compares the stamp a running
  * admin serves (/inka-build.json) with its checkout's.
@@ -20,10 +20,10 @@
  * mrs.developer.json, which is covered). It errs towards rebuilding: a
  * needless rebuild costs minutes, a stale admin a misleading test run.
  */
-const { execFileSync } = require('node:child_process');
-const crypto = require('node:crypto');
-const fs = require('node:fs');
-const path = require('node:path');
+import { execFileSync } from 'node:child_process';
+import crypto from 'node:crypto';
+import fs from 'node:fs';
+import path from 'node:path';
 
 /** Where the build puts it: build/public is served at the admin's root. */
 const STAMP_PATH = path.join('build', 'public', 'inka-build.json');
@@ -156,9 +156,10 @@ async function checkRunningAdmin(adminUrl, root) {
   }
 }
 
-module.exports = { adminStamp, inAdminBuild, writeBuildStamp, buildStamp, checkBuild, checkRunningAdmin, StaleAdmin, STAMP_PATH };
+export { adminStamp,buildStamp,checkBuild,checkRunningAdmin,inAdminBuild,StaleAdmin,STAMP_PATH,writeBuildStamp };
 
-if (require.main === module) {
+// Run as a program (node admin-build-stamp.js --write | --check), not imported.
+if (process.argv[1] && fs.realpathSync(process.argv[1]) === import.meta.filename) {
   const root = process.cwd();
   const [flag] = process.argv.slice(2);
   if (flag === '--write') {
@@ -172,7 +173,7 @@ if (require.main === module) {
       process.exit(1);
     }
   } else {
-    console.error('usage: admin-build-stamp.cjs --write | --check  (run in the Inka checkout)');
+    console.error('usage: admin-build-stamp.js --write | --check  (run in the Inka checkout)');
     process.exit(2);
   }
 }

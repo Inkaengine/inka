@@ -10,7 +10,7 @@ const express = require('express');
 const path = require('path');
 
 const app = express();
-const { requiredPort, requiredOrigin } = require('../../packages/mock-api/env-port.js');
+const { requiredPort, requiredOrigin } = require('@inka/mock-api/env-port');
 
 const PORT = requiredPort('PORT');
 // Told which API it talks to, never assuming: see env-port.js.

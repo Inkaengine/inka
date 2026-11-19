@@ -1,8 +1,7 @@
-import { test, expect } from '@playwright/test';
-import { fork, type ChildProcess } from 'child_process';
-import net from 'net';
-import path from 'path';
-import { fileURLToPath } from 'url';
+import { expect, test } from '@playwright/test';
+import { fork, type ChildProcess } from 'node:child_process';
+import net from 'node:net';
+import { fileURLToPath } from 'node:url';
 
 /**
  * The mock API must speak its OWN origin, never a baked-in one.
@@ -23,8 +22,7 @@ import { fileURLToPath } from 'url';
  * there — so this spawns the server on a port the OS hands us.
  */
 
-const SPEC_DIR = path.dirname(fileURLToPath(import.meta.url));
-const SERVER = path.resolve(SPEC_DIR, '../../packages/mock-api/mock-api-server.js');
+const SERVER = fileURLToPath(import.meta.resolve('@inka/mock-api/server'));
 
 // A fixture whose block data carries a baked absolute image URL
 // (blocks['gallery-slider'].slides[1].url).

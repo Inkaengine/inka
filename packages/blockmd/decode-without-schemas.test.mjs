@@ -3,7 +3,7 @@
  * with no frontend. So blockmd, and every test of it, has no access to a block
  * schema or a frontend's block config. What does need them (link summaries, a
  * schema shown on an example page, search text) runs after decode, where the
- * schemas are (the mock API's from-schemas.mjs).
+ * schemas are (the mock API's from-schemas.js).
  *
  * This scans every file in the package. A hit means decode, or a test of it, was
  * given a schema: move that step out of blockmd instead.

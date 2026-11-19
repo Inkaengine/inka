@@ -2,15 +2,21 @@
  * The admin build carries a stamp of the source it was built from, so a test
  * run can tell a built admin that is behind its checkout from one that is not.
  *
- * Run: node --test packages/testing/admin-build-stamp.test.cjs
+ * Run: pnpm --filter @inka/testing exec vitest run admin-build-stamp.test.js
  */
-const { test } = require('node:test');
-const assert = require('node:assert/strict');
-const { execFileSync } = require('node:child_process');
-const fs = require('node:fs');
-const os = require('node:os');
-const path = require('node:path');
-const { adminStamp, inAdminBuild, writeBuildStamp, checkBuild, StaleAdmin } = require('./admin-build-stamp.cjs');
+import assert from 'node:assert/strict';
+import { execFileSync } from 'node:child_process';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import { test } from 'vitest';
+import {
+  adminStamp,
+  checkBuild,
+  inAdminBuild,
+  StaleAdmin,
+  writeBuildStamp,
+} from './admin-build-stamp.js';
 
 /** A small Inka-shaped checkout: an add-on, a fixture the admin imports, docs it does not. */
 function checkout() {

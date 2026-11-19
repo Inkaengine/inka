@@ -357,7 +357,7 @@ Key settings:
     screenshot: 'only-on-failure',
   },
   webServer: [
-    { command: 'node packages/mock-api/mock-api-server.js', port: 8888 },
+    { command: 'pnpm exec inka-mock-api', port: 8888 },
     { command: 'RAZZLE_API_PATH=http://localhost:8888 pnpm start', port: 3001 },
   ],
 }
@@ -440,7 +440,7 @@ cat tests-playwright/fixtures/content/<page>/data.json
 
 Check mock server is loading it:
 ```bash
-DEBUG=1 node packages/mock-api/mock-api-server.js
+DEBUG=1 pnpm exec inka-mock-api
 ```
 
 ### Volto Can't Connect to Mock API

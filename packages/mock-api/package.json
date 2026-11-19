@@ -16,7 +16,9 @@
   "exports": {
     ".": "./mock-plone-api.js",
     "./server": "./mock-api-server.js",
-    "./tokens": "./mock-tokens.js"
+    "./tokens": "./mock-tokens.js",
+    "./env-port": "./env-port.js",
+    "./from-schemas": "./from-schemas.js"
   },
   "bin": {
     "inka-mock-api": "./mock-api-server.js"
@@ -24,14 +26,14 @@
   "files": [
     "api/",
     "env-port.js",
-    "from-schemas.mjs",
+    "from-schemas.js",
     "json-body.js",
     "mock-api-server.js",
     "mock-plone-api.js",
     "mock-principals-and-rules.js",
     "mock-tokens.js",
     "scaled-image.js",
-    "server-state.mjs",
+    "server-state.js",
     "template-owned.js"
   ],
   "dependencies": {

@@ -2,7 +2,7 @@
  * The MCP server on a front end other than the admin's default: Nuxt. A
  * nuxt-* spec, so it runs where the Nuxt front end is started (nuxt-specific).
  */
-import { mintToken } from '../../packages/mock-api/mock-tokens.js';
+import { mintToken } from '@inka/mock-api/tokens';
 import { expect, test } from '../fixtures';
 import { CALL, connect } from '../helpers/mcpClient';
 

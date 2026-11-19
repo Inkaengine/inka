@@ -15,7 +15,7 @@ let resolveSchemaExamples;
 let schemaRegistryFromBlockDefinitions;
 before(async () => {
   ({ readTree } = await import('@inka/blockmd/markdown-mount.mjs'));
-  ({ resolveLinkSummaries, resolveSchemaExamples, schemaRegistryFromBlockDefinitions } = await import('./from-schemas.mjs'));
+  ({ resolveLinkSummaries, resolveSchemaExamples, schemaRegistryFromBlockDefinitions } = await import('./from-schemas.js'));
 });
 
 const isFolderish = (type) => !['Image', 'File', 'Link', 'Collection'].includes(type);
@@ -111,7 +111,7 @@ describe('search text where the content stores none', () => {
   // never saved. With the frontend's config, the mock fills what is missing, by the
   // same rule as save, and keeps what the content stores.
   let withMissingSearchText;
-  before(async () => { ({ withMissingSearchText } = await import('./from-schemas.mjs')); });
+  before(async () => { ({ withMissingSearchText } = await import('./from-schemas.js')); });
   const blocksConfig = { card: { blockSchema: { properties: { title: { type: 'string' } } } } };
   const slate = (text) => [{ type: 'p', children: [{ text }] }];
   const page = (blocks) => ({ blocks, blocks_layout: { items: Object.keys(blocks) } });
@@ -130,7 +130,7 @@ describe('search text where the content stores none', () => {
 
 describe('a markdown export leaves out the search text the frontend would give anyway', () => {
   let withoutDefaultSearchText;
-  before(async () => { ({ withoutDefaultSearchText } = await import('./from-schemas.mjs')); });
+  before(async () => { ({ withoutDefaultSearchText } = await import('./from-schemas.js')); });
   const blocksConfig = { card: { blockSchema: { properties: { title: { type: 'string' } } } } };
   const page = (blocks) => ({ blocks, blocks_layout: { items: Object.keys(blocks) } });
 

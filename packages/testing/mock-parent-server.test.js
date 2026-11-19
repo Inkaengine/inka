@@ -2,13 +2,13 @@
  * `inka-mock-parent` serves mock-parent.html and the admin code it runs, on the
  * port it's told — and refuses to guess one.
  */
-const { describe, it, before, after } = require('node:test');
-const assert = require('node:assert/strict');
-const { spawn, spawnSync } = require('node:child_process');
-const { createServer } = require('node:net');
-const path = require('node:path');
+import assert from 'node:assert/strict';
+import { spawn, spawnSync } from 'node:child_process';
+import { createServer } from 'node:net';
+import path from 'node:path';
+import { afterAll, beforeAll, describe, it } from 'vitest';
 
-const SERVER = path.join(__dirname, 'mock-parent', 'server.js');
+const SERVER = path.join(import.meta.dirname, 'mock-parent', 'server.js');
 
 const freePort = () =>
   new Promise((resolve, reject) => {
@@ -25,7 +25,7 @@ describe('inka-mock-parent', () => {
   let base;
   let stderr = '';
 
-  before(async () => {
+  beforeAll(async () => {
     const port = await freePort();
     base = `http://localhost:${port}`;
     child = spawn(process.execPath, [SERVER], {
@@ -41,7 +41,7 @@ describe('inka-mock-parent', () => {
     }
     throw new Error(`inka-mock-parent never served the page. stderr:\n${stderr}`);
   });
-  after(() => child?.kill());
+  afterAll(() => child?.kill());
 
   it('serves the page, told which API and frontend it works with', async () => {
     const html = await (await fetch(`${base}/mock-parent.html`)).text();

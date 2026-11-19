@@ -37,14 +37,15 @@
     "inka-mock-parent": "./mock-parent/server.js"
   },
   "files": [
+    "admin-build-stamp.js",
     "discover-blocks.js",
     "discovery.ts",
     "elementless.ts",
     "field-coverage.ts",
     "imageSizes.mjs",
     "mock-parent/",
-    "playwright/*.ts",
     "!playwright/*.test.*",
+    "playwright/*.ts",
     "ports.ts",
     "selectablePoint.ts",
     "slate-styles.js",

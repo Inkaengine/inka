@@ -1,4 +1,4 @@
-import { mintToken } from '../../packages/mock-api/mock-tokens.js';
+import { mintToken } from '@inka/mock-api/tokens';
 import { expect, test } from '../fixtures';
 
 /**
