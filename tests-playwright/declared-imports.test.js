@@ -66,7 +66,7 @@ describe('imports are declared', () => {
     const files = CONTAINED.flatMap(sourceFiles);
     expect(files).toContain('packages/blockmd/markdown-mount.mjs');
     expect(files).toContain('packages/content-validator/plone-content-validator.js');
-    expect(files).toContain('packages/mock-api/mock-api-server.cjs');
+    expect(files).toContain('packages/mock-api/mock-api-server.js');
     expect(files).toContain('packages/testing/playwright/AdminUIHelper.ts');
     expect(files).toContain('packages/volto-hydra/src/utils/blockSync.js');
   });

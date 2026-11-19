@@ -9,29 +9,30 @@
     "directory": "packages/mock-api"
   },
   "license": "MIT",
+  "type": "module",
   "engines": {
-    "node": ">=20.19.0"
+    "node": "^20.19.0 || >=22.12.0"
   },
   "exports": {
-    ".": "./mock-plone-api.cjs",
-    "./server": "./mock-api-server.cjs",
-    "./tokens": "./mock-tokens.cjs"
+    ".": "./mock-plone-api.js",
+    "./server": "./mock-api-server.js",
+    "./tokens": "./mock-tokens.js"
   },
   "bin": {
-    "inka-mock-api": "./mock-api-server.cjs"
+    "inka-mock-api": "./mock-api-server.js"
   },
   "files": [
     "api/",
-    "env-port.cjs",
+    "env-port.js",
     "from-schemas.mjs",
-    "json-body.cjs",
-    "mock-api-server.cjs",
-    "mock-plone-api.cjs",
-    "mock-principals-and-rules.cjs",
-    "mock-tokens.cjs",
-    "scaled-image.cjs",
+    "json-body.js",
+    "mock-api-server.js",
+    "mock-plone-api.js",
+    "mock-principals-and-rules.js",
+    "mock-tokens.js",
+    "scaled-image.js",
     "server-state.mjs",
-    "template-owned.cjs"
+    "template-owned.js"
   ],
   "dependencies": {
     "@inka/blockmd": "workspace:*",

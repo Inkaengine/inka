@@ -1,5 +1,5 @@
-import { test, expect } from '../fixtures';
-import { mintToken } from '../../packages/mock-api/mock-tokens.cjs';
+import { mintToken } from '../../packages/mock-api/mock-tokens.js';
+import { expect, test } from '../fixtures';
 
 // The types are for a signed-in user, as in Plone.
 const signedIn = () => ({ headers: { Authorization: `Bearer ${mintToken('admin')}` } });
