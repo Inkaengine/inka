@@ -22,6 +22,13 @@ settings module names the two sites, the API the pages are listed from, the
 conversion's findings, the region mapping, the reading options, the approved
 exceptions and the rest; the runner names none.
 
+An approved exception can also name a markup change CSS cannot make, run in
+the page before it is shot: `normalise` names functions from the settings'
+`normalisers`, which bring the SOURCE to the conversion's markup, and
+`normaliseOurs` names functions from `oursNormalisers`, which set aside on
+OURS a difference the exception approves (a run of text, where CSS can only
+hide elements). Each is `(document) => void`, run with `page.evaluate`.
+
 And what a comparison runs on:
 
 | Module | |
