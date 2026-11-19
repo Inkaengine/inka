@@ -1,13 +1,12 @@
 import type { FrameLocator } from '@playwright/test';
-import * as fs from 'fs';
-import { createRequire } from 'module';
+import * as fs from 'node:fs';
+import { fileURLToPath } from 'node:url';
 
 // Inject axe-core's source into the frame rather than using @axe-core/playwright:
 // that wrapper pulls in its OWN @playwright/test, which breaks the single linked
 // copy block-sanity relies on. axe-core is a standalone browser lib — run its
 // source in the frame, then call window.axe.run().
-const require = createRequire(import.meta.url);
-const axeSource = fs.readFileSync(require.resolve('axe-core/axe.min.js'), 'utf8');
+const axeSource = fs.readFileSync(fileURLToPath(import.meta.resolve('axe-core/axe.min.js')), 'utf8');
 
 export interface AxeViolation {
   id: string;

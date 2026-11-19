@@ -16,7 +16,7 @@
   "exports": {
     "./ports": "./ports.ts",
     "./discovery": "./discovery.ts",
-    "./discover-blocks": "./discover-blocks.cjs",
+    "./discover-blocks": "./discover-blocks.js",
     "./elementless": "./elementless.ts",
     "./mock-parent": "./mock-parent/vite-plugin.js",
     "./playwright/AdminUIHelper": "./playwright/AdminUIHelper.ts",
@@ -37,7 +37,7 @@
     "inka-mock-parent": "./mock-parent/server.js"
   },
   "files": [
-    "discover-blocks.cjs",
+    "discover-blocks.js",
     "discovery.ts",
     "elementless.ts",
     "field-coverage.ts",

@@ -15,27 +15,27 @@
  */
 import fs from 'node:fs';
 import path from 'node:path';
-import { createRequire } from 'node:module';
+import { fileURLToPath } from 'node:url';
 
-const require = createRequire(import.meta.url);
+const resolve = (specifier) => fileURLToPath(import.meta.resolve(specifier));
 const PAGE = path.join(import.meta.dirname, 'mock-parent.html');
 
 /** The admin's own code mock-parent runs, under a prefix of its own. */
 const PREFIX = '/inka-mock-parent';
 const modules = () => ({
-  [`${PREFIX}/helpers.js`]: require.resolve('@volto-hydra/helpers'),
-  [`${PREFIX}/build-block-path-map.js`]: require.resolve('@volto-hydra/helpers/buildBlockPathMap.js'),
+  [`${PREFIX}/helpers.js`]: resolve('@volto-hydra/helpers'),
+  [`${PREFIX}/build-block-path-map.js`]: resolve('@volto-hydra/helpers/buildBlockPathMap.js'),
   // The same merge the admin runs before it posts INITIAL_DATA (View.jsx), so
   // the mock parent hands the bridge a page with its forced layouts and
   // templates already stamped on — see mock-parent.html's INIT handler.
-  [`${PREFIX}/merge-templates.js`]: require.resolve('@volto-hydra/helpers/mergeTemplates.js'),
-  [`${PREFIX}/merge-frontend-block.js`]: require.resolve('@volto-hydra/hydra-js/mergeFrontendBlock.js'),
+  [`${PREFIX}/merge-templates.js`]: resolve('@volto-hydra/helpers/mergeTemplates.js'),
+  [`${PREFIX}/merge-frontend-block.js`]: resolve('@volto-hydra/hydra-js/mergeFrontendBlock.js'),
   // The admin's region helpers, so block-sanity can empty a region exactly as an
   // editor's delete does.
-  [`${PREFIX}/block-path.js`]: require.resolve('@volto-hydra/helpers/blockPath.js'),
+  [`${PREFIX}/block-path.js`]: resolve('@volto-hydra/helpers/blockPath.js'),
   // The admin's delete (View.jsx's Remove and multi-select delete both call it):
   // it refuses a block an editor can't remove and re-seeds what it empties.
-  [`${PREFIX}/block-sync.js`]: require.resolve('@volto-hydra/helpers/blockSync.js'),
+  [`${PREFIX}/block-sync.js`]: resolve('@volto-hydra/helpers/blockSync.js'),
 });
 
 /**

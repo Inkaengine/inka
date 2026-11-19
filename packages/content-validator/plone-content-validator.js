@@ -18,23 +18,22 @@
  * The same errors surface whether invoked at mock-api startup or from a CI
  * script.
  */
-'use strict';
-
-const fs = require('fs');
-const path = require('path');
-// hydra's container API. Node require()s sync ESM, so a sync validator can use
+import fs from 'node:fs';
+import path from 'node:path';
+import { pathToFileURL } from 'node:url';
+// hydra's container API, so a sync validator can use
 // the same enumeration the editor does instead of reading blocks_layout itself.
-const { getChildFields, getChildBlockEntries, isUnlabelledDefinition, adoptTemplate } = require('@volto-hydra/helpers');
-const { validateTemplatePlaceholders } = require('@volto-hydra/helpers/formDataValidation.js');
-const { buildBlockPathMap, buildIdFieldMap, getResolvedSchema } = require('@volto-hydra/helpers/buildBlockPathMap.js');
-const { fieldMappingProblems, reservedFieldProblems } = require('@volto-hydra/helpers/conversionValidation.js');
-const { INKA_BLOCK_TYPES, undeclaredBlockProblems } = require('@volto-hydra/helpers/inkaBlocks.js');
-const { collectFieldRules, fieldsRulesMayAdd } = require('@volto-hydra/helpers/fieldRules.js');
+import { getChildFields, getChildBlockEntries, isUnlabelledDefinition, adoptTemplate } from '@volto-hydra/helpers';
+import { validateTemplatePlaceholders } from '@volto-hydra/helpers/formDataValidation.js';
+import { buildBlockPathMap, buildIdFieldMap, getResolvedSchema } from '@volto-hydra/helpers/buildBlockPathMap.js';
+import { fieldMappingProblems, reservedFieldProblems } from '@volto-hydra/helpers/conversionValidation.js';
+import { INKA_BLOCK_TYPES, undeclaredBlockProblems } from '@volto-hydra/helpers/inkaBlocks.js';
+import { collectFieldRules, fieldsRulesMayAdd } from '@volto-hydra/helpers/fieldRules.js';
 
 // Where an export keeps the site root: plone.exportimport's own name for it.
 const SITE_ROOT = 'plone_site_root';
 
-const { TEMPLATE_MEMBERSHIP_KEYS, BLOCK_BOOKKEEPING_KEYS, UNDECLARED_EXEMPT } = require('@volto-hydra/helpers/storedFields.js');
+import { TEMPLATE_MEMBERSHIP_KEYS, BLOCK_BOOKKEEPING_KEYS, UNDECLARED_EXEMPT } from '@volto-hydra/helpers/storedFields.js';
 
 /**
  * A template's empty slot: an `empty` naming the slot it keeps (inka#708). It is
@@ -1810,9 +1809,9 @@ function checkUndeclaredBlocks(schemas) {
  * because this check runs where Volto is not installed. Null when it has not
  * been built.
  */
-function loadVoltoValidation() {
-  const file = require('path').join(__dirname, 'volto-validation.cjs');
-  return require('fs').existsSync(file) ? require(file) : null;
+async function loadVoltoValidation() {
+  const file = path.join(import.meta.dirname, 'volto-validation.cjs');
+  return fs.existsSync(file) ? (await import(pathToFileURL(file).href)).default : null;
 }
 
 /** Volto's message, its {placeholders} filled, as the editor shows it. */
@@ -1820,7 +1819,8 @@ function formatVoltoMessage(message, values = {}) {
   return message.defaultMessage.replace(/\{(\w+)\}/g, (whole, key) => (key in values ? String(values[key]) : whole));
 }
 
-async function checkEditorRules(source, schemas, { exemptSlots = [], volto = loadVoltoValidation(), contentTypes } = {}) {
+async function checkEditorRules(source, schemas, { exemptSlots = [], volto, contentTypes } = {}) {
+  if (volto === undefined) volto = await loadVoltoValidation();
   const exempt = new Set(exemptSlots);
   const { buildBlockPathMap } = await import('@volto-hydra/helpers/buildBlockPathMap.js');
   const { normalizeSlateFields } = await import('@volto-hydra/helpers/slateStyles.js');
@@ -2135,9 +2135,9 @@ function formatReport(title, result) {
  *  plain data the frontend config also imports, so shared pieces are written
  *  once -- or a `.json` file. */
 async function loadSchemas(file) {
-  const abs = require('path').resolve(file);
-  if (abs.endsWith('.json')) return JSON.parse(require('fs').readFileSync(abs, 'utf8'));
-  const mod = await import(require('url').pathToFileURL(abs).href);
+  const abs = path.resolve(file);
+  if (abs.endsWith('.json')) return JSON.parse(fs.readFileSync(abs, 'utf8'));
+  const mod = await import(pathToFileURL(abs).href);
   return mod.default ?? mod;
 }
 
@@ -2222,4 +2222,7 @@ function checkExport(contentDir, { schemas = null, allowMissingBlobs = false } =
   return { errors: [...shape.errors, ...content.errors], warnings: [...shape.warnings, ...content.warnings] };
 }
 
-module.exports = { validate, checkIntegrity, checkBlockSchemas, checkContent, checkExport, idFieldMapFor, checkEditorRules, checkChooserGroups, checkFieldsetCoverage, checkReservedFields, checkFieldMappings, checkUndeclaredBlocks, fieldMapFromSchemas, loadSchemas, formatReport, UNDECLARED_EXEMPT };
+export { validate, checkIntegrity, checkBlockSchemas, checkContent, checkExport, idFieldMapFor, checkEditorRules, checkChooserGroups, checkFieldsetCoverage, checkReservedFields, checkFieldMappings, checkUndeclaredBlocks, fieldMapFromSchemas, loadSchemas, formatReport, UNDECLARED_EXEMPT };
+
+// For `import validator from '@inka/content-validator'`.
+export default { validate, checkIntegrity, checkBlockSchemas, checkContent, checkExport, idFieldMapFor, checkEditorRules, checkChooserGroups, checkFieldsetCoverage, checkReservedFields, checkFieldMappings, checkUndeclaredBlocks, fieldMapFromSchemas, loadSchemas, formatReport, UNDECLARED_EXEMPT };

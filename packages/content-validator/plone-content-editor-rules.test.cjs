@@ -24,7 +24,7 @@
  */
 const { describe, it } = require('node:test');
 const assert = require('node:assert/strict');
-const { checkEditorRules } = require('./plone-content-validator.cjs');
+const { checkEditorRules } = require('./plone-content-validator.js');
 
 const SCHEMAS = {
   _page: {
@@ -401,7 +401,7 @@ describe('checkEditorRules()', () => {
  * page checked.
  */
 describe('checkChooserGroups()', () => {
-  const { checkChooserGroups } = require('./plone-content-validator.cjs');
+  const { checkChooserGroups } = require('./plone-content-validator.js');
 
   it('passes a block that names a group the chooser orders', () => {
     const r = checkChooserGroups({ hero: { group: 'common', blockSchema: {} } });
@@ -489,7 +489,7 @@ describe('checkEditorRules() does not report config defects', () => {
  * unknown blocks. Like the chooser, a defect in the config, not in any page.
  */
 describe('checkReservedFields()', () => {
-  const { checkReservedFields } = require('./plone-content-validator.cjs');
+  const { checkReservedFields } = require('./plone-content-validator.js');
 
   it('passes a schema whose fields are its own', () => {
     const r = checkReservedFields({ tabs: { blockSchema: { properties: { fixedTabs: { type: 'boolean' } } } } });
@@ -553,7 +553,7 @@ describe('checkReservedFields()', () => {
  *     undeclared. Only for a field that stores nothing.
  */
 describe('checkFieldsetCoverage()', () => {
-  const { checkFieldsetCoverage } = require('./plone-content-validator.cjs');
+  const { checkFieldsetCoverage } = require('./plone-content-validator.js');
   const block = (properties, fieldsets) => ({
     hero: { group: 'common', blockSchema: { fieldsets, properties } },
   });
@@ -640,7 +640,7 @@ describe('a template stores an empty slot', () => {
   });
 
   it('is not a block type missing from the schemas', () => {
-    const { checkBlockSchemas, fieldMapFromSchemas } = require('./plone-content-validator.cjs');
+    const { checkBlockSchemas, fieldMapFromSchemas } = require('./plone-content-validator.js');
     const r = checkBlockSchemas(items, fieldMapFromSchemas(SCHEMAS));
     assert.deepEqual(r.warnings.filter((w) => /"empty"/.test(w)), []);
   });
@@ -736,7 +736,7 @@ describe('checkEditorRules() checks a page merged into its forced layout', () =>
  * `@id` in stored block data as a link, at any depth.
  */
 describe('checkReservedFields() — @id at any depth', () => {
-  const { checkReservedFields } = require('./plone-content-validator.cjs');
+  const { checkReservedFields } = require('./plone-content-validator.js');
 
   it("reports a field named '@id' inside an object field, once", () => {
     const r = checkReservedFields({
@@ -757,7 +757,7 @@ describe('checkReservedFields() — @id at any depth', () => {
  * so CI fails before a frontend ships a mapping that doesn't make sense.
  */
 describe('checkFieldMappings()', () => {
-  const { checkFieldMappings } = require('./plone-content-validator.cjs');
+  const { checkFieldMappings } = require('./plone-content-validator.js');
   const props = (p) => ({ fieldsets: [{ id: 'default', title: 'Default', fields: Object.keys(p) }], properties: p });
 
   it('passes mappings that make sense', () => {
@@ -830,7 +830,7 @@ describe("checkEditorRules() and a site's own catalog column", () => {
  * on, run in CI first.
  */
 describe('checkUndeclaredBlocks()', () => {
-  const { checkUndeclaredBlocks } = require('./plone-content-validator.cjs');
+  const { checkUndeclaredBlocks } = require('./plone-content-validator.js');
   const region = (allowedBlocks) => ({ widget: 'blocks_layout', allowedBlocks });
 
   it('passes regions naming declared blocks and slate', () => {
