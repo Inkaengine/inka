@@ -5,6 +5,7 @@
  * formatting transforms to Slate document structures.
  */
 
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import config from '@plone/volto/registry';
 import { createHeadlessEditor } from './slateTransforms';
 import slateTransforms from './slateTransforms';

@@ -6,6 +6,7 @@
  * empty (or hold a well-formed, typed block), never a dataless placeholder
  * (the admin logged "Block data undefined for <uid>").
  */
+import { describe, test, expect } from 'vitest';
 import { mergeTemplatesIntoPage } from '@volto-hydra/helpers/mergeTemplates.js';
 
 const EMPTY_TEMPLATE = {

@@ -1395,7 +1395,7 @@ function _decodeXml(s) {
     .replace(/&amp;/g, '&');
 }
 
-// Dependency-free RSS parse (no DOMParser → runs in the browser AND node/jest).
+// Dependency-free RSS parse (no DOMParser → runs in the browser AND node).
 // Good enough for the example; each <item> → a raw result whose @id is the link.
 function _parseRssEntries(xml) {
   const out = [];

@@ -1,3 +1,4 @@
+import { describe, test, expect, beforeEach } from 'vitest';
 import { expandEveryContainer } from './expandEveryContainer.testutil.js';
 import { expandTemplates, expandTemplatesSync } from '@volto-hydra/helpers';
 import { mergeTemplatesIntoPage, mergeInstanceIntoTemplate } from '@volto-hydra/helpers/mergeTemplates.js';

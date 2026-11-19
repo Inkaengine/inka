@@ -9,6 +9,7 @@
  * undefined, and carried on: a reorder found none of the items and returned
  * an empty list, a delete or an edit matched nothing.
  */
+import { describe, test, expect } from 'vitest';
 import { buildBlockPathMap, buildIdFieldMap } from '@volto-hydra/helpers/buildBlockPathMap.js';
 import {
   getContainerRegionDescriptors,

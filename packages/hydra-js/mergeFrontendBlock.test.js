@@ -3,6 +3,7 @@
  * The admin (INIT) and the mock parent both use mergeFrontendBlock, so a
  * harness never sees a different block than the editor does.
  */
+import { describe, test, expect } from 'vitest';
 import { mergeFrontendBlock } from './mergeFrontendBlock.js';
 
 const adminSchema = () => ({ properties: { value: { widget: 'slate' } } });

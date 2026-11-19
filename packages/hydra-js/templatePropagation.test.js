@@ -1,3 +1,4 @@
+import { test, expect } from 'vitest';
 import { expandEveryContainer } from './expandEveryContainer.testutil.js';
 import fs from 'fs';
 import path from 'path';

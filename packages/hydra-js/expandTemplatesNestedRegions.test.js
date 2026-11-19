@@ -1,3 +1,4 @@
+import { describe, test, expect } from 'vitest';
 import { expandTemplatesSync, insertSnippetBlocks } from '@volto-hydra/helpers';
 
 /**
