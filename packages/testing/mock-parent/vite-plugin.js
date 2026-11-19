@@ -59,11 +59,14 @@ export function mockParent(options = {}) {
     },
     configureServer(server) {
       server.middlewares.use(async (req, res, next) => {
-        if (req.url?.split('?')[0] !== '/mock-parent.html') return next();
+        // The page's inline module script is served from the page's own path,
+        // as ?html-proxy: Vite answers that one, not this.
+        const url = new URL(req.url ?? '/', 'http://localhost');
+        if (url.pathname !== '/mock-parent.html' || url.searchParams.has('html-proxy')) return next();
         try {
           let html = fs.readFileSync(PAGE, 'utf8');
           if (injected) html = html.replace('<head>', `<head><script>${injected}</script>`);
-          html = await server.transformIndexHtml(req.url, html, req.originalUrl);
+          html = await server.transformIndexHtml(url.pathname, html, req.originalUrl);
           res.setHeader('Content-Type', 'text/html');
           res.end(html);
         } catch (err) {

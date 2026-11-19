@@ -1,7 +1,7 @@
 import { defineConfig, devices } from '@playwright/test';
-import * as path from 'path';
-import { PORTS, URLS } from './tests-playwright/ports';
+import * as path from 'node:path';
 import { CONTRACT_SCOPE, DISCOVERY_DIR } from './tests-playwright/frontends';
+import { PORTS, URLS } from './tests-playwright/ports';
 
 // Check which extra servers we need based on --project arg
 const projectArgIndex = process.argv.indexOf('--project');
@@ -387,7 +387,7 @@ export default defineConfig({
       // Mock Plone API — REST endpoints, content from disk
       // Test frontend is served by the separate Vite webServer entry below
       name: 'Mock API',
-      command: `node --watch ${path.join(__dirname, 'packages/mock-api/mock-api-server.cjs')}`,
+      command: `node --watch ${require.resolve('@inka/mock-api/server')}`,
       url: `${URLS.mockApi}/health`,
       timeout: 30 * 1000,
       reuseExistingServer: true,
@@ -417,12 +417,12 @@ export default defineConfig({
     // server holds its whole module graph, 1.5–2 GB, and grows for as long as
     // it runs. ADMIN_DEV=1 runs the dev server instead, for changing the
     // admin's own code. The build must be of this checkout: the stamp check
-    // refuses an old one (packages/testing/admin-build-stamp.cjs).
+    // refuses an old one (packages/testing/admin-build-stamp.js).
     process.env.ADMIN_DEV !== '1'
       ? {
           // Production server (built) - starts immediately, no webpack compilation
           name: 'Volto Admin UI (Production)',
-          command: `node packages/testing/admin-build-stamp.cjs --check && PORT=${PORTS.voltoSsr} RAZZLE_API_PATH=${URLS.mockApi} RAZZLE_DEFAULT_IFRAME_URL=${URLS.testFrontend} RAZZLE_TEMPLATES_PATH=/templates RAZZLE_TEMPLATE_TYPE=Template pnpm start:prod`,
+          command: `node packages/testing/admin-build-stamp.js --check && PORT=${PORTS.voltoSsr} RAZZLE_API_PATH=${URLS.mockApi} RAZZLE_DEFAULT_IFRAME_URL=${URLS.testFrontend} RAZZLE_TEMPLATES_PATH=/templates RAZZLE_TEMPLATE_TYPE=Template pnpm start:prod`,
           url: URLS.voltoSsr, // Health check on SSR server directly
           timeout: 30 * 1000, // 30 seconds should be plenty for starting prebuilt server
           reuseExistingServer: true, // CI starts server in advance

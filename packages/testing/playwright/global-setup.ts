@@ -14,18 +14,18 @@
  * MOCK_PARENT_URL, FRONTEND_URL, …) are read here, so every suite answers to
  * the same ones; an option given in code wins.
  */
+import { chromium } from '@playwright/test';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { chromium } from '@playwright/test';
-import { harnessUrls } from '../ports';
-import { discoveryPath } from '../discovery';
-import { checkRunningAdmin } from '../admin-build-stamp.cjs';
+import { checkRunningAdmin } from '../admin-build-stamp.js';
 import {
   buildEmptyRegionCases,
   collectListingContainerIssues,
   discoverBlocks,
 } from '../discover-blocks.js';
+import { discoveryPath } from '../discovery';
+import { harnessUrls } from '../ports';
 
 /** The Inka checkout this harness is part of: the admin a consumer runs is built from it. */
 const INKA_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../..');
@@ -371,7 +371,7 @@ export async function waitForAdmin(options: AdminOptions = {}): Promise<void> {
         if (response.status === 200) {
           // A server left running from before a pull or a branch switch
           // answers too, and reuseExistingServer would use it: refuse one
-          // built from other code (admin-build-stamp.cjs).
+          // built from other code (admin-build-stamp.js).
           await checkRunningAdmin(healthUrl, options.inkaRoot ?? INKA_ROOT);
           console.log('[SETUP] ✓ Volto production server ready, built from this checkout');
           return;

@@ -15,7 +15,7 @@ export class AdminUIHelper {
   // test into one session — saves in one test then leak into others
   // running in parallel. A unique token per AdminUIHelper instance (one
   // per test) gives each test its own isolated mock-api session.
-  // Minted as the mock site's own (mock-tokens.cjs): it accepts no other.
+  // Minted as the mock site's own (mock-tokens.js): it accepts no other.
   readonly authToken = mintToken('admin');
 
   // Demo pacing (./demoPacing): one glance in ms from DEMO_PACING, so recorded
