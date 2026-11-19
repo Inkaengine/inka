@@ -87,7 +87,7 @@ Regular blocks where you can do anything — add, edit, move, delete. The templa
 
 <block type="image">
 
-![A snippet template applied to a page. The "Snippet Header" block is selected, rendered muted as a locked block. Its sidebar shows its content read-only — a "Text" field with the value "Snippet Header - From Template" — above the template's own read-only settings (Template Name, Save Location).](../images/template-locked.png)
+![A snippet template applied to a page. The "Snippet Header" block is selected, rendered muted as a locked block. Its sidebar shows its content read-only — a "Text" field with the value "Snippet Header - From Template" — under the template it belongs to.](../images/template-locked.png)
 
 </block>
 
@@ -158,7 +158,7 @@ Templates are saved when you **save the page**, and only the ones you changed. A
 
 <block type="image">
 
-![A template's sidebar bar, locked (🔒) — the Template Settings show as read-only text. Clicking the lock unlocks it (🔓) and makes the template editable.](../images/template-edit-locked.png)
+![A template's section in the sidebar, locked (🔒): it says the template is locked and that changes apply to every page using it, and has the Unlock template button.](../images/template-edit-locked.png)
 
 </block>
 
