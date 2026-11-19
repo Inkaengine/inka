@@ -5,6 +5,7 @@
  * image, as an upload at drop time would have left it. A failed upload
  * refuses the save and removes what that save had created.
  */
+import { describe, it, expect, afterEach } from 'vitest';
 import {
   holdImage,
   heldImages,

@@ -79,7 +79,7 @@ jobs:
         run: pnpm build:deps
       - name: Run unit tests
         # The root suite (vitest), then each package under packages/ that has
-        # its own test script (hydra-js on jest, @inka/testing on its own vitest).
+        # its own test script (hydra-js and @inka/testing, each on its own vitest config).
         run: pnpm test
       - name: Check example renderers compile
         # The examples pages embed real renderer files; check:docs parses each

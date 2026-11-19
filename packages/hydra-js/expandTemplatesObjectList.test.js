@@ -1,3 +1,4 @@
+import { describe, test, expect, beforeEach } from 'vitest';
 import { expandTemplatesSync } from '@volto-hydra/helpers';
 
 describe('expandTemplatesSync: object_list arrays in template blocks', () => {

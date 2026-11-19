@@ -1,7 +1,8 @@
+import { describe, it, expect } from 'vitest';
 import { JSDOM } from 'jsdom';
 import { buildAnchorTree, collectLinkableAnchors } from './linkableAnchors.js';
 
-// hydra-js jest env is 'node' (no global document); build DOM via jsdom directly.
+// hydra-js's tests run on Node (no global document); build DOM via jsdom directly.
 function dom(html) {
   const { window } = new JSDOM(`<!DOCTYPE html><div id="root">${html}</div>`);
   return window.document.getElementById('root');

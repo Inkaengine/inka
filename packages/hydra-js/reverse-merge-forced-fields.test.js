@@ -1,3 +1,4 @@
+import { test, expect } from 'vitest';
 import { mergeTemplatesIntoPage, mergeInstanceIntoTemplate } from '@volto-hydra/helpers/mergeTemplates.js';
 
 /**

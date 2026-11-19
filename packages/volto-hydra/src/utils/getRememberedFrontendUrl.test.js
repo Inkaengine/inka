@@ -1,3 +1,4 @@
+import { describe, it, expect } from 'vitest';
 import { getRememberedFrontendUrl } from './getRememberedFrontendUrl';
 
 describe('getRememberedFrontendUrl', () => {

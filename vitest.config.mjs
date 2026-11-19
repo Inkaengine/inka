@@ -9,8 +9,8 @@
 // supported direction; using it here lets us share Volto's catalog
 // version pin and skip the legacy ecosystem entirely.
 //
-// hydra-js stays on its own jest setup (it has ESM-specific needs);
-// this config only covers volto-hydra's addon tests.
+// hydra-js and @inka/testing run their own vitest configs; this one does
+// not collect them.
 import { defineConfig } from 'vitest/config';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -103,7 +103,6 @@ export default defineConfig({
     alias: ploneAliases,
   },
   test: {
-    globals: true,
     environment: 'jsdom',
     include: [
       'packages/volto-hydra/**/*.{test,spec}.{js,jsx,ts,tsx}',
@@ -123,8 +122,8 @@ export default defineConfig({
       // playwright specs at this level are never collected.
       'tests-playwright/*.test.{js,ts}',
     ],
-    // hydra-js (jest) and packages/testing (its own vitest) run their own test
-    // scripts, which the root `pnpm test` calls after this suite.
+    // hydra-js and packages/testing run their own vitest configs, from their
+    // own test scripts, which the root `pnpm test` calls after this suite.
     exclude: ['**/node_modules/**', 'packages/hydra-js/**'],
     // Reuse Volto's setup files via the workspace. These initialise the
     // shared config registry (settings.slate.extensions etc.) and DOM
@@ -140,12 +139,23 @@ export default defineConfig({
       path.resolve(__dirname, 'vitest-setup-hydra.js'),
     ],
     projects: [
-      { extends: true, test: { name: 'hydra', exclude: NODE_SERVER_TESTS } },
+      {
+        extends: true,
+        test: {
+          name: 'hydra',
+          exclude: NODE_SERVER_TESTS,
+          // For core's files, which we can't change: Volto's setup imports
+          // @testing-library/jest-dom, which calls the global expect, and
+          // upstream's suites above use describe/it/expect unimported. Our own
+          // tests import what they use.
+          globals: true,
+        },
+      },
       // Servers that run on Node, tested on Node: jsdom's globals (its
       // AbortController among them) are not Node's, and Node's own fetch
       // refuses them, so a server under test there fails where it never
       // would. Volto's setup files need a window, so these go without.
-      { test: { name: 'node-servers', include: NODE_SERVER_TESTS, environment: 'node', globals: true } },
+      { test: { name: 'node-servers', include: NODE_SERVER_TESTS, environment: 'node' } },
     ],
   },
 });
