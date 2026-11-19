@@ -390,6 +390,7 @@ import {
 } from '../../utils/copyFromTarget';
 import { flattenToAppURL, isInternalURL } from '@plone/volto/helpers/Url/Url';
 import { searchContent } from '@plone/volto/actions/search/search';
+import PageLayoutsSection from '../Sidebar/PageLayoutsSection';
 import ChildBlocksWidget from '../Sidebar/ChildBlocksWidget';
 import ParentBlocksWidget from '../Sidebar/ParentBlocksWidget';
 
@@ -7256,6 +7257,12 @@ const Iframe = (props) => {
         }}
         onToggleTemplateEditMode={handleToggleTemplateEditMode}
       />
+      <PageLayoutsSection
+        formData={properties}
+        blockPathMap={iframeSyncState.blockPathMap}
+        templateEditMode={iframeSyncState.templateEditMode}
+        onChangeFormData={onChangeFormData}
+      />
       <ChildBlocksWidget
         selectedBlock={selectedBlock}
         formData={properties}
@@ -7291,7 +7298,6 @@ const Iframe = (props) => {
           );
           onChangeFormData(newFormData);
         }}
-        onChangeFormData={onChangeFormData}
         templateEditMode={iframeSyncState.templateEditMode}
       />
     </div>

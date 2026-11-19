@@ -273,7 +273,12 @@ const TemplateLockedInfo = ({ title, canEdit, onUnlock, layout }) => (
       )}{' '}
       Its locked blocks are the same on every page using this template.
     </p>
-    {layout && <div className="template-locked-info-layout">{layout}</div>}
+    {layout && (
+      <div className="template-locked-info-layout">
+        <span className="template-locked-info-label">Layout</span>
+        {layout}
+      </div>
+    )}
     <p>
       Unlock it to change the template itself: changes here apply to every page
       using this template.
