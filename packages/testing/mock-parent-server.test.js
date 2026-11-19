@@ -49,6 +49,20 @@ describe('inka-mock-parent', () => {
     assert.match(html, /window\._frontendOrigin = "http:\/\/localhost:10"/);
   });
 
+  it("serves the page's own module script as JavaScript, not as the page", async () => {
+    const query = `?api_path=${encodeURIComponent('http://localhost:9/')}&frontend=${encodeURIComponent('http://localhost:10')}`;
+    const html = await (await fetch(`${base}/mock-parent.html${query}`)).text();
+    const scripts = [...html.matchAll(/<script type="module" src="([^"]+)"/g)]
+      .map(([, src]) => src.replaceAll('&amp;', '&'))
+      .filter((src) => src.startsWith('/mock-parent.html'));
+    assert.ok(scripts.length > 0, 'the page has a module script of its own');
+    for (const src of scripts) {
+      const res = await fetch(`${base}${src}`);
+      assert.equal(res.status, 200, src);
+      assert.match(res.headers.get('content-type'), /javascript/, src);
+    }
+  });
+
   it('serves the admin code the page imports', async () => {
     for (const mod of ['helpers', 'build-block-path-map', 'merge-templates', 'merge-frontend-block', 'block-path', 'block-sync']) {
       const res = await fetch(`${base}/inka-mock-parent/${mod}.js`);
