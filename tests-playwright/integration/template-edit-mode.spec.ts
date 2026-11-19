@@ -2041,9 +2041,10 @@ test.describe('Template Edit Mode - Lock affordance + metadata gating', () => {
   // where locked, unlocked from the sidebar" (inka#774).
 
   // Sub-issue #2: you must be editing the template to change its name / save
-  // location. When NOT in edit mode the metadata fields render READ-ONLY (static
-  // text, no inputs); entering edit mode swaps them for editable widgets.
-  test('template name and save location are read-only unless editing the template', async ({ page }) => {
+  // location. Locked, the section shows what the template is and how to unlock
+  // it, not the fields again as read-only text (inka#774); unlocked, they are
+  // editable widgets.
+  test('template name and save location appear only when editing the template', async ({ page }) => {
     const helper = new AdminUIHelper(page);
     await helper.login();
     await helper.navigateToEdit('/template-test-page');
@@ -2054,16 +2055,15 @@ test.describe('Template Edit Mode - Lock affordance + metadata gating', () => {
     await helper.waitForSidebarOpen();
     await helper.escapeToParent();
 
-    // Template Settings form is shown (name + save location). Scope by label —
-    // there is also a page-level "Title" field with the same #field-title id.
+    // Scope by label — there is also a page-level "Title" field with the same
+    // #field-title id.
     const nameField = page.locator('.field').filter({ hasText: 'Template Name' });
     const folderField = page.locator('.field').filter({ hasText: 'Save Location' });
-    await expect(nameField).toBeVisible({ timeout: 5000 });
 
-    // Locked → read-only: no editable input / browse control, value shown as text.
-    await expect(nameField.locator('input')).toHaveCount(0);
-    await expect(nameField.locator('.readonly-field-value')).toBeVisible();
-    await expect(folderField.locator('button.action')).toHaveCount(0);
+    // Locked → the template's explanation and Unlock button; no fields.
+    await expect(page.locator('.template-locked-info')).toBeVisible({ timeout: 5000 });
+    await expect(nameField).toHaveCount(0);
+    await expect(folderField).toHaveCount(0);
 
     // Enter template edit mode via the sidebar toggle (v2: warns first).
     await page.locator('.sidebar-section-header[data-is-current="true"] .edit-template-toggle').click();

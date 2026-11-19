@@ -800,21 +800,21 @@ const ParentBlockSection = ({
               block={blockId}
             />
           </HydraSchemaProvider>
-        ) : (
-          <>
-            {isCurrentBlock && (
-              <TemplateLockedInfo
-                title={tplDoc?.title}
-                canEdit={canEditTemplate}
-                onUnlock={canToggleTemplateEdit ? toggleTemplateEdit : null}
-                layout={layoutChoice}
-              />
-            )}
-            <ReadOnlyForm schema={templateSchema} formData={templateFormData} />
-          </>
-        );
+        ) : isCurrentBlock ? (
+          // Locked: what the template is and how to unlock it. Its name and
+          // location are only fields to fill in once it is being edited;
+          // shown read-only here they repeated what this already says.
+          <TemplateLockedInfo
+            title={tplDoc?.title}
+            canEdit={canEditTemplate}
+            onUnlock={canToggleTemplateEdit ? toggleTemplateEdit : null}
+            layout={layoutChoice}
+          />
+        ) : null;
         const targetElement = document.getElementById(targetId);
-        return targetElement ? createPortal(formContent, targetElement) : null;
+        return targetElement && formContent
+          ? createPortal(formContent, targetElement)
+          : null;
       })()}
 
       {/* Template block settings form - shown when editing a block inside a template during edit mode */}
