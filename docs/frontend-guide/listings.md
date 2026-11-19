@@ -185,6 +185,22 @@ This self-contained object has everything needed to resolve image URLs with scal
 
 For non-Plone backends (RSS feeds, external APIs, etc.), write your own fetcher: `async (block, { start, size }) => ({ items, total })`. `start` is the zero-based offset, `size` is the number of items to return (or `0` for total-only), and `total` in the return value is the full count, not just this page.
 
+### A location along the page's breadcrumb
+
+A Relative path location (`plone.app.querystring.operation.string.relativePath`) can also name a step of the **current page's breadcrumb, counted from the top**: `/*` is the page's level-1 section (the navigation root's child it is under), `/*/*` its level-2 section, and so on, with Plone's `::depth` after it as usual (`/*::2`).
+
+`..` counts up from the page, so it lands in a different place for pages at different depths. A breadcrumb step lands in the same section for every page in it. That's what a section navigation in a layout many pages share needs: one stored query, `/*`, lists the page's whole section wherever the page sits.
+
+Plone has no such operation: `ploneFetchItems` resolves it for the page it fetches for (`contextPath`) into an ordinary **Absolute path** before sending, so Plone only ever receives a path. A page above that level resolves to itself. Only `*` steps are accepted, and anything else after a leading `/` throws. `resolveBreadcrumbPath(value, contextPath)` is exported for a fetcher of your own.
+
+### Json
+
+```json
+{ "i": "path", "o": "plone.app.querystring.operation.string.relativePath", "v": "/*" }
+```
+
+For `/our-reports/operation-askern` this is sent as `{ "o": "…absolutePath", "v": "/our-reports" }`.
+
 ## Example fetchers
 
 The same `fetchItems` seam powers other "collection" blocks — each is just a fetcher that returns raw result objects (`expandListingBlocks` maps each result's address, `getURL`, to `href` etc. and repeats an item block per result, so they need **no bespoke renderer**; they render via the standard item types on every frontend). `@hydra-js/helpers` ships three reference fetchers:
