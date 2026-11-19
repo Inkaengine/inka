@@ -1181,6 +1181,40 @@ function resolveBreadcrumbLocations(query, contextPath) {
   });
 }
 
+/**
+ * A Relative path value (`..`, `.::1`, `../news`) as the absolute path it is
+ * for the page at `contextPath`, walked as Plone's `_relativePath` walks it:
+ * `..` goes up and stops at the site root, `.` stays, a name goes down. (Plone
+ * stays put on a name the page has no child of; this can't know, so it goes
+ * down anyway.) A breadcrumb location (`/*`) resolves as resolveBreadcrumbPath.
+ *
+ * @param {string} value - the criterion's value, with any `::depth`
+ * @param {string} contextPath - the page the listing is fetched for
+ * @returns {string}
+ */
+function resolveRelativePath(value, contextPath) {
+  const breadcrumb = resolveBreadcrumbPath(value, contextPath);
+  if (breadcrumb !== null) return breadcrumb;
+  const sep = value.indexOf('::');
+  const path = sep === -1 ? value : value.slice(0, sep);
+  const depth = sep === -1 ? '' : value.slice(sep);
+  const segs = (contextPath || '/').split('/').filter(Boolean);
+  for (const step of path.split('/').filter(Boolean)) {
+    if (step === '..') segs.pop();
+    else if (step !== '.') segs.push(step);
+  }
+  return `/${segs.join('/')}${depth}`;
+}
+
+/** The query with every Relative path as the Absolute path it is here. */
+function resolveRelativeLocations(query, contextPath) {
+  return query.map((c) =>
+    c.i === 'path' && c.o === RELATIVE_PATH
+      ? { ...c, o: ABSOLUTE_PATH, v: resolveRelativePath(c.v, contextPath) }
+      : c,
+  );
+}
+
 const FOLDER_CONTENTS_CRITERION = {
   i: 'path',
   o: 'plone.app.querystring.operation.string.relativePath',
@@ -1241,6 +1275,10 @@ export function ploneFetchItems({
   contextContent,
   // The listing field holding its mapping: the recipe's mappingField.
   mappingField = 'fieldMapping',
+  // plone.restapi leaves the page a search is asked from out of its results.
+  // A navigation must show the page you are on: with this, the search is
+  // asked from the site root, its Relative paths resolved for the page first.
+  includeContext = false,
 } = {}) {
   if (!apiUrl) {
     throw new Error('ploneFetchItems requires apiUrl');
@@ -1278,7 +1316,8 @@ export function ploneFetchItems({
     const headers = _getAuthHeaders();
     headers['Content-Type'] = 'application/json';
 
-    const path = `${contextPath}/++api++/@querystring-search`;
+    if (includeContext) body.query = resolveRelativeLocations(body.query, contextPath);
+    const path = `${includeContext ? '' : contextPath}/++api++/@querystring-search`;
     const url = `${apiUrl}${path}`;
     const payload = JSON.stringify(body);
     const response = await fetchQuerystringSearch(url, headers, payload);

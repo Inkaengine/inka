@@ -5546,7 +5546,12 @@ app.post('*/@querystring-search', (req, res) => {
       };
     })
     .filter((content) => content !== null)
-    .filter((content) => mayView(content, getSessionId(req)));
+    .filter((content) => mayView(content, getSessionId(req)))
+    // plone.restapi leaves out the page the search is asked from, whatever
+    // the query, unless it is the site root (querystringsearch/get.py:
+    // "Exclude 'self' content item"). A listing that must show its own page
+    // asks from the root (ploneFetchItems' includeContext).
+    .filter((content) => contextPath === '' || contextPath === '/' || new URL(content['@id']).pathname !== contextPath);
 
   // Apply query filters
   // plone.app.querystring `selection.*` operations apply by index TYPE,
@@ -5609,8 +5614,8 @@ app.post('*/@querystring-search', (req, res) => {
       // @querystring-search for `/blog` answers with /blog among its 62 items.
       // With a depth (`/blog::1`) it is not -- that answers 34, the folder
       // gone and nothing below the children -- so the folder is kept only
-      // where no depth was asked for. (relativePath is different, and stays
-      // different: Plone leaves the context itself out. See below.)
+      // where no depth was asked for. (Asked from a page, that page itself is never a
+      // result: see where allItems is built.)
       const basePath = value || '/';
       if (basePath !== '/') {
         const prefix = basePath.endsWith('/') ? basePath : basePath + '/';
@@ -5623,14 +5628,8 @@ app.post('*/@querystring-search', (req, res) => {
     } else if (index === 'path' && operation.includes('relativePath')) {
       // Filter by relative path from context.
       // '.' means current context, '..' means parent, etc.
-      //
-      // Plone quirk: relativePath EXCLUDES the current context page
-      // itself from results. So a `..` query from /a/b returns
-      // /a's strict descendants minus /a/b. That's a deliberate Plone
-      // navigation convention ("don't list me in my own nav"). We
-      // replicate it here so cnav rendering works the same under mock
-      // as under prod — including exposing the missing-intermediate-
-      // parent case that hierarchicalSortByPosition has to handle.
+      // (The context page itself is already left out, as it is for every
+      // query asked from a page: see where allItems is built.)
       let relValue = value || '';
       if (relValue === '.' || relValue === '') {
         relValue = '';
@@ -5642,7 +5641,6 @@ app.post('*/@querystring-search', (req, res) => {
           return itemPath.startsWith(fullPath + '/');
         });
       }
-      allItems = allItems.filter((item) => new URL(item['@id']).pathname !== contextPath);
     } else if (
       index === 'SearchableText' &&
       (operation.includes('string.contains') ||
