@@ -3948,9 +3948,10 @@ function allRegionIds(blocksLayout) {
  * menu choice.
  *
  * So look inside before letting it go. `fixed` marks the template's own
- * furniture, which the incoming layout replaces; everything else is the
- * author's and is pushed back into `pendingContent` under its own slot, exactly
- * as the flat scan does for content that sits at the top level. Template
+ * furniture, which the incoming layout replaces, and is looked inside in turn;
+ * everything else is the author's and is pushed back into `pendingContent`
+ * under its own slot, whole, exactly as the flat scan does for content that
+ * sits at the top level. Template
  * markers are left ON the harvested blocks — the flat scan leaves them there
  * too, and the apply re-stamps what it re-homes.
  *
@@ -3975,10 +3976,13 @@ export function collectNestedAuthorContent(block, pendingContent, visited = new 
         collectNestedAuthorContent(child, pendingContent, visited);
         continue;
       }
+      // The author's block, taken WHOLE: its children go with it. Recursing
+      // on collected each child a second time as content of its own, so a
+      // grid's cards were drawn twice — in the grid, and alone after it
+      // (collectContentFromTree takes content whole for the same reason).
       const slotId = child.slotId || 'default';
       if (!pendingContent.has(slotId)) pendingContent.set(slotId, []);
       pendingContent.get(slotId).push({ blockId, block: child });
-      collectNestedAuthorContent(child, pendingContent, visited);
     }
   }
 }
