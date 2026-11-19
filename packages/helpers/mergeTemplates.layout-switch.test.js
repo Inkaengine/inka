@@ -172,6 +172,41 @@ describe('mergeTemplatesIntoPage — switching layouts', () => {
     ).toEqual(['Ways of working', 'Content design starts with the problem.']);
   });
 
+  test("a container in the content keeps its children when a layout replaces a layout", async () => {
+    // A grid of cards in the page content. Harvesting the outgoing frame took
+    // the grid whole AND each card inside it again as content of its own, so
+    // the next layout drew every card twice: in the grid and alone after it.
+    const withGrid = {
+      blocks: {
+        g1: {
+          '@type': 'cards',
+          blocks: {
+            c1: { '@type': 'card', title: 'Opening hours' },
+            c2: { '@type': 'card', title: 'Contact us' },
+          },
+          blocks_layout: { items: ['c1', 'c2'] },
+        },
+      },
+      blocks_layout: { items: ['g1'] },
+    };
+    const right = await applyLayout(await applyLayout(withGrid, LEFT), RIGHT);
+
+    // Where each card is drawn: by the region that lists it.
+    const placed = [];
+    const walk = (blocks, layoutDict, owner) => {
+      for (const ids of Object.values(layoutDict || {})) {
+        for (const id of ids) {
+          const block = blocks?.[id];
+          if (!block) continue;
+          if (block['@type'] === 'card') placed.push(`${block.title} in ${owner}`);
+          if (block.blocks) walk(block.blocks, block.blocks_layout, block['@type']);
+        }
+      }
+    };
+    walk(right.blocks, right.blocks_layout, 'page');
+    expect(placed).toEqual(['Opening hours in cards', 'Contact us in cards']);
+  });
+
   test('the switch really does swap the frame', async () => {
     const right = await applyLayout(await applyLayout(PAGE, LEFT), RIGHT);
 

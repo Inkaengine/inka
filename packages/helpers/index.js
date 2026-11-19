@@ -1142,6 +1142,45 @@ async function fetchQuerystringSearch(url, headers, payload) {
  * @param {Object} [options.extraCriteria={}] - Additional query params (SearchableText, facet.*, sort_on, sort_order)
  * @returns {Function} fetchItems(block, { start, size }) => Promise<{ items, total }>
  */
+const RELATIVE_PATH = 'plone.app.querystring.operation.string.relativePath';
+const ABSOLUTE_PATH = 'plone.app.querystring.operation.string.absolutePath';
+
+/**
+ * A Relative path value that names a step of the current page's breadcrumb
+ * from the top — `/*` the page's level-1 section, `/*\/*` its level-2 one,
+ * with Plone's `::depth` after it — as the absolute path it is for the page at
+ * `contextPath`. A page above that level resolves to itself. `null` for any
+ * other relative value (`.`, `..`, `../news`), which Plone resolves itself.
+ *
+ * One stored query then serves pages at every depth, as a section nav in a
+ * layout many pages share needs; `..` counts from the page instead.
+ *
+ * @param {string} value - the criterion's value
+ * @param {string} contextPath - the page the listing is fetched for
+ * @returns {string|null}
+ */
+export function resolveBreadcrumbPath(value, contextPath) {
+  if (typeof value !== 'string' || !value.startsWith('/')) return null;
+  const sep = value.indexOf('::');
+  const path = sep === -1 ? value : value.slice(0, sep);
+  const depth = sep === -1 ? '' : value.slice(sep);
+  const steps = path.split('/').slice(1);
+  if (!steps.every((step) => step === '*')) {
+    throw new Error(`a breadcrumb location takes only * steps (/*, /*/*…), got "${value}"`);
+  }
+  const page = (contextPath || '/').split('/').filter(Boolean);
+  return `/${page.slice(0, steps.length).join('/')}${depth}`;
+}
+
+/** The query with each breadcrumb location as the Absolute path it is here. */
+function resolveBreadcrumbLocations(query, contextPath) {
+  return query.map((c) => {
+    if (c.i !== 'path' || c.o !== RELATIVE_PATH) return c;
+    const absolute = resolveBreadcrumbPath(c.v, contextPath);
+    return absolute === null ? c : { ...c, o: ABSOLUTE_PATH, v: absolute };
+  });
+}
+
 const FOLDER_CONTENTS_CRITERION = {
   i: 'path',
   o: 'plone.app.querystring.operation.string.relativePath',
@@ -1217,6 +1256,7 @@ export function ploneFetchItems({
       extraCriteria,
     );
     if (body === null) return { items: [], total: 0 };
+    body.query = resolveBreadcrumbLocations(body.query, contextPath);
 
     // This folder's children in folder order, and nothing else, is the
     // question plone.restapi answers for every folderish page: its content
@@ -3948,9 +3988,10 @@ function allRegionIds(blocksLayout) {
  * menu choice.
  *
  * So look inside before letting it go. `fixed` marks the template's own
- * furniture, which the incoming layout replaces; everything else is the
- * author's and is pushed back into `pendingContent` under its own slot, exactly
- * as the flat scan does for content that sits at the top level. Template
+ * furniture, which the incoming layout replaces, and is looked inside in turn;
+ * everything else is the author's and is pushed back into `pendingContent`
+ * under its own slot, whole, exactly as the flat scan does for content that
+ * sits at the top level. Template
  * markers are left ON the harvested blocks — the flat scan leaves them there
  * too, and the apply re-stamps what it re-homes.
  *
@@ -3975,10 +4016,13 @@ export function collectNestedAuthorContent(block, pendingContent, visited = new 
         collectNestedAuthorContent(child, pendingContent, visited);
         continue;
       }
+      // The author's block, taken WHOLE: its children go with it. Recursing
+      // on collected each child a second time as content of its own, so a
+      // grid's cards were drawn twice — in the grid, and alone after it
+      // (collectContentFromTree takes content whole for the same reason).
       const slotId = child.slotId || 'default';
       if (!pendingContent.has(slotId)) pendingContent.set(slotId, []);
       pendingContent.get(slotId).push({ blockId, block: child });
-      collectNestedAuthorContent(child, pendingContent, visited);
     }
   }
 }

@@ -345,11 +345,11 @@ describe('plone-content-validator validate()', () => {
   });
 
   it('takes the site root from where the export keeps it, not from a site called Plone', () => {
-    // A site's id is its own (/lecc); the root is the item in
+    // A site's id is its own (/agency); the root is the item in
     // plone_site_root. A page whose @id is /Plone is a page, and a page with
     // no id aborts the import, so it is reported.
     const { root, contentDir } = buildFixture({
-      rootItem: { '@id': '/lecc', '@type': 'SiteRootOfAnyType' },
+      rootItem: { '@id': '/agency', '@type': 'SiteRootOfAnyType' },
       pageA: { '@id': '/Plone', '@type': 'Document', UID: 'pageauid1234567', parent: { '@id': '/' } },
     });
     const r = checkIntegrity(contentDir);

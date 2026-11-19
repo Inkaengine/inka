@@ -522,11 +522,11 @@ def test_an_item_on_its_types_default_view_is_unset():
 def test_the_site_root_is_the_export_root_whatever_the_site_is_called(tmp_path):
     """The root is the item the export keeps in `plone_site_root`, the export
     format's own name for it. Not a site called `Plone` (a site's id is its
-    own: `/lecc`), and not a type name: a page whose id is `Plone` is a page."""
+    own: `/agency`), and not a type name: a page whose id is `Plone` is a page."""
     import json as _json
 
     items = (
-        ("plone_site_root", {"@id": "/lecc", "@type": "SiteRootOfAnyType", "UID": "root"}),
+        ("plone_site_root", {"@id": "/agency", "@type": "SiteRootOfAnyType", "UID": "root"}),
         ("aaa", {"@id": "/Plone", "@type": "Document", "UID": "aaa"}),
     )
     for dirname, data in items:
