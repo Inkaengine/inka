@@ -35,7 +35,7 @@ import TemplateLockToggle from '../Toolbar/TemplateLockToggle';
 import { SidebarPortalTargetContext } from './SidebarPortalTargetContext';
 import DropdownMenu from '../Toolbar/DropdownMenu';
 import ReadOnlyForm from './ReadOnlyForm';
-import { getBlockById, updateBlockById, getResolvedSchema, getCommonAncestor } from '../../utils/blockPath';
+import { getBlockById, updateBlockById, getResolvedSchema, getCommonAncestor, getAllContainerFields } from '../../utils/blockPath';
 import { HydraSchemaProvider } from '../../context';
 import { findTypeField } from '../../utils/blockSync';
 import BlockTypeMenu from './BlockTypeMenu';
@@ -43,7 +43,8 @@ import { nestedStatus } from '@volto-hydra/helpers';
 import { buildIdFieldMap } from '../../utils/blockPath';
 import { PAGE_BLOCK_UID } from '@volto-hydra/hydra-js';
 import { isObjectListRegion, isRegionField } from '@volto-hydra/helpers/regionWidgets.js';
-import { isBlockReadonly } from '@volto-hydra/helpers';
+import { isBlockReadonly, templateIdToPath } from '@volto-hydra/helpers';
+import LayoutSelector from './LayoutSelector';
 import { flattenToAppURL } from '@plone/volto/helpers';
 import { LinkedText } from '../../utils/linkedText';
 import { withImageMetadata } from '../../utils/imageMetadata';
@@ -255,6 +256,44 @@ function nestedStatusLabel({ status, count }) {
   return count === 1 ? `1 block inside ${one}` : `${count} blocks inside ${many}`;
 }
 
+/**
+ * What a LOCKED template is, and how to change it (inka#774): shown in the
+ * template's own section, where the canvas lock leads. Unlocking is done here,
+ * with the reason spelled out, and still asked once more before it happens.
+ */
+const TemplateLockedInfo = ({ title, canEdit, onUnlock, layout }) => (
+  <div className="template-locked-info">
+    <p>
+      {title ? (
+        <>
+          This is part of the <strong>{title}</strong> template.
+        </>
+      ) : (
+        'This is part of a template.'
+      )}{' '}
+      Its locked blocks are the same on every page using this template.
+    </p>
+    {layout && <div className="template-locked-info-layout">{layout}</div>}
+    <p>
+      Unlock it to change the template itself: changes here apply to every page
+      using this template.
+    </p>
+    <button
+      type="button"
+      className="ui button template-unlock-button"
+      disabled={!onUnlock}
+      title={
+        canEdit
+          ? 'Unlock this template to edit it'
+          : 'You don’t have permission to edit this template (requires “Modify portal content”).'
+      }
+      onClick={() => onUnlock && onUnlock()}
+    >
+      Unlock template
+    </button>
+  </div>
+);
+
 const ParentBlockSection = ({
   blocksErrors = {},
   blockStatuses,
@@ -279,6 +318,7 @@ const ParentBlockSection = ({
   onChangeTemplateSettings,
   onToggleTemplateEditMode,
   templatePermissions,
+  onChangeFormData,
 }) => {
   // Get intl from context if not passed (needed for getTemplateInstanceSchema)
   const contextIntl = useIntl();
@@ -717,6 +757,33 @@ const ParentBlockSection = ({
           idEditable: !!tplDoc?._isNew,
           templateType: tplDoc?.['@type'],
         });
+        // The layouts the template's region allows, when this template is one
+        // of them and there is another to switch to: the choice the region's
+        // own control offers, here beside the template it replaces (inka#774).
+        // Layouts are applied to a region of the page.
+        const regionLayouts =
+          pathInfo.parentId === PAGE_BLOCK_UID && onChangeFormData
+            ? getAllContainerFields(
+                PAGE_BLOCK_UID,
+                blockPathMap,
+                formData,
+                config.blocks.blocksConfig,
+                contextIntl,
+                templateEditMode,
+              ).find((f) => f.region === pathInfo.region)?.allowedLayouts
+            : null;
+        const isLayout = (regionLayouts || []).some(
+          (l) => l && templateIdToPath(l) === templateIdToPath(pathInfo.templateId),
+        );
+        const layoutChoice =
+          isLayout && regionLayouts.length > 1 ? (
+            <LayoutSelector
+              formData={formData}
+              onChangeFormData={onChangeFormData}
+              allowedLayouts={regionLayouts}
+              region={pathInfo.region}
+            />
+          ) : null;
         const formContent = isEditingThisTemplate ? (
           <HydraSchemaProvider value={{ blockPathMap, currentBlockId: blockId, formData, blocksConfig: config.blocks?.blocksConfig, liveBlockDataRef, onChangeBlock }}>
             <BlockDataForm
@@ -729,7 +796,17 @@ const ParentBlockSection = ({
             />
           </HydraSchemaProvider>
         ) : (
-          <ReadOnlyForm schema={templateSchema} formData={templateFormData} />
+          <>
+            {isCurrentBlock && (
+              <TemplateLockedInfo
+                title={tplDoc?.title}
+                canEdit={canEditTemplate}
+                onUnlock={canToggleTemplateEdit ? toggleTemplateEdit : null}
+                layout={layoutChoice}
+              />
+            )}
+            <ReadOnlyForm schema={templateSchema} formData={templateFormData} />
+          </>
         );
         const targetElement = document.getElementById(targetId);
         return targetElement ? createPortal(formContent, targetElement) : null;
@@ -838,6 +915,7 @@ const ParentBlocksWidget = ({
   onChangeTemplateSettings,
   onToggleTemplateEditMode,
   templatePermissions,
+  onChangeFormData,
 }) => {
   const isMultiSelected = multiSelected.length > 1;
   const [isClient, setIsClient] = React.useState(false);
@@ -1049,6 +1127,7 @@ const ParentBlocksWidget = ({
                 templateEditMode={templateEditMode}
                 onChangeTemplateSettings={onChangeTemplateSettings}
                 onToggleTemplateEditMode={onToggleTemplateEditMode}
+                onChangeFormData={onChangeFormData}
               />
             );
           })}
@@ -1079,6 +1158,7 @@ const ParentBlocksWidget = ({
             templateEditMode={templateEditMode}
             onChangeTemplateSettings={onChangeTemplateSettings}
             onToggleTemplateEditMode={onToggleTemplateEditMode}
+            onChangeFormData={onChangeFormData}
           />
 
           {/* Multi-select summary bar at bottom of sidebar, below ChildBlocksWidget */}

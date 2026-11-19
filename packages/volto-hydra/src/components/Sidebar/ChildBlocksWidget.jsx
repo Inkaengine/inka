@@ -218,6 +218,8 @@ const ContainerFieldSection = ({
               onChangeFormData={onChangeFormData}
               allowedLayouts={allowedLayouts}
               targetBlockId={parentBlockId}
+              // A page region's layout goes into that region, not always `items`.
+              {...(parentBlockId === PAGE_BLOCK_UID && region ? { region } : {})}
             />
           )}
           {canAdd && (

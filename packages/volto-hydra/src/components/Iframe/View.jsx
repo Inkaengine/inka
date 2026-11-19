@@ -7134,6 +7134,7 @@ const Iframe = (props) => {
         formData={properties}
         blockPathMap={iframeSyncState.blockPathMap}
         templatePermissions={templateCacheRef.current}
+        onChangeFormData={onChangeFormData}
         onSelectBlock={onSelectBlock}
         onDeleteBlock={onDeleteBlock}
         convertTargetsFor={convertTargetsFor}

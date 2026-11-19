@@ -117,7 +117,7 @@ Locked and fixed template blocks are the exception: they can't be moved at all (
 
 ## Switching the layout
 
-When `allowedLayouts` is configured for a page (or a region), the sidebar shows a **Layout** dropdown. Pick a different layout and:
+When `allowedLayouts` is configured for a page (or a region), the sidebar shows a **Layout** dropdown: on the region, and in the layout's own section of the sidebar, which a 🔒 on one of its blocks takes you to. Pick a different layout and:
 
 1. The new layout's structure replaces the old one.
 2. Your existing content is **redistributed** into the new layout's slots based on `slotId`:
@@ -142,7 +142,9 @@ A template is saved as its own kind of page, a **Template**. Site search leaves 
 
 ## Editing content inside a template
 
-A template's own (fixed) blocks are **locked** by default — you can edit *this page's* content, but not the template. To change the template itself, **unlock** it: select one of its blocks and click the 🔒 on its **sidebar bar** ("Template: *name*"), on the block's **block toolbar**, or **Edit template** in the bar's `⋯` menu. The 🔒 becomes 🔓, and the template's blocks — plus its Name / Save Location — become editable.
+A template's own locked blocks stay locked — you can edit *this page's* content, but not the template. Only a locked block shows a 🔒; its open slots and the fixed blocks you can edit don't, because there is nothing to unlock to use them.
+
+To change the template itself, **unlock** it. Click the 🔒 in a locked block's toolbar, or choose **Edit template** from a template block's `⋯` menu: this doesn't unlock anything yet. It opens the template's section of the sidebar ("Template: *name*"), which says which template this is, that changes to it apply to **every page using it**, and has the **Unlock template** button. Unlocking asks you to confirm once more. The 🔒 on the sidebar bar becomes 🔓, and the template's blocks — plus its Name / Save Location — become editable.
 
 Unlocking one template unlocks only *that* template. The rest of the page stays editable as normal, and you can **unlock several templates at once** and edit them together.
 

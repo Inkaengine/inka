@@ -268,11 +268,12 @@ test.describe('unlocking a template locks it on the site, as editing a page does
 
     await whileEditing('jane', template, async () => {
       await helper.clickBlockInIframe(head);
-      const toggle = page.locator('.quanta-toolbar .template-lock-toggle');
-      await toggle.click();
+      await page.locator('.quanta-toolbar .template-lock-toggle').click();
+      const about = page.locator('.template-locked-info');
+      await about.locator('.template-unlock-button').click();
       await page.locator('.template-unlock-modal .template-confirm').click();
       await expect(page.locator('.Toastify'), 'the author is told who has it').toContainText('jane');
-      await expect(toggle, 'it stays locked').toHaveAttribute('aria-pressed', 'false');
+      await expect(about, 'it stays locked').toBeVisible();
       expect((await lockOf(template, helper.authToken)).creator, "jane's lock is left as it is").toBe('jane');
     });
   });

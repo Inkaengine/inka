@@ -26,6 +26,9 @@ import unlockSVG from '@plone/volto/icons/unlock.svg';
  * @param {boolean} editing - is the instance currently unlocked/being edited
  * @param {boolean} [canEdit=true] - user may edit this template (else disabled)
  * @param {(instanceId: string) => void} onToggle
+ * @param {boolean} [opens=false] - a locked block's lock on the canvas: clicking
+ *   it opens the template (onToggle selects it) rather than unlocking, so it says
+ *   so, and is never disabled — anyone may look (inka#774).
  * @param {'sidebar'|'toolbar'} [variant='sidebar']
  */
 export default function TemplateLockToggle({
@@ -33,9 +36,12 @@ export default function TemplateLockToggle({
   editing,
   canEdit = true,
   onToggle,
+  opens = false,
   variant = 'sidebar',
 }) {
   const toolbar = variant === 'toolbar';
+  // Opening a template is only looking: nobody needs permission for that.
+  const enabled = opens || canEdit;
   return (
     <button
       type="button"
@@ -47,10 +53,18 @@ export default function TemplateLockToggle({
             }`
       }
       aria-pressed={editing}
-      aria-label={editing ? 'Lock template' : 'Unlock template to edit'}
-      disabled={!canEdit}
+      aria-label={
+        opens
+          ? 'Locked by its template: open the template'
+          : editing
+          ? 'Lock template'
+          : 'Unlock template to edit'
+      }
+      disabled={!enabled}
       title={
-        canEdit
+        opens
+          ? 'Locked: this block belongs to a template. Open the template to see more.'
+          : canEdit
           ? editing
             ? 'Lock template (review & save changes)'
             : 'Unlock to edit this template'
@@ -58,7 +72,7 @@ export default function TemplateLockToggle({
       }
       onClick={(e) => {
         e.stopPropagation();
-        if (canEdit) onToggle(instanceId);
+        if (enabled) onToggle(instanceId);
       }}
       style={{
         display: 'flex',
@@ -67,13 +81,13 @@ export default function TemplateLockToggle({
         border: 'none',
         borderRadius: '2px',
         pointerEvents: 'auto',
-        cursor: canEdit ? 'pointer' : 'not-allowed',
-        opacity: canEdit ? 1 : 0.5,
+        cursor: enabled ? 'pointer' : 'not-allowed',
+        opacity: enabled ? 1 : 0.5,
         padding: toolbar ? '4px 6px' : '4px',
         background: toolbar ? '#f5f5f5' : 'none',
       }}
       onMouseEnter={(e) =>
-        canEdit && (e.currentTarget.style.background = '#e8e8e8')
+        enabled && (e.currentTarget.style.background = '#e8e8e8')
       }
       onMouseLeave={(e) =>
         (e.currentTarget.style.background = toolbar ? '#f5f5f5' : 'none')

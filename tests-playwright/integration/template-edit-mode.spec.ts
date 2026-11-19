@@ -2036,29 +2036,9 @@ test.describe('Template Edit Mode - Permissions', () => {
 });
 
 test.describe('Template Edit Mode - Lock affordance + metadata gating', () => {
-  // Sub-issue #1: the lock icon on a template block's Quanta toolbar is the
-  // discoverable way into template edit mode — clicking it enters edit mode for
-  // that block's template (no need to hunt for the sidebar toggle).
-  test('clicking the lock icon on a template block enters template edit mode', async ({ page }) => {
-    const helper = new AdminUIHelper(page);
-    await helper.login();
-    await helper.navigateToEdit('/template-test-page');
-
-    // A fixed template block is position-locked in normal mode, so its toolbar
-    // shows the lock icon.
-    const { blockId: headerBlockId } = await helper.waitForBlockByContent(TEMPLATE_HEADER_CONTENT);
-    await helper.clickBlockInIframe(headerBlockId);
-    await helper.waitForBlockSelectedInAdmin(headerBlockId);
-
-    const lockIcon = page.locator('.quanta-toolbar .lock-icon');
-    await expect(lockIcon).toBeVisible({ timeout: 5000 });
-
-    // Clicking the lock offers to unlock the template (v2: warns first); confirming
-    // enters edit mode → the fixed block becomes editable.
-    await lockIcon.click();
-    await page.locator('.template-unlock-modal .template-confirm').click();
-    await helper.waitForBlockEditable(headerBlockId);
-  });
+  // Sub-issue #1 (the lock as the way in) is now: the lock opens the template,
+  // and unlocking is done in its sidebar section — see "Template lock: only
+  // where locked, unlocked from the sidebar" (inka#774).
 
   // Sub-issue #2: you must be editing the template to change its name / save
   // location. When NOT in edit mode the metadata fields render READ-ONLY (static
@@ -2279,7 +2259,7 @@ test.describe('Template Edit Mode v2 - multi-unlock, no page lock, lock-to-commi
     await expect(sidebar).toBeVisible({ timeout: 5000 });
   });
 
-  test('a template unlocks AND saves from the toolbar lock toggle — consistent spot, no sidebar', async ({ page, urls }) => {
+  test('an unlocked template saves from the toolbar lock toggle — consistent spot, no sidebar', async ({ page, urls }) => {
     const helper = new AdminUIHelper(page);
     await helper.login();
     await helper.navigateToEdit('/template-test-page');
@@ -2303,11 +2283,9 @@ test.describe('Template Edit Mode v2 - multi-unlock, no page lock, lock-to-commi
     const toolbar = page.locator('.quanta-toolbar');
     const toggle = toolbar.locator('.template-lock-toggle');
 
-    // Locked → the toggle shows the lock; clicking it UNLOCKS (via the warning modal).
-    await expect(toggle).toBeVisible({ timeout: 5000 });
-    await expect(toggle).toHaveAttribute('aria-pressed', 'false');
-    await toggle.click();
-    await page.locator('.template-unlock-modal .template-confirm').click();
+    // Unlocking is done in the template's sidebar section (inka#774); locking
+    // again is right here on the canvas.
+    await helper.unlockTemplate(headerBlockId);
     await helper.waitForBlockEditable(headerBlockId);
 
     // Make a change (delete the footer) so locking prompts to save.
@@ -2318,9 +2296,9 @@ test.describe('Template Edit Mode v2 - multi-unlock, no page lock, lock-to-commi
       document.dispatchEvent(new CustomEvent('hydra-delete-blocks', { detail: { blockIds: [id] } }));
     }, footerBlockId);
 
-    // Editing → the toggle is in the SAME spot but now LOCKS; clicking → decision
+    // Editing → the toggle is in the lock's spot and LOCKS; clicking → decision
     // modal → "Change on all pages", and the page save writes the template. The
-    // sidebar is never opened.
+    // sidebar isn't needed for this.
     await helper.clickBlockInIframe(headerBlockId);
     await helper.waitForBlockSelectedInAdmin(headerBlockId);
     await expect(toggle).toHaveAttribute('aria-pressed', 'true');
@@ -2599,5 +2577,97 @@ test.describe('Template Edit Mode v2 - multi-unlock, no page lock, lock-to-commi
     await expect(gate).toBeVisible({ timeout: 5000 });
     await expect(gate).toContainText(/lock/i);
     expect(pagePatched).toBe(false);
+  });
+});
+
+// A lock says "this block is locked". Only a block the page may not edit shows
+// one; clicking it takes the author to the template's own sidebar section, which
+// says what the template is and what unlocking it does, and holds the Unlock
+// button. Unlocking never happens from the canvas by accident (inka#774).
+test.describe('Template lock: only where locked, unlocked from the sidebar', () => {
+  test('the toolbar shows a lock on a locked block, and none on an editable one', async ({ page }) => {
+    const helper = new AdminUIHelper(page);
+    const toolbarLock = page.locator('.quanta-toolbar .template-lock-toggle');
+    await helper.login();
+    await helper.navigateToEdit('/template-test-page');
+
+    // Locked (fixed + read-only): a lock.
+    const { blockId: headerBlockId } = await helper.waitForBlockByContent(TEMPLATE_HEADER_CONTENT);
+    await helper.clickBlockInIframe(headerBlockId);
+    await helper.waitForBlockSelectedInAdmin(headerBlockId);
+    await expect(toolbarLock).toBeVisible({ timeout: 5000 });
+
+    // The template's open slot: page content, moved like any other. No lock.
+    await helper.clickBlockInIframe(USER_CONTENT_1);
+    await helper.waitForBlockSelectedInAdmin(USER_CONTENT_1);
+    await expect(page.locator('.quanta-toolbar .drag-handle')).toBeVisible();
+    await expect(page.locator('.quanta-toolbar .lock-icon')).toHaveCount(0);
+
+    // Fixed but editable: it stays where the template puts it, but the page
+    // edits it. No lock.
+    await helper.navigateToEdit('/another-page');
+    await helper.waitForIframeReady();
+    await page.locator('.sidebar-section-header .section-title').click();
+    await page.locator('.layout-selector select').selectOption('Editable Fixed Layout');
+    await page.locator('.apply-layout-btn').click();
+    const { blockId: editableHeaderId } = await helper.waitForBlockByContent('Editable Header');
+    await helper.clickBlockInIframe(editableHeaderId);
+    await helper.waitForBlockSelectedInAdmin(editableHeaderId);
+    await expect(page.locator('.quanta-toolbar .lock-icon')).toHaveCount(0);
+  });
+
+  test('the lock opens the template in the sidebar, which explains unlocking and does it', async ({ page }) => {
+    const helper = new AdminUIHelper(page);
+    await helper.login();
+    await helper.navigateToEdit('/template-test-page');
+
+    const { blockId: headerBlockId } = await helper.waitForBlockByContent(TEMPLATE_HEADER_CONTENT);
+    await helper.clickBlockInIframe(headerBlockId);
+    await helper.waitForBlockSelectedInAdmin(headerBlockId);
+    await page.locator('.quanta-toolbar .template-lock-toggle').click();
+
+    // Not unlocked, not even asked: the template is selected instead, and its
+    // section says what unlocking means.
+    await expect(page.locator('.template-unlock-modal')).toHaveCount(0);
+    const current = page.locator('.sidebar-section-header[data-is-current="true"]');
+    await expect(current.locator('.nav-title')).toContainText('Template', { timeout: 5000 });
+    const about = page.locator('.template-locked-info');
+    await expect(about).toBeVisible();
+    await expect(about).toContainText(/every page using this template/i);
+    await helper.waitForBlockReadonly(headerBlockId);
+
+    // Unlocking is done there, and asked first.
+    await about.locator('.template-unlock-button').click();
+    await page.locator('.template-unlock-modal .template-confirm').click();
+    await helper.waitForBlockEditable(headerBlockId);
+    await expect(about).toHaveCount(0);
+  });
+
+  test('the template section offers the region\'s other layouts', async ({ page }) => {
+    const helper = new AdminUIHelper(page);
+    const iframe = helper.getIframe();
+    await helper.login();
+    await helper.navigateToEdit('/another-page');
+    await helper.waitForIframeReady();
+    await page.locator('.sidebar-section-header .section-title').click();
+    await page.locator('.layout-selector select').selectOption('Header Footer Layout');
+    await page.locator('.apply-layout-btn').click();
+
+    // From a block in the layout, up to the layout itself.
+    const { blockId: headerBlockId } = await helper.waitForBlockByContent('Layout Header');
+    await helper.clickBlockInIframe(headerBlockId);
+    await helper.waitForBlockSelectedInAdmin(headerBlockId);
+    await page.locator('.quanta-toolbar .template-lock-toggle').click();
+
+    const layout = page.locator('.template-locked-info .layout-selector select');
+    await expect(layout).toBeVisible({ timeout: 5000 });
+    await layout.selectOption('Header Only Layout');
+    await page.locator('.template-locked-info .apply-layout-btn').click();
+    await expect(
+      iframe.locator('main [data-block-uid], #content [data-block-uid]').filter({ hasText: 'Header Only' }),
+    ).toBeVisible({ timeout: 10000 });
+    await expect(
+      iframe.locator('main [data-block-uid], #content [data-block-uid]').filter({ hasText: 'Layout Footer' }),
+    ).toHaveCount(0);
   });
 });

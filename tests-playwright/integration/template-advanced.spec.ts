@@ -37,10 +37,12 @@ test.describe('Fixed Editable Blocks', () => {
     await headerBlock.click();
     await helper.waitForSidebarOpen();
 
-    // Verify it shows lock icon (fixed)
+    // Fixed, so no drag handle; editable, so no lock either — a lock would say
+    // it must be unlocked first, and it needn't be (inka#774).
     const toolbar = page.locator('.quanta-toolbar');
-    const lockIcon = toolbar.locator('.lock-icon');
-    await expect(lockIcon).toBeVisible();
+    await expect(toolbar).toBeVisible({ timeout: 5000 });
+    await expect(toolbar.locator('.drag-handle')).toHaveCount(0);
+    await expect(toolbar.locator('.lock-icon')).toHaveCount(0);
 
     // But the block should be editable - verify the editable field is present
     const editableField = helper.getSlateField(headerBlock);
