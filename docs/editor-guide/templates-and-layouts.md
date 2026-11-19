@@ -117,7 +117,7 @@ Locked and fixed template blocks are the exception: they can't be moved at all (
 
 ## Switching the layout
 
-When `allowedLayouts` is configured for a page (or a region), the sidebar shows a **Layout** dropdown: on the region, and in the layout's own section of the sidebar, which a 🔒 on one of its blocks takes you to. Pick a different layout and:
+When `allowedLayouts` is configured for a page (or a region), you choose it in the page's settings, in the **Layouts** section (one row per region), which is there whatever you have selected. A locked layout's own section of the sidebar, where a 🔒 on one of its blocks takes you, offers the same choice. Pick a different layout and:
 
 1. The new layout's structure replaces the old one.
 2. Your existing content is **redistributed** into the new layout's slots based on `slotId`:
