@@ -18,6 +18,7 @@
  */
 const fs = require('fs');
 const path = require('path');
+const { jsonBody } = require('./json-body.cjs');
 
 const readFixture = (name) =>
   JSON.parse(fs.readFileSync(path.join(__dirname, 'api', name), 'utf-8'));
@@ -269,7 +270,7 @@ function register(app, { getSessionId, origin, titleOf }) {
   app.post('/@users', (req, res) => {
     const s = state(req);
     const { username, password, sendPasswordReset, roles, groups = [], ...fields } =
-      req.body || {};
+      jsonBody(req);
     const id = username || fields.email;
     if (!id) return badRequest(res, "Property 'username' is required");
     if (!password && !sendPasswordReset) {
@@ -297,7 +298,7 @@ function register(app, { getSessionId, origin, titleOf }) {
   app.patch('/@users/:userid', (req, res) => {
     const user = state(req).users.get(req.params.userid);
     if (!user) return notFound(res, `No user: ${req.params.userid}`);
-    const { roles, ...fields } = req.body || {};
+    const { roles, ...fields } = jsonBody(req);
     for (const f of USER_FIELDS) if (f in fields) user[f] = fields[f];
     // Volto sends roles as {Role: bool}.
     for (const [role, on] of Object.entries(roles || {})) {
@@ -464,7 +465,7 @@ function register(app, { getSessionId, origin, titleOf }) {
       enabled = true,
       stop = false,
       cascading = false,
-    } = req.body || {};
+    } = jsonBody(req);
     if (!title) return badRequest(res, "Property 'title' is required");
     if (!RULE_EVENTS.includes(event)) return badRequest(res, `Unknown event: ${event}`);
     s.ruleCounter += 1;
@@ -482,8 +483,9 @@ function register(app, { getSessionId, origin, titleOf }) {
   app.patch('/@controlpanels/content-rules/:rule', (req, res) => {
     const rule = ruleOr404(req, res);
     if (!rule) return;
+    const body = jsonBody(req);
     for (const field of ['title', 'description', 'event', 'enabled', 'stop', 'cascading']) {
-      if (req.body?.[field] !== undefined) rule[field] = req.body[field];
+      if (body[field] !== undefined) rule[field] = body[field];
     }
     res.status(204).end();
   });
@@ -501,7 +503,7 @@ function register(app, { getSessionId, origin, titleOf }) {
     app.post(`/@controlpanels/content-rules/:rule/${kind}`, (req, res) => {
       const rule = ruleOr404(req, res);
       if (!rule) return;
-      const { type, ...data } = req.body || {};
+      const { type, ...data } = jsonBody(req);
       const element = addable.find((t) => t.addview === type);
       if (!element) return badRequest(res, `Unknown ${kind}: ${type}`);
       const missing = element['@schema'].required.filter(
@@ -535,7 +537,7 @@ function register(app, { getSessionId, origin, titleOf }) {
     app.patch(`/@controlpanels/content-rules/:rule/${kind}/:idx`, (req, res) => {
       const [rule, idx, stored] = storedOr404(req, res);
       if (!stored) return;
-      const { 'form.button.Move': move, ...data } = req.body || {};
+      const { 'form.button.Move': move, ...data } = jsonBody(req);
       if (move) {
         const to = move === '_move_up' ? idx - 1 : idx + 1;
         if (to < 0 || to >= rule[key].length) return badRequest(res, `Cannot ${move} ${kind} ${idx}`);
@@ -624,7 +626,7 @@ function register(app, { getSessionId, origin, titleOf }) {
   app.patch(/.*\/@content-rules$/, (req, res) => {
     const s = state(req);
     const mine = s.assignments.get(contentPath(req)) || new Map();
-    const body = req.body || {};
+    const body = jsonBody(req);
     const ids = body.rule_ids || [];
     const button = Object.keys(ASSIGNMENT_BUTTONS).find((b) => body[b]);
     if (!button) return badRequest(res, 'No action given');
@@ -638,7 +640,7 @@ function register(app, { getSessionId, origin, titleOf }) {
 
   app.delete(/.*\/@content-rules$/, (req, res) => {
     const mine = state(req).assignments.get(contentPath(req));
-    for (const id of req.body?.rule_ids || []) mine?.delete(id);
+    for (const id of jsonBody(req).rule_ids || []) mine?.delete(id);
     res.status(204).end();
   });
 }

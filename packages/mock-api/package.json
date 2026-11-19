@@ -24,6 +24,7 @@
     "api/",
     "env-port.cjs",
     "from-schemas.mjs",
+    "json-body.cjs",
     "mock-api-server.cjs",
     "mock-plone-api.cjs",
     "mock-principals-and-rules.cjs",
@@ -37,7 +38,7 @@
     "@inka/content-validator": "workspace:*",
     "@volto-hydra/helpers": "workspace:*",
     "cors": "^2.8.5",
-    "express": "4.22.1",
+    "express": "5.2.1",
     "yaml": "1.10.2"
   }
 }

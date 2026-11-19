@@ -11,14 +11,31 @@ const express = require('express');
 const cors = require('cors');
 const fs = require('fs');
 const path = require('path');
+const querystring = require('node:querystring');
 const { imageSize, scaledSize, pngOfSize } = require('./scaled-image.cjs');
 const os = require('os');
 const { execFileSync } = require('child_process');
 const principalsAndRules = require('./mock-principals-and-rules.cjs');
 const { mintToken, verifyToken } = require('./mock-tokens.cjs');
 const { withoutTemplateOwnedBlocks } = require('./template-owned.cjs');
+const { DeserializationError, jsonBody, renderUncaught } = require('./json-body.cjs');
 
 const app = express();
+
+// Zope's marshalling: `name:list=a&name:list=b` is the option `name` = [a, b]
+// (Volto's searchContent sends every array option that way). Folded as the
+// query is parsed, so no endpoint reads `name:list` itself.
+app.set('query parser', (str) => {
+  const query = querystring.parse(str);
+  for (const key of Object.keys(query)) {
+    if (!key.endsWith(':list')) continue;
+    const name = key.slice(0, -':list'.length);
+    query[name] = [query[name] ?? [], query[key]].flat();
+    delete query[key];
+  }
+  return query;
+});
+
 const PORT = process.env.PORT || 8888;
 
 // Every absolute URL this server emits is built from the port it is ACTUALLY
@@ -295,6 +312,10 @@ const contentDirMap = {};
 // The markdown loader is ESM and this file is CommonJS, so it is pulled in with
 // a single dynamic import during startup. `ready` resolves when the trees are
 // loaded; the server awaits it before listening.
+// res.sendFile refuses a path through a dot-directory unless told otherwise,
+// and a content mount can sit under one (node_modules/.pnpm, a .cache checkout).
+const SEND_FILE_OPTIONS = { dotfiles: 'allow' };
+
 const MARKDOWN_BLOB_MIME = {
   '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.gif': 'image/gif',
   '.svg': 'image/svg+xml', '.webp': 'image/webp', '.avif': 'image/avif',
@@ -386,21 +407,10 @@ function sessionIdentity(sessionId) {
 
 // Middleware
 app.use(cors());
-app.use(express.json({ limit: '50mb' })); // Increase limit for image uploads
-
-// Zope's marshalling: `name:list=a&name:list=b` is the option `name` = [a, b]
-// (Volto's searchContent sends every array option that way). Folded into
-// req.query once here, so no endpoint reads `name:list` itself.
-app.use((req, res, next) => {
-  for (const key of Object.keys(req.query)) {
-    if (!key.endsWith(':list')) continue;
-    const name = key.slice(0, -':list'.length);
-    const values = [req.query[key]].flat();
-    req.query[name] = req.query[name] === undefined ? values : [req.query[name], ...values].flat();
-    delete req.query[key];
-  }
-  next();
-});
+// Every body is kept as the text it was sent, whatever its type: the handlers
+// that read one decode it with jsonBody, as Plone's services do (json-body.cjs).
+// The limit is for image uploads, which arrive as base64 inside the JSON.
+app.use(express.text({ type: () => true, limit: '50mb' }));
 
 // Normalise the fixtures' baked origin to ours on the way out. Every JSON
 // response goes through res.json, so this is the one place a URL can leave the
@@ -979,10 +989,12 @@ const CATALOG_SCHEMA = new Set([
  */
 function applyMetadataFields(item, req) {
   // A GET carries it in the query string; @querystring-search is a POST and
-  // carries it in the body, which is why the real one falls back to json_body
-  // when the form is empty. Reading only the query would leave every POST
-  // listing unfiltered — the exact blind spot this is here to remove.
-  const raw = req?.query?.metadata_fields ?? req?.body?.metadata_fields;
+  // carries it in the body, which is why the real one (summary.py) reads the
+  // body with json_body when the form is empty, and only then. Reading only the
+  // query would leave every POST listing unfiltered — the exact blind spot this
+  // is here to remove.
+  const form = !req ? {} : Object.keys(req.query).length ? req.query : jsonBody(req);
+  const raw = form.metadata_fields;
   const asked = raw == null ? [] : Array.isArray(raw) ? raw : [raw];
   const allowed = asked.includes('_all')
     ? CATALOG_SCHEMA
@@ -3035,7 +3047,7 @@ app.post('/@login-demo', (req, res) => {
  * Authenticate and return JWT token with user info - generates fresh token each time
  */
 app.post('/@login', (req, res) => {
-  const { login, password } = req.body;
+  const { login, password } = jsonBody(req);
 
   if (process.env.DEBUG) {
     console.log(`Login attempt - username: ${login}, password: ${password ? '***' : 'missing'}`);
@@ -3095,10 +3107,10 @@ app.post('/@logout', (req, res) => {
  * session relocation: the subtree reads from its new path and 404s at the old
  * one, for the calling session only.
  */
-app.post('*/@move', (req, res) => {
+app.post('{/*path}/@move', (req, res) => {
   const targetPath = req.path.replace('/@move', '') || '/';
   const sessionId = getSessionId(req);
-  const sources = normaliseSources(req.body?.source);
+  const sources = normaliseSources(jsonBody(req).source);
   if (sources.length === 0) {
     return res.status(400).json({
       error: { type: 'BadRequest', message: '@move requires a source' },
@@ -3160,10 +3172,10 @@ app.post('*/@move', (req, res) => {
  * so it is a genuinely distinct document rather than a second path onto one.
  */
 let copyCount = 0;
-app.post('*/@copy', (req, res) => {
+app.post('{/*path}/@copy', (req, res) => {
   const targetPath = req.path.replace('/@copy', '') || '/';
   const sessionId = getSessionId(req);
-  const sources = normaliseSources(req.body?.source);
+  const sources = normaliseSources(jsonBody(req).source);
   if (sources.length === 0) {
     return res.status(400).json({
       error: { type: 'BadRequest', message: '@copy requires a source' },
@@ -3203,10 +3215,10 @@ app.post('*/@copy', (req, res) => {
   return res.json([{ source: sourcePath, target: destPath }]);
 });
 
-app.post('*/@order', (req, res) => {
+app.post('{/*path}/@order', (req, res) => {
   const parentPath = req.path.replace('/@order', '') || '/';
   const sessionId = getSessionId(req);
-  const { obj_id: objId, delta } = req.body || {};
+  const { obj_id: objId, delta } = jsonBody(req);
   if (!objId) {
     return res.status(400).json({
       error: { type: 'BadRequest', message: '@order requires obj_id' },
@@ -3227,7 +3239,7 @@ app.post('*/@order', (req, res) => {
  * Drops session-created content outright and tombstones disk-backed content
  * so it reads as gone for the calling session. Plone answers 204 with no body.
  */
-app.delete('/*', (req, res, next) => {
+app.delete('/{*path}', (req, res, next) => {
   // Special endpoints (e.g. */@lock) have their own handlers.
   if (req.path.startsWith('/@') || req.path.includes('/@')) {
     return next();
@@ -3476,7 +3488,7 @@ app.post('/@export', (req, res, next) => exportContent(req, res).catch(next));
 
 async function exportContent(req, res) {
   await ready;
-  const { format = 'json', prototypes = {}, allowMissingBlobs = false, sitePath } = req.body || {};
+  const { format = 'json', prototypes = {}, allowMissingBlobs = false, sitePath } = jsonBody(req);
 
   if (format === 'markdown') {
     const { emitPage, parsePrototypes, withoutDefaultSearchText } = await getEngine();
@@ -3878,18 +3890,19 @@ function applyTranslationOnCreate(raw, body, path, sessionId) {
   return null;
 }
 
-app.post('/*', (req, res, next) => {
+app.post('/{*path}', (req, res, next) => {
   // Skip special endpoints (already handled above or below)
   if (req.path.startsWith('/@') || req.path.includes('/@')) {
     return next();
   }
 
+  const body = jsonBody(req);
+
   if (process.env.DEBUG) {
-    console.log(`POST content creation: path=${req.path}, @type=${req.body?.['@type']}`);
+    console.log(`POST content creation: path=${req.path}, @type=${body['@type']}`);
   }
 
-  const body = req.body;
-  if (!body || !body['@type']) {
+  if (!body['@type']) {
     // No @type means this isn't a content creation request - pass to next handler
     return next();
   }
@@ -4177,7 +4190,7 @@ function collectSubjectValues() {
  * Get querystring schema (available indexes, operators, sortable indexes)
  * Used by QuerystringWidget to populate criteria and sort dropdowns
  */
-app.get('*/@querystring', (req, res) => {
+app.get('{/*path}/@querystring', (req, res) => {
   res.json({
     '@id': `${API_ORIGIN}/@querystring`,
     'indexes': {
@@ -4525,7 +4538,7 @@ app.get('/@site', (req, res) => {
  */
 app.post('/@mock-site-features', (req, res) => {
   const sessionId = getSessionId(req);
-  const { multilingual, languages } = req.body || {};
+  const { multilingual, languages } = jsonBody(req);
   sessionSiteFeatures[sessionId] = {
     multilingual: !!multilingual,
     languages: Array.isArray(languages) && languages.length ? languages : null,
@@ -4554,7 +4567,7 @@ app.get(/.*\/@translations$/, (req, res) => {
 app.post(/.*\/@translations$/, (req, res) => {
   const cleanPath = translationsPath(req);
   const sessionId = getSessionId(req);
-  const target = String(req.body?.id || '');
+  const target = String(jsonBody(req).id || '');
   if (!target) {
     return res.status(400).json({
       error: { type: 'BadRequest', message: 'Property "id" is required' },
@@ -4592,7 +4605,7 @@ app.post(/.*\/@translations$/, (req, res) => {
 app.delete(/.*\/@translations$/, (req, res) => {
   const cleanPath = translationsPath(req);
   const sessionId = getSessionId(req);
-  const language = req.body?.language;
+  const { language } = jsonBody(req);
   const baseUrl = `http://localhost:${PORT}`;
   const match = translationsOf(cleanPath, baseUrl, sessionId).find(
     (t) => t.language === language,
@@ -4665,10 +4678,11 @@ app.post(/.*\/@workflow\/[^/]+$/, (req, res) => {
     });
   }
 
+  const body = jsonBody(req);
   const record = {
     action: transitionId,
     actor: 'admin',
-    comments: req.body?.comment ?? '',
+    comments: body.comment ?? '',
     review_state: move.to,
     time: new Date().toISOString(),
     title: STATE_TITLES[move.to] ?? move.to,
@@ -4688,7 +4702,7 @@ app.post(/.*\/@workflow\/[^/]+$/, (req, res) => {
     },
   };
   for (const field of ['effective', 'expires']) {
-    if (req.body?.[field]) patch[field] = req.body[field];
+    if (body[field]) patch[field] = body[field];
   }
   setSessionContent(sessionId, cleanPath, { ...content, ...patch });
 
@@ -4781,10 +4795,11 @@ app.patch(/.*\/@history$/, (req, res) => {
   }
   const content = getContent(cleanPath, sessionId);
   const versions = contentVersions.get(cleanPath) || [];
-  const version = Number(req.body?.version);
+  const body = jsonBody(req);
+  const version = Number(body.version);
   const snapshot = versions.find((v) => v.version === version);
   if (!content || !snapshot) {
-    return res.status(404).json({ error: { type: 'NotFound', message: `${cleanPath} has no version ${req.body?.version}` } });
+    return res.status(404).json({ error: { type: 'NotFound', message: `${cleanPath} has no version ${body.version}` } });
   }
   versions.push({ version: versions.length, time: new Date().toISOString(), content: JSON.parse(JSON.stringify(content)) });
   contentVersions.set(cleanPath, versions);
@@ -4874,7 +4889,7 @@ app.post(/.*\/@workingcopy$/, (req, res) => {
 
 // The relation catalog, as plone.restapi's @relations answers it for one kind.
 // plone.app.iterate's working copies are the only relations this mock keeps.
-app.get('*/@relations', (req, res) => {
+app.get('{/*path}/@relations', (req, res) => {
   const name = req.query.relation;
   const sessionId = getSessionId(req);
   const summary = (path) => {
@@ -4950,8 +4965,17 @@ app.post(/.*\/@sharing$/, (req, res) => {
   const sessionId = getSessionId(req);
   const current = getSharing(cleanPath, sessionId);
 
+  let body;
+  try {
+    body = jsonBody(req);
+  } catch (err) {
+    // plone.restapi's sharing answers a body it cannot read with a 400.
+    if (!(err instanceof DeserializationError)) throw err;
+    return res.status(400).json({ error: { type: 'DeserializationError', message: err.message } });
+  }
+
   const byId = new Map(current.entries.map((e) => [e.id, e]));
-  for (const incoming of req.body?.entries ?? []) {
+  for (const incoming of body.entries ?? []) {
     const existing = byId.get(incoming.id);
     byId.set(incoming.id, {
       disabled: false,
@@ -4968,7 +4992,7 @@ app.post(/.*\/@sharing$/, (req, res) => {
   sessionSharing[sessionId][cleanPath] = {
     available_roles: AVAILABLE_ROLES,
     entries: [...byId.values()],
-    inherit: req.body?.inherit ?? current.inherit,
+    inherit: body.inherit ?? current.inherit,
   };
   res.status(204).end();
 });
@@ -5329,7 +5353,7 @@ function addableTypesIn(path, sessionId) {
 app.get('/@types', (req, res) => {
   res.json(listAddableTypes());
 });
-app.get('*/@types', (req, res) => {
+app.get('{/*path}/@types', (req, res) => {
   res.json(addableTypesIn(req.path.replace(/\/@types$/, '') || '/', getSessionId(req)));
 });
 
@@ -5337,7 +5361,7 @@ app.get('*/@types', (req, res) => {
  * GET /:path/@types/:typeName
  * Get content type schema for a specific content path
  */
-app.get('*/@types/:typeName', (req, res) => {
+app.get('{/*path}/@types/:typeName', (req, res) => {
   const { typeName } = req.params;
   res.json(getTypeSchema(typeName));
 });
@@ -5346,7 +5370,7 @@ app.get('*/@types/:typeName', (req, res) => {
  * GET /:path/@breadcrumbs
  * Get breadcrumb trail
  */
-app.get('*/@breadcrumbs', (req, res) => {
+app.get('{/*path}/@breadcrumbs', (req, res) => {
   const cleanPath = (req.path.replace('/++api++', '').replace(/\/?@breadcrumbs$/, '') || '/').replace(/\/+$/, '') || '/';
   res.json(buildBreadcrumbsComponent(cleanPath, `http://localhost:${PORT}`));
 });
@@ -5452,11 +5476,19 @@ app.get(/.*\/@aliases$/, (req, res) => {
  *   metadata_fields: '_all'
  * }
  */
-app.post('*/@querystring-search', (req, res) => {
+app.post('{/*path}/@querystring-search', (req, res) => {
   const contextPath = req.path.replace('/++api++/@querystring-search', '').replace('/@querystring-search', '');
   const baseUrl = `http://localhost:${PORT}`;
 
-  const { query = [], sort_on, sort_order, b_start = 0, b_size = 10, limit } = req.body;
+  let body;
+  try {
+    body = jsonBody(req);
+  } catch (err) {
+    // plone.restapi's querystring-search: `raise BadRequest(str(err))`.
+    if (!(err instanceof DeserializationError)) throw err;
+    return res.status(400).json({ type: 'BadRequest', message: err.message });
+  }
+  const { query = [], sort_on, sort_order, b_start = 0, b_size = 10, limit } = body;
   console.log('[MOCK-API] @querystring-search query:', JSON.stringify(query));
   // The SearchableText term, once the criteria are applied: with no sort_on,
   // the matches are ranked by it (rankByRelevance).
@@ -5823,7 +5855,7 @@ app.post('*/@querystring-search', (req, res) => {
  * Supports path.depth parameter to get children of a specific path
  * Supports path.query parameter to get a specific content item
  */
-app.get('*/@search', (req, res) => {
+app.get('{/*path}/@search', (req, res) => {
   const searchPath = req.path.replace('/@search', '');
 
   // UID lookup — the index behind resolveuid. Real Plone's catalog answers
@@ -6131,7 +6163,7 @@ app.get('*/@search', (req, res) => {
  * Get folder contents for content browsing
  * Returns items at the parent folder level (siblings of current content)
  */
-app.get('*/@contents', (req, res) => {
+app.get('{/*path}/@contents', (req, res) => {
   const contentPath = req.path.replace('/@contents', '') || '/';
 
   // Helper to format content item for response
@@ -6360,9 +6392,9 @@ function runFieldValidations(field, value) {
  */
 const TOKEN_CAPTCHAS = new Set(['recaptcha', 'hcaptcha', 'hcaptcha_invisible', 'norobots-captcha']);
 
-app.post('*/@submit-form', (req, res) => {
+app.post('{/*path}/@submit-form', (req, res) => {
   const contentPath = req.path.replace(/\/@submit-form$/, '') || '/';
-  const body = req.body || {};
+  const body = jsonBody(req);
   const blockId = body.block_id;
   const data = Array.isArray(body.data) ? body.data : [];
   const attachments = body.attachments || {};
@@ -6546,7 +6578,7 @@ app.post('*/@submit-form', (req, res) => {
  * asserts that a form posted what it was supposed to. Without `block_id` every
  * form on the page is returned.
  */
-app.get('*/@form-data', (req, res) => {
+app.get('{/*path}/@form-data', (req, res) => {
   const contentPath = req.path.replace(/\/@form-data$/, '') || '/';
   const blockId = req.query.block_id;
   const items = [];
@@ -6564,7 +6596,7 @@ app.get('*/@form-data', (req, res) => {
  * DELETE /:path/@form-data
  * Clear recorded submissions, so a test can start from a known state.
  */
-app.delete('*/@form-data', (req, res) => {
+app.delete('{/*path}/@form-data', (req, res) => {
   const contentPath = req.path.replace(/\/@form-data$/, '') || '/';
   for (const key of [...formSubmissions.keys()]) {
     if (key.split('::')[0] === contentPath) formSubmissions.delete(key);
@@ -6576,12 +6608,13 @@ app.delete('*/@form-data', (req, res) => {
  * POST /:path/@lock
  * Lock content for editing
  */
-app.post('*/@lock', (req, res) => {
+app.post('{/*path}/@lock', (req, res) => {
   const contentPath = req.path.replace(/\/@lock$/, '') || '/';
   const user = requestUser(req);
   if (!user) return res.status(401).json({ error: { type: 'Unauthorized', message: 'Locking needs a logged-in user.' } });
   const iterateLock = iterateLockOn(contentPath, getSessionId(req));
   if (iterateLock) return res.json(iterateLock);
+  const body = jsonBody(req);
   // Plone's lock() leaves another user's lock as it is, and answers with it.
   if (!lockedAgainst(req, contentPath)) {
     // plone.restapi's lock_info: `time` in epoch seconds, `created` the same
@@ -6596,7 +6629,7 @@ app.post('*/@lock', (req, res) => {
       time,
       created: new Date(Math.floor(time) * 1000).toISOString().replace(/\.\d{3}Z$/, 'Z'),
       token: `mock-lock-${Math.random().toString(36).slice(2)}`,
-      timeout: req.body?.timeout ?? 600
+      timeout: body.timeout ?? 600
     };
   }
   res.json(lockOn(contentPath));
@@ -6607,11 +6640,11 @@ app.post('*/@lock', (req, res) => {
  * Unlock content after editing. Only the holder unlocks, unless `force`
  * (Volto's "unlock" of a lock someone else left) says to.
  */
-app.delete('*/@lock', (req, res) => {
+app.delete('{/*path}/@lock', (req, res) => {
   const contentPath = req.path.replace(/\/@lock$/, '') || '/';
   const iterateLock = iterateLockOn(contentPath, getSessionId(req));
   if (iterateLock) return res.json(iterateLock);
-  if (!lockedAgainst(req, contentPath) || req.body?.force) delete locks[contentPath];
+  if (!lockedAgainst(req, contentPath) || jsonBody(req).force) delete locks[contentPath];
   res.json(lockOn(contentPath) || UNLOCKED);
 });
 
@@ -6620,7 +6653,7 @@ app.delete('*/@lock', (req, res) => {
  * Resolve a UID to content - used by distribution content that references
  * other content via resolveuid/UID links
  */
-app.get('*/resolveuid/:uid', (req, res) => {
+app.get('{/*path}/resolveuid/:uid', (req, res) => {
   const uid = req.params.uid;
   const contentPath = uidToPathMap[uid];
   if (contentPath) {
@@ -6659,7 +6692,7 @@ function findFirstImageFile(rootDir, maxDepth) {
   return null;
 }
 
-app.get('*/@@images/*', (req, res) => {
+app.get('{/*path}/@@images{/*rest}', (req, res) => {
   // Extract content path and field name from URL. Serves the same image
   // file regardless of scale — the mock doesn't generate actual scales.
   // e.g., /images/test-image-1/@@images/image/preview
@@ -6723,7 +6756,7 @@ app.get('*/@@images/*', (req, res) => {
     if (sendScaledIfAsked(file)) return;
     res.set('Content-Type', MARKDOWN_BLOB_MIME[path.extname(file).toLowerCase()]
       || 'application/octet-stream');
-    res.sendFile(file);
+    res.sendFile(file, SEND_FILE_OPTIONS);
     return;
   }
 
@@ -6745,7 +6778,7 @@ app.get('*/@@images/*', (req, res) => {
     if (sendScaledIfAsked(imageFile)) return undefined;
     const ext = path.extname(imageFile).toLowerCase();
     res.set('Content-Type', mimeTypes[ext] || 'application/octet-stream');
-    return res.sendFile(imageFile);
+    return res.sendFile(imageFile, SEND_FILE_OPTIONS);
   };
 
   // Distribution lead/preview image may reference ANOTHER content item's blob
@@ -6795,7 +6828,7 @@ app.get('*/@@images/*', (req, res) => {
 
 // @@download — serves a content object's blob for any field directory (an
 // Image's `image/`, a File's `file/`), the way Plone serves @@download/<field>.
-app.get('*/@@download/*', (req, res) => {
+app.get('{/*path}/@@download{/*rest}', (req, res) => {
   // e.g., /images/quadrant/@@download/image/quadrant.svg -> contentPath=/images/quadrant, fieldName=image
   const pathMatch = req.path.match(/^(.+?)\/@@download\/(\w+)(?:\/.*)?$/);
   const contentPath = pathMatch ? pathMatch[1] : '';
@@ -6810,7 +6843,7 @@ app.get('*/@@download/*', (req, res) => {
     // The original, as uploaded: a download names no scale (that is @@images').
     res.set('Content-Type', MARKDOWN_BLOB_MIME[path.extname(file).toLowerCase()]
       || 'application/octet-stream');
-    res.sendFile(file);
+    res.sendFile(file, SEND_FILE_OPTIONS);
     return;
   }
 
@@ -6832,7 +6865,7 @@ app.get('*/@@download/*', (req, res) => {
         '.mp3': 'audio/mpeg', '.wav': 'audio/wav', '.pdf': 'application/pdf',
       };
       res.setHeader('Content-Type', mimeTypes[ext] || 'application/octet-stream');
-      res.sendFile(imageFile);
+      res.sendFile(imageFile, SEND_FILE_OPTIONS);
       return;
     }
   }
@@ -6852,7 +6885,7 @@ app.get('*/@@download/*', (req, res) => {
  * resolve against the backend. The @@images handler above covers
  * explicit scale paths; this covers the implicit default-view case.
  */
-app.get('*', (req, res, next) => {
+app.get('/{*path}', (req, res, next) => {
   if (req.isApiRequest) return next();
 
   const dirInfo = contentDirMap[req.path];
@@ -6884,7 +6917,7 @@ app.get('*', (req, res, next) => {
     '.webp': 'image/webp',
   };
   res.set('Content-Type', mimeTypes[ext] || 'application/octet-stream');
-  res.sendFile(imageFile);
+  res.sendFile(imageFile, SEND_FILE_OPTIONS);
 });
 
 /**
@@ -6892,7 +6925,7 @@ app.get('*', (req, res, next) => {
  * Get content by path (API requests only)
  * Frontend requests fall through to static file serving
  */
-app.get('*', (req, res, next) => {
+app.get('/{*path}', (req, res, next) => {
   // Only handle API requests (with ++api++ prefix)
   // Frontend requests should be handled by static file middleware
   if (!req.isApiRequest) {
@@ -7016,7 +7049,7 @@ function dropUnregisteredFields(body, baseline) {
  * Default session ('_default') does NOT persist to ensure test isolation for
  * unauthenticated requests.
  */
-app.patch('*', (req, res) => {
+app.patch('/{*path}', (req, res) => {
   const urlPath = req.path;
   const cleanPath = urlPath.replace('/++api++', '');
   const sessionId = getSessionId(req);
@@ -7032,6 +7065,14 @@ app.patch('*', (req, res) => {
   if (lockedAgainst(req, cleanPath.replace(/\/$/, '') || '/') || (iterateLock && req.get('Lock-Token') !== iterateLock.token)) {
     return res.status(403).json({ error: { type: 'Forbidden', message: 'Resource is locked.' } });
   }
+  let body;
+  try {
+    body = jsonBody(req);
+  } catch (err) {
+    // plone.restapi's content update answers a body it cannot read with a 400.
+    if (!(err instanceof DeserializationError)) throw err;
+    return res.status(400).json({ error: { type: 'DeserializationError', message: err.message } });
+  }
 
   // Reload content from disk to pick up changes during development
   const content = getContent(cleanPath, sessionId);
@@ -7041,10 +7082,10 @@ app.patch('*', (req, res) => {
   // new path — the old URL stops resolving and the new one starts. Storing the
   // new id on the old path would leave the page answering at a URL that no
   // longer matches its own id, and the menu would keep linking to the old one.
-  if (content && req.body?.id && req.body.id !== content.id) {
+  if (content && body.id && body.id !== content.id) {
     const parent = cleanPath.split('/').slice(0, -1).join('/') || '';
-    const renamedPath = `${parent}/${req.body.id}`;
-    const renamed = { ...content, ...req.body, id: req.body.id };
+    const renamedPath = `${parent}/${body.id}`;
+    const renamed = { ...content, ...body, id: body.id };
     delete renamed.lock;
     setSessionContent(sessionId, renamedPath, renamed);
     if (!sessionDeletions[sessionId]) sessionDeletions[sessionId] = new Set();
@@ -7062,8 +7103,8 @@ app.patch('*', (req, res) => {
   // route instead, which nothing calls, so dragging a row reordered the table
   // in the browser and told the backend nothing: reload and the old order was
   // back, and the site menu — which the order IS — never moved.
-  if (content && req.body?.ordering?.obj_id) {
-    const { obj_id: objId, delta, subset_ids: subsetIds } = req.body.ordering;
+  if (content && body.ordering?.obj_id) {
+    const { obj_id: objId, delta, subset_ids: subsetIds } = body.ordering;
     const naturalIds = getFolderChildItems(cleanPath, `http://localhost:${PORT}`)
       .map((item) => String(item['@id'] || '').split('/').filter(Boolean).pop())
       .filter(Boolean);
@@ -7108,7 +7149,7 @@ app.patch('*', (req, res) => {
     // regions must live as sub-keys of the registered `blocks_layout` dict —
     // they ride along inside a registered field and persist, whereas a separate
     // top-level region field would be discarded here.
-    const registeredBody = dropUnregisteredFields(req.body, content);
+    const registeredBody = dropUnregisteredFields(body, content);
     // Plone stamps `modified` on every save; a client comparing it before
     // saving (the agent API's version check) relies on that.
     const mergedContent = { ...content, ...registeredBody, modified: new Date().toISOString() };
@@ -7143,6 +7184,8 @@ app.patch('*', (req, res) => {
 });
 
 // Start server only when run directly (not when require()'d)
+app.use(renderUncaught);
+
 let server;
 if (require.main === module) {
   ready.catch((err) => {
