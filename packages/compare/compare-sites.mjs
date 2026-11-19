@@ -90,7 +90,7 @@ const settings = (await import(path.resolve(args.settings))).default;
 // The comparison's own knowledge, from its settings: its region mapping bound
 // to @inka/compare/regions, its reading (@inka/compare/reading, plus the
 // review list the conversion kept), how ours is wrapped into one content area,
-// and the source's markup normalisers.
+// and the markup normalisers an approved exception may name for either side.
 const {
   BLOCK_REGIONS,
   RULES,
@@ -104,6 +104,10 @@ const {
 } = settings.regions;
 const { wrap: wrapContentArea, unwrap: unwrapContentArea } = settings.contentArea;
 const SOURCE_NORMALISERS = settings.normalisers;
+// Ours is shot as it is, except where an approved exception says what to set
+// aside on it — a change CSS cannot make (a run of text, not an element). The
+// settings that name none need not have any.
+const OURS_NORMALISERS = settings.oursNormalisers;
 const OLD = settings.source.url;
 const NEW = settings.ours.url;
 const API = settings.api;
@@ -190,6 +194,8 @@ function exceptionsFor(pagePath) {
     css: active.map((e) => e.css).filter(Boolean),
     // Source-only markup changes an exception names (the settings' normalisers).
     normalise: active.flatMap((e) => e.normalise ?? []),
+    // And the ones it names for ours (the settings' oursNormalisers).
+    normaliseOurs: active.flatMap((e) => e.normaliseOurs ?? []),
     tolerance: Math.max(DEFAULT_TOLERANCE, ...active.map((e) => e.tolerance ?? 0)),
   };
 }
@@ -214,7 +220,7 @@ const CONSENT_NAME = settings.consent.name;
 const CONSENT_JSON = settings.consent.json;
 const CONSENT_COOKIE = { name: CONSENT_NAME, value: encodeURIComponent(CONSENT_JSON) };
 
-async function shoot(browser, url, file, { auth, masks, css = [], regions = [], contentArea = false, normalise = [], archive = null }) {
+async function shoot(browser, url, file, { auth, masks, css = [], regions = [], contentArea = false, normalise = [], normalisers: named, side, archive = null }) {
   const context = await browser.newContext({
     viewport: { width: WIDTH, height: 900 },
     ...(auth ? { httpCredentials: auth } : {}),
@@ -386,11 +392,13 @@ async function shoot(browser, url, file, { auth, masks, css = [], regions = [], 
       };
     }
   }
-  // The SOURCE's markup brought to the conversion's, where an approved
-  // exception names a change CSS cannot make (the settings' normalisers).
+  // A side's markup changed where an approved exception names a change CSS
+  // cannot make: the source brought to the conversion's (the settings'
+  // normalisers), or a difference it approves set aside on ours (the settings'
+  // oursNormalisers).
   const normalisers = normalise.map((name) => {
-    const fn = SOURCE_NORMALISERS[name];
-    if (typeof fn !== "function") throw new Error(`no source normaliser ${name}`);
+    const fn = named?.[name];
+    if (typeof fn !== "function") throw new Error(`no ${side} normaliser ${name}`);
     return fn;
   });
   // A page that navigates under these (a client-side redirect) fails as THAT
@@ -832,7 +840,7 @@ async function comparePage(p) {
   if (ONLY_BLOCKS) plan.regions = [];
   plan.regions = [...plan.regions, ...blockRegions, ...partRegions];
   const slug = slugOf(p);
-  const { masks, css, normalise, tolerance } = exceptionsFor(p);
+  const { masks, css, normalise, normaliseOurs, tolerance } = exceptionsFor(p);
   const oldFile = path.join(BASELINE_DIR, `${slug}.png`);
   const newFile = path.join(OUT, `${slug}--ours.png`);
   // The masks are part of the baseline's identity: hiding a different set of
@@ -914,6 +922,8 @@ async function comparePage(p) {
         masks,
         css,
         normalise,
+        normalisers: SOURCE_NORMALISERS,
+        side: "source",
         regions: plan.regions.map((r) => ({
           name: r.name,
           sel: r.old,
@@ -956,6 +966,9 @@ async function comparePage(p) {
     auth: NEW_AUTH,
     masks,
     css,
+    normalise: normaliseOurs,
+    normalisers: OURS_NORMALISERS,
+    side: "ours",
     regions: plan.regions.map((r) => ({
       name: r.name,
       sel: r.new,
