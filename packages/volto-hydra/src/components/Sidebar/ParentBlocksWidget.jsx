@@ -264,14 +264,8 @@ function nestedStatusLabel({ status, count }) {
 const TemplateLockedInfo = ({ title, canEdit, onUnlock, layout }) => (
   <div className="template-locked-info">
     <p>
-      {title ? (
-        <>
-          This is part of the <strong>{title}</strong> template.
-        </>
-      ) : (
-        'This is part of a template.'
-      )}{' '}
-      Its locked blocks are the same on every page using this template.
+      {title ? <strong>{title}</strong> : 'This template'} is locked. Changes to
+      it apply to every page using this template.
     </p>
     {layout && (
       <div className="template-locked-info-layout">
@@ -279,10 +273,6 @@ const TemplateLockedInfo = ({ title, canEdit, onUnlock, layout }) => (
         {layout}
       </div>
     )}
-    <p>
-      Unlock it to change the template itself: changes here apply to every page
-      using this template.
-    </p>
     <button
       type="button"
       className="ui button template-unlock-button"
