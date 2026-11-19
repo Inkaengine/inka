@@ -9,6 +9,7 @@
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
+import { afterAll, beforeAll, expect, test, vi } from 'vitest';
 import CoverageReporter from './coverage-reporter.ts';
 
 // SANITY_OPTION_EXAMPLES=false isolates these to the ATTACHED records (field +

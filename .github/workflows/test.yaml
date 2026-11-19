@@ -71,15 +71,15 @@ jobs:
         # after missdev, because core/ is what it reads, and before anything
         # slow — a stale shadow is cheap to report and expensive to find later.
         run: pnpm shadows:check
-      - name: Run hydra-js unit tests
-        run: cd packages/hydra-js && pnpm test
       - name: Build workspace deps (@plone/registry, @plone/components)
         # Volto 19 reads these via workspace symlinks but its razzle.config
         # requires their built dist/ output (create-addons-loader.cjs, etc.).
         # Also needed by vitest because the addon tests import via @plone/*
         # workspace aliases and the test-setup files touch the built dist/.
         run: pnpm build:deps
-      - name: Run volto-hydra addon unit tests (vitest)
+      - name: Run unit tests
+        # The root suite (vitest), then each package under packages/ that has
+        # its own test script (hydra-js on jest, @inka/testing on its own vitest).
         run: pnpm test
       - name: Check example renderers compile
         # The examples pages embed real renderer files; check:docs parses each

@@ -27,7 +27,7 @@
     "build:test": "pnpm build && node packages/testing/admin-build-stamp.cjs --write",
     "build:deps": "pnpm --filter @plone/registry --filter @plone/components build",
     "i18n": "pnpm --filter volto-hydra i18n",
-    "test": "pnpm build:volto-validation && vitest run",
+    "test": "pnpm build:volto-validation && vitest run && pnpm --filter './packages/*' test",
     "shadows:check": "node scripts/shadow-drift.mjs",
     "shadows:record": "node scripts/shadow-drift.mjs --record",
     "test:watch": "pnpm build:volto-validation && vitest",

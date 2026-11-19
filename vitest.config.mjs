@@ -95,9 +95,6 @@ function redirectUpstreamSuitesToShadows() {
 /** Tests of a server that runs on Node, which need Node's environment (the node-servers project below). */
 const NODE_SERVER_TESTS = [
   'packages/inka-mcp/http.test.mjs',
-  // Playwright's global setup runs on Node: what it gets from a refused fetch
-  // is Node's error shape, not jsdom's.
-  'packages/testing/playwright/waitForAdmin.test.ts',
 ];
 
 export default defineConfig({
@@ -122,17 +119,12 @@ export default defineConfig({
       'packages/helpers/**/*.{test,spec}.{js,jsx,ts,tsx}',
       // The MCP server: the agent page format and the tools.
       'packages/inka-mcp/**/*.{test,spec}.mjs',
-      // The test harness: block discovery, the coverage bookkeeping the sanity
-      // suites keep (no browser), and the coverage REPORTER, whose unit test
-      // proves onEnd actually fails the run on a gap. Their contract — "one
-      // example is enough", "reported only when no example covers it" — is worth
-      // testing directly rather than inferring it from a green e2e run.
-      'packages/testing/**/*.test.{js,ts}',
       // Repo checks at the suite root. `.test.` only, so the `.spec.ts`
       // playwright specs at this level are never collected.
       'tests-playwright/*.test.{js,ts}',
     ],
-    // hydra-js has its own jest harness; covered by `cd packages/hydra-js && pnpm test` in CI.
+    // hydra-js (jest) and packages/testing (its own vitest) run their own test
+    // scripts, which the root `pnpm test` calls after this suite.
     exclude: ['**/node_modules/**', 'packages/hydra-js/**'],
     // Reuse Volto's setup files via the workspace. These initialise the
     // shared config registry (settings.slate.extensions etc.) and DOM

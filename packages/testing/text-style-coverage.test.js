@@ -5,6 +5,7 @@
  * Both are "the author picked a style and got nothing", but they have different
  * causes and different fixes.
  */
+import { beforeEach, describe, expect, test } from 'vitest';
 import {
   measureStylesInPage,
   slateStyles,

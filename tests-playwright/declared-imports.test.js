@@ -25,7 +25,7 @@ const DECLARING = ['packages/blockmd', 'packages/content-validator', 'packages/m
 const CONTAINED = [...DECLARING, 'packages/hydra-js', 'packages/volto-hydra'];
 
 /** Build and test tooling inside a package, which may use its devDependencies. */
-const DEV_TOOLING = /^packages\/inka-mcp\/(bundle\.mjs$|journeys\/)/;
+const DEV_TOOLING = /^packages\/(inka-mcp\/(bundle\.mjs$|journeys\/)|testing\/vitest\.config\.js$)/;
 
 /** Relative imports that leave their package, and why each may. */
 const OUTSIDE = {};
