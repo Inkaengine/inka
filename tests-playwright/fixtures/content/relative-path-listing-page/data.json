@@ -3,7 +3,7 @@
   "@type": "Document",
   "id": "relative-path-listing-page",
   "title": "Relative path listings",
-  "description": "Listings whose Location is a path from this page: its own children (.::1), and its parent (..).",
+  "description": "Listings of a place: this page's own children (.::1), its parent (..), and a folder picked by its UID, its children (uid::1).",
   "blocks": {
     "grid-1": {
       "@type": "gridBlock",
@@ -83,11 +83,56 @@
           "parent-listing"
         ]
       }
+    },
+    "grid-2": {
+      "@type": "gridBlock",
+      "blocks": {
+        "folder-listing": {
+          "@type": "listing",
+          "headline": "A folder's children",
+          "variation": "teaser",
+          "fieldMapping": {
+            "getURL": {
+              "field": "href",
+              "type": "link"
+            },
+            "title": {
+              "field": "title",
+              "type": "string"
+            },
+            "description": {
+              "field": "description",
+              "type": "textarea"
+            },
+            "image": {
+              "field": "preview_image",
+              "type": "image_link"
+            }
+          },
+          "querystring": {
+            "query": [
+              {
+                "i": "path",
+                "o": "plone.app.querystring.operation.string.absolutePath",
+                "v": "context-navigation-forced-folder-uid::1"
+              }
+            ],
+            "sort_on": "sortable_title",
+            "sort_order": "ascending"
+          }
+        }
+      },
+      "blocks_layout": {
+        "items": [
+          "folder-listing"
+        ]
+      }
     }
   },
   "blocks_layout": {
     "items": [
-      "grid-1"
+      "grid-1",
+      "grid-2"
     ]
   }
 }

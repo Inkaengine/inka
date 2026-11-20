@@ -7,7 +7,7 @@ import React, { Component } from 'react';
 import PropTypes from 'prop-types';
 import { compose } from 'redux';
 import { connect } from 'react-redux';
-import { Button, Form, Grid, Input, Label } from 'semantic-ui-react';
+import { Button, Checkbox, Form, Grid, Input, Label } from 'semantic-ui-react';
 import filter from 'lodash/filter';
 import remove from 'lodash/remove';
 import toPairs from 'lodash/toPairs';
@@ -33,10 +33,7 @@ import {
 } from '@plone/volto/components/manage/Widgets/SelectStyling';
 
 import clearSVG from '@plone/volto/icons/clear.svg';
-import {
-  parseRelativePath,
-  formatRelativePath,
-} from '../../../../../utils/relativePath';
+import { parseLocation, formatLocation } from '../../../../../utils/location';
 
 const messages = defineMessages({
   Criteria: {
@@ -51,13 +48,16 @@ const messages = defineMessages({
     id: 'querystring-widget-select',
     defaultMessage: 'Select…',
   },
-  currentPath: {
-    id: 'query-widget-currentPath',
-    defaultMessage: 'Current path (./)',
-  },
-  parentPath: {
-    id: 'query-widget-parentPath',
-    defaultMessage: 'Parent path (../)',
+  // Inka: the Relative path places, counted as editors count the levels of
+  // the site (the site root is the 1st).
+  level2: { id: 'query-widget-level2', defaultMessage: '2nd level' },
+  level3: { id: 'query-widget-level3', defaultMessage: '3rd level' },
+  level4: { id: 'query-widget-level4', defaultMessage: '4th level' },
+  parent: { id: 'query-widget-parent', defaultMessage: 'Parent' },
+  here: { id: 'query-widget-here', defaultMessage: 'Here' },
+  childrenOnly: {
+    id: 'query-widget-childrenOnly',
+    defaultMessage: 'Children only',
   },
   // Inka: a relative path's depth, as the absolute path has one.
   relativeDepthDescription: {
@@ -65,17 +65,6 @@ const messages = defineMessages({
     defaultMessage: 'Levels below it to list. Empty lists every level.',
   },
 });
-
-const parseUidDepth = (val) => {
-  if (typeof val !== 'string') return { uid: '', depth: 1 };
-  const lastSep = String(val).lastIndexOf('::');
-  if (lastSep !== -1) {
-    const uid = val.substring(0, lastSep);
-    const parsed = parseInt(val.substring(lastSep + 2), 10);
-    return { uid, depth: Number.isNaN(parsed) ? 1 : parsed };
-  }
-  return { uid: val, depth: 1 };
-};
 
 /**
  * Widget for a querystring value, to define a catalog search criteria.
@@ -271,9 +260,13 @@ export class QuerystringWidgetComponent extends Component {
             />
           </Form.Field>
         );
-      case 'ReferenceWidget':
-        const { uid: uidValue, depth: depthValue } = parseUidDepth(props.value);
-        if (!this.props.reference[`${uidValue}_query_reference`]) {
+      case 'ReferenceWidget': {
+        // Inka: the folder picked is stored by its UID, with the ending that
+        // says whether it is listed too (`uid/`) or only what is under it
+        // (`uid/*`); see utils/location.
+        const location = parseLocation(props.value);
+        const uidValue = location.base;
+        if (uidValue && !this.props.reference[`${uidValue}_query_reference`]) {
           this.loadReferenceWidgetItem(uidValue);
         }
         const referenceItem = this.props.reference[
@@ -290,7 +283,15 @@ export class QuerystringWidgetComponent extends Component {
                 onChange={(id, data) => {
                   const itemSelected = data.length > 0 ? data[0] : {};
                   const uid = itemSelected.UID ?? '';
-                  this.onChangeValue(index, uid ? `${uid}::${depthValue}` : '');
+                  // A first pick is Volto's: the folder's children, depth 1.
+                  this.onChangeValue(
+                    index,
+                    formatLocation(
+                      location.base
+                        ? { ...location, base: uid }
+                        : { base: uid, childrenOnly: true, depth: 1 },
+                    ),
+                  );
                   this.loadReferenceWidgetItem(uid);
                 }}
                 value={uidValue && this.props.reference ? [referenceItem] : []}
@@ -309,41 +310,41 @@ export class QuerystringWidgetComponent extends Component {
                   })}
                   min={1}
                   step={1}
-                  value={depthValue}
+                  value={location.depth ?? ''}
                   onChange={(id, value) => {
-                    const newDepth = parseInt(value, 10) || 1;
-                    const curUid = uidValue || '';
-                    this.onChangeValue(index, `${curUid}::${newDepth}`);
+                    const depth = parseInt(value, 10) || 1;
+                    this.onChangeValue(
+                      index,
+                      formatLocation({ ...location, depth }),
+                    );
                   }}
                 />
               </Form.Field>
             )}
+            {uidValue && this.renderChildrenOnly(index, location)}
           </div>
         );
+      }
       case 'RelativePathWidget': {
-        // Inka: upstream offers only `./` and `../`, with no depth, and draws
-        // any other stored value — `.::1`, `..`, `../news` — as an empty
-        // "Select…" while the query still runs it. Here the path keeps its
-        // depth beside it, as the absolute path's does, and a path the menu
-        // does not offer is shown as it is.
-        const relative = parseRelativePath(props.value);
+        // Inka: a place counted from the page -- here, its parent, or the
+        // section it is in at the 2nd, 3rd or 4th level of the site -- with a
+        // depth beside it, as the absolute path has one, and whether the place
+        // itself is listed. A place the menu does not offer is shown as it is.
+        const location = parseLocation(props.value);
         const relativePathOptions = [
-          {
-            label: intl.formatMessage(messages.currentPath),
-            value: './',
-          },
-          {
-            label: intl.formatMessage(messages.parentPath),
-            value: '../',
-          },
+          { label: intl.formatMessage(messages.level2), value: '/*' },
+          { label: intl.formatMessage(messages.level3), value: '/*/*' },
+          { label: intl.formatMessage(messages.level4), value: '/*/*/*' },
+          { label: intl.formatMessage(messages.parent), value: '..' },
+          { label: intl.formatMessage(messages.here), value: '.' },
         ];
         if (
-          relative.path &&
-          !relativePathOptions.some((p) => p.value === relative.path)
+          location.base &&
+          !relativePathOptions.some((p) => p.value === location.base)
         ) {
           relativePathOptions.push({
-            label: relative.path,
-            value: relative.path,
+            label: location.base,
+            value: location.base,
           });
         }
         return (
@@ -361,16 +362,16 @@ export class QuerystringWidgetComponent extends Component {
                 onChange={(data) => {
                   this.onChangeValue(
                     index,
-                    formatRelativePath({ ...relative, path: data.value }),
+                    formatLocation({ ...location, base: data.value }),
                   );
                 }}
                 isMulti={false}
                 value={relativePathOptions.find(
-                  (p) => p.value === relative.path,
+                  (p) => p.value === location.base,
                 )}
               />
             </Form.Field>
-            {relative.path && (
+            {location.base && (
               <Form.Field className="reference-widget-depth">
                 <NumberWidget
                   id={`query-relative-depth-${index}`}
@@ -383,20 +384,25 @@ export class QuerystringWidgetComponent extends Component {
                   )}
                   min={0}
                   step={1}
-                  value={relative.depth ?? ''}
+                  value={location.depth ?? ''}
                   onChange={(id, value) => {
                     const depth = parseInt(value, 10);
+                    const next = Number.isNaN(depth) ? null : depth;
                     this.onChangeValue(
                       index,
-                      formatRelativePath({
-                        ...relative,
-                        depth: Number.isNaN(depth) ? null : depth,
+                      formatLocation({
+                        ...location,
+                        depth: next,
+                        // Depth 0 is the place alone: nothing is under it.
+                        childrenOnly:
+                          next === 0 ? false : location.childrenOnly,
                       }),
                     );
                   }}
                 />
               </Form.Field>
             )}
+            {location.base && this.renderChildrenOnly(index, location)}
           </div>
         );
       }
@@ -410,6 +416,33 @@ export class QuerystringWidgetComponent extends Component {
           </Form.Field>
         );
     }
+  }
+
+  /**
+   * Inka: whether a location lists only what is under its place (`/*`) or the
+   * place too (`/`). At depth 0 the place is all there is, so it isn't offered.
+   * @method renderChildrenOnly
+   * @param {Number} index Index of the row.
+   * @param {Object} location The row's value, parsed (utils/location).
+   * @returns {Object|null} The checkbox.
+   */
+  renderChildrenOnly(index, location) {
+    if (location.depth === 0) return null;
+    return (
+      <Form.Field className="location-children-only">
+        <Checkbox
+          id={`query-children-only-${index}`}
+          label={this.props.intl.formatMessage(messages.childrenOnly)}
+          checked={location.childrenOnly}
+          onChange={(e, { checked }) =>
+            this.onChangeValue(
+              index,
+              formatLocation({ ...location, childrenOnly: checked }),
+            )
+          }
+        />
+      </Form.Field>
+    );
   }
 
   /**

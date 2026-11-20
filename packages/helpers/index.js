@@ -1145,74 +1145,103 @@ async function fetchQuerystringSearch(url, headers, payload) {
 const RELATIVE_PATH = 'plone.app.querystring.operation.string.relativePath';
 const ABSOLUTE_PATH = 'plone.app.querystring.operation.string.absolutePath';
 
+const UID_NONE = 'plone.app.querystring.operation.selection.none';
+
 /**
- * A Relative path value that names a step of the current page's breadcrumb
- * from the top — `/*` the page's level-1 section, `/*\/*` its level-2 one,
- * with Plone's `::depth` after it — as the absolute path it is for the page at
- * `contextPath`. A page above that level resolves to itself. `null` for any
- * other relative value (`.`, `..`, `../news`), which Plone resolves itself.
+ * A path location as `{ path, depth, top }`: the absolute path it names for
+ * the page at `contextPath`, Plone's `::depth` (or null), and whether the
+ * folder at `path` is a result -- `'include'` when the value ends in `/`,
+ * `'exclude'` when it ends in `/*`, `null` (Plone's own rule) otherwise.
  *
- * One stored query then serves pages at every depth, as a section nav in a
- * layout many pages share needs; `..` counts from the page instead.
+ * A Relative value is walked from the page as Plone's `_relativePath` walks
+ * it: `..` up (stopping at the site root), `.` stays, a name goes down (Plone
+ * stays put on a name the page has no child of; this can't know). A Relative
+ * value starting with `/` counts steps of the page's breadcrumb from the top,
+ * one `*` each: `/*\/` is the page's 2nd-level section (the site root is the
+ * 1st), `/*\/*\/` its 3rd-level one; a page above that level resolves to
+ * itself. An Absolute value not starting with `/` is a folder's UID, as the
+ * editor stores the folder picked (`uid`, `uid/`, `uid/*`).
  *
  * @param {string} value - the criterion's value
  * @param {string} contextPath - the page the listing is fetched for
- * @returns {string|null}
+ * @param {{ relative: boolean }} options - whether it is a Relative path
+ * @returns {{ path: string, depth: number|null, top: 'include'|'exclude'|null }}
  */
-export function resolveBreadcrumbPath(value, contextPath) {
-  if (typeof value !== 'string' || !value.startsWith('/')) return null;
+export function resolveLocation(value, contextPath, { relative }) {
+  if (typeof value !== 'string') throw new Error(`a location is a string, got ${JSON.stringify(value)}`);
   const sep = value.indexOf('::');
-  const path = sep === -1 ? value : value.slice(0, sep);
-  const depth = sep === -1 ? '' : value.slice(sep);
-  const steps = path.split('/').slice(1);
-  if (!steps.every((step) => step === '*')) {
-    throw new Error(`a breadcrumb location takes only * steps (/*, /*/*…), got "${value}"`);
+  const body = sep === -1 ? value : value.slice(0, sep);
+  const depth = sep === -1 ? null : Number.parseInt(value.slice(sep + 2), 10);
+  let top = null;
+  let base = body;
+  if (body.length > 1 && body.endsWith('/')) {
+    top = 'include';
+    base = body.slice(0, -1);
+  } else if (body === '/*' || body.endsWith('/*')) {
+    top = 'exclude';
+    base = body.slice(0, -2);
+  }
+  if (top === 'exclude' && depth === 0) {
+    throw new Error(`"${value}": nothing is under a folder at depth 0`);
   }
   const page = (contextPath || '/').split('/').filter(Boolean);
-  return `/${page.slice(0, steps.length).join('/')}${depth}`;
-}
-
-/** The query with each breadcrumb location as the Absolute path it is here. */
-function resolveBreadcrumbLocations(query, contextPath) {
-  return query.map((c) => {
-    if (c.i !== 'path' || c.o !== RELATIVE_PATH) return c;
-    const absolute = resolveBreadcrumbPath(c.v, contextPath);
-    return absolute === null ? c : { ...c, o: ABSOLUTE_PATH, v: absolute };
-  });
+  let segs;
+  if (relative && body.startsWith('/')) {
+    const steps = base.split('/').slice(1);
+    if (!steps.every((step) => step === '*')) {
+      throw new Error(`a breadcrumb location takes only * steps (/*/, /*/*/…), got "${value}"`);
+    }
+    segs = page.slice(0, steps.length);
+  } else if (relative) {
+    segs = [...page];
+    for (const step of base.split('/').filter(Boolean)) {
+      if (step === '..') segs.pop();
+      else if (step !== '.') segs.push(step);
+    }
+  } else if (!body.startsWith('/')) {
+    // A folder by its UID, as the editor's Absolute path stores the one
+    // picked: Plone takes a UID there as the folder's path.
+    if (base.includes('/')) {
+      throw new Error(`a location by UID is the UID and an ending alone ("uid/", "uid/*"), got "${value}"`);
+    }
+    return { path: base, depth: Number.isNaN(depth) ? null : depth, top };
+  } else {
+    segs = base.split('/').filter(Boolean);
+    if (segs.includes('*')) {
+      throw new Error(`an absolute location takes * only as its last step ("/news/*"), got "${value}"`);
+    }
+  }
+  return { path: `/${segs.join('/')}`, depth: Number.isNaN(depth) ? null : depth, top };
 }
 
 /**
- * A Relative path value (`..`, `.::1`, `../news`) as the absolute path it is
- * for the page at `contextPath`, walked as Plone's `_relativePath` walks it:
- * `..` goes up and stops at the site root, `.` stays, a name goes down. (Plone
- * stays put on a name the page has no child of; this can't know, so it goes
- * down anyway.) A breadcrumb location (`/*`) resolves as resolveBreadcrumbPath.
- *
- * @param {string} value - the criterion's value, with any `::depth`
- * @param {string} contextPath - the page the listing is fetched for
- * @returns {string}
+ * The searches that answer a query's locations, asked from the site root:
+ * `query` with every path location absolute and Plone's own rule for the
+ * folder (in only at depth 1 is it left out) corrected where the location
+ * says otherwise -- left out by its UID (`exclude`; `excludeTop`, the path
+ * whose UID to look up), or fetched by itself to go first (`include` at
+ * depth 1; `topQuery`).
  */
-function resolveRelativePath(value, contextPath) {
-  const breadcrumb = resolveBreadcrumbPath(value, contextPath);
-  if (breadcrumb !== null) return breadcrumb;
-  const sep = value.indexOf('::');
-  const path = sep === -1 ? value : value.slice(0, sep);
-  const depth = sep === -1 ? '' : value.slice(sep);
-  const segs = (contextPath || '/').split('/').filter(Boolean);
-  for (const step of path.split('/').filter(Boolean)) {
-    if (step === '..') segs.pop();
-    else if (step !== '.') segs.push(step);
-  }
-  return `/${segs.join('/')}${depth}`;
-}
-
-/** The query with every Relative path as the Absolute path it is here. */
-function resolveRelativeLocations(query, contextPath) {
-  return query.map((c) =>
-    c.i === 'path' && c.o === RELATIVE_PATH
-      ? { ...c, o: ABSOLUTE_PATH, v: resolveRelativePath(c.v, contextPath) }
-      : c,
-  );
+function locationSearches(query, contextPath) {
+  let excludeTop = null;
+  let topQuery = null;
+  const paths = query.filter((c) => c.i === 'path' && (c.o === RELATIVE_PATH || c.o === ABSOLUTE_PATH));
+  const resolved = query.map((c) => {
+    if (!paths.includes(c)) return c;
+    const { path, depth, top } = resolveLocation(c.v, contextPath, { relative: c.o === RELATIVE_PATH });
+    const v = depth === null ? path : `${path}::${depth}`;
+    if (top !== null && paths.length > 1) {
+      throw new Error(`a query with more than one path can't say whether each folder is in: "${c.v}"`);
+    }
+    if (top === 'exclude' && depth !== 1 && path !== '/') excludeTop = path;
+    if (top === 'include' && depth === 1) topQuery = `${path}::0`;
+    return { ...c, o: ABSOLUTE_PATH, v };
+  });
+  return {
+    query: resolved,
+    excludeTop,
+    topQuery: topQuery && resolved.map((c) => (c.i === 'path' ? { ...c, v: topQuery } : c)),
+  };
 }
 
 const FOLDER_CONTENTS_CRITERION = {
@@ -1275,10 +1304,6 @@ export function ploneFetchItems({
   contextContent,
   // The listing field holding its mapping: the recipe's mappingField.
   mappingField = 'fieldMapping',
-  // plone.restapi leaves the page a search is asked from out of its results.
-  // A navigation must show the page you are on: with this, the search is
-  // asked from the site root, its Relative paths resolved for the page first.
-  includeContext = false,
 } = {}) {
   if (!apiUrl) {
     throw new Error('ploneFetchItems requires apiUrl');
@@ -1294,7 +1319,6 @@ export function ploneFetchItems({
       extraCriteria,
     );
     if (body === null) return { items: [], total: 0 };
-    body.query = resolveBreadcrumbLocations(body.query, contextPath);
 
     // This folder's children in folder order, and nothing else, is the
     // question plone.restapi answers for every folderish page: its content
@@ -1316,13 +1340,43 @@ export function ploneFetchItems({
     const headers = _getAuthHeaders();
     headers['Content-Type'] = 'application/json';
 
-    if (includeContext) body.query = resolveRelativeLocations(body.query, contextPath);
-    const path = `${includeContext ? '' : contextPath}/++api++/@querystring-search`;
-    const url = `${apiUrl}${path}`;
-    const payload = JSON.stringify(body);
-    const response = await fetchQuerystringSearch(url, headers, payload);
+    // Asked from the site root: asked from a page, Plone leaves that page out
+    // whatever the query says. Its relative locations are resolved for the
+    // page first, so they mean the same.
+    const url = `${apiUrl}/++api++/@querystring-search`;
+    const { query, excludeTop, topQuery } = locationSearches(body.query, contextPath);
+    body.query = query;
+    if (excludeTop !== null) {
+      const folder = await fetchQuerystringSearch(
+        url,
+        headers,
+        JSON.stringify({
+          query: [{ i: 'path', o: ABSOLUTE_PATH, v: `${excludeTop}::0` }],
+          metadata_fields: ['UID'],
+          b_size: 1,
+        }),
+      );
+      const uid = folder.items?.[0]?.UID;
+      if (uid) body.query = [...body.query, { i: 'UID', o: UID_NONE, v: [uid] }];
+    }
+    // The folder by itself, with the listing's other criteria, to go first:
+    // at depth 1 Plone answers only what is under it.
+    let topItems = [];
+    if (topQuery) {
+      const found = await fetchQuerystringSearch(
+        url,
+        headers,
+        JSON.stringify({ ...body, query: topQuery, b_start: 0, b_size: 1 }),
+      );
+      topItems = found.items || [];
+      if (topItems.length) {
+        body.b_start = Math.max(0, start - 1);
+        body.b_size = start === 0 ? Math.max(0, size - 1) : size;
+      }
+    }
+    const response = await fetchQuerystringSearch(url, headers, JSON.stringify(body));
 
-    const rawItems = response.items || [];
+    const rawItems = [...(start === 0 && size > 0 ? topItems : []), ...(response.items || [])];
     // Normalize: package image_field + image_scales into a self-contained image
     // object (imageProps needs the @id inside as base URL for relative paths).
     let items = rawItems.map(normalizeCatalogImage);
@@ -1345,7 +1399,7 @@ export function ploneFetchItems({
 
     return {
       items,
-      total: response.items_total ?? rawItems.length,
+      total: (response.items_total ?? rawItems.length) + topItems.length,
     };
   };
 }

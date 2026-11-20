@@ -136,7 +136,7 @@ The editor saves the item type, the mapping and the item defaults into the listi
 
 ## ploneFetchItems Helper
 
-`ploneFetchItems({ apiUrl, contextPath, extraCriteria, mappingField, includeContext })` creates a fetcher function for Plone's `@querystring-search` endpoint, suitable as a value in the `fetchItems` map.
+`ploneFetchItems({ apiUrl, contextPath, extraCriteria, mappingField })` creates a fetcher function for Plone's `@querystring-search` endpoint, suitable as a value in the `fetchItems` map.
 
 <block type="slateTable" table.fixed table.celled>
 
@@ -146,7 +146,6 @@ The editor saves the item type, the mapping and the item defaults into the listi
 | `contextPath` | `'/'` | Path for relative queries |
 | `extraCriteria` | `{}` | Additional query params — `SearchableText`, `sort_on`, `sort_order`, `facet.*` keys |
 | `mappingField` | `'fieldMapping'` | Field on the listing block that holds its mapping (the recipe's `mappingField`); a folder-contents listing checks the page's own items carry every mapped field |
-| `includeContext` | `false` | Keep the current page in the results: see [The current page in its own listing](#the-current-page-in-its-own-listing) |
 
 </block>
 
@@ -186,27 +185,54 @@ This self-contained object has everything needed to resolve image URLs with scal
 
 For non-Plone backends (RSS feeds, external APIs, etc.), write your own fetcher: `async (block, { start, size }) => ({ items, total })`. `start` is the zero-based offset, `size` is the number of items to return (or `0` for total-only), and `total` in the return value is the full count, not just this page.
 
-### A location along the page's breadcrumb
+### Locations: what the path criterion lists
 
-A Relative path location (`plone.app.querystring.operation.string.relativePath`) can also name a step of the **current page's breadcrumb, counted from the top**: `/*` is the page's level-1 section (the navigation root's child it is under), `/*/*` its level-2 section, and so on, with Plone's `::depth` after it as usual (`/*::2`).
+A path criterion's value (Absolute path or Relative path) says where to look, and its last character says whether the folder there is a result:
 
-`..` counts up from the page, so it lands in a different place for pages at different depths. A breadcrumb step lands in the same section for every page in it. That's what a section navigation in a layout many pages share needs: one stored query, `/*`, lists the page's whole section wherever the page sits.
+<block type="slateTable" table.fixed table.celled>
 
-Plone has no such operation: `ploneFetchItems` resolves it for the page it fetches for (`contextPath`) into an ordinary **Absolute path** before sending, so Plone only ever receives a path. A page above that level resolves to itself. Only `*` steps are accepted, and anything else after a leading `/` throws. `resolveBreadcrumbPath(value, contextPath)` is exported for a fetcher of your own.
+| Value | Lists |
+| --- | --- |
+| `/news/` | `/news` and everything under it |
+| `/news/*` | everything under `/news`, not `/news` |
+| `./`, `./*` | this page and everything under it / only what is under it |
+| `../`, `../*` | the page's parent and everything under it / only what is under it (the page and its siblings) |
+| `/*/` (Relative path) | the page's 2nd-level section (the site root's child it is under; the site root is the 1st level) and everything under it |
+| `/*/*/`, `/*/*` (Relative path) | the page's 3rd-level section and everything under it / the 2nd-level section's contents, not the section |
+| `<uid>/`, `<uid>/*` (Absolute path) | the folder with that UID, as the editor stores the one picked, and everything under it / only what is under it |
 
-### Json
+</block>
 
-```json
-{ "i": "path", "o": "plone.app.querystring.operation.string.relativePath", "v": "/*" }
-```
+Plone's `::depth` goes after it as usual (`/news/*::1`, the folder's children only). A value with neither ending (`.`, `..`, `/news`, `.::1`) means what it means to Plone, so everything Volto writes keeps its meaning.
 
-For `/news/2024/new-bridge-opens` this is sent as `{ "o": "…absolutePath", "v": "/news" }`.
+A breadcrumb step (`*` before a `/`, in a Relative path starting with `/`) counts from the top of the page's breadcrumb, so one stored location lists the same section for every page in it; `..` counts from the page instead. A page above the level resolves to itself. Anything but `*` steps there, and a `*` anywhere but last in an Absolute path, throws.
 
-### The current page in its own listing
+Plone can't say all of this in one search. Whether its folder is a result depends on the depth: in with no depth, `::0` (the folder alone) and `::2` or more; out only at `::1`. So `ploneFetchItems` sends the searches that give the location:
 
-Plone's `@querystring-search` leaves out the page it is asked from (every page but the site root), whatever the query. `ploneFetchItems` asks from `contextPath`, so a listing never lists the page it is on. That suits most listings in a page. A navigation is different: it must show the page you are on, to mark it and open its branch.
+<block type="slateTable" table.fixed table.celled>
 
-Pass `includeContext: true` for that. The search is then asked from the site root, and each Relative path is first resolved for the page into the Absolute path it is there: `..` goes up (stopping at the root), `.` stays, a name goes down, and `::depth` is kept. Plone stays put on a name the page has no child of; Inka can't know that, so it goes down anyway. The option belongs to the frontend's block code, which knows the listing is a navigation, not to the editor.
+| Location | Sent to Plone |
+| --- | --- |
+| folder in, no depth or `::2`+ | the path, as it is |
+| folder in, `::1` | the path `::1`, and the folder alone (`::0`, with the listing's other criteria) put first |
+| folder out, `::1` | the path `::1` |
+| folder out, no depth or `::2`+ | the path, and the folder left out by its UID (`UID` `selection.none`) |
+
+</block>
+
+`resolveLocation(value, contextPath, { relative })` is exported for a fetcher of your own.
+
+In the editor, a listing's Location criterion is the place, its Depth, and **Children only**:
+
+- **Absolute path**: a folder picked. A first pick is Volto's: its children, depth 1.
+- **Relative path**: **2nd level**, **3rd level**, **4th level** (the section of the site the page is in at that level), **Parent** or **Here**. A place the menu doesn't offer (`../news`) is shown as it is.
+- **Children only** writes `/*` (only what is under the place) or `/` (the place too). At depth 0 there is only the place, so it isn't offered.
+
+A value Volto wrote (`.::1`, `..`, `<uid>::1`) is shown as Plone reads it (children only at depth 1), and an edit writes it with the ending that keeps that meaning.
+
+### Asked from the site root
+
+Plone's `@querystring-search` leaves out the page it is asked from (every page but the site root), whatever the query. `ploneFetchItems` asks every search from the site root, with its relative locations resolved for the page first, so a listing lists exactly what its criteria say. A page in its own section's navigation is listed there; a news item in a listing of `/news/*` is listed too.
 
 ## Example fetchers
 
