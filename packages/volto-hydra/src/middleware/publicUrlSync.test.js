@@ -1,3 +1,4 @@
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import config from '@plone/volto/registry';
 import Cookies from 'js-cookie';
 import { SET_FRONTEND_PREVIEW_URL } from '../constants';

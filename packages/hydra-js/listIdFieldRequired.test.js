@@ -8,6 +8,7 @@
  * fields up by `@id`, found none, and applied the template to the form's own
  * fields — which came back as the template's top-level blocks.
  */
+import { describe, test, expect } from 'vitest';
 import { expandTemplatesSync } from '@volto-hydra/helpers';
 
 const TPL = '/templates/with-form';

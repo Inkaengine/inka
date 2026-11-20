@@ -1,3 +1,4 @@
+import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import http from 'node:http';
 import zlib from 'node:zlib';
 import express from 'express';

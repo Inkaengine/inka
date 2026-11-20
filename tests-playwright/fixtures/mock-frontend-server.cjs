@@ -10,10 +10,10 @@ const express = require('express');
 const path = require('path');
 
 const app = express();
-const { requiredPort, requiredOrigin } = require('../../packages/mock-api/env-port.cjs');
+const { requiredPort, requiredOrigin } = require('@inka/mock-api/env-port');
 
 const PORT = requiredPort('PORT');
-// Told which API it talks to, never assuming: see env-port.cjs.
+// Told which API it talks to, never assuming: see env-port.js.
 const API_URL = process.env.API_URL || requiredOrigin('HYDRA_MOCK_API_PORT');
 const FRONTEND_DIR = path.join(__dirname, 'test-frontend');
 

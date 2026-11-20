@@ -11,7 +11,7 @@
   "license": "MIT",
   "type": "module",
   "engines": {
-    "node": ">=20.19.0"
+    "node": "^20.19.0 || >=22.12.0"
   },
   "exports": {
     "./ports": "./ports.ts",
@@ -37,26 +37,34 @@
     "inka-mock-parent": "./mock-parent/server.js"
   },
   "files": [
+    "admin-build-stamp.js",
     "discover-blocks.js",
     "discovery.ts",
     "elementless.ts",
     "field-coverage.ts",
     "imageSizes.mjs",
     "mock-parent/",
-    "playwright/*.ts",
     "!playwright/*.test.*",
+    "playwright/*.ts",
     "ports.ts",
     "selectablePoint.ts",
     "slate-styles.js",
     "text-style-coverage.ts"
   ],
+  "scripts": {
+    "test": "vitest run"
+  },
   "dependencies": {
     "@inka/content-validator": "workspace:*",
     "@inka/mock-api": "workspace:*",
     "@volto-hydra/helpers": "workspace:*",
     "@volto-hydra/hydra-js": "workspace:*",
-    "axe-core": "^4.11.4",
-    "vite": "^5.4.21"
+    "axe-core": "^4.14.1",
+    "vite": "^8.3.8"
+  },
+  "devDependencies": {
+    "jsdom": "^31.0.1",
+    "vitest": "^5.1.0"
   },
   "peerDependencies": {
     "@playwright/test": "^1.58.2"

@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, test, expect, vi } from 'vitest';
 
 // HydraSchemaContext.js is JSX inside a .js file (the admin build uses babel;
 // vitest/vite can't transform JSX in .js). copyFromTarget → blockSync

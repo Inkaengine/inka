@@ -83,7 +83,7 @@ pnpm exec playwright show-report
 ## Test Architecture
 
 The Playwright tests use:
-- **Mock API server** (`packages/mock-api/mock-api-server.cjs`) - Serves the mock Plone API (`HYDRA_MOCK_API_PORT`)
+- **Mock API server** (`packages/mock-api/mock-api-server.js`) - Serves the mock Plone API (`HYDRA_MOCK_API_PORT`)
 - **Test frontend** (`tests-playwright/fixtures/test-frontend/`) - Simple HTML/JS frontend that loads the real Hydra bridge, served by Vite (`HYDRA_TEST_FRONTEND_PORT`), which also serves `mock-parent.html` from `@inka/testing`
 - **Test harness** (`packages/testing/`, `@inka/testing`) - AdminUIHelper and the other Playwright helpers, block discovery, the sanity suites and mock-parent
 - **Real Hydra bridge** (`packages/hydra-js/hydra.js`) - Production bridge code for iframe-Admin UI communication
@@ -158,7 +158,7 @@ server instead:
 3. Run tests (Playwright will wait for compilation)
 
 Otherwise run `pnpm build:test` once, and again after the admin's code changes.
-Each build records what it was built from (packages/testing/admin-build-stamp.cjs);
+Each build records what it was built from (packages/testing/admin-build-stamp.js);
 a test run refuses an admin built from anything else, so a stale one is never
 used quietly. Either admin stops itself after four idle hours.
 

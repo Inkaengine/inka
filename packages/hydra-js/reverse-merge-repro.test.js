@@ -1,15 +1,15 @@
+import { test, expect } from 'vitest';
 import { mergeTemplatesIntoPage, mergeInstanceIntoTemplate } from '@volto-hydra/helpers/mergeTemplates.js';
 import { sharedBlocksConfig } from '../../tests-playwright/fixtures/shared-block-schemas.js';
-import { readFileSync } from 'fs';
-import { join } from 'path';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { buildIdFieldMap } from '@volto-hydra/helpers/buildBlockPathMap.js';
 
 // Each list's id field, from the schema, as the admin derives it (buildIdFieldMap).
 const ID_FIELDS = buildIdFieldMap(sharedBlocksConfig);
 
 
-// jest runs with cwd = packages/hydra-js
-const root = join(process.cwd(), '..', '..');
+const root = join(import.meta.dirname, '..', '..');
 const load = (p) => JSON.parse(readFileSync(join(root, p), 'utf8'));
 
 /**

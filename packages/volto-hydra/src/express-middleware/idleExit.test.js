@@ -1,3 +1,4 @@
+import { describe, it, expect, vi } from 'vitest';
 import { idleExit, idleExitMinutes } from './idleExit';
 
 // The clock and the timer are handed in, so the test moves time itself.

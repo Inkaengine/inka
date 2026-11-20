@@ -15,7 +15,7 @@ import { mockParent } from '@inka/testing/mock-parent';
 // ERR_CONNECTION_REFUSED on every test. A fixture should be told which API it is
 // talking to, not assert one.
 // No fallback argument, deliberately: a default is the version of this bug
-// that passes. See packages/mock-api/env-port.cjs, which says it at
+// that passes. See packages/mock-api/env-port.js, which says it at
 // length; this config is ESM and loaded by vite before that module would be
 // resolvable, so the few lines live here too.
 const envPort = (name) => {

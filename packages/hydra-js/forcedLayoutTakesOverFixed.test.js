@@ -11,6 +11,7 @@
  * fixed slot never reads, and was dropped — the page's own heading lost, the
  * layout's default drawn in its place.
  */
+import { describe, test, expect } from 'vitest';
 import { expandEveryContainer } from './expandEveryContainer.testutil.js';
 import { expandTemplatesSync } from '@volto-hydra/helpers';
 

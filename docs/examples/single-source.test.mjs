@@ -1,8 +1,11 @@
-import { describe, it, expect, beforeAll } from 'vitest';
-import { fileURLToPath } from 'node:url';
+import {
+  resolveSchemaExamples,
+  schemaRegistryFromBlockDefinitions,
+} from '@inka/mock-api/from-schemas';
 import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { beforeAll, describe, expect, it } from 'vitest';
 import { readTree } from '../../packages/blockmd/markdown-mount.mjs';
-import { resolveSchemaExamples, schemaRegistryFromBlockDefinitions } from '../../packages/mock-api/from-schemas.mjs';
 import { sharedBlocksConfig } from '../../tests-playwright/fixtures/shared-block-schemas.js';
 
 // Every block example page carries the block-reference-layout template. Find

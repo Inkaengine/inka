@@ -1,3 +1,4 @@
+import { describe, test, expect } from 'vitest';
 import { acceptableAt } from './conversionMap.js';
 
 // cmap: a reaches {b,c}; d reaches {b}

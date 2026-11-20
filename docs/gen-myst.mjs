@@ -20,10 +20,25 @@
  *  - `order:` frontmatter on a folder index -> a `{toctree}` of its children
  *  - heavy frontmatter (@type, UID, blocks-*, prototypes, …) -> dropped
  */
-import { readFileSync, writeFileSync, readdirSync, mkdirSync, existsSync, rmSync, cpSync, statSync } from 'fs';
-import { join, dirname, relative, basename } from 'path';
-import { folderExcludes, resolveCodeExampleSources } from '../packages/blockmd/markdown-mount.mjs';
-import { resolveSchemaExamples, schemaRegistryFromBlockDefinitions } from '../packages/mock-api/from-schemas.mjs';
+import {
+  resolveSchemaExamples,
+  schemaRegistryFromBlockDefinitions,
+} from '@inka/mock-api/from-schemas';
+import {
+  cpSync,
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from 'node:fs';
+import { basename, dirname, join, relative } from 'node:path';
+import {
+  folderExcludes,
+  resolveCodeExampleSources,
+} from '../packages/blockmd/markdown-mount.mjs';
 import { decodePage } from '../packages/blockmd/prototype-mapping.mjs';
 import { sharedBlocksConfig } from '../tests-playwright/fixtures/shared-block-schemas.js';
 

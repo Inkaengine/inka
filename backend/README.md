@@ -18,9 +18,9 @@ Settled against the mock API first, then implemented here:
 
 | What | Where |
 | --- | --- |
-| Response shape | `packages/mock-api/templates-component.test.cjs` |
-| The merge actually consuming it | `packages/mock-api/templates-component-merge.test.cjs` |
-| Reference implementation | `@templates` in `packages/mock-api/mock-plone-api.cjs` |
+| Response shape | `packages/mock-api/templates-component.test.js` |
+| The merge actually consuming it | `packages/mock-api/templates-component-merge.test.js` |
+| Reference implementation | `@templates` in `packages/mock-api/mock-plone-api.js` |
 
 ```json
 {

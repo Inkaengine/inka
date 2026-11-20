@@ -25,7 +25,7 @@ const DECLARING = ['packages/blockmd', 'packages/content-validator', 'packages/m
 const CONTAINED = [...DECLARING, 'packages/hydra-js', 'packages/volto-hydra'];
 
 /** Build and test tooling inside a package, which may use its devDependencies. */
-const DEV_TOOLING = /^packages\/inka-mcp\/(bundle\.mjs$|journeys\/)/;
+const DEV_TOOLING = /^packages\/(inka-mcp\/(bundle\.mjs$|journeys\/)|testing\/vitest\.config\.js$)/;
 
 /** Relative imports that leave their package, and why each may. */
 const OUTSIDE = {};
@@ -66,7 +66,7 @@ describe('imports are declared', () => {
     const files = CONTAINED.flatMap(sourceFiles);
     expect(files).toContain('packages/blockmd/markdown-mount.mjs');
     expect(files).toContain('packages/content-validator/plone-content-validator.js');
-    expect(files).toContain('packages/mock-api/mock-api-server.cjs');
+    expect(files).toContain('packages/mock-api/mock-api-server.js');
     expect(files).toContain('packages/testing/playwright/AdminUIHelper.ts');
     expect(files).toContain('packages/volto-hydra/src/utils/blockSync.js');
   });

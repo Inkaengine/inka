@@ -258,7 +258,7 @@ tests-playwright/
 └── README.md                    # This file
 ```
 
-The mock API server itself is `packages/mock-api/` (`mock-api-server.cjs`,
+The mock API server itself is `packages/mock-api/` (`mock-api-server.js`,
 with its content-type schemas in `api/`). The harness these suites are built
 on — AdminUIHelper and the other Playwright helpers, block discovery, the
 sanity suites, the coverage reporter, mock-parent.html and the port block — is
@@ -357,7 +357,7 @@ Key settings:
     screenshot: 'only-on-failure',
   },
   webServer: [
-    { command: 'node packages/mock-api/mock-api-server.cjs', port: 8888 },
+    { command: 'pnpm exec inka-mock-api', port: 8888 },
     { command: 'RAZZLE_API_PATH=http://localhost:8888 pnpm start', port: 3001 },
   ],
 }
@@ -440,12 +440,12 @@ cat tests-playwright/fixtures/content/<page>/data.json
 
 Check mock server is loading it:
 ```bash
-DEBUG=1 node packages/mock-api/mock-api-server.cjs
+DEBUG=1 pnpm exec inka-mock-api
 ```
 
 ### Volto Can't Connect to Mock API
 
-Check CORS headers in mock server (`mock-api-server.cjs`):
+Check CORS headers in mock server (`mock-api-server.js`):
 ```javascript
 app.use(cors()); // Should be present
 ```
