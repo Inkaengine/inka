@@ -197,8 +197,9 @@ A path criterion's value (Absolute path or Relative path) says where to look, an
 | `/news/*` | everything under `/news`, not `/news` |
 | `./`, `./*` | this page and everything under it / only what is under it |
 | `../`, `../*` | the page's parent and everything under it / only what is under it (the page and its siblings) |
-| `/*/` (Relative path) | the page's level-1 section (the navigation root's child it is under) and everything under it |
-| `/*/*/`, `/*/*` (Relative path) | the page's level-2 section and everything under it / the level-1 section's contents, not the section |
+| `/*/` (Relative path) | the page's 2nd-level section (the site root's child it is under; the site root is the 1st level) and everything under it |
+| `/*/*/`, `/*/*` (Relative path) | the page's 3rd-level section and everything under it / the 2nd-level section's contents, not the section |
+| `<uid>/`, `<uid>/*` (Absolute path) | the folder with that UID, as the editor stores the one picked, and everything under it / only what is under it |
 
 </block>
 
@@ -220,6 +221,14 @@ Plone can't say all of this in one search. Whether its folder is a result depend
 </block>
 
 `resolveLocation(value, contextPath, { relative })` is exported for a fetcher of your own.
+
+In the editor, a listing's Location criterion is the place, its Depth, and **Children only**:
+
+- **Absolute path**: a folder picked. A first pick is Volto's: its children, depth 1.
+- **Relative path**: **2nd level**, **3rd level**, **4th level** (the section of the site the page is in at that level), **Parent** or **Here**. A place the menu doesn't offer (`../news`) is shown as it is.
+- **Children only** writes `/*` (only what is under the place) or `/` (the place too). At depth 0 there is only the place, so it isn't offered.
+
+A value Volto wrote (`.::1`, `..`, `<uid>::1`) is shown as Plone reads it (children only at depth 1), and an edit writes it with the ending that keeps that meaning.
 
 ### Asked from the site root
 
