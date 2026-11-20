@@ -650,6 +650,88 @@ test.describe('Image upload and drag-drop', () => {
     await expect(heroImage).toHaveAttribute('src', /999x999/, { timeout: 5000 });
   });
 
+  test('the replace box stays open when the page scrolls', async ({ page }) => {
+    // Scrolling hides the block's outline and toolbar until the scroll settles.
+    // An open replace box is the editor's own: hiding the outline must not
+    // close it, or an image that a scroll moves (a player loading, the page
+    // settling) can never be replaced.
+    const helper = new AdminUIHelper(page);
+    await helper.login();
+    await helper.navigateToEdit('/test-page');
+
+    const iframe = helper.getIframe();
+    const heroImage = iframe.locator(
+      '[data-block-uid="block-4-hero"] [data-edit-media="image"]',
+    );
+    await heroImage.click();
+    await helper.getQuantaToolbarFormatButton('image').click();
+    const imageOverlay = page.locator('.empty-image-overlay');
+    const urlInput = imageOverlay.locator('input[name="link"]');
+    await urlInput.fill('https://placehold.co/999x999');
+    const topBefore = (await imageOverlay.boundingBox())!.y;
+
+    await iframe.locator('body').evaluate(() => window.scrollBy(0, 40));
+
+    // Once the scroll settles the box follows the image, still open, with what
+    // was typed in it, and still replaces the image.
+    await expect
+      .poll(async () => (await imageOverlay.boundingBox())?.y)
+      .toBeLessThan(topBefore - 20);
+    await expect(urlInput).toHaveValue('https://placehold.co/999x999');
+    await imageOverlay.locator('button[aria-label="Submit"]').click();
+    await expect(heroImage).toHaveAttribute('src', /999x999/);
+  });
+
+  test('the replace box stays open when the frontend moves focus by itself', async ({
+    page,
+  }) => {
+    // The bridge focuses fields in the frontend on its own (after a re-render,
+    // the field the author was in). Focus leaving the admin for the frontend is
+    // not the author clicking there, and must not close what they opened.
+    const helper = new AdminUIHelper(page);
+    await helper.login();
+    await helper.navigateToEdit('/test-page');
+
+    const iframe = helper.getIframe();
+    const heroImage = iframe.locator(
+      '[data-block-uid="block-4-hero"] [data-edit-media="image"]',
+    );
+    await heroImage.click();
+    await helper.getQuantaToolbarFormatButton('image').click();
+    const imageOverlay = page.locator('.empty-image-overlay');
+    const urlInput = imageOverlay.locator('input[name="link"]');
+    await urlInput.click();
+    await expect(urlInput).toBeFocused();
+
+    const textField = await helper.getEditorLocator('block-1-uuid', 'value');
+    await textField.evaluate((el: HTMLElement) => {
+      window.focus();
+      el.focus();
+    });
+    await expect(urlInput).not.toBeFocused();
+
+    await urlInput.fill('https://placehold.co/999x999');
+    await imageOverlay.locator('button[aria-label="Submit"]').click();
+    await expect(heroImage).toHaveAttribute('src', /999x999/);
+  });
+
+  test('a click in the frontend closes the replace box', async ({ page }) => {
+    const helper = new AdminUIHelper(page);
+    await helper.login();
+    await helper.navigateToEdit('/test-page');
+
+    const iframe = helper.getIframe();
+    await iframe
+      .locator('[data-block-uid="block-4-hero"] [data-edit-media="image"]')
+      .click();
+    await helper.getQuantaToolbarFormatButton('image').click();
+    const urlInput = page.locator('.empty-image-overlay input[name="link"]');
+    await expect(urlInput).toBeVisible();
+
+    await iframe.locator('[data-block-uid="block-1-uuid"]').click();
+    await expect(urlInput).toHaveCount(0);
+  });
+
   test('shows error toast when upload fails', async ({ page }) => {
     const helper = new AdminUIHelper(page);
 
