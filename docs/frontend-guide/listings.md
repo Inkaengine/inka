@@ -136,7 +136,7 @@ The editor saves the item type, the mapping and the item defaults into the listi
 
 ## ploneFetchItems Helper
 
-`ploneFetchItems({ apiUrl, contextPath, extraCriteria, mappingField })` creates a fetcher function for Plone's `@querystring-search` endpoint, suitable as a value in the `fetchItems` map.
+`ploneFetchItems({ apiUrl, contextPath, extraCriteria, mappingField, includeContext })` creates a fetcher function for Plone's `@querystring-search` endpoint, suitable as a value in the `fetchItems` map.
 
 <block type="slateTable" table.fixed table.celled>
 
@@ -146,6 +146,7 @@ The editor saves the item type, the mapping and the item defaults into the listi
 | `contextPath` | `'/'` | Path for relative queries |
 | `extraCriteria` | `{}` | Additional query params — `SearchableText`, `sort_on`, `sort_order`, `facet.*` keys |
 | `mappingField` | `'fieldMapping'` | Field on the listing block that holds its mapping (the recipe's `mappingField`); a folder-contents listing checks the page's own items carry every mapped field |
+| `includeContext` | `false` | Keep the current page in the results: see [The current page in its own listing](#the-current-page-in-its-own-listing) |
 
 </block>
 
@@ -200,6 +201,12 @@ Plone has no such operation: `ploneFetchItems` resolves it for the page it fetch
 ```
 
 For `/news/2024/new-bridge-opens` this is sent as `{ "o": "…absolutePath", "v": "/news" }`.
+
+### The current page in its own listing
+
+Plone's `@querystring-search` leaves out the page it is asked from (every page but the site root), whatever the query. `ploneFetchItems` asks from `contextPath`, so a listing never lists the page it is on. That suits most listings in a page. A navigation is different: it must show the page you are on, to mark it and open its branch.
+
+Pass `includeContext: true` for that. The search is then asked from the site root, and each Relative path is first resolved for the page into the Absolute path it is there: `..` goes up (stopping at the root), `.` stays, a name goes down, and `::depth` is kept. Plone stays put on a name the page has no child of; Inka can't know that, so it goes down anyway. The option belongs to the frontend's block code, which knows the listing is a navigation, not to the editor.
 
 ## Example fetchers
 

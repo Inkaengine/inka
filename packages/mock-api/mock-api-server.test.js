@@ -194,6 +194,23 @@ describe('@querystring-search', () => {
     assert.ok((await found(`${half}*`)).includes(described[0].id), `${half}* is a prefix`);
   });
 
+  // plone.restapi's @querystring-search leaves out the page it is asked from,
+  // whatever the query (services/querystringsearch/get.py: "Exclude 'self'
+  // content item"), except the site root. Checked on a live site: the same
+  // absolutePath query sent from a page in that path lists every page but it.
+  it('a query asked from a page leaves that page out, whatever its operation', async () => {
+    const query = [{ i: 'path', o: 'plone.app.querystring.operation.string.absolutePath', v: '/_test_data' }];
+    const fromRoot = await querystringSearch('/', { query, b_start: 0, b_size: 200 });
+    const page = fromRoot.items
+      .map((i) => new URL(i['@id']).pathname)
+      .find((p) => p.startsWith('/_test_data/'));
+    assert.ok(page, 'the root lists a page under /_test_data');
+    const fromPage = await querystringSearch(page, { query, b_start: 0, b_size: 200 });
+    const paths = fromPage.items.map((i) => new URL(i['@id']).pathname);
+    assert.ok(!paths.includes(page), `${page} is left out of its own results`);
+    assert.equal(fromPage.items_total, fromRoot.items_total - 1);
+  });
+
   it('string.path filters exactly as absolutePath does', async () => {
     const forOperation = async (o) => {
       const data = await querystringSearch('/', {
