@@ -45,7 +45,6 @@ const DropdownMenu = ({
   canUnwrap = false, // True when selected block is a container whose children can live in the parent
   onUnwrap, // Handler for unwrap: () => void
   isFixed = false, // Template blocks that can't be moved/deleted
-  isReadonly = false, // Template blocks that can't be edited
   isInTemplate = false, // Whether block is already part of a template
   onMakeTemplate, // Handler for "Make Template" action
   isTemplateInstance = false, // This block is a top-level template instance (host)

@@ -299,9 +299,9 @@ const ParentBlockSection = ({
   index,
   isCurrentBlock,
   onSelectBlock,
-  onDeleteBlock,
   onChangeBlock,
   onBlockAction,
+  blockMenuProps,
   convertTargetsFor,
   onConvertBlock,
   formData,
@@ -555,43 +555,16 @@ const ParentBlockSection = ({
           >
             •••
           </button>
-          {menuOpen && (() => {
-            const pathInfo = blockPathMap?.[blockId];
-            return (
-              <DropdownMenu
-                selectedBlock={blockId}
-                onDeleteBlock={onDeleteBlock}
-                menuButtonRect={menuButtonRect}
-                onClose={() => setMenuOpen(false)}
-                // No onOpenSettings - we're already in sidebar/settings
-                parentId={parentId}
-                onSelectBlock={onSelectBlock}
-                tableActions={pathInfo?.actions}
-                onTableAction={onBlockAction ? (actionId) => onBlockAction(actionId, blockId) : null}
-                addMode={pathInfo?.addMode}
-                parentAddMode={pathInfo?.parentAddMode}
-                addDirection={pathInfo?.addDirection}
-                // "Convert to…" opens the same type list as the title.
-                convertibleTypes={convertTargets}
-                onOpenConvertChooser={openTypeMenu}
-                // Same rule as the canvas toolbar: `fixed` withholds removal
-                // from a PAGE, not from the template's own author. Once the
-                // template a block BELONGS to is unlocked, it is removable.
-                // (`isEditingThisTemplate` is about the instance itself, so it
-                // is the wrong question for a member.)
-                isFixed={
-                  !!blockData?.fixed &&
-                  !(templateEditMode || []).includes(blockData?.templateInstanceId)
-                }
-                isReadonly={!!blockData?.readOnly}
-                isInTemplate={!!blockData?.templateId}
-                onMakeTemplate={onBlockAction ? () => onBlockAction('makeTemplate', blockId) : null}
-                isTemplateInstance={isThisTemplateInstance}
-                isEditingTemplate={isEditingThisTemplate}
-                onToggleTemplateEdit={canToggleTemplateEdit ? toggleTemplateEdit : null}
-              />
-            );
-          })()}
+          {menuOpen && (
+            <DropdownMenu
+              {...blockMenuProps(blockId)}
+              menuButtonRect={menuButtonRect}
+              onClose={() => setMenuOpen(false)}
+              // "Convert to…" opens the type list under the block's title here,
+              // the same targets the toolbar's chooser offers.
+              onOpenConvertChooser={openTypeMenu}
+            />
+          )}
         </div>
       </div>
 
@@ -901,9 +874,9 @@ const ParentBlocksWidget = ({
   formData,
   blockPathMap,
   onSelectBlock,
-  onDeleteBlock,
   onChangeBlock,
   onBlockAction,
+  blockMenuProps, // (blockId) => a block's ⋯ menu, the same the Quanta toolbar draws
   convertTargetsFor,
   onConvertBlock,
   templateEditMode,
@@ -1109,9 +1082,9 @@ const ParentBlocksWidget = ({
                 index={index}
                 isCurrentBlock={false}
                 onSelectBlock={onSelectBlock}
-                onDeleteBlock={onDeleteBlock}
                 onChangeBlock={handleBlockChange}
                 onBlockAction={onBlockAction}
+                blockMenuProps={blockMenuProps}
                 convertTargetsFor={convertTargetsFor}
                 onConvertBlock={onConvertBlock}
                 formData={formData}
@@ -1140,9 +1113,9 @@ const ParentBlocksWidget = ({
             index={parentIds.length}
             isCurrentBlock={true}
             onSelectBlock={onSelectBlock}
-            onDeleteBlock={onDeleteBlock}
             onChangeBlock={handleBlockChange}
             onBlockAction={onBlockAction}
+            blockMenuProps={blockMenuProps}
             convertTargetsFor={convertTargetsFor}
             onConvertBlock={onConvertBlock}
             formData={formData}
@@ -1210,9 +1183,9 @@ ParentBlocksWidget.propTypes = {
   formData: PropTypes.object,
   blockPathMap: PropTypes.object,
   onSelectBlock: PropTypes.func,
-  onDeleteBlock: PropTypes.func,
   onChangeBlock: PropTypes.func,
   onBlockAction: PropTypes.func,
+  blockMenuProps: PropTypes.func.isRequired,
   // (blockId) → [{ type, title }]: what the block can be changed to.
   convertTargetsFor: PropTypes.func,
   // (blockId, newType): change it, asking first when content would be lost.

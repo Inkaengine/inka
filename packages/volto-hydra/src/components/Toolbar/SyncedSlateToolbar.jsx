@@ -11,7 +11,8 @@ import slateTransforms, { withEmptyInlineRemoval } from '../../utils/slateTransf
 import { syncCreateSlateBlock } from '@plone/volto-slate/utils/volto-blocks';
 import { getBlockById, updateBlockById, getResolvedSchema } from '../../utils/blockPath';
 import { calculateDragHandlePosition, PAGE_BLOCK_UID } from '@volto-hydra/hydra-js';
-import { isSlateFieldType, isBlockPositionLocked, isBlockReadonly, getFieldValue, getFieldDef, isStarterUiField } from '@volto-hydra/helpers';
+import { isSlateFieldType, isBlockPositionLocked, isBlockReadonly, getFieldValue, getFieldDef, isStarterUiField, topTemplateInstanceOf } from '@volto-hydra/helpers';
+import { expandSidebar } from '../Sidebar/expandSidebar';
 import { starterPickerTakesFocus } from '../../utils/starterUi';
 import { isStyleAllowed } from '@volto-hydra/helpers/slateStyles.js';
 import { blockFormatButtons, paragraphStyleItems } from '../../utils/blockFormats';
@@ -221,14 +222,7 @@ const SyncedSlateToolbar = ({
   flushEdits, // () => Promise: resolves once text typed on the canvas is in the form
   onOpenObjectBrowser, // Handler to open object browser for media fields
   onFileUpload, // Handler for file uploads: (fieldName, file) => void
-  convertibleTypes = [], // Array of { type, title } for block type conversion
-  onConvertBlock, // Handler for block conversion: (newType) => void
-  onOpenConvertChooser, // Handler to open BlockChooser for convert: () => void
-  canWrap = false, // True when there's a multi-selection that can be wrapped
-  onOpenWrapChooser, // Handler to open BlockChooser for wrap: () => void
-  canUnwrap = false, // True when selected container can be unwrapped into its parent
-  onUnwrap, // Handler for unwrap: () => void
-  onMakeTemplate, // Handler for "Make Template" action
+  menuProps, // The selected block's ⋯ menu (View's blockMenuProps): the sidebar draws the same
   templateEditMode, // instanceId of template being edited, or null
   onToggleTemplateEditMode, // Enter/exit template edit mode: (instanceId|null) => void
   templatePermissions, // Map templateId -> { can_edit } (defaults to editable)
@@ -310,7 +304,6 @@ const SyncedSlateToolbar = ({
 
   // Redux dispatch for closing persistent helpers
   const dispatch = useDispatch();
-  const blocksClipboard = useSelector((state) => state?.blocksClipboard || {});
 
   // Wrap ReactEditor.focus to handle toolbar editor gracefully
   // The toolbar editor isn't in a resolvable DOM tree, so focus calls will fail
@@ -389,14 +382,6 @@ const SyncedSlateToolbar = ({
   // State for dropdown menu
   const [menuOpen, setMenuOpen] = useState(false);
   const [menuButtonRect, setMenuButtonRect] = useState(null);
-  const [pasteAllowed, setPasteAllowed] = useState(true);
-
-  // Listen for paste-allowed state from View.jsx
-  useEffect(() => {
-    const handler = (e) => setPasteAllowed(e.detail.allowed);
-    document.addEventListener('hydra-paste-state', handler);
-    return () => document.removeEventListener('hydra-paste-state', handler);
-  }, []);
 
   // State for field link editor popup
   const [fieldLinkEditorOpen, setFieldLinkEditorOpen] = useState(false);
@@ -1367,16 +1352,7 @@ const SyncedSlateToolbar = ({
   // instance, skipping nested ones) so the ⋯ dropdown can offer "Edit template" /
   // "Save template" straight from the Quanta toolbar — i.e. unlock AND
   // lock/save a template WITHOUT opening the settings sidebar.
-  let toolbarTemplateInstanceId = null;
-  {
-    let cur = selectedBlock;
-    while (cur) {
-      const pi = blockPathMap?.[cur];
-      if (!pi) break;
-      if (pi.isTemplateInstance && !pi.isNestedTemplateInstance) toolbarTemplateInstanceId = cur;
-      cur = pi.parentId;
-    }
-  }
+  const toolbarTemplateInstanceId = topTemplateInstanceOf(blockPathMap, selectedBlock);
   const toolbarTemplateId = toolbarTemplateInstanceId
     ? blockPathMap?.[toolbarTemplateInstanceId]?.templateId
     : null;
@@ -1386,14 +1362,6 @@ const SyncedSlateToolbar = ({
     toolbarTemplateInstanceId,
   );
 
-  // Open the settings sidebar (it may be collapsed — on a phone it always
-  // starts so), through the same trigger the sidebar's own button uses.
-  const expandSidebar = () => {
-    const sidebarContainer = document.querySelector('.sidebar-container');
-    if (sidebarContainer?.classList.contains('collapsed')) {
-      sidebarContainer.querySelector('.trigger')?.click();
-    }
-  };
   // Take the author to a template: select it, so the sidebar shows its
   // section — what it is, what unlocking it does, and the Unlock button.
   const openTemplate = (instanceId) => {
@@ -1934,10 +1902,11 @@ const SyncedSlateToolbar = ({
     {/* Dropdown menu with overflow buttons and actions */}
     {menuOpen && (
       <DropdownMenu
-        selectedBlock={selectedBlock}
-        onDeleteBlock={onDeleteBlock}
+        {...menuProps}
         menuButtonRect={menuButtonRect}
         onClose={() => setMenuOpen(false)}
+        // What only the toolbar's menu has: Settings opens the sidebar, and the
+        // format buttons and block actions that don't fit on the toolbar.
         onOpenSettings={expandSidebar}
         overflowButtons={overflowButtons}
         showFormatDropdown={!showFormatDropdown}
@@ -1946,49 +1915,7 @@ const SyncedSlateToolbar = ({
         onChange={handleChange}
         onMouseDownCapture={handleButtonMouseDownCapture}
         onClickCapture={handleButtonClickCapture}
-        tableActions={blockActions}
         overflowBlockActions={overflowBlockActions}
-        onTableAction={onBlockAction}
-        addMode={blockPathMap?.[selectedBlock]?.addMode}
-        parentAddMode={blockPathMap?.[selectedBlock]?.parentAddMode}
-        addDirection={blockUI?.addDirection}
-        convertibleTypes={convertibleTypes}
-        onConvertBlock={onConvertBlock}
-        onOpenConvertChooser={onOpenConvertChooser}
-        canWrap={canWrap}
-        onOpenWrapChooser={onOpenWrapChooser}
-        canUnwrap={canUnwrap}
-        onUnwrap={onUnwrap}
-        // `fixed` means "not yours to remove from THIS page" — the point of a
-        // template's chrome. It is not meant to survive unlocking: once the
-        // author has taken the template into edit mode, they are editing the
-        // template itself, and a member they can retype but never delete is a
-        // dead end (the site announcement's alert could be reworded forever and
-        // never taken out).
-        isFixed={
-          !!blockPathMap?.[selectedBlock]?.isFixed && !isEditingToolbarTemplate
-        }
-        isInTemplate={!!block?.templateId}
-        onMakeTemplate={onMakeTemplate}
-        // Template edit/lock straight from the toolbar ⋯ menu (no sidebar needed):
-        // "Edit template" when locked, "Save template" (→ lock/save decision)
-        // while editing. Gated on Modify permission.
-        isTemplateInstance={!!toolbarTemplateInstanceId && canEditToolbarTemplate && !!onToggleTemplateEditMode}
-        isEditingTemplate={isEditingToolbarTemplate}
-        // Locked, "Edit template" takes the author to the template, where
-        // unlocking is explained and done (inka#774); unlocked, "Save template"
-        // locks it.
-        onToggleTemplateEdit={
-          toolbarTemplateInstanceId && onToggleTemplateEditMode
-            ? () =>
-                isEditingToolbarTemplate
-                  ? onToggleTemplateEditMode(toolbarTemplateInstanceId)
-                  : openTemplate(toolbarTemplateInstanceId)
-            : null
-        }
-        multiSelectedUids={isMultiSelected ? blockUI.multiSelectedUids : null}
-        hasClipboard={!!(blocksClipboard?.cut || blocksClipboard?.copy)}
-        pasteAllowed={pasteAllowed}
       />
     )}
 

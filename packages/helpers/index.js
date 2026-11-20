@@ -3632,6 +3632,24 @@ export function isStarterUiField(fieldDef) {
 }
 
 /**
+ * The top-level template instance a block belongs to, or is: the outermost
+ * template instance on its path in the block path map (a template nested inside
+ * another belongs to the outer one). Null for a block in no template.
+ *
+ * @param {Object} blockPathMap - The block path map
+ * @param {string} blockId - The block
+ * @returns {string|null} The instance's id
+ */
+export function topTemplateInstanceOf(blockPathMap, blockId) {
+  let instanceId = null;
+  for (let cur = blockId; cur && blockPathMap?.[cur]; cur = blockPathMap[cur].parentId) {
+    const pathInfo = blockPathMap[cur];
+    if (pathInfo.isTemplateInstance && !pathInfo.isNestedTemplateInstance) instanceId = cur;
+  }
+  return instanceId;
+}
+
+/**
  * Check if a block should be readonly. Shared by the admin (sidebar/toolbar) and
  * the hydra.js Bridge.
  *
