@@ -97,7 +97,7 @@
               {
                 "i": "path",
                 "o": "plone.app.querystring.operation.string.absolutePath",
-                "v": "/_test_data/context-navigation-forced-folder"
+                "v": "/_test_data/context-navigation-forced-folder/*"
               },
               {
                 "i": "exclude_from_nav",
