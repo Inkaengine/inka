@@ -1206,8 +1206,9 @@ export function resolveLocation(value, contextPath, { relative }) {
 }
 
 /**
- * The searches that answer a query's locations, asked from the site root:
- * `query` with every path location absolute and Plone's own rule for the
+ * The searches that answer a query's locations. One that says whether its
+ * folder is in is asked from the site root (`fromRoot`): `query` with every
+ * path location absolute and Plone's own rule for the
  * folder (in only at depth 1 is it left out) corrected where the location
  * says otherwise -- left out by its UID (`exclude`; `excludeTop`, the path
  * whose UID to look up), or fetched by itself to go first (`include` at
@@ -1217,6 +1218,13 @@ function locationSearches(query, contextPath) {
   let excludeTop = null;
   let topQuery = null;
   const paths = query.filter((c) => c.i === 'path' && (c.o === RELATIVE_PATH || c.o === ABSOLUTE_PATH));
+  // A Volto location (no `/` or `/*` ending) goes as it always went, asked
+  // from the page: Plone then leaves the page out, and Volto's `.` (the page
+  // and everything under it) has always relied on that.
+  const located = paths.map((c) => resolveLocation(c.v, contextPath, { relative: c.o === RELATIVE_PATH }));
+  if (located.every(({ top }) => top === null)) {
+    return { query, excludeTop, topQuery, fromRoot: false };
+  }
   const resolved = query.map((c) => {
     if (!paths.includes(c)) return c;
     const { path, depth, top } = resolveLocation(c.v, contextPath, { relative: c.o === RELATIVE_PATH });
@@ -1232,6 +1240,7 @@ function locationSearches(query, contextPath) {
     query: resolved,
     excludeTop,
     topQuery: topQuery && resolved.map((c) => (c.i === 'path' ? { ...c, v: topQuery } : c)),
+    fromRoot: true,
   };
 }
 
@@ -1331,11 +1340,12 @@ export function ploneFetchItems({
     const headers = _getAuthHeaders();
     headers['Content-Type'] = 'application/json';
 
-    // Asked from the site root: asked from a page, Plone leaves that page out
-    // whatever the query says. Its relative locations are resolved for the
-    // page first, so they mean the same.
-    const url = `${apiUrl}/++api++/@querystring-search`;
-    const { query, excludeTop, topQuery } = locationSearches(body.query, contextPath);
+    // A location that says whether its folder is in is asked from the site
+    // root: asked from a page, Plone leaves that page out whatever the query
+    // says. Its relative locations are resolved for the page first, so they
+    // mean the same. Volto's own locations are asked from the page, as always.
+    const { query, excludeTop, topQuery, fromRoot } = locationSearches(body.query, contextPath);
+    const url = `${apiUrl}${fromRoot ? '' : contextPath}/++api++/@querystring-search`;
     body.query = query;
     if (excludeTop !== null) {
       const folder = await fetchQuerystringSearch(
