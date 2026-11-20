@@ -74,10 +74,12 @@ const IS_FALSE = 'plone.app.querystring.operation.boolean.isFalse';
 const IS_TRUE = 'plone.app.querystring.operation.boolean.isTrue';
 
 describe('@querystring-search: a boolean criterion on any boolean index', () => {
+  // The site root ('' here) is catalogued, as in Plone 6, and has neither
+  // field: a query with no path finds it like any item without the field.
   it('isFalse finds every item without it, the field missing included', async () => {
     const { status, body } = await query([{ i: 'seo_noindex', o: IS_FALSE }]);
     assert.equal(status, 200, JSON.stringify(body));
-    assert.deepEqual(ids(body), ['offnav', 'shown', 'untouched']);
+    assert.deepEqual(ids(body), ['', 'offnav', 'shown', 'untouched']);
   });
 
   it('isTrue finds only the items with it', async () => {
@@ -87,7 +89,7 @@ describe('@querystring-search: a boolean criterion on any boolean index', () => 
 
   it('exclude_from_nav still works as before', async () => {
     const { body } = await query([{ i: 'exclude_from_nav', o: IS_FALSE }]);
-    assert.deepEqual(ids(body), ['hidden', 'shown', 'untouched']);
+    assert.deepEqual(ids(body), ['', 'hidden', 'shown', 'untouched']);
   });
 });
 

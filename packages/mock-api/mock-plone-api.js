@@ -5516,13 +5516,14 @@ app.post('{/*path}/@querystring-search', (req, res) => {
   // relative to each path criterion; for our use we only support one path
   // criterion at a time — which matches sectionNav's listing config.
   // Resolve `..` / `.` segments in a path the way real Plone does for relativePath.
+  // A name goes down only into a child that exists: Plone's _relativePath
+  // leaves a name the folder has no child of where it is.
   const resolveRelativePath = (base, rel) => {
-    const segs = (base + '/' + rel).split('/').filter(Boolean);
-    const stack = [];
-    for (const seg of segs) {
+    const stack = base.split('/').filter(Boolean);
+    for (const seg of rel.split('/').filter(Boolean)) {
       if (seg === '.') continue;
       if (seg === '..') stack.pop();
-      else stack.push(seg);
+      else if (contentDirMap['/' + [...stack, seg].join('/')]) stack.push(seg);
     }
     return '/' + stack.join('/');
   };
@@ -5568,8 +5569,9 @@ app.post('{/*path}/@querystring-search', (req, res) => {
   // Get all content items using raw content (no enrichment needed for search).
   // loadContentFromDisk enriches every item (resolveuid, image scales, components)
   // which is extremely slow with 70+ items. Search results only need basic fields.
+  // The site root is a result too: Plone 6 catalogs it (a search of `/::0`
+  // answers it alone).
   let allItems = Object.keys(contentDirMap)
-    .filter((itemPath) => itemPath !== '/')
     .map((itemPath) => {
       const raw = loadRawContentFromDisk(itemPath);
       if (!raw) return null;
@@ -5654,7 +5656,9 @@ app.post('{/*path}/@querystring-search', (req, res) => {
       // (Asked from a page, that page itself is never a result: see where
       // allItems is built.)
       const basePath = value || '/';
-      if (basePath !== '/') {
+      if (basePath === '/' && splitPathDepth(condition.v).depth === 1) {
+        allItems = allItems.filter((item) => new URL(item['@id']).pathname !== '/');
+      } else if (basePath !== '/') {
         const prefix = basePath.endsWith('/') ? basePath : basePath + '/';
         const withFolder = splitPathDepth(condition.v).depth !== 1;
         allItems = allItems.filter((item) => {
@@ -5674,7 +5678,9 @@ app.post('{/*path}/@querystring-search', (req, res) => {
       // Plone resolves it to an absolute path and searches that, so the
       // folder is a result as for absolutePath (above): except at depth 1.
       const fullPath = relValue ? resolveRelativePath(contextPath, relValue) : contextPath;
-      if (fullPath !== '/') {
+      if (fullPath === '/' && splitPathDepth(condition.v).depth === 1) {
+        allItems = allItems.filter((item) => new URL(item['@id']).pathname !== '/');
+      } else if (fullPath !== '/') {
         const withFolder = splitPathDepth(condition.v).depth !== 1;
         allItems = allItems.filter((item) => {
           const itemPath = new URL(item['@id']).pathname;

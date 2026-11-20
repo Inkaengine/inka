@@ -233,6 +233,35 @@ describe('@querystring-search', () => {
     assert.equal((await paths(child, REL, '..::1')).includes(folder), false, '..::1');
   });
 
+  // Plone 6 catalogs its site root, and a search of `/` follows the same
+  // rule as any folder (measured on a live site: `/::0` answers the root
+  // alone, `/` 1228 items with the root among them, `/::1` 36 without it).
+  it('the site root is a result of a search of /, except at depth 1', async () => {
+    const ABS = 'plone.app.querystring.operation.string.absolutePath';
+    const paths = async (v) => {
+      const data = await querystringSearch('/', { query: [{ i: 'path', o: ABS, v }], b_start: 0, b_size: 2000 });
+      return data.items.map((i) => new URL(i['@id']).pathname);
+    };
+    assert.deepStrictEqual(await paths('/::0'), ['/']);
+    assert.ok((await paths('/')).includes('/'), '/ with no depth');
+    assert.ok(!(await paths('/::1')).includes('/'), '/::1');
+  });
+
+  // Plone's _relativePath goes down only into a child that exists; a name the
+  // folder has no child of leaves it where it is (measured: `../nonexistent::1`
+  // from a page answers what `..::1` does).
+  it('a relative step into no child stays where it is', async () => {
+    const REL = 'plone.app.querystring.operation.string.relativePath';
+    const ABS = 'plone.app.querystring.operation.string.absolutePath';
+    const child = (await querystringSearch('/', { query: [{ i: 'path', o: ABS, v: '/_test_data::1' }], b_size: 1 }))
+      .items.map((i) => new URL(i['@id']).pathname)[0];
+    const ids = async (v) =>
+      (await querystringSearch(child, { query: [{ i: 'path', o: REL, v }], b_start: 0, b_size: 500 })).items
+        .map((i) => new URL(i['@id']).pathname)
+        .sort();
+    assert.deepStrictEqual(await ids('../no-such-child::1'), await ids('..::1'));
+  });
+
   // "UID is none of" is an ordinary criterion on a real Plone: it drops just
   // those items, and the total counts without them.
   it('UID selection.none leaves out those items', async () => {
