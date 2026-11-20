@@ -14,7 +14,9 @@ import { AdminUIHelper } from '../helpers/AdminUIHelper';
  * edit keeps what the listing lists.
  *
  * Fixture: /relative-path-listing-page -- `.::1` (children-listing), `..`
- * (parent-listing), and a folder by its UID at depth 1 (folder-listing).
+ * (parent-listing), and a folder by its UID at depth 1 (folder-listing). The
+ * folder's listing has a grid of its own: a grid pages its listings together,
+ * and the first two fill its first page.
  */
 
 async function openCriteria(page: Page, listingId: string): Promise<Locator> {
