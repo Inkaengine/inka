@@ -6,8 +6,9 @@
  *   /news/*    everything under /news, not /news
  *   ./  ./*    this page (and under it) / only what is under it
  *   ../ ../*   my parent (and under it) / only what is under it
- *   /*\/        Relative only: my level-1 section, and everything under it
- *   /*\/*\/     my level-2 section …; /*\/* my level-1 section's contents
+ *   /*\/        Relative only: my 2nd-level section (under the site root), and everything under it
+ *   /*\/*\/     my 3rd-level section …; /*\/* my 2nd-level section's contents
+ *   uid/ uid/*  Absolute: a folder by its UID, as the editor stores the one picked
  *
  * with Plone's `::depth` after it. A value with neither ending (`.`, `..`,
  * `/news`, `.::1`) means what it means to Plone.
@@ -63,7 +64,20 @@ describe('resolveLocation', () => {
     expect(resolveLocation(value, PAGE, { relative: false })).toEqual(expected);
   });
 
+  // The editor's Absolute path stores the folder picked by its UID; Plone
+  // takes a UID there as the folder's path (measured: a UID and the folder's
+  // path give the same results at every depth).
+  test.each([
+    ['news-uid', { path: 'news-uid', depth: null, top: null }],
+    ['news-uid::1', { path: 'news-uid', depth: 1, top: null }],
+    ['news-uid/', { path: 'news-uid', depth: null, top: 'include' }],
+    ['news-uid/*::2', { path: 'news-uid', depth: 2, top: 'exclude' }],
+  ])('absolute by UID %s', (value, expected) => {
+    expect(resolveLocation(value, PAGE, { relative: false })).toEqual(expected);
+  });
+
   test('anything else is refused, not guessed', () => {
+    expect(() => resolveLocation('news-uid/a', PAGE, { relative: false })).toThrow(/UID/);
     expect(() => resolveLocation('/news/*/', PAGE, { relative: true })).toThrow(/only \* steps/);
     expect(() => resolveLocation('/*/x', PAGE, { relative: false })).toThrow(/\*/);
     expect(() => resolveLocation('/news/*::0', PAGE, { relative: false })).toThrow(/depth 0/);
@@ -143,6 +157,17 @@ describe('ploneFetchItems sends the search(es) that give the location', () => {
     // The folder is asked with the listing's other criteria too.
     const top = calls.find((c) => c.body.query.find((q) => q.i === 'path').v === '/news::0');
     expect(top.body.query).toContainEqual(TYPE);
+  });
+
+  test('a folder picked by its UID, without the folder: the UID sent, and left out', async () => {
+    await fetchFor(ABSOLUTE, 'news-uid/*');
+    expect(sentPaths().at(-1)).toEqual({ i: 'path', o: ABSOLUTE, v: 'news-uid' });
+    expect(calls.at(-1).body.query).toContainEqual({ i: 'UID', o: NONE, v: ['news-uid'] });
+  });
+
+  test('a folder picked by its UID, with the folder at depth 1: the folder asked by its UID', async () => {
+    await fetchFor(ABSOLUTE, 'news-uid/::1');
+    expect(sentPaths().map((c) => c.v).sort()).toEqual(['news-uid::0', 'news-uid::1']);
   });
 
   test('with the folder at depth 1, a later page counts it', async () => {

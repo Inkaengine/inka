@@ -5551,6 +5551,19 @@ app.post('{/*path}/@querystring-search', (req, res) => {
     return { path: s.slice(0, sep), depth: Number.isNaN(n) ? null : n };
   };
 
+  // An Absolute path not starting with `/` is a UID (the editor stores the
+  // folder picked by its UID): Plone searches that folder's path, and the
+  // site root for a UID it has no item of (measured on a live site).
+  const absolutePathOf = (v) => {
+    const { path } = splitPathDepth(v);
+    if (!path || path.startsWith('/')) return path;
+    const found = Object.keys(contentDirMap).find((itemPath) => {
+      const raw = loadRawContentFromDisk(itemPath);
+      return raw && (raw.UID || `${raw.id || itemPath.split('/').pop()}-uid`) === path;
+    });
+    return found ?? '/';
+  };
+
   let depthRoot = null;
   let pathDepth = null;
   for (const cond of query) {
@@ -5558,7 +5571,7 @@ app.post('{/*path}/@querystring-search', (req, res) => {
     const { path: pathV, depth: critDepth } = splitPathDepth(cond.v);
     if (critDepth !== null) pathDepth = critDepth;
     if (isAbsolutePathQuery(cond.o)) {
-      depthRoot = pathV;
+      depthRoot = absolutePathOf(cond.v);
     } else if (cond.o.includes('relativePath')) {
       let rel = pathV;
       if (rel === '.' || rel === '') rel = '';
@@ -5618,7 +5631,11 @@ app.post('{/*path}/@querystring-search', (req, res) => {
     // For path criteria the value may carry a `::depth` suffix — strip it
     // for the path match (depth is applied separately, below).
     const value =
-      index === 'path' ? splitPathDepth(condition.v).path : condition.v;
+      index === 'path'
+        ? isAbsolutePathQuery(operation)
+          ? absolutePathOf(condition.v)
+          : splitPathDepth(condition.v).path
+        : condition.v;
 
     if (operation.includes('selection')) {
       // Generic plone.app.querystring selection filter (see selectionFields):

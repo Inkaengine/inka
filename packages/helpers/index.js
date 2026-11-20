@@ -1157,8 +1157,10 @@ const UID_NONE = 'plone.app.querystring.operation.selection.none';
  * it: `..` up (stopping at the site root), `.` stays, a name goes down (Plone
  * stays put on a name the page has no child of; this can't know). A Relative
  * value starting with `/` counts steps of the page's breadcrumb from the top,
- * one `*` each: `/*\/` is the page's level-1 section, `/*\/*\/` its level-2
- * one; a page above that level resolves to itself.
+ * one `*` each: `/*\/` is the page's 2nd-level section (the site root is the
+ * 1st), `/*\/*\/` its 3rd-level one; a page above that level resolves to
+ * itself. An Absolute value not starting with `/` is a folder's UID, as the
+ * editor stores the folder picked (`uid`, `uid/`, `uid/*`).
  *
  * @param {string} value - the criterion's value
  * @param {string} contextPath - the page the listing is fetched for
@@ -1196,6 +1198,13 @@ export function resolveLocation(value, contextPath, { relative }) {
       if (step === '..') segs.pop();
       else if (step !== '.') segs.push(step);
     }
+  } else if (!body.startsWith('/')) {
+    // A folder by its UID, as the editor's Absolute path stores the one
+    // picked: Plone takes a UID there as the folder's path.
+    if (base.includes('/')) {
+      throw new Error(`a location by UID is the UID and an ending alone ("uid/", "uid/*"), got "${value}"`);
+    }
+    return { path: base, depth: Number.isNaN(depth) ? null : depth, top };
   } else {
     segs = base.split('/').filter(Boolean);
     if (segs.includes('*')) {
