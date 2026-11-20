@@ -209,7 +209,7 @@ const SyncedSlateToolbar = ({
   completedFlushRequestId,
   transformAction,
   onTransformApplied,
-  blockUI,
+  blockUI: liveBlockUI,
   blockFieldTypes,
   iframeElement,
   onDeleteBlock,
@@ -255,6 +255,23 @@ const SyncedSlateToolbar = ({
   const slateStyleAliases = () => config.settings.slate?.styleAliases || {};
   const slateDefaultType = () => config.settings.slate?.defaultBlockType || 'p';
 
+
+  // State for field link editor popup
+  const [fieldLinkEditorOpen, setFieldLinkEditorOpen] = useState(false);
+  const [fieldLinkEditorField, setFieldLinkEditorField] = useState(null);
+
+  // State for field image editor popup
+  const [fieldImageEditorOpen, setFieldImageEditorOpen] = useState(false);
+  const [fieldImageEditorField, setFieldImageEditorField] = useState(null);
+
+  // A scroll hides the block's UI (HIDE_BLOCK_UI) until it settles. A link or
+  // image box the author has open stays, drawn where the block last was:
+  // unmounting it would throw away what they had typed.
+  const lastBlockUIRef = useRef(null);
+  if (liveBlockUI) lastBlockUIRef.current = liveBlockUI;
+  const blockUI =
+    liveBlockUI ||
+    (fieldImageEditorOpen || fieldLinkEditorOpen ? lastBlockUIRef.current : null);
 
   // The move target is computed by hydra.js from RENDER geometry (reusing the
   // container edge-handle machinery) and delivered on BLOCK_SELECTED. The chevron
@@ -352,13 +369,6 @@ const SyncedSlateToolbar = ({
   const [menuOpen, setMenuOpen] = useState(false);
   const [menuButtonRect, setMenuButtonRect] = useState(null);
 
-  // State for field link editor popup
-  const [fieldLinkEditorOpen, setFieldLinkEditorOpen] = useState(false);
-  const [fieldLinkEditorField, setFieldLinkEditorField] = useState(null);
-
-  // State for field image editor popup
-  const [fieldImageEditorOpen, setFieldImageEditorOpen] = useState(false);
-  const [fieldImageEditorField, setFieldImageEditorField] = useState(null);
 
   // Close the image editor when the selection moves to another block or to
   // none. Not when blockUI is merely absent: a scroll hides the block's UI

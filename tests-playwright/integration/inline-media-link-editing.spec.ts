@@ -667,13 +667,17 @@ test.describe('Image upload and drag-drop', () => {
     await helper.getQuantaToolbarFormatButton('image').click();
     const imageOverlay = page.locator('.empty-image-overlay');
     const urlInput = imageOverlay.locator('input[name="link"]');
-    await expect(urlInput).toBeVisible();
+    await urlInput.fill('https://placehold.co/999x999');
+    const topBefore = (await imageOverlay.boundingBox())!.y;
 
     await iframe.locator('body').evaluate(() => window.scrollBy(0, 40));
 
-    // Back once the scroll settles, still open, and still replaces the image.
-    await expect(urlInput).toBeVisible();
-    await urlInput.fill('https://placehold.co/999x999');
+    // Once the scroll settles the box follows the image, still open, with what
+    // was typed in it, and still replaces the image.
+    await expect
+      .poll(async () => (await imageOverlay.boundingBox())?.y)
+      .toBeLessThan(topBefore - 20);
+    await expect(urlInput).toHaveValue('https://placehold.co/999x999');
     await imageOverlay.locator('button[aria-label="Submit"]').click();
     await expect(heroImage).toHaveAttribute('src', /999x999/);
   });
@@ -699,13 +703,11 @@ test.describe('Image upload and drag-drop', () => {
     await urlInput.click();
     await expect(urlInput).toBeFocused();
 
-    await iframe
-      .locator('[data-block-uid="block-1-uuid"] [data-edit-text]')
-      .first()
-      .evaluate((el: HTMLElement) => {
-        window.focus();
-        el.focus();
-      });
+    const textField = await helper.getEditorLocator('block-1-uuid', 'value');
+    await textField.evaluate((el: HTMLElement) => {
+      window.focus();
+      el.focus();
+    });
     await expect(urlInput).not.toBeFocused();
 
     await urlInput.fill('https://placehold.co/999x999');
