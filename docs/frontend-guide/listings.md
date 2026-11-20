@@ -202,7 +202,7 @@ A path criterion's value (Absolute path or Relative path) says where to look, an
 
 </block>
 
-Plone's `::depth` goes after it as usual (`/news/*::1`, the folder's children only). A value with neither ending (`.`, `..`, `/news`, `.::1`) is sent as Volto sends it, so everything Volto writes keeps its meaning.
+Plone's `::depth` goes after it as usual (`/news/*::1`, the folder's children only). A value with neither ending (`.`, `..`, `/news`, `.::1`) means what it means to Plone, so everything Volto writes keeps its meaning.
 
 A breadcrumb step (`*` before a `/`, in a Relative path starting with `/`) counts from the top of the page's breadcrumb, so one stored location lists the same section for every page in it; `..` counts from the page instead. A page above the level resolves to itself. Anything but `*` steps there, and a `*` anywhere but last in an Absolute path, throws.
 
@@ -223,7 +223,7 @@ Plone can't say all of this in one search. Whether its folder is a result depend
 
 ### Asked from the site root
 
-Plone's `@querystring-search` leaves out the page it is asked from (every page but the site root), whatever the query. A location with a `/` or `/*` ending is asked from the site root, its relative parts resolved for the page first, so it lists exactly what it says: a page in its own section's navigation (`/*/`) is listed there. A location in Volto's own form (`.`, `..`, `/news`) is asked from the page as it always was, so it keeps leaving that page out: Volto's `.` (to Plone, the page and everything under it) relies on it.
+Plone's `@querystring-search` leaves out the page it is asked from (every page but the site root), whatever the query. `ploneFetchItems` asks every search from the site root, with its relative locations resolved for the page first, so a listing lists exactly what its criteria say. A page in its own section's navigation is listed there; a news item in a listing of `/news/*` is listed too.
 
 ## Example fetchers
 

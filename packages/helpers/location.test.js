@@ -13,9 +13,9 @@
  * `/news`, `.::1`) means what it means to Plone.
  *
  * Plone can't say all of that in one search -- its folder is a result except
- * at depth 1 -- so Inka sends the search(es) that give it, asked from the site
- * root with the location resolved for the page: asked from a page, Plone also
- * leaves that page out. A Volto location is sent as it always was.
+ * at depth 1 -- so Inka sends the search(es) that give it. Every search is
+ * asked from the site root, its relative locations resolved for the page
+ * first: asked from a page, Plone also leaves that page out.
  */
 import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest';
 
@@ -109,19 +109,11 @@ describe('ploneFetchItems sends the search(es) that give the location', () => {
   const sentPaths = () => calls.map((c) => c.body.query.find((q) => q.i === 'path'));
   const ids = (r) => r.items.map((i) => i['@id'].replace('http://api', ''));
 
-  test('a location that says whether its folder is in is asked from the site root, absolute', async () => {
-    await fetchFor(RELATIVE, '../');
+  test('every search is asked from the site root, its location absolute', async () => {
+    await fetchFor(RELATIVE, '..');
     expect(calls[0].url).toBe('http://api/++api++/@querystring-search');
     expect(sentPaths()).toEqual([{ i: 'path', o: ABSOLUTE, v: '/news/2024' }]);
     expect(calls[0].body.query[0]).toEqual(TYPE);
-  });
-
-  // Asked from a page, Plone leaves that page out; a Volto location (`.`, the
-  // page and everything under it to Plone) has always relied on it.
-  test("Volto's own location is sent as it was, asked from the page", async () => {
-    await fetchFor(RELATIVE, '.');
-    expect(calls[0].url).toBe(`http://api${PAGE}/++api++/@querystring-search`);
-    expect(sentPaths()).toEqual([{ i: 'path', o: RELATIVE, v: '.' }]);
   });
 
   test('the folder and everything under it: one search, no depth', async () => {
