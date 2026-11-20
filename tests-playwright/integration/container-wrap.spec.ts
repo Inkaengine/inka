@@ -27,8 +27,9 @@ test.describe('Container UX: Wrap', () => {
     await wrapButton.click();
 
     // BlockChooser opens filtered to compatible container types — section is
-    // compatible (accepts any); columns is not (only accepts `column`).
-    await expect(page.locator('.blocks-chooser button.columns')).toHaveCount(0);
+    // compatible (accepts any), and so is columns: it only takes `column`, but
+    // a column (its default child) takes slates, so the wrap adds one (#790).
+    await expect(page.locator('.blocks-chooser button.columns')).toHaveCount(1);
     await helper.selectBlockType('section');
 
     // slate-before and slate-after are now children of a new section block
@@ -55,6 +56,61 @@ test.describe('Container UX: Wrap', () => {
     await expect(
       iframe.locator(`[data-block-uid="${newParentUid}"] .section-body`),
     ).toBeVisible();
+  });
+
+  // A container whose region only takes its default child (columns → column) is
+  // offered for blocks that child takes: the wrap adds the child around them.
+  // Unwrapping that lone column unwraps the columns too, giving the page back.
+  test('Wrap two slates in columns: they sit in one new column; unwrapping the column gives them back', async ({ page }) => {
+    const helper = new AdminUIHelper(page);
+    await helper.login();
+    await helper.navigateToEdit('/section-test-page');
+
+    const iframe = helper.getIframe();
+    const parentOf = (uid: string) =>
+      iframe.locator(`[data-block-uid="${uid}"]`).evaluate(
+        (el) => el.parentElement?.closest('[data-block-uid]')?.getAttribute('data-block-uid') || null,
+      );
+
+    await helper.clickBlockInIframe('slate-before');
+    await helper.waitForIframeBlockHandle('slate-before');
+    await helper.escapeFromEditing();
+    const modifier = process.platform === 'darwin' ? 'Meta' : 'Control';
+    await iframe.locator('[data-block-uid="slate-after"]').click({ modifiers: [modifier] });
+    await helper.waitForMultiSelectOutlines(2);
+
+    const menuButton = page.locator('.quanta-toolbar .volto-hydra-menu-trigger');
+    await expect(menuButton).toBeVisible({ timeout: 3000 });
+    await menuButton.click();
+    await page.locator('[data-testid="wrap-selected"]').click();
+    await helper.selectBlockType('columns');
+
+    // Both slates are in the same new column, and that column is in a new columns block.
+    await expect(iframe.locator('[data-block-uid="slate-before"]')).toBeVisible({ timeout: 3000 });
+    const columnUid = await parentOf('slate-before');
+    expect(columnUid).toBeTruthy();
+    expect(await parentOf('slate-after')).toBe(columnUid);
+    const columnsUid = await parentOf(columnUid!);
+    expect(columnsUid).toBeTruthy();
+    expect(await parentOf(columnsUid!)).toBeNull();
+
+    // Select the column (up from a slate) and unwrap it: the page doesn't take
+    // a column's slates inside columns, and it's the only column, so the
+    // columns block goes too.
+    await helper.clickBlockInIframe('slate-before');
+    await helper.waitForIframeBlockHandle('slate-before');
+    await helper.escapeFromEditing();
+    await page.keyboard.press('Escape');
+    await helper.waitForIframeBlockHandle(columnUid!);
+    await menuButton.click();
+    const unwrapButton = page.locator('[data-testid="unwrap-container"]');
+    await expect(unwrapButton).toBeEnabled({ timeout: 3000 });
+    await unwrapButton.click();
+
+    await expect(iframe.locator(`[data-block-uid="${columnsUid}"]`)).toHaveCount(0, { timeout: 3000 });
+    await expect(iframe.locator(`[data-block-uid="${columnUid}"]`)).toHaveCount(0);
+    expect(await parentOf('slate-before')).toBeNull();
+    expect(await parentOf('slate-after')).toBeNull();
   });
 
   // End-to-end guard for the object_list-CHILD dimension: wrap page blocks INTO a slider (whose

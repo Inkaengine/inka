@@ -18,6 +18,7 @@ import {
   clearBlockType,
   getAtPath,
   ensureMutablePath,
+  canContainAll,
 } from './index.js';
 import {
   buildBlockPathMap as _buildBlockPathMap,
@@ -912,6 +913,147 @@ const withoutSlotMarks = (block) => {
 };
 
 /**
+ * The block a region adds when it is filled, when it names one and that block
+ * is itself a container: its `defaultBlockType`, else its only allowed type
+ * (the rule getEmptyBlockType applies). Wrap and unwrap go through it. Null
+ * when the editor would have to pick, for an object_list, and for a default
+ * child that holds no blocks (a column's slate): going "through" that would
+ * drop it and promote nothing.
+ */
+function defaultChildTypeOf(region, blocksConfig, intl) {
+  if (!region || region.isObjectList) return null;
+  const type = getEmptyBlockType(region);
+  if (type === 'empty') return null;
+  return getContainerRegionDescriptors(type, blocksConfig, intl).length > 0
+    ? type
+    : null;
+}
+
+/** A block's children, from all its regions, in reading order. */
+function childEntriesOf(block, blocksConfig, intl) {
+  return getContainerRegionDescriptors(
+    block['@type'],
+    blocksConfig,
+    intl,
+    block,
+  ).flatMap((d) => getChildBlockEntries(block, d));
+}
+
+/**
+ * How blocks of `selectedTypes` go into a new `containerType`: directly into
+ * its first region (`{ via: null }`), or into one new block of that region's
+ * default child (`{ via: childType }`) when the region doesn't take them but
+ * the child does. Null when neither does. One level only: a default child
+ * that itself needs one is not followed.
+ */
+export function wrapRoute(containerType, selectedTypes, blocksConfig, intl) {
+  const region = getContainerRegionDescriptors(
+    containerType,
+    blocksConfig,
+    intl,
+  )[0];
+  if (!region) return null;
+  if (canContainAll(region, selectedTypes, 0)) return { via: null };
+  const childType = defaultChildTypeOf(region, blocksConfig, intl);
+  if (!childType || !canContainAll(region, [childType], 0)) return null;
+  const childRegion = getContainerRegionDescriptors(
+    childType,
+    blocksConfig,
+    intl,
+  )[0];
+  if (!childRegion || !canContainAll(childRegion, selectedTypes, 0))
+    return null;
+  return { via: childType };
+}
+
+/**
+ * What unwrapping `blockId` does, or null when it can't be unwrapped:
+ *
+ * - `{ containerId: blockId, through: false }`: its parent takes its
+ *   children, which are promoted.
+ * - `{ containerId: blockId, through: true }`: its parent doesn't take its
+ *   children, but each is its region's default child and the parent takes
+ *   theirs: the grandchildren are promoted, and both levels removed.
+ * - `{ containerId: parentId, through: true }`: the block is its parent's only
+ *   child, a default child whose blocks the parent doesn't take. Unwrapping it
+ *   unwraps the parent (removing it alone would leave the parent empty), when
+ *   the level above takes the blocks.
+ *
+ * Not for a block with no children: it isn't a container to unwrap.
+ */
+export function unwrapRoute(
+  formData,
+  blockPathMap,
+  blockId,
+  blocksConfig,
+  intl,
+) {
+  const route = (id) => {
+    const block = getBlockById(formData, blockPathMap, id);
+    if (!block) {
+      throw new Error(`[HYDRA] unwrapRoute: cannot read block ${id}`);
+    }
+    const regions = getContainerRegionDescriptors(
+      block['@type'],
+      blocksConfig,
+      intl,
+      block,
+    );
+    const byRegion = regions.map((r) => [r, getChildBlockEntries(block, r)]);
+    const children = byRegion.flatMap(([, entries]) => entries);
+    if (children.length === 0) return null;
+    const cc = getContainerFieldConfig(
+      id,
+      blockPathMap,
+      formData,
+      blocksConfig,
+      intl,
+    );
+    if (!cc) return null;
+    const parentPath =
+      cc.parentId === PAGE_BLOCK_UID ? [] : blockPathMap[cc.parentId]?.path;
+    const parentBlock = getBlockByPath(formData, parentPath);
+    if (!parentBlock) {
+      throw new Error(`[HYDRA] unwrapRoute: cannot find parent ${cc.parentId}`);
+    }
+    // The container's own place is freed.
+    const count = getContainerItems(parentBlock, cc).length - 1;
+    const typesOf = (entries) => entries.map((e) => e.block?.['@type']);
+    if (canContainAll(cc, typesOf(children), count)) {
+      return { containerId: id, through: false };
+    }
+    const allDefault = byRegion.every(([r, entries]) => {
+      const childType = defaultChildTypeOf(r, blocksConfig, intl);
+      return (
+        childType && entries.every((e) => e.block?.['@type'] === childType)
+      );
+    });
+    if (!allDefault) return null;
+    const grandchildren = children.flatMap((e) =>
+      childEntriesOf(e.block, blocksConfig, intl),
+    );
+    return canContainAll(cc, typesOf(grandchildren), count)
+      ? { containerId: id, through: true }
+      : null;
+  };
+
+  const own = route(blockId);
+  if (own) return own;
+  const cc = getContainerFieldConfig(
+    blockId,
+    blockPathMap,
+    formData,
+    blocksConfig,
+    intl,
+  );
+  if (!cc || cc.parentId === PAGE_BLOCK_UID) return null;
+  const parent = getBlockById(formData, blockPathMap, cc.parentId);
+  if (childEntriesOf(parent, blocksConfig, intl).length !== 1) return null;
+  const parentRoute = route(cc.parentId);
+  return parentRoute?.through ? parentRoute : null;
+}
+
+/**
  * Wrap a set of selected blocks in a new container of `newContainerType`.
  *
  * All selected blocks must share the same parent container. The new container
@@ -920,7 +1062,9 @@ const withoutSlotMarks = (block) => {
  * from the original parent.
  *
  * Requires newContainerType's schema to declare a blocks_layout child field
- * (the standard container pattern).
+ * (the standard container pattern). When that field doesn't take the blocks but
+ * its default child does (wrapRoute), the blocks go into one new default child
+ * inside the container. Throws when neither takes them.
  *
  * @param {Object} formData
  * @param {Object} blockPathMap
@@ -1029,7 +1173,16 @@ export function wrapBlocksInContainer(
     sortedIds.map((id) => nestedBlocks[id]).find((b) => b?.templateInstanceId),
   );
   if (Object.keys(slotMarks).length > 0) {
-    for (const id of sortedIds) nestedBlocks[id] = withoutSlotMarks(nestedBlocks[id]);
+    for (const id of sortedIds)
+      nestedBlocks[id] = withoutSlotMarks(nestedBlocks[id]);
+  }
+
+  const selectedTypes = sortedIds.map((id) => nestedBlocks[id]?.['@type']);
+  const route = wrapRoute(newContainerType, selectedTypes, blocksConfig, intl);
+  if (!route) {
+    throw new Error(
+      `[HYDRA] wrapBlocksInContainer: ${newContainerType} can't hold ${selectedTypes.join(', ')}, directly or through its default child`,
+    );
   }
 
   // Build the new container block. Its children go into whatever storage the container's own
@@ -1037,10 +1190,20 @@ export function wrapBlocksInContainer(
   // resolved once as a descriptor and written through the funnel, so there is no branch here.
   const newContainerId = uuidGen();
   const newContainer = { '@type': newContainerType, ...slotMarks };
+  let entries = sortedIds.map((id) => ({ id, block: nestedBlocks[id] }));
+  if (route.via) {
+    const child = { '@type': route.via };
+    setChildBlockEntries(
+      child,
+      getContainerRegionDescriptors(route.via, blocksConfig, intl)[0],
+      entries,
+    );
+    entries = [{ id: uuidGen(), block: child }];
+  }
   setChildBlockEntries(
     newContainer,
     getContainerRegionDescriptors(newContainerType, blocksConfig, intl)[0],
-    sortedIds.map((id) => ({ id, block: nestedBlocks[id] })),
+    entries,
   );
 
   // Remove selectedIds from parent's blocks dict and splice in the new container
@@ -1078,7 +1241,10 @@ export function wrapBlocksInContainer(
  * container's position, then remove the container.
  *
  * Caller is responsible for confirming the parent's allowedBlocks accepts
- * each child type before calling (UI button should be disabled otherwise).
+ * each child type before calling (UI button should be disabled otherwise);
+ * unwrapRoute says which container to unwrap and how.
+ * With `through`, the container's children are removed too and THEIR children
+ * promoted, child by child: unwrapping through a default child.
  * Throws if the container isn't a blocks_layout-style parent or if the
  * parent can't be located.
  *
@@ -1087,6 +1253,8 @@ export function wrapBlocksInContainer(
  * @param {string} containerId      The container block to unwrap
  * @param {Object} blocksConfig
  * @param {Object} intl
+ * @param {Object} [options]
+ * @param {boolean} [options.through]  Promote the grandchildren (see unwrapRoute)
  * @returns {{formData: Object, promotedIds: string[]}}
  */
 export function unwrapContainer(
@@ -1095,6 +1263,7 @@ export function unwrapContainer(
   containerId,
   blocksConfig,
   intl,
+  options = {},
 ) {
   const containerInfo = blockPathMap?.[containerId];
   if (!containerInfo) {
@@ -1111,12 +1280,12 @@ export function unwrapContainer(
   // Read the container's children from ALL its regions through the funnel — blocks_layout AND
   // object_list, schema AND data — so a multi-region or mixed container promotes everything, not
   // just its default region. No branch on storage; each region carries its own.
-  const childEntries = getContainerRegionDescriptors(
-    containerBlock['@type'],
-    blocksConfig,
-    intl,
-    containerBlock,
-  ).flatMap((desc) => getChildBlockEntries(containerBlock, desc));
+  let childEntries = childEntriesOf(containerBlock, blocksConfig, intl);
+  if (options.through) {
+    childEntries = childEntries.flatMap((e) =>
+      childEntriesOf(e.block, blocksConfig, intl),
+    );
+  }
   const childIds = childEntries.map((e) => e.id);
   const childData = Object.fromEntries(
     childEntries.map((e) => [e.id, e.block]),
@@ -1483,6 +1652,7 @@ export function getContainerRegionDescriptors(
           isObjectList: false,
           itemTypeField: fieldDef.itemTypeField || null,
           allowedBlocks: fieldDef.allowedBlocks || null,
+          defaultBlockType: fieldDef.defaultBlockType || null,
         });
       }
     }

@@ -1,0 +1,1 @@
+Wrap and unwrap go through a container's default child: a container whose region only takes its default child (a columns block of columns) is offered by Wrap in… for blocks that child takes, and wrapping adds one around them. Unwrapping it lifts its children's blocks, child by child, and unwrapping its only default child unwraps it too. #790
