@@ -4067,6 +4067,18 @@ const Iframe = (props) => {
           // Don't call onSelectBlock(null) - keep the block selected in Redux
           break;
 
+        case 'AUTHOR_POINTERDOWN': {
+          // The author pressed in the frontend: a click outside whatever the
+          // admin has open (a link or image box, a toolbar menu), which this
+          // document never sees. Their click-outside handlers listen for
+          // mousedown, so give them one. On body, not document: Volto's
+          // handleClickOutside calls e.target.closest.
+          document.body.dispatchEvent(
+            new MouseEvent('mousedown', { bubbles: true, cancelable: true, view: window }),
+          );
+          break;
+        }
+
         case 'MOUSE_ACTIVITY':
           // Throttled mousemove from iframe — reset toolbar fade timer
           setMouseActivityCounter(c => c + 1);

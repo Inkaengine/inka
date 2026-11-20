@@ -11971,13 +11971,28 @@ export class Bridge {
    * with, once the page settles — and the admin, which can't see input inside
    * the frame, needs to tell the two apart: focus the bridge gave itself is not
    * the author choosing this pane (userInput on BLOCK_SELECTED).
+   *
+   * A pointerdown is also reported to the admin (AUTHOR_POINTERDOWN): it is a
+   * click outside whatever the admin has open, and the admin's own document
+   * never sees it. Focus the bridge moves into this page by itself is not one.
    */
   trackAuthorInput() {
     const noted = (e) => {
       if (e.isTrusted) this._lastAuthorInputAt = Date.now();
     };
     document.addEventListener('keydown', noted, true);
-    document.addEventListener('pointerdown', noted, true);
+    document.addEventListener(
+      'pointerdown',
+      (e) => {
+        noted(e);
+        if (e.isTrusted)
+          window.parent.postMessage(
+            { type: 'AUTHOR_POINTERDOWN' },
+            this.adminOrigin,
+          );
+      },
+      true,
+    );
   }
 
   /** Did the author press a key or point in this page just now? */

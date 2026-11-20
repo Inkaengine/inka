@@ -344,37 +344,6 @@ const SyncedSlateToolbar = ({
   }, [editor]);
 
 
-  // Detect clicks in iframe to close popups like LinkEditor
-  // Clicks in iframe don't bubble to parent document, so handleClickOutside never fires
-  // Solution: When Admin window loses focus to iframe, dispatch synthetic mousedown
-  useEffect(() => {
-    const handleWindowBlur = () => {
-      // Check if focus went to the iframe
-      const iframe = document.getElementById('previewIframe');
-      if (document.activeElement === iframe) {
-        // Dispatch a synthetic mousedown so Volto's Toolbar handleClickOutside runs
-        // and closes any open toolbar menu now that focus left for the iframe.
-        //
-        // Dispatch on document.body, NOT document. handleClickOutside does
-        // `e.target.closest('.ui.modal')`, and `document` has no `.closest` — dispatching
-        // on document made `e.target === document` and threw
-        // `TypeError: target.closest is not a function`, aborting handleClickOutside
-        // before closeMenu() ran, on EVERY focus-to-iframe transition (e.g. cancelling
-        // the LinkEditor). body is an Element with .closest and the event still bubbles
-        // to the document-level listener, so the menu actually closes.
-        const mousedownEvent = new MouseEvent('mousedown', {
-          bubbles: true,
-          cancelable: true,
-          view: window,
-        });
-        document.body.dispatchEvent(mousedownEvent);
-      }
-    };
-
-    window.addEventListener('blur', handleWindowBlur);
-    return () => window.removeEventListener('blur', handleWindowBlur);
-  }, []);
-
   // Track internal value to detect external changes (like Volto does)
   const internalValueRef = useRef(null);
 
@@ -391,13 +360,14 @@ const SyncedSlateToolbar = ({
   const [fieldImageEditorOpen, setFieldImageEditorOpen] = useState(false);
   const [fieldImageEditorField, setFieldImageEditorField] = useState(null);
 
-  // Close image editor when block is deselected or changes
+  // Close the image editor when the selection moves to another block or to
+  // none. Not when blockUI is merely absent: a scroll hides the block's UI
+  // (HIDE_BLOCK_UI) until it settles, and the editor the author opened has to
+  // be there when it comes back.
   useEffect(() => {
-    if (!selectedBlock || !blockUI) {
-      setFieldImageEditorOpen(false);
-      setFieldImageEditorField(null);
-    }
-  }, [selectedBlock, blockUI]);
+    setFieldImageEditorOpen(false);
+    setFieldImageEditorField(null);
+  }, [selectedBlock]);
 
   // Helper to replace editor content using proper Slate APIs
   // Direct assignment (editor.children = X) bypasses Slate-react's state tracking,
