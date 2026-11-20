@@ -641,7 +641,13 @@
   </div>
 
   <div v-else-if="block['@type'] == 'video'" :data-block-uid="block_uid" data-edit-link="url" class="my-4">
-    <div v-if="getYouTubeId(linkUrl(block.url))" class="relative w-full pb-[56.25%]">
+    <!-- The preview image shows before the video plays: the <video>'s poster,
+         or for YouTube a picture linked to the video. Empty means absent. -->
+    <a v-if="getYouTubeId(linkUrl(block.url)) && imageProps(block.preview_image).url"
+       :href="`https://www.youtube.com/watch?v=${getYouTubeId(linkUrl(block.url))}`">
+      <img data-edit-media="preview_image" :src="imageProps(block.preview_image).url" alt="Play video" class="w-full h-auto rounded-lg" />
+    </a>
+    <div v-else-if="getYouTubeId(linkUrl(block.url))" class="relative w-full pb-[56.25%]">
       <iframe class="absolute inset-0 w-full h-full rounded-lg"
           :src="`https://www.youtube.com/embed/${getYouTubeId(linkUrl(block.url))}`"
           frameborder="0" allowfullscreen></iframe>
@@ -652,6 +658,8 @@
            :autoplay="!!block.autoplay"
            :loop="!!block.loop"
            :muted="!!block.muted || !!block.autoplay"
+           :poster="imageProps(block.preview_image).url || undefined"
+           :data-edit-media="imageProps(block.preview_image).url ? 'preview_image' : undefined"
            playsinline>
       <source :src="getVideoSrc(linkUrl(block.url))" type="video/mp4">
     </video>

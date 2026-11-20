@@ -1279,6 +1279,16 @@ function renderMapsBlock(block) {
 function renderVideoBlock(block) {
     const url = getLinkAddress(block.url);
     const ytMatch = url.match(/(?:youtu\.be\/|youtube\.com\/(?:watch\?v=|embed\/))([^&?/]+)/);
+    // The preview image is what shows before the video plays: the <video>'s
+    // poster, or for YouTube a picture linked to the video. Empty means absent.
+    const preview = block.preview_image ? getImageUrl(block.preview_image) : '';
+    if (ytMatch && preview) {
+        return `<div class="video-block" data-edit-link="url">
+            <a href="https://www.youtube.com/watch?v=${ytMatch[1]}">
+                <img data-edit-media="preview_image" src="${preview}" alt="Play video" style="width:100%">
+            </a>
+        </div>`;
+    }
     if (ytMatch) {
         return `<div class="video-block" data-edit-link="url">
             <iframe src="https://www.youtube.com/embed/${ytMatch[1]}" allowfullscreen
@@ -1286,8 +1296,9 @@ function renderVideoBlock(block) {
         </div>`;
     }
     if (url) {
+        const poster = preview ? ` poster="${preview}" data-edit-media="preview_image"` : '';
         return `<div class="video-block" data-edit-link="url">
-            <video src="${url}" controls style="width:100%"></video>
+            <video src="${url}" controls style="width:100%"${poster}></video>
         </div>`;
     }
     return `<div class="video-block"><p>No video URL set</p></div>`;

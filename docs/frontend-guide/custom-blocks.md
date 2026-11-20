@@ -136,7 +136,7 @@ Per-block options (most are passed through to Volto's block config):
 - **\`restricted\`** — `true` hides the block from the chooser; can also be a function for conditional restrictions.
 - **\`mostUsed\`** — pin to the top of the chooser.
 - **\`disableCustomSidebarEditForm\`** — use only the schema form in the sidebar (no custom edit component). **Defaults to \`true\`.** Set `false` for a block whose fields the page form already edits (see [Title and description blocks](#title-and-description-blocks)), or one with an edit component of its own in the editor, for a sidebar a JSON schema cannot express.
-- **\`blockSchema\`** — JSON-schema-style definition of the block's fields. **Required**: the editor reads what a block holds from it (its form, the text a search finds), and a block without one stops the editor loading. A block with no fields of its own sends `{ properties: {} }`. See [Schema Enhancers](#schema-enhancers) below and the [Block reference](../examples/index.md).
+- **\`blockSchema\`** — JSON-schema-style definition of the block's fields. **Required**: the editor reads what a block holds from it (its form, the text a search finds), and a block without one stops the editor loading. A block with no fields of its own sends `{ properties: {} }`. See [Schema Enhancers](#schema-enhancers) below and the [Block reference](../examples/index.md). A field marked `optionalOnCanvas: true` is an optional part of the page: on the canvas when it has a value and gone when empty, and the editor's eye button reveals it to fill it in (see [Optional fields](./visual-editing.md#optional-fields-empty-means-absent)).
 - **\`fieldMappings\`** — block-to-block conversion rules. See [Block conversion and fieldMappings](#block-conversion-and-fieldmappings) below.
 - **\`schemaEnhancer\`** — recipe-based schema modifier; supports `fieldRules`, `inheritSchemaFrom`, etc. See [Schema Enhancers](#schema-enhancers).
 
@@ -349,7 +349,7 @@ A field is inline-editable only when BOTH halves are in place. They are easy to 
 <h3 data-edit-text="title">Sydney Opera House</h3>
 ```
 
-An *empty* field still has to render its element in edit mode — the editor reveals empty fields by marking them `data-empty` and drawing a "Click to edit" placeholder, and it can only mark an element that exists. A field that renders nothing when empty can never be filled in on the canvas. (In view mode, render nothing — the annotations are edit-mode only.)
+An *empty* optional field renders nothing: no data, no element, in edit mode as in view. To let the author fill it on the canvas, mark it `optionalOnCanvas: true` in the schema; the editor's eye button then hands your renderer a placeholder value, and your own guard draws the element. See [Optional fields: empty means absent](./visual-editing.md#optional-fields-empty-means-absent).
 
 Text with no box on screen is not inline-editable at all: a `.sr-only` element is clipped to 1×1, so there is nothing to put a cursor in. Leave it unannotated and let the sidebar edit it.
 

@@ -1645,16 +1645,28 @@ function Block({ block, id, data, apiUrl, contextPath, inListing = false }) {
       const rawVideoUrl = linkUrl(block.url);
       const videoUrl = rawVideoUrl.startsWith("/") ? `${apiUrl}${rawVideoUrl}` : rawVideoUrl;
       const ytId = getYouTubeId(videoUrl);
+      // The preview image shows before the video plays: the <video>'s poster,
+      // or for YouTube a picture linked to the video. Empty means absent.
+      const preview = block.preview_image ? imageProps(block.preview_image, apiUrl).url : null;
       return (
         <div data-block-uid={id} data-edit-link="url" className="video-block">
-          {ytId ? (
+          {ytId && preview ? (
+            <a href={`https://www.youtube.com/watch?v=${ytId}`}>
+              <img data-edit-media="preview_image" src={preview} alt="Play video" style={{ width: "100%" }} />
+            </a>
+          ) : ytId ? (
             <iframe
               src={`https://www.youtube.com/embed/${ytId}`}
               allowFullScreen
               style={{ width: "100%", aspectRatio: "16/9", border: "none" }}
             />
           ) : videoUrl ? (
-            <video src={videoUrl} controls style={{ width: "100%" }} />
+            <video
+              src={videoUrl}
+              controls
+              style={{ width: "100%" }}
+              {...(preview ? { poster: preview, "data-edit-media": "preview_image" } : {})}
+            />
           ) : (
             <p>No video URL set</p>
           )}

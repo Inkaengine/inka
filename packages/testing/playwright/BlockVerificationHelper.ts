@@ -355,6 +355,17 @@ export async function makeEditable(
       // No toggle, or already unlocked — report what is actually there.
     }
   }
+
+  // 4. EMPTY OPTIONAL FIELDS the frontend marked optionalOnCanvas: drawn only
+  //    once the editor presses reveal (inka#765), so press it, as they would.
+  const revealed = await block.evaluate((_el, blockUid) => {
+    const bridge = (window as any).__hydraBridge;
+    if (!bridge?.revealableFields?.(blockUid)?.length) return false;
+    if (bridge.revealedBlocks.has(blockUid)) return false;
+    bridge.toggleOptionalFields(blockUid);
+    return true;
+  }, uid);
+  if (revealed) acted = true;
   return acted;
 }
 
@@ -928,17 +939,25 @@ async function settleAnnotations(
       const { wanted, settle } = args as { wanted: Array<[string, string]>; settle: number };
       const bridge = (window as unknown as { __hydraBridge?: any }).__hydraBridge;
       const uid = el.getAttribute('data-block-uid');
-      // Nothing advertises these fields → nothing to reveal, and nothing that
-      // could arrive later either. Say so rather than spending the block's test
-      // budget waiting (a container multiplies that by every child).
-      const revealed = wanted
-        .map(([, field]) => bridge?.revealFieldPlace?.(uid, field) ?? false)
-        .some(Boolean);
+      // Nothing advertises these fields, and none was revealed with the eye →
+      // nothing could arrive later. Say so rather than spending the block's
+      // test budget waiting (a container multiplies that by every child).
+      const pressedEye =
+        !!bridge?.revealedBlocks?.has(uid) &&
+        wanted.some(([, field]) => bridge.revealableFields(uid).includes(field));
+      const revealed =
+        wanted
+          .map(([, field]) => bridge?.revealFieldPlace?.(uid, field) ?? false)
+          .some(Boolean) || pressedEye;
       if (!revealed) return false;
 
+      // The block as it is NOW: a container redraws its children, so the
+      // element this started with may have been replaced.
+      const current = () =>
+        el.ownerDocument.querySelector(`[data-block-uid="${uid}"]`) || el;
       const arrived = () =>
         wanted.every(([attr, field]) => {
-          if (el.querySelector(`[${attr}="${field}"]`)) return true;
+          if (current().querySelector(`[${attr}="${field}"]`)) return true;
           const onHandles = bridge?.fieldsOnHandlesFor?.(uid, { attr, fieldName: field }) ?? [];
           return onHandles.length > 0;
         });
@@ -1114,11 +1133,11 @@ export async function checkSlateAnnotations(
   let { found, present, revealable, advertised } = await look();
 
   // Everything the editor would do to make this block's fields editable — see
-  // makeEditable. Anything still missing afterwards is genuinely missing.
+  // makeEditable, which presses reveal for the fields marked optionalOnCanvas.
+  // Anything still missing afterwards is genuinely missing: an empty field
+  // counts only once it is drawn, not because it could be revealed.
   const missing = () =>
-    slateFields.some(
-      (f) => !present['data-edit-text'].has(f) && !revealable.has(f),
-    );
+    expected.some(([attr, f]) => !present[attr].has(f) && !advertised.has(f));
   if (missing() && (await makeEditable(block, blockData, iframe))) {
     ({ found, present, revealable, advertised } = await look());
   }
@@ -1131,8 +1150,7 @@ export async function checkSlateAnnotations(
     // From the one search — no second look, and so no chance of a different
     // answer than the coverage question just got.
     const foundField = found.find((f) => f.attr === 'data-edit-text' && f.field === field);
-    const hasContainer =
-      !!foundField || present['data-edit-text'].has(field) || revealable.has(field);
+    const hasContainer = !!foundField || present['data-edit-text'].has(field);
     const container = foundField
       ? foundField.element
       : blockHasAttr
@@ -1153,10 +1171,9 @@ export async function checkSlateAnnotations(
     // stand-in with no field in it at all. The annotation is real and the author
     // can reach it; it is simply not a descendant of this element.
     //
-    // The sibling recording path already accepted that (a field is editable if
-    // present OR revealable OR advertised). This one did not, so a slate field
-    // drawn elsewhere still read as uneditable everywhere — which is exactly
-    // what `cookieConsent.message` kept reporting after the first fix.
+    // The sibling recording path accepts that too (a field is editable if
+    // present OR advertised), so a slate field drawn elsewhere does not read as
+    // uneditable everywhere, as `cookieConsent.message` once did.
     if (!hasContainer && advertised.has(field)) {
       recordSlateFieldContainer(blockType, field, true, `[${coverageUid}] advertised`);
       continue;
@@ -1173,7 +1190,7 @@ export async function checkSlateAnnotations(
         blockType,
         field,
         false,
-        `[${coverageUid}] absent even after pressing reveal; own data-edit-text: ${context.self ?? '(none)'}; ` +
+        `[${coverageUid}] absent${revealable.has(field) ? ', marked optionalOnCanvas but not drawn when revealed' : ''}; own data-edit-text: ${context.self ?? '(none)'}; ` +
           `descendants: ${context.descendants.length ? context.descendants.join(', ') : '(none)'}; ` +
           `html: ${context.outer}`,
       );
@@ -1251,14 +1268,15 @@ export async function checkSlateAnnotations(
         a.kind,
         blockType,
         field,
-        // Three ways a field is genuinely reachable: its annotation is in the
-        // block; it is an empty optional field with nothing yet to annotate; or
-        // the block advertises a control that reaches it, because the element
-        // itself is drawn outside the block by design system JavaScript.
-        present[a.attr].has(field) ||
-          revealable.has(field) ||
-          advertised.has(field),
-        `[${coverageUid}] widget=${(prop as { widget?: string })?.widget}`,
+        // Two ways a field is genuinely reachable: its annotation is in the
+        // block (an empty one marked optionalOnCanvas once reveal is pressed),
+        // or the block advertises a control that reaches it, because the
+        // element itself is drawn outside the block by design system JavaScript.
+        present[a.attr].has(field) || advertised.has(field),
+        `[${coverageUid}] widget=${(prop as { widget?: string })?.widget}` +
+          (revealable.has(field) && !present[a.attr].has(field)
+            ? ', marked optionalOnCanvas but not drawn when revealed'
+            : ''),
       );
     }
   }

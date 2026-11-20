@@ -144,35 +144,43 @@ export const sharedBlocksConfig = {
                 },
             ],
             properties: {
+                // Every part of a hero is optional on the page: drawn when it
+                // has a value, and revealed with the eye to fill it in (#765).
                 heading: {
                     title: 'Heading',
                     type: 'string',
                     placeholder: 'Enter hero heading…',
+                    optionalOnCanvas: true,
                 },
                 subheading: {
                     title: 'Subheading',
                     type: 'string',
                     widget: 'textarea',
                     placeholder: 'Enter subheading…',
+                    optionalOnCanvas: true,
                 },
                 buttonText: {
                     title: 'Button Text',
                     type: 'string',
+                    optionalOnCanvas: true,
                 },
                 buttonLink: {
                     title: 'Button Link',
                     widget: 'object_browser',
                     mode: 'link',
                     allowExternals: true,
+                    optionalOnCanvas: true,
                 },
                 image: {
                     title: 'Image',
                     widget: 'image',
+                    optionalOnCanvas: true,
                 },
                 description: {
                     title: 'Description',
                     type: 'array',
                     widget: 'slate',
+                    optionalOnCanvas: true,
                 },
             },
             required: [],
@@ -470,7 +478,7 @@ export const sharedBlocksConfig = {
                 },
                 title: { title: 'Title', type: 'string' },
                 description: { title: 'Description', type: 'string', widget: 'textarea' },
-                preview_image: { title: 'Image Override', widget: 'object_browser', mode: 'image', allowExternals: true },
+                preview_image: { title: 'Image Override', widget: 'object_browser', mode: 'image', allowExternals: true, optionalOnCanvas: true },
                 buttonText: { title: 'Button Text', type: 'string' },
                 hideButton: { title: 'Hide Button', type: 'boolean' },
             },
@@ -755,7 +763,7 @@ export const sharedBlocksConfig = {
     },
     video: { id: 'video', title: 'Video', group: 'common', mostUsed: true, blockSchema: { properties: {
         url: { title: 'Video URL', widget: 'object_browser', mode: 'link', allowExternals: true },
-        preview_image: { title: 'Preview image URL', widget: 'object_browser', mode: 'image', allowExternals: true },
+        preview_image: { title: 'Preview image URL', widget: 'object_browser', mode: 'image', allowExternals: true, optionalOnCanvas: true },
         align: { title: 'Alignment', widget: 'align' },
         autoplay: { title: 'Autoplay', type: 'boolean' },
         controls: { title: 'Show controls', type: 'boolean' },
@@ -1210,7 +1218,7 @@ export const sharedBlocksConfig = {
                 title: { title: 'Title' },
                 head_title: { title: 'Kicker' },
                 description: { title: 'Description', widget: 'textarea' },
-                preview_image: { title: 'Image override', widget: 'object_browser', mode: 'image', allowExternals: true, selectedItemAttrs: ['image_field', 'image_scales'] },
+                preview_image: { title: 'Image override', optionalOnCanvas: true, widget: 'object_browser', mode: 'image', allowExternals: true, selectedItemAttrs: ['image_field', 'image_scales'] },
                 openLinkInNewTab: { title: 'Open in a new tab', type: 'boolean' },
                 styles: {
                     widget: 'object',
@@ -2193,8 +2201,8 @@ export const sharedBlocksConfig = {
                 title: { title: 'Title', type: 'string' },
                 description: { title: 'Description', widget: 'slate' },
                 image: { title: 'Background Image', widget: 'image' },
-                cta_title: { title: 'CTA Text', type: 'string' },
-                cta_link: { title: 'CTA Link', widget: 'object_browser', mode: 'link' },
+                cta_title: { title: 'CTA Text', type: 'string', optionalOnCanvas: true },
+                cta_link: { title: 'CTA Link', widget: 'object_browser', mode: 'link', optionalOnCanvas: true },
             },
             required: [],
         },

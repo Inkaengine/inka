@@ -1480,23 +1480,6 @@ const SyncedSlateToolbar = ({
   // Block action buttons (e.g., add row/column for tables) also need slots
   const blockActionToolbarItems = blockActions?.toolbar || [];
 
-  // Reveal empty optional fields on the selected block (#296). Hydra owns the
-  // revealed set — it's ephemeral edit state that must never reach the admin's
-  // formData, so the admin only sends the intent and reads the result back off
-  // BLOCK_SELECTED (blockUI.revealableFields / blockUI.revealed).
-  // NOT a hook: this sits below the component's early returns, so a useCallback
-  // here would change hook order between renders ("Rendered more hooks than
-  // during the previous render"). It needs no memoisation anyway.
-  const toggleOptionalFields = (blockUid) => {
-    const iframe = document.getElementById('previewIframe');
-    if (iframe?.contentWindow) {
-      iframe.contentWindow.postMessage(
-        { type: 'TOGGLE_OPTIONAL_FIELDS', blockUid },
-        '*',
-      );
-    }
-  };
-
   // Slate buttons come first in toolbar, so they get priority for slots
   // Calculate slots for Slate (format dropdown + inline buttons) first
   const slotsAfterFormatDropdown = Math.max(0, availableSlots - formatDropdownSlots);
@@ -1507,6 +1490,11 @@ const SyncedSlateToolbar = ({
   const slotsForBlockActions = Math.max(0, availableSlots - slotsUsedBySlate);
   const visibleBlockActions = blockActionToolbarItems.slice(0, slotsForBlockActions);
   const overflowBlockActions = blockActionToolbarItems.slice(slotsForBlockActions);
+  // Show/Hide empty fields (the eye) is the least important control: it gets a
+  // slot only if one is left, last on the right, and is always in the ⋯ menu.
+  const revealOnToolbar =
+    !!menuProps?.onToggleReveal &&
+    slotsForBlockActions - visibleBlockActions.length > 0;
 
   // Show format dropdown only if there's room for it plus at least 1 inline button
   const showFormatDropdown = hasFormatDropdown && availableSlots >= formatDropdownSlots + 1;
@@ -1675,22 +1663,6 @@ const SyncedSlateToolbar = ({
         return dragHandle;
       })()}
 
-      {/* Reveal empty optional fields (#296). Rendered only when the selected block
-          actually has some — a fully populated block shows no control. pointerEvents
-          must be re-enabled: the toolbar itself sets 'none' so drag events reach the
-          iframe's invisible drag button underneath. */}
-      {selectedBlock && selectedBlock !== PAGE_BLOCK_UID &&
-        !isBlockReadonly(getBlock(selectedBlock), templateEditMode) && (
-          <div style={{ pointerEvents: 'auto', display: 'flex', alignItems: 'center' }}>
-            <OptionalFieldsToggle
-              blockUid={selectedBlock}
-              revealableFields={blockUI?.revealableFields}
-              revealed={blockUI?.revealed}
-              onToggle={toggleOptionalFields}
-            />
-          </div>
-        )}
-
       {/* Real Slate buttons - only show if we have a valid slate field value */}
       {/* IMPORTANT: Wrap in div with pointerEvents: 'auto' to make buttons clickable
           while parent toolbar has pointerEvents: 'none' for drag-and-drop passthrough */}
@@ -1832,6 +1804,21 @@ const SyncedSlateToolbar = ({
           </div>
         );
       })()}
+
+      {/* Show/Hide empty fields (#296, #765): the eye, last of the block's own
+          controls. Rendered only when the block has an empty field marked
+          optionalOnCanvas. pointerEvents re-enabled: the toolbar sets 'none' so
+          drag events reach the iframe's invisible drag button underneath. */}
+      {revealOnToolbar && (
+        <div style={{ pointerEvents: 'auto', display: 'flex', alignItems: 'center' }}>
+          <OptionalFieldsToggle
+            blockUid={selectedBlock}
+            revealableFields={menuProps.revealableFields}
+            revealed={menuProps.revealed}
+            onToggle={menuProps.onToggleReveal}
+          />
+        </div>
+      )}
 
       {/* Step-up button — mobile equivalent of the Escape key.
        * The state machine (text → block → parent → deselect) lives in

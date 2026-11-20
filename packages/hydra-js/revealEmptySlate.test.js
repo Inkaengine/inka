@@ -19,7 +19,7 @@ const Z = Bridge.REVEAL_ZWS;
 const SCHEMA = {
   properties: {
     heading: { type: 'string' },
-    summary: { type: 'array', widget: 'slate' },
+    summary: { type: 'array', widget: 'slate', optionalOnCanvas: true },
   },
 };
 const EMPTY = [{ type: 'p', nodeId: 0, children: [{ text: '' }] }];
@@ -54,6 +54,19 @@ describe('reveal — a slate field holding its empty paragraph', () => {
     ]);
     // The projection is for the renderer only — state is untouched.
     expect(bridge.formData.blocks.b1.summary).toEqual(EMPTY);
+  });
+
+  test('revealed with no value at all, the renderer gets the default paragraph, with its node id', () => {
+    // An admin always sends a slate field's default empty paragraph, but the
+    // bridge doesn't depend on it: an absent field reveals as that paragraph
+    // would, with the node id the bridge gives it, so a click on the element
+    // the renderer draws syncs the caret.
+    const bridge = bridgeWith(undefined);
+    bridge.revealedBlocks.add('b1');
+    const projected = bridge._projectForRender(bridge.formData);
+    expect(projected.blocks.b1.summary).toEqual([
+      { type: 'p', nodeId: '0', children: [{ text: Z }] },
+    ]);
   });
 
   test('not revealed, the renderer gets the empty paragraph as it is', () => {

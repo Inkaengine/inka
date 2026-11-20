@@ -12542,26 +12542,19 @@ export class Bridge {
   }
 
   /**
-   * The block's schema fields that COULD be revealed: ones with an inline
-   * affordance that the frontend is currently rendering no element for.
+   * The block's empty fields the reveal button would show: those its frontend
+   * marked `optionalOnCanvas: true` (inka#765).
    *
-   * Purely observational — no schema annotation, no dependence on `required`
-   * (most block schemas here don't declare it).
+   * The mark is the frontend saying "I draw this field on the page when it has
+   * a value, and nothing when it is empty". Nothing else can tell: the widget
+   * only says a field COULD be edited inline, and alt text, a css class or a
+   * free-text style value are plain strings that live in the sidebar. Guessing
+   * offered a button on almost every block that often revealed nothing.
    *
-   * DELIBERATELY OVER-INCLUSIVE, don't "fix" this. The widget/type only says a
-   * field COULD be edited inline, not that this frontend renders it: alt text, a
-   * css class, a free-text style value are all plain strings that live in the
-   * sidebar. Telling them apart from an empty heading is impossible without data,
-   * since "renders nothing because it's empty" and "never renders inline" look
-   * identical — it would need a schema annotation or a frontend-side declaration,
-   * i.e. exactly the per-field bookkeeping #296 exists to remove.
-   *
-   * So reveal is BEST-EFFORT: it seeds every candidate, the ones the frontend
-   * renders appear, and the rest are a no-op. A sentinel for a field nobody
-   * renders is harmless — it lives only in the render projection, never in state
-   * and never in saved content — and the editor fills those from the sidebar as
-   * before. No warning is raised for them: a frontend that legitimately keeps a
-   * field sidebar-only is not misconfigured.
+   * Two marks contradict the field and are refused: a REQUIRED field is never
+   * toggled (an empty required image is always shown, emptyRequiredFields; a
+   * required text field is drawn by the frontend itself), and a field with no
+   * inline affordance (a select, a boolean) can't be revealed on the page.
    */
   revealableFields(blockUid) {
     const schema = this.getBlockSchema(blockUid);
@@ -12574,17 +12567,19 @@ export class Bridge {
 
     return Object.entries(properties)
       .filter(([fieldName, fieldDef]) => {
-        const fieldType = this.getFieldType(blockUid, fieldName);
-        // Has an inline affordance at all. Returns undefined for select /
-        // boolean / number, so sidebar-only fields drop out for free.
-        if (!this._revealSentinelFor(fieldDef, fieldType)) {
-          return false;
+        if (fieldDef?.optionalOnCanvas !== true) return false;
+        const where = `${block['@type']}.${fieldName}`;
+        if (schema.required?.includes(fieldName)) {
+          throw new Error(
+            `${where} is both required and optionalOnCanvas: a required field is always there, so it has nothing to reveal`,
+          );
         }
-        // A REQUIRED field is never toggled: an empty required image is always
-        // shown (emptyRequiredFields, seeded on every render), and a required
-        // text field is drawn by the frontend itself. Excluding them keeps the
-        // button's "N empty optional fields" count honest.
-        if (schema.required?.includes(fieldName)) return false;
+        const fieldType = this.getFieldType(blockUid, fieldName);
+        if (!this._revealSentinelFor(fieldDef, fieldType)) {
+          throw new Error(
+            `${where} is marked optionalOnCanvas, but its widget isn't one the page edits (text, rich text, image or link)`,
+          );
+        }
         // A slate field is never absent — it defaults to one empty paragraph —
         // so its empty is that paragraph, the same test a renderer hides it by.
         if (isSlateFieldType(fieldType)) return isEmptySlate(block[fieldName]);
@@ -12764,9 +12759,14 @@ export class Bridge {
         // bridge gave it. Reveal fills THAT paragraph rather than inventing one,
         // so the element the renderer draws carries a data-node-id and typing
         // into it maps back into the value.
+        // A field with no value at all (an admin always sends the default
+        // paragraph, but the bridge doesn't depend on it) reveals as that
+        // default would: one paragraph, with the node id the bridge gives it.
         const stored = source[fieldName];
         if (isSlateFieldType(fieldType) && Array.isArray(stored) && stored.length === 1) {
           sentinel = [{ ...stored[0], children: [{ text: Bridge.REVEAL_ZWS }] }];
+        } else if (isSlateFieldType(fieldType)) {
+          sentinel = this.addNodeIds(sentinel);
         }
         if (!projected) projected = JSON.parse(JSON.stringify(formData));
         let target = projected;
