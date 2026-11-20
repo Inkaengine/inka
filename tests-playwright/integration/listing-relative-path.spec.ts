@@ -115,7 +115,9 @@ test('a folder picked lists its children only until children only is unticked, t
   ).toBeVisible();
   await expect(folderLinks).toHaveCount(0);
 
-  await childrenOnly(criteria).click({ force: true });
+  // Semantic UI hides the input itself; a click lands on the checkbox, as
+  // the exclude-from-nav test clicks it.
+  await criteria.locator('.location-children-only .ui.checkbox').click();
   await expect(childrenOnly(criteria)).not.toBeChecked();
   await expect(depthInput(criteria)).toHaveValue('1');
   await expect(linkTo('/context-navigation-forced-folder')).toBeVisible();
