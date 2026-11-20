@@ -401,10 +401,18 @@
 
   <!-- Video -->
   <div v-else-if="block['@type'] == 'video'" :data-block-uid="block_uid" data-edit-link="url" class="video-block">
-    <iframe v-if="getYouTubeId(linkUrl(block.url))"
+    <!-- The preview image shows before the video plays: the <video>'s poster,
+         or for YouTube a picture linked to the video. Empty means absent. -->
+    <a v-if="getYouTubeId(linkUrl(block.url)) && getImageUrl(block.preview_image)"
+       :href="`https://www.youtube.com/watch?v=${getYouTubeId(linkUrl(block.url))}`">
+      <img data-edit-media="preview_image" :src="getImageUrl(block.preview_image)" alt="Play video" style="width:100%" />
+    </a>
+    <iframe v-else-if="getYouTubeId(linkUrl(block.url))"
             :src="`https://www.youtube.com/embed/${getYouTubeId(linkUrl(block.url))}`"
             allowfullscreen style="width:100%; aspect-ratio:16/9; border:none" />
-    <video v-else-if="linkUrl(block.url)" :src="linkUrl(block.url)" controls style="width:100%" />
+    <video v-else-if="linkUrl(block.url)" :src="linkUrl(block.url)" controls style="width:100%"
+           :poster="getImageUrl(block.preview_image) || undefined"
+           :data-edit-media="getImageUrl(block.preview_image) ? 'preview_image' : undefined" />
     <p v-else>No video URL set</p>
   </div>
 

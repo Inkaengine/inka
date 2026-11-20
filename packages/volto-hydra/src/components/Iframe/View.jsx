@@ -6107,6 +6107,17 @@ const Iframe = (props) => {
     postTemplateEditMode(nextEdit);
   };
 
+  // Show or hide a block's empty optional fields on the canvas (#296, #765).
+  // Hydra owns which blocks are revealed — it's edit state that must never reach
+  // formData — so the admin sends the intent and reads the result back off
+  // BLOCK_SELECTED (blockUI.revealableFields / blockUI.revealed).
+  const toggleOptionalFields = (blockId) => {
+    document.getElementById('previewIframe')?.contentWindow?.postMessage(
+      { type: 'TOGGLE_OPTIONAL_FIELDS', blockUid: blockId },
+      iframeOriginRef.current,
+    );
+  };
+
   // Take the author to a template: select it, so the sidebar shows its section
   // (what it is, what unlocking it does, and the Unlock button).
   const openTemplate = (instanceId) => {
@@ -6177,6 +6188,16 @@ const Iframe = (props) => {
       multiSelectedUids: selection.length > 1 ? selection : null,
       hasClipboard: !!(blocksClipboard?.cut || blocksClipboard?.copy),
       pasteAllowed: pasteAllowedAfter(blockId),
+      // Show/Hide empty fields: what the page reports for the block it has
+      // selected, so only there. Never on a block that can't be edited.
+      ...(blockId === selectedBlock && blockId !== PAGE_BLOCK_UID
+        && !isBlockReadonly(block, iframeSyncState.templateEditMode)
+        ? {
+            revealableFields: blockUI?.revealableFields || [],
+            revealed: !!blockUI?.revealed,
+            onToggleReveal: () => toggleOptionalFields(blockId),
+          }
+        : {}),
     };
   };
 

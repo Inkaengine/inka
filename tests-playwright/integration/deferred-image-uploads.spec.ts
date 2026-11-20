@@ -45,7 +45,8 @@ async function dropImage(helper: AdminUIHelper, page: Page, name: string) {
   await block.scrollIntoViewIfNeeded();
   await block.click();
   await page.locator('button[title="Clear image"]').click();
-  await helper.revealOptionalFields();
+  // An image block's picture is required, so its empty target is shown at
+  // once, with no eye to press.
   const overlay = page.locator('.empty-image-overlay');
   await expect(overlay).toBeVisible();
   await overlay.locator('input[type="file"][accept="image/*"]').first().setInputFiles({ name, mimeType: 'image/png', buffer: PNG });
