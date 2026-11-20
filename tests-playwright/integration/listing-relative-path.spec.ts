@@ -101,22 +101,25 @@ test('a folder picked lists its children only until children only is unticked, t
   await expect(depthInput(criteria)).toHaveValue('1');
   await expect(childrenOnly(criteria)).toBeChecked();
 
+  // A teaser links to its page twice (title and button): one link per page.
   const listing = page
     .frameLocator('#previewIframe')
     .locator('[data-block-uid="folder-listing"]');
-  const folderLink = listing.locator(
+  const linkTo = (path: string) =>
+    listing.locator(`a[href$="${path}"]`).first();
+  const folderLinks = listing.locator(
     'a[href$="/context-navigation-forced-folder"]',
   );
   await expect(
-    listing.locator('a[href$="/context-navigation-forced-folder/page-a"]'),
+    linkTo('/context-navigation-forced-folder/page-a'),
   ).toBeVisible();
-  await expect(folderLink).toHaveCount(0);
+  await expect(folderLinks).toHaveCount(0);
 
   await childrenOnly(criteria).click({ force: true });
   await expect(childrenOnly(criteria)).not.toBeChecked();
   await expect(depthInput(criteria)).toHaveValue('1');
-  await expect(folderLink).toBeVisible();
+  await expect(linkTo('/context-navigation-forced-folder')).toBeVisible();
   await expect(
-    listing.locator('a[href$="/context-navigation-forced-folder/page-a"]'),
+    linkTo('/context-navigation-forced-folder/page-a'),
   ).toBeVisible();
 });
