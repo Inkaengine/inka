@@ -5604,6 +5604,8 @@ app.post('{/*path}/@querystring-search', (req, res) => {
     // (capital S) is only added later by formatSearchItem. Read both so
     // this works whether the filter runs on raw or brain-formatted items.
     Subject: (item) => item.subjects || item.Subject || [],
+    // A UUIDIndex: `selection.none` on it is how a query leaves out one item.
+    UID: (item) => [item.UID],
   };
 
   /** Criteria no branch below could apply: a 400 after the loop, never a silent pass. */
@@ -5646,19 +5648,18 @@ app.post('{/*path}/@querystring-search', (req, res) => {
       // Filter by path. The trailing '/' ensures `/foo` matches `/foo/bar` and
       // not `/foobar`.
       //
-      // basePath ITSELF is a result, as it is in Plone: a live
-      // @querystring-search for `/blog` answers with /blog among its 62 items.
-      // With a depth (`/blog::1`) it is not -- that answers 34, the folder
-      // gone and nothing below the children -- so the folder is kept only
-      // where no depth was asked for. (Asked from a page, that page itself is never a
-      // result: see where allItems is built.)
+      // Whether basePath ITSELF is a result depends on the depth, as measured
+      // on a live Plone: `::1` answers its children without it; no depth,
+      // `::0` (it alone) and any other depth (`::2`, `::20`) answer it too.
+      // (Asked from a page, that page itself is never a result: see where
+      // allItems is built.)
       const basePath = value || '/';
       if (basePath !== '/') {
         const prefix = basePath.endsWith('/') ? basePath : basePath + '/';
-        const wholeTree = splitPathDepth(condition.v).depth === null;
+        const withFolder = splitPathDepth(condition.v).depth !== 1;
         allItems = allItems.filter((item) => {
           const itemPath = new URL(item['@id']).pathname;
-          return itemPath.startsWith(prefix) || (wholeTree && itemPath === basePath);
+          return itemPath.startsWith(prefix) || (withFolder && itemPath === basePath);
         });
       }
     } else if (index === 'path' && operation.includes('relativePath')) {
@@ -5670,11 +5671,14 @@ app.post('{/*path}/@querystring-search', (req, res) => {
       if (relValue === '.' || relValue === '') {
         relValue = '';
       }
+      // Plone resolves it to an absolute path and searches that, so the
+      // folder is a result as for absolutePath (above): except at depth 1.
       const fullPath = relValue ? resolveRelativePath(contextPath, relValue) : contextPath;
       if (fullPath !== '/') {
+        const withFolder = splitPathDepth(condition.v).depth !== 1;
         allItems = allItems.filter((item) => {
           const itemPath = new URL(item['@id']).pathname;
-          return itemPath.startsWith(fullPath + '/');
+          return itemPath.startsWith(fullPath + '/') || (withFolder && itemPath === fullPath);
         });
       }
     } else if (

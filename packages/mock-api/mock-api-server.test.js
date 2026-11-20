@@ -211,6 +211,44 @@ describe('@querystring-search', () => {
     assert.equal(fromPage.items_total, fromRoot.items_total - 1);
   });
 
+  // Measured on a live Plone (plone.restapi @querystring-search, 2026-11-20):
+  // whether the folder a path search starts at is a result depends on the
+  // depth -- `::0` the folder alone, `::1` its children WITHOUT it, any other
+  // depth (`::2`, `::20`) or none WITH it. Relative paths are the same search.
+  it('the folder of a path search is a result except at depth 1', async () => {
+    const ABS = 'plone.app.querystring.operation.string.absolutePath';
+    const REL = 'plone.app.querystring.operation.string.relativePath';
+    const paths = async (contextPath, o, v) => {
+      const data = await querystringSearch(contextPath, { query: [{ i: 'path', o, v }], b_start: 0, b_size: 500 });
+      return data.items.map((i) => new URL(i['@id']).pathname);
+    };
+    const folder = '/_test_data';
+    for (const [v, top] of [['', true], ['::0', true], ['::1', false], ['::2', true], ['::20', true]]) {
+      assert.equal((await paths('/', ABS, `${folder}${v}`)).includes(folder), top, `absolutePath ${folder}${v}`);
+    }
+    assert.deepStrictEqual(await paths('/', ABS, `${folder}::0`), [folder]);
+    // Relative to a page under it, `..` is the same search of the folder.
+    const child = (await paths('/', ABS, `${folder}::1`))[0];
+    assert.equal((await paths(child, REL, '..::2')).includes(folder), true, '..::2');
+    assert.equal((await paths(child, REL, '..::1')).includes(folder), false, '..::1');
+  });
+
+  // "UID is none of" is an ordinary criterion on a real Plone: it drops just
+  // those items, and the total counts without them.
+  it('UID selection.none leaves out those items', async () => {
+    const query = [{ i: 'path', o: 'plone.app.querystring.operation.string.absolutePath', v: '/_test_data' }];
+    const all = await querystringSearch('/', { query, metadata_fields: ['UID'], b_start: 0, b_size: 500 });
+    const top = all.items.find((i) => new URL(i['@id']).pathname === '/_test_data');
+    assert.ok(top?.UID, 'the folder is a result, with its UID');
+    const without = await querystringSearch('/', {
+      query: [...query, { i: 'UID', o: 'plone.app.querystring.operation.selection.none', v: [top.UID] }],
+      b_start: 0,
+      b_size: 500,
+    });
+    assert.equal(without.items_total, all.items_total - 1);
+    assert.ok(!without.items.some((i) => new URL(i['@id']).pathname === '/_test_data'));
+  });
+
   it('string.path filters exactly as absolutePath does', async () => {
     const forOperation = async (o) => {
       const data = await querystringSearch('/', {
