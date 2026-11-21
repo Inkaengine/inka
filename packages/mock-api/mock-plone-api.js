@@ -5583,8 +5583,13 @@ app.post('{/*path}/@querystring-search', (req, res) => {
   // loadContentFromDisk enriches every item (resolveuid, image scales, components)
   // which is extremely slow with 70+ items. Search results only need basic fields.
   // The site root is a result too: Plone 6 catalogs it (a search of `/::0`
-  // answers it alone).
-  let allItems = Object.keys(contentDirMap)
+  // answers it alone). So is a mount's root with no data.json of its own: it
+  // answers as a folder (mountRootFolder), and a search of its path finds it
+  // as Plone finds any folder at its own path.
+  const mountRoots = CONTENT_MOUNTS.map(({ mountPath }) => mountPath).filter(
+    (mountPath) => mountPath !== '/' && !contentDirMap[mountPath],
+  );
+  let allItems = [...Object.keys(contentDirMap), ...mountRoots]
     .map((itemPath) => {
       const raw = loadRawContentFromDisk(itemPath);
       if (!raw) return null;

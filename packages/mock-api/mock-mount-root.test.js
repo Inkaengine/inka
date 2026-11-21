@@ -66,3 +66,33 @@ describe('a mount root with no data.json of its own', () => {
     }
   });
 });
+
+// A search of the mount's folder finds it, as Plone's catalog finds any
+// folder at its own path: a listing of `/_test_data` includes it, `::0` is it
+// alone, and `::1` (its children) leaves it out.
+describe('a mount root in a search', () => {
+  const search = async (v) => {
+    const res = await fetch(`${baseUrl}/@querystring-search`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+      body: JSON.stringify({
+        query: [{ i: 'path', o: 'plone.app.querystring.operation.string.absolutePath', v }],
+        b_size: 100,
+      }),
+    });
+    assert.equal(res.status, 200);
+    return (await res.json()).items.map((item) => new URL(item['@id']).pathname);
+  };
+
+  it('is a result of a search of its own path', async () => {
+    assert.deepEqual((await search('/_test_data')).sort(), ['/_test_data', '/_test_data/page']);
+  });
+
+  it('is the one result at depth 0', async () => {
+    assert.deepEqual(await search('/_test_data::0'), ['/_test_data']);
+  });
+
+  it('is not one of its children', async () => {
+    assert.deepEqual(await search('/_test_data::1'), ['/_test_data/page']);
+  });
+});
