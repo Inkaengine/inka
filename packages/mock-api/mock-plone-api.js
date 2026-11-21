@@ -1167,6 +1167,10 @@ function loadRawContentFromDisk(urlPath) {
       }
     }
     for (const { mountPath, dirPath } of CONTENT_MOUNTS) {
+      // A `/` mount's site root is its plone_site_root (scanContentDir), never
+      // a data.json at the top of its directory: that is the page at the
+      // prefix when the same directory is mounted under one.
+      if (mountPath === '/' && urlPath === '/') continue;
       const relativePath = mountPath === '/' ? urlPath : urlPath.replace(mountPath, '');
       const dataPath = path.join(dirPath, relativePath.replace(/^\//, ''), 'data.json');
       if (fs.existsSync(dataPath)) {
