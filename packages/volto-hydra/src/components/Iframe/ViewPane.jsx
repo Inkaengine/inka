@@ -34,9 +34,12 @@ const ViewPane = ({
   // every block of the content it is given is read-only, which is what stops
   // the bridge collecting a single editable field. See withAllBlocksReadOnly.
   selectable = false,
-  // onSelectBlock(uid, { userInput }): userInput says the author's own key or
-  // pointer chose it, not the bridge settling or echoing a selection.
+  // onSelectBlock(uid): the block selected in the pane — by the author, by
+  // the bridge settling or re-announcing, or answering showBlock.
   onSelectBlock,
+  // onAuthorInput(): the author pressed or typed in the pane (Tab into it
+  // included), as the bridge reports it.
+  onAuthorInput,
   // Show this block: the counterpart of whatever is selected next door. The
   // bridge scrolls it into view as part of selecting it, which is what makes
   // the two panes follow each other.
@@ -48,6 +51,8 @@ const ViewPane = ({
   // again.
   const onSelectBlockRef = useRef(onSelectBlock);
   onSelectBlockRef.current = onSelectBlock;
+  const onAuthorInputRef = useRef(onAuthorInput);
+  onAuthorInputRef.current = onAuthorInput;
   const intl = useIntl();
   const [frameLoaded, setFrameLoaded] = useState(false);
   const [mounted, setMounted] = useState(false);
@@ -89,7 +94,11 @@ const ViewPane = ({
       if (event.source !== ref.current?.contentWindow) return;
       if (event.data?.type === 'BLOCK_SELECTED') {
         // `blockUid`, which is what the bridge calls it.
-        onSelectBlockRef.current?.(event.data.blockUid, { userInput: event.data.userInput });
+        onSelectBlockRef.current?.(event.data.blockUid);
+        return;
+      }
+      if (event.data?.type === 'AUTHOR_POINTERDOWN' || event.data?.type === 'AUTHOR_KEY') {
+        onAuthorInputRef.current?.();
         return;
       }
       if (event.data?.type !== 'INIT') return;

@@ -3838,38 +3838,10 @@ const Iframe = (props) => {
             log('BLOCK_SELECTED ignored: not in edit mode', event.data.blockUid, 'src:', event.data.src);
             break;
           }
-          // Back to the page being edited when the editor is WORKING IN it —
-          // and only then. This page also RE-ANNOUNCES its existing selection
-          // on a re-render, on scroll and on resize, and those must not snatch
-          // the sidebar back from the compared language.
-          //
-          // This used to ask whether the compare pane held focus. It never
-          // can: that pane's iframe takes no pointer events (the click lands
-          // on the wrapper, which is how the pane gets selected), so nothing
-          // inside it is ever `document.activeElement` and the guard was
-          // always true. Any re-announcement from this pane then took the
-          // sidebar back, a beat after the editor clicked the other one —
-          // which is why it only failed sometimes.
-          //
-          // Evidence of working in this pane instead: it has focus, or it is
-          // announcing a DIFFERENT block from the one already selected.
-          //
-          // Focus counts only when the author's own key or pointer moved it
-          // (userInput). The bridge focuses a field itself when it settles on
-          // the block the editor opened with, and on a slow load that comes
-          // after a click in the other language's pane: the iframe has focus
-          // then, but nobody is working in it.
-          const editPaneHasFocus =
-            typeof document !== 'undefined' &&
-            document.activeElement?.id === 'previewIframe' &&
-            event.data.userInput;
-          const isRepeatOfCurrentSelection =
-            event.data.blockUid === selectedBlock ||
-            event.data.src === 'scrollHandler' ||
-            event.data.src === 'resizeHandler';
-          if (editPaneHasFocus || !isRepeatOfCurrentSelection) {
-            setSelectedPane('edit');
-          }
+          // A selection never moves control between the panes: the author's
+          // own press or key does (AUTHOR_POINTERDOWN, AUTHOR_KEY). This page
+          // also re-announces its selection on a re-render, a scroll or a
+          // resize, and selects a block by itself as it settles.
           // Update block UI state and selection atomically
           // Selection is included in BLOCK_SELECTED to prevent race conditions
 
@@ -4076,8 +4048,16 @@ const Iframe = (props) => {
           document.body.dispatchEvent(
             new MouseEvent('mousedown', { bubbles: true, cancelable: true, view: window }),
           );
+          // Working in the page being edited gives it control.
+          setSelectedPane('edit');
           break;
         }
+
+        case 'AUTHOR_KEY':
+          // A key in the page being edited — typed there, or Tab into it from
+          // the other language — gives it control.
+          setSelectedPane('edit');
+          break;
 
         case 'MOUSE_ACTIVITY':
           // Throttled mousemove from iframe — reset toolbar fade timer
@@ -6634,8 +6614,9 @@ const Iframe = (props) => {
               it. Read-only — no bridge, no editing chrome — beside the draft,
               which is the pane the editor works in. */}
           {comparePreviewUrl && (
-            // The pane is inert (its iframe takes no pointer events), so a
-            // click lands here — which is how it gets selected.
+            // The other language's pane has control while the author works in
+            // it: a press or key inside its page (onAuthorInput), or on this
+            // wrapper, which Tab also stops on.
             <div
               className={
                 selectedPane === 'compare'
@@ -6647,7 +6628,7 @@ const Iframe = (props) => {
               // selected block was added after the copy.
               data-showing-block={counterpartOfSelected || ''}
               onClick={() => setSelectedPane('compare')}
-              onKeyDown={(e) => e.key === 'Enter' && setSelectedPane('compare')}
+              onKeyUp={() => setSelectedPane('compare')}
               role="button"
               tabIndex={0}
               aria-pressed={selectedPane === 'compare'}
@@ -6667,20 +6648,14 @@ const Iframe = (props) => {
                 // the copy has no counterpart, and nothing lights up: that is
                 // itself worth seeing, because the block is new.
                 showBlock={counterpartOfSelected}
-                onSelectBlock={(uid, { userInput }) => {
-                  // Only when the author chose it in that pane. The pane also
-                  // echoes back the selection we drive into it from the page
-                  // being edited, and that must not take the sidebar.
-                  //
-                  // Judged by the pane's own record of the author's key or
-                  // pointer (userInput), not by where focus is: the page being
-                  // edited, settling on a slow load, focuses a field on its
-                  // own, and when that landed between a click here and its
-                  // message, the click was lost.
-                  if (!userInput) return;
-                  setSelectedPane('compare');
+                // Which of its blocks to show the fields of. A selection
+                // there never takes control: the pane also answers the
+                // admin, which selects the counterpart of the block selected
+                // next door, and re-announces on a resize or a re-render.
+                onSelectBlock={(uid) => {
                   setCompareSelectedBlock(uid);
                 }}
+                onAuthorInput={() => setSelectedPane('compare')}
               />
             </div>
           )}

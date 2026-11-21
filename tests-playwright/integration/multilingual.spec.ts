@@ -395,6 +395,89 @@ test.describe('Multilingual editing', () => {
     await expect(fields).toHaveCount(0);
   });
 
+  // Which pane has control — whose fields the sidebar shows — is the pane the
+  // author last pressed or typed in. Both panes report selections the author
+  // didn't make: a re-announcement on a resize, scroll or re-render, and the
+  // other language answering the admin, which selects there the block that
+  // matches the one selected in the page being edited. None of them is the
+  // author, and none may move control.
+  test.describe('which pane has control', () => {
+    const german = (page: Page) => page.frameLocator('#translationSourceIframe');
+    const fields = (page: Page) => page.locator('.compare-language-fields');
+
+    async function sideBySide(page: Page) {
+      const helper = new AdminUIHelper(page);
+      await helper.login();
+      await helper.enableMultilingual();
+      await page.goto(`${helper.adminUrl}/en/about/edit`);
+      await helper.waitForIframeReady();
+      await page.locator('.compare-languages').getByRole('button', { name: 'de' }).click();
+      // The other language's page is there, as the author sees it before
+      // working in it.
+      await expect(german(page).locator('body')).toContainText('Über uns', { timeout: 20000 });
+      await expect(fields(page), 'the page being edited starts with control').toHaveCount(0);
+      return helper;
+    }
+
+    /** Which element of the admin page has focus: a pane's frame, or other. */
+    const focused = (page: Page) =>
+      page.evaluate(() => document.activeElement?.id || document.activeElement?.className || '');
+
+    /** Press `key` until focus is in the frame `id`, as an author tabbing would. */
+    async function tabInto(page: Page, key: string, id: string) {
+      for (let i = 0; i < 12 && (await focused(page)) !== id; i++) {
+        await page.keyboard.press(key);
+      }
+      expect(await focused(page), `${key} reaches #${id}`).toBe(id);
+    }
+
+    /** The admin's next frame: any message a pane sent before it is handled. */
+    const nextFrame = (page: Page) =>
+      page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
+
+    test('the other language re-announcing its selection does not take control back', async ({ page }) => {
+      const helper = await sideBySide(page);
+      await clickInOtherLanguageUntilSidebarFollows(page, 'Über uns');
+      await helper.getIframe().locator('[data-block-uid]').first().click();
+      await expect(fields(page), 'a click in the page being edited takes control').toHaveCount(0);
+
+      // As on a resize, while the click in that pane is still recent.
+      await german(page).locator('body').evaluate(() => window.dispatchEvent(new Event('resize')));
+      await nextFrame(page);
+      await expect(fields(page), 'control stays with the page being edited').toHaveCount(0);
+    });
+
+    test('the page being edited re-announcing its selection does not take control back', async ({ page }) => {
+      const helper = await sideBySide(page);
+      await clickInOtherLanguageUntilSidebarFollows(page, 'Über uns');
+
+      await helper.getIframe().locator('body').evaluate(() => window.dispatchEvent(new Event('resize')));
+      await nextFrame(page);
+      await expect(fields(page), 'control stays with the other language').toContainText(/\(de\)/);
+    });
+
+    test('clicking the block already selected in the page being edited takes control back', async ({ page }) => {
+      const helper = await sideBySide(page);
+      const selected = helper.getIframe().locator('[data-block-uid="title-1"]');
+      await clickInOtherLanguageUntilSidebarFollows(page, 'Über uns');
+
+      await selected.click();
+      await expect(fields(page), 'the page being edited has control again').toHaveCount(0);
+    });
+
+    test('tabbing from one pane into the other moves control with it', async ({ page }) => {
+      const helper = await sideBySide(page);
+      await helper.getIframe().locator('[data-block-uid="title-1"]').click();
+
+      // The other language's pane comes before the page being edited.
+      await tabInto(page, 'Shift+Tab', 'translationSourceIframe');
+      await expect(fields(page), 'the other language has control').toBeVisible();
+
+      await tabInto(page, 'Tab', 'previewIframe');
+      await expect(fields(page), 'the page being edited has control again').toHaveCount(0);
+    });
+  });
+
   // The page being edited, loading slowly, settles AFTER a click in the
   // other language: its bridge focuses a field on its own, so by the time the
   // click's BLOCK_SELECTED is handled the editing frame has focus. The click

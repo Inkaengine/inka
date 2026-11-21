@@ -67,6 +67,7 @@ While editing a page that has a translation, the editor offers a button for each
 The other language is for reading only:
 
 - Selecting it shows its fields in the sidebar, read only.
+- The sidebar belongs to whichever page you last clicked or typed in, including when you move between them with Tab. Scrolling, or the other page following your selection, never takes it.
 - Selecting a block in the page you are editing shows the same block in the other language, so you do not have to find it yourself.
 - A block can be inspected in the other language but not changed there.
 - If a block has no counterpart in the other language, Inka says so. That happens when the two pages were linked rather than translated (so no block was copied from another), for a block added after the translation was made, and when the original block has since been deleted.
