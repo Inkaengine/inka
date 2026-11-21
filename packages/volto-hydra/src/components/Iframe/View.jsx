@@ -347,7 +347,7 @@ import OpenObjectBrowser from './OpenObjectBrowser';
 import SyncedSlateToolbar from '../Toolbar/SyncedSlateToolbar';
 import { getBlockTypeSchema } from '../../utils/blockPath';
 import { copyTranslationBlocks } from '../../utils/copyTranslationBlocks';
-import { removeReplacedPlaceholder, buildBlockPathMap, buildIdFieldMap, stripBlockPathMapForPostMessage, getBlockByPath, getBlockById, updateBlockById, getChildBlockIds, getContainerFieldConfig, getSelectAfterDelete, insertBlockInContainer, deleteBlockFromContainer, mutateBlockInContainer, ensureEmptyBlockIfEmpty, ensureAllContainersHaveBlocks, initializeContainerBlock, moveBlockBetweenContainers, reorderBlocksInContainer, getAllContainerFields, insertTableColumn, deleteTableColumn, removeTemplateInstance, getContainerItems, getResolvedSchema, getCommonAncestor, wrapBlocksInContainer, unwrapContainer, getEmptyBlockType, getContainerRegionDescriptors, inheritTemplateMembershipDeep, freshNestedInstances } from '../../utils/blockPath';
+import { removeReplacedPlaceholder, buildBlockPathMap, buildIdFieldMap, stripBlockPathMapForPostMessage, getBlockByPath, getBlockById, updateBlockById, getChildBlockIds, getContainerFieldConfig, getSelectAfterDelete, insertBlockInContainer, deleteBlockFromContainer, mutateBlockInContainer, ensureEmptyBlockIfEmpty, ensureAllContainersHaveBlocks, initializeContainerBlock, moveBlockBetweenContainers, reorderBlocksInContainer, getAllContainerFields, insertTableColumn, deleteTableColumn, removeTemplateInstance, getContainerItems, getResolvedSchema, getCommonAncestor, wrapBlocksInContainer, unwrapContainer, wrapRoute, unwrapRoute, getEmptyBlockType, getContainerRegionDescriptors, inheritTemplateMembershipDeep, freshNestedInstances } from '../../utils/blockPath';
 import { mergeAnchorsIntoContent } from '../../utils/linkableAnchors';
 import { heldImages, onImageHeld } from '../../utils/pendingImages';
 import { withImageMetadata } from '../../utils/imageMetadata';
@@ -5963,11 +5963,12 @@ const Iframe = (props) => {
       if (!cfg?.blockSchema) continue;
       // A container's child field may be blocks_layout (section, columns) OR an
       // object_list (a slider's `slides`). One descriptor covers both, so a slider is
-      // now offered as a wrap target too.
-      let childField;
-      try { childField = getContainerRegionDescriptors(type, blocksConfig, intl)[0] || null; } catch { continue; }
-      if (!childField) continue;
-      if (!canContainAll(childField, selectedTypes, 0)) continue;
+      // now offered as a wrap target too. A container whose field takes the
+      // selection only through its default child (a grid of columns) is offered
+      // too: the wrap adds that child around the blocks.
+      let route;
+      try { route = wrapRoute(type, selectedTypes, blocksConfig, intl); } catch { continue; }
+      if (!route) continue;
       if (!parentAllows(type)) continue;
       if (firstCC.maxLength != null && itemsAfter > firstCC.maxLength) continue;
       eligibleTypes.push(type);
@@ -6000,27 +6001,17 @@ const Iframe = (props) => {
     ).flatMap((d) => getChildBlockEntries(block, d));
     if (childEntries.length === 0) return {}; // not a container with children
 
-    const childTypes = childEntries
-      .map((e) => e.block?.['@type'])
-      .filter(Boolean);
-    const parentCC = getContainerFieldConfig(blockId, bpm, properties, blocksConfig, intl);
-    let canUnwrap = false;
-    // Symmetric with wrap: works for object_list parents too. getContainerItems +
-    // canContainAll + unwrapContainer are all storage-agnostic (funnel), so the
-    // old `!parentCC.isObjectList` gate was the last blocks_layout-only assumption.
-    if (parentCC) {
-      const parentPath = parentCC.parentId === PAGE_BLOCK_UID ? [] : bpm[parentCC.parentId]?.path;
-      const parentBlock = getBlockByPath(properties, parentPath);
-      const currentCount = parentBlock ? (getContainerItems(parentBlock, parentCC).length - 1) : 0;
-      canUnwrap = canContainAll(parentCC, childTypes, currentCount);
-    }
+    // Which container unwrapping this block removes, and whether through its
+    // default children (a grid's columns; a grid's only column unwraps the grid).
+    // Symmetric with wrap: works for object_list parents too.
+    const route = unwrapRoute(properties, bpm, blockId, blocksConfig, intl);
 
     return {
-      canUnwrap,
+      canUnwrap: !!route,
       onUnwrap: () => {
         try {
           const { formData: newFormData, promotedIds } = unwrapContainer(
-            properties, bpm, blockId, blocksConfig, intl,
+            properties, bpm, route.containerId, blocksConfig, intl, { through: route.through },
           );
           onChangeFormData(newFormData);
           if (promotedIds.length > 0 && onSelectBlock) {
