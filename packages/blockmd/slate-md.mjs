@@ -193,9 +193,16 @@ export function inlineToSlate(nodes) {
 
 function listToSlate(node) {
   const items = (node.children || []).map((li) => {
-    // A list item's children are usually a single paragraph.
-    const kids = (li.children || []).flatMap((c) =>
-      c.type === 'paragraph' ? inlineToSlate(c.children) : blockToSlate(c));
+    // A list item's children are usually a single paragraph, stored as its
+    // inline text. A paragraph straight after another one stays a paragraph
+    // (the writer's `p` child, listItemChildren): read as text too, it would
+    // join the one before into a single run, and the break between them, and
+    // the space, would be lost.
+    const kids = (li.children || []).flatMap((c, i, all) => {
+      if (c.type !== 'paragraph') return blockToSlate(c);
+      if (all[i - 1]?.type === 'paragraph') return blockToSlate(c);
+      return inlineToSlate(c.children);
+    });
     return { type: 'li', children: kids.length ? kids : [{ text: '' }] };
   });
   return { type: node.ordered ? 'ol' : 'ul', children: items };
