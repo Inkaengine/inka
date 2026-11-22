@@ -11,8 +11,8 @@ const docBlocksConfig = sharedBlocksConfig;
 window.expandListingBlocks = expandListingBlocks;
 window.expandTemplatesSync = expandTemplatesSync;
 window.ploneFetchItems = ploneFetchItems;
-window._API_URL = __HYDRA_API_URL__; // from HYDRA_MOCK_API_PORT (vite.config.js)
-window._contentPath = (url) => contentPath(url, window._API_URL);
+// __HYDRA_API_URL__: from HYDRA_MOCK_API_PORT (vite.config.js)
+window._contentPath = (url) => contentPath(url, __HYDRA_API_URL__);
 
 // Svelte 5: mount once, then drive re-renders by mutating reactive props
 // (replacing Svelte 4's `new App({...})` + `app.$set(...)`).

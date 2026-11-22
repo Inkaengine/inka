@@ -175,6 +175,62 @@ function readRedirects(mount) {
 }
 
 /**
+ * A JSON (exportimport) mount's relations, by the UID they start from:
+ * Map<from_uuid, Map<from_attribute, to_uuid>>, or null when it has none.
+ *
+ * plone.exportimport keeps a relation OUT of the item's data.json: it is in
+ * relations.json beside the content dir (`[{from_attribute, from_uuid,
+ * to_uuid}]`), and its RelationsImporter sets it on the object after the
+ * content is in. A page's preview image (`preview_image_link`) is one. Only
+ * the relation fields the mock serves (RELATION_FIELDS) are read; Plone's
+ * other relations (relatedItems, a block's links) are not served from here.
+ * A markdown mount has no relations.json.
+ *
+ * Re-read when the file changes, so dev edits take effect without a restart.
+ */
+const relationsCache = new Map(); // relations.json path -> { mtimeMs, byUid }
+function readRelations(mount) {
+  if (isMarkdownMount(mount)) return null;
+  const file = path.join(mount.dirPath, '..', 'relations.json');
+  if (!fs.existsSync(file)) return null;
+  const { mtimeMs } = fs.statSync(file);
+  const cached = relationsCache.get(file);
+  if (cached && cached.mtimeMs === mtimeMs) return cached.byUid;
+  const byUid = new Map();
+  for (const rel of JSON.parse(fs.readFileSync(file, 'utf8'))) {
+    if (!rel.from_attribute || !rel.from_uuid || !rel.to_uuid) {
+      throw new Error(`${file}: a relation names from_attribute, from_uuid and to_uuid: ${JSON.stringify(rel)}`);
+    }
+    if (!RELATION_FIELDS.includes(rel.from_attribute)) continue;
+    if (!byUid.has(rel.from_uuid)) byUid.set(rel.from_uuid, new Map());
+    byUid.get(rel.from_uuid).set(rel.from_attribute, rel.to_uuid);
+  }
+  relationsCache.set(file, { mtimeMs, byUid });
+  return byUid;
+}
+
+/**
+ * `content` with the relations its mounts' relations.json give it, each as the
+ * mock stores a relation field on disk (`resolveuid/<UID>`), so it is served,
+ * summarised (summarizeRelations) and catalogued as if data.json held it.
+ * relations.json wins over a value in data.json, as the importer's later step
+ * does. A copy: the caches are never written to.
+ */
+function withRelations(content) {
+  if (!content?.UID) return content;
+  let out = content;
+  for (const mount of CONTENT_MOUNTS) {
+    const fields = readRelations(mount)?.get(content.UID);
+    if (!fields) continue;
+    for (const [field, toUid] of fields) {
+      if (out === content) out = { ...content };
+      out[field] = `resolveuid/${toUid}`;
+    }
+  }
+  return out;
+}
+
+/**
  * Resolve a moved-content redirect, mimicking plone.app.redirector. Returns
  * the new mount-prefixed path or null.
  */
@@ -885,6 +941,7 @@ function blocksSearchableText(blocks) {
  * a preview image we can't deliver.
  */
 function hasServablePreviewImage(content) {
+  if (previewImageLinkScales(content)) return true;
   const declaresPreview = !!(content.preview_image || content['@type'] === 'Image');
   if (declaresPreview && content.preview_image?.blob_path) {
     const urlPath = (content['@id'] || '').replace(/^https?:\/\/[^/]+/, '') || '/';
@@ -895,13 +952,43 @@ function hasServablePreviewImage(content) {
 }
 
 /**
+ * The scales of the Image an item's `preview_image_link` points at, as
+ * plone.volto's PreviewImageScalesFieldAdapter gives them: the linked image's
+ * own scales, each stamped with `base_path`, the linked image's path, because
+ * their downloads are relative to it and not to the item. Null when the item
+ * links no image, or the link names nothing the mock holds (a broken
+ * relation, which plone.volto's indexers treat as no link).
+ *
+ * plone.volto's image_field indexer prefers this field over `preview_image`
+ * and the lead image, so catalogImageFields asks for it first.
+ */
+function previewImageLinkScales(content) {
+  const value = content.preview_image_link;
+  if (!value) return null;
+  const ref = typeof value === 'string' ? value : value['@id'];
+  if (typeof ref !== 'string') return null;
+  const uid = ref.match(/resolveuid\/([a-z0-9][-a-z0-9]*)/)?.[1];
+  const linkedPath = uid ? uidToPathMap[uid] : ref.replace(/^https?:\/\/[^/]+/, '');
+  if (!linkedPath) return null;
+  const linked = loadRawContentFromDisk(linkedPath);
+  if (!linked || linked['@type'] !== 'Image') return null;
+  const scales = getImageScales(linked)?.image;
+  if (!scales?.length) return null;
+  return scales.map((scale) => ({ ...scale, base_path: linkedPath }));
+}
+
+/**
  * The catalog's description of an item's image, as plone.restapi's summary
  * serializer gives it — in search results AND in a folder's `items`. Always
  * both keys, matching real Plone:
- *   with an image:    image_field='image' (or 'preview_image'), image_scales={...}
+ *   with an image:    image_field='preview_image_link', 'image' or 'preview_image', image_scales={...}
  *   without an image: image_field='',                           image_scales=null
  */
 function catalogImageFields(content, baseUrl, hasPreviewImage = hasServablePreviewImage(content)) {
+  const linked = previewImageLinkScales(content);
+  if (linked) {
+    return { image_field: 'preview_image_link', image_scales: { preview_image_link: linked } };
+  }
   if (content['@type'] === 'Image') {
     return {
       image_field: 'image',
@@ -1178,7 +1265,7 @@ function loadRawContentFromDisk(urlPath) {
 
   // A miss is a miss: content added since startup is the watcher's to reload
   // (setupContentWatchers), never a request's (see mock-no-rescan.test.js).
-  return readCached();
+  return withRelations(readCached());
 }
 
 /**

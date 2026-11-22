@@ -22,8 +22,6 @@ if (!mockApiPort) {
   throw new Error('HYDRA_MOCK_API_PORT must be set (tests-playwright/ports.ts has no defaults)');
 }
 const HYDRA_API_URL = JSON.stringify(`http://localhost:${mockApiPort}`);
-// The listing's server-side render reads it too (examples/astro/ListingBlock.astro).
-process.env.HYDRA_API_URL = JSON.parse(HYDRA_API_URL);
 
 export default defineConfig({
   output: 'server',
@@ -31,7 +29,8 @@ export default defineConfig({
   // No port here: the test harness passes --port (HYDRA_ASTRO_DOC_PORT, see
   // tests-playwright/ports.ts), like every other test frontend.
   vite: {
-    define: { __HYDRA_API_URL__: HYDRA_API_URL },
+    // API_URL: the name the doc examples use for it (their listing blocks).
+    define: { __HYDRA_API_URL__: HYDRA_API_URL, API_URL: HYDRA_API_URL },
     resolve: {
       alias: {
         '$hydra': path.resolve(__dirname, '../../../packages/hydra-js/hydra.src.js'),
