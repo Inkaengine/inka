@@ -235,3 +235,160 @@ describe('mergeTemplatesIntoPage — switching layouts', () => {
     expect(text).not.toContain('Layout Header');
   });
 });
+
+/**
+ * A layout's slot that the page never filled is the TEMPLATE's: when a page has
+ * nothing for a slot, the admin's merge puts the template's own slot block there
+ * (blank, its sample text turned into hints), so the author has somewhere to
+ * type. Switching layouts took that block as the author's content, and, the
+ * incoming layout having no such slot, moved it into `default`, where it stayed.
+ * Each switch away from a layout with such a slot added one more block to the
+ * page — a hero's empty intro, a blank suggested topic — and switching back
+ * and forth piled them up in the page's content.
+ *
+ * What the author wrote still moves as before ("How the Merge Works", Place
+ * the leftovers): only a block with nothing of its own is left behind.
+ */
+describe('mergeTemplatesIntoPage — switching layouts leaves unfilled slots behind', () => {
+  const PLAIN = '/templates/plain';
+  const HERO = '/templates/hero';
+  const TOPICS = '/templates/topics';
+  const FLAT_ASIDE = '/templates/flat-aside';
+  const FLAT_PLAIN = '/templates/flat-plain';
+
+  const blank = (slotId) => ({
+    '@type': 'slate',
+    slotId,
+    fixed: false,
+    value: [{ type: 'p', children: [{ text: '' }] }],
+  });
+  // A frame (fixed, readOnly) with a default slot and one fixed block in its
+  // hero region; the hero block may hold a slot of its own.
+  const frame = (id, heroBlock) => ({
+    blocks: {
+      layout0: {
+        '@type': 'contentLayout',
+        fixed: true,
+        readOnly: true,
+        slotId: 'layout0',
+        blocks: { m0: blank('default'), h0: heroBlock },
+        blocks_layout: { main: ['m0'], hero: ['h0'] },
+      },
+    },
+    blocks_layout: { items: ['layout0'] },
+  });
+  const local = {
+    [PLAIN]: frame(PLAIN, { '@type': 'title', fixed: true, slotId: 'hero' }),
+    [HERO]: frame(HERO, {
+      '@type': 'hero',
+      fixed: true,
+      slotId: 'hero',
+      heading: 'Page heading',
+      blocks: { i0: blank('hero-intro') },
+      blocks_layout: { intro: ['i0'] },
+    }),
+    // A slot whose block has sample text: it is placed as hints, with no text.
+    [TOPICS]: frame(TOPICS, {
+      '@type': 'heroSearch',
+      fixed: true,
+      slotId: 'hero',
+      blocks: { t1: { '@type': 'textItem', slotId: 'hero-suggested', fixed: false, text: 'Popular topic' } },
+      blocks_layout: { suggested: ['t1'] },
+    }),
+    // The same at the page's own level: a flat layout with a second slot.
+    [FLAT_ASIDE]: {
+      blocks: {
+        head: { '@type': 'slate', fixed: true, readOnly: true, slotId: 'header', plaintext: 'Head' },
+        d0: blank('default'),
+        a0: blank('aside'),
+      },
+      blocks_layout: { items: ['head', 'd0', 'a0'] },
+    },
+    [FLAT_PLAIN]: {
+      blocks: {
+        head: { '@type': 'slate', fixed: true, readOnly: true, slotId: 'header', plaintext: 'Head' },
+        d0: blank('default'),
+      },
+      blocks_layout: { items: ['head', 'd0'] },
+    },
+  };
+  const load = async (id) => {
+    if (!local[id]) throw new Error(`no such template: ${id}`);
+    return structuredClone({ ...local[id], '@id': id });
+  };
+  let n = 0;
+  const switchTo = async (page, layout) => {
+    const { merged } = await mergeTemplatesIntoPage(page, {
+      loadTemplate: load,
+      pageBlocksFields: { items: { allowedLayouts: [layout] } },
+      uuidGenerator: () => `id-${++n}`,
+      firstInsert: true,
+    });
+    return merged;
+  };
+  // Every block on the page, at any depth, as "type text" in region order.
+  const shape = (page) => {
+    const out = [];
+    const walk = (blocks, layoutDict, depth) => {
+      for (const [region, ids] of Object.entries(layoutDict || {})) {
+        for (const id of ids) {
+          const b = blocks[id];
+          out.push(`${'  '.repeat(depth)}${region}: ${b['@type']}${b.plaintext ? ` "${b.plaintext}"` : ''}`);
+          if (b.blocks) walk(b.blocks, b.blocks_layout, depth + 1);
+        }
+      }
+    };
+    walk(page.blocks, page.blocks_layout, 0);
+    return out;
+  };
+
+  const shapes = {};
+  const each = async (page, layouts) => {
+    for (const layout of layouts) {
+      page = await switchTo(page, layout);
+      const seen = shape(page);
+      if (shapes[layout]) expect(seen, `back on ${layout}`).toEqual(shapes[layout]);
+      else shapes[layout] = seen;
+    }
+    return page;
+  };
+
+  test.each([
+    ["a fixed block's slot inside the layout's frame", [PLAIN, HERO, PLAIN, HERO, PLAIN]],
+    ['a slot whose block has sample text', [PLAIN, TOPICS, HERO, TOPICS, PLAIN, TOPICS]],
+    ["a slot in the page's own region", [FLAT_PLAIN, FLAT_ASIDE, FLAT_PLAIN, FLAT_ASIDE, FLAT_PLAIN]],
+  ])('%s: switching back and forth adds nothing', async (_where, layouts) => {
+    for (const k of Object.keys(shapes)) delete shapes[k];
+    await each(PAGE, layouts);
+  });
+
+  test('what the author typed into such a slot still moves to the content', async () => {
+    const hero = await switchTo(PAGE, HERO);
+    const frameBlock = hero.blocks[hero.blocks_layout.items[0]];
+    const heroBlock = frameBlock.blocks[frameBlock.blocks_layout.hero[0]];
+    const intro = heroBlock.blocks[heroBlock.blocks_layout.intro[0]];
+    intro.value = [{ type: 'p', children: [{ text: 'An intro' }] }];
+    intro.plaintext = 'An intro';
+
+    const plain = await switchTo(hero, PLAIN);
+    expect(allText(plain)).toEqual(['An intro', 'Ways of working', 'Content design starts with the problem.']);
+  });
+
+  test('a sample the author changed is theirs, and moves to the content', async () => {
+    const topics = await switchTo(PAGE, TOPICS);
+    const frameBlock = topics.blocks[topics.blocks_layout.items[0]];
+    const heroBlock = frameBlock.blocks[frameBlock.blocks_layout.hero[0]];
+    const topic = heroBlock.blocks[heroBlock.blocks_layout.suggested[0]];
+    expect(topic.text, 'placed with the sample').toBe('Popular topic');
+    topic.text = 'Road closures';
+
+    const plain = await switchTo(topics, PLAIN);
+    const frameAfter = plain.blocks[plain.blocks_layout.items[0]];
+    const main = frameAfter.blocks_layout.main.map((id) => frameAfter.blocks[id]);
+    expect(main.map((b) => b.text || b.plaintext)).toEqual([
+      'Road closures',
+      'Ways of working',
+      'Content design starts with the problem.',
+    ]);
+  });
+});

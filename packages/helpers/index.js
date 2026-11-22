@@ -2149,6 +2149,26 @@ export function deterministicUUID(seed) {
   return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-4${hex.slice(13, 16)}-${variant}${hex.slice(17, 20)}-${hex.slice(20, 32)}`;
 }
 
+// A block's template machinery: never content an author wrote.
+const SYSTEM_FIELDS = new Set([
+  '@type',
+  '@uid',
+  'templateId',
+  'templateInstanceId',
+  'slotId',
+  'fixed',
+  'readOnly',
+  'fieldPlaceholders',
+  'fieldMappings',
+  'blocks',
+  'blocks_layout',
+  // The slot hints, all three: a slot name is machinery, not placeholder text
+  // an author would recognise in an empty field.
+  'nextSlotId',
+  'prevSlotId',
+  'childSlotIds',
+]);
+
 /**
  * Extract content field values from a block to use as fieldPlaceholders.
  * Skips system/template fields. Only includes fields with actual content.
@@ -2156,24 +2176,6 @@ export function deterministicUUID(seed) {
  * @returns {Object} Map of fieldName -> value for non-empty content fields
  */
 function extractFieldPlaceholders(block) {
-  const SYSTEM_FIELDS = new Set([
-    '@type',
-    '@uid',
-    'templateId',
-    'templateInstanceId',
-    'slotId',
-    'fixed',
-    'readOnly',
-    'fieldPlaceholders',
-    'fieldMappings',
-    'blocks',
-    'blocks_layout',
-    // The slot hints, all three: a slot name is machinery, not placeholder text
-    // an author would recognise in an empty field.
-    'nextSlotId',
-    'prevSlotId',
-    'childSlotIds',
-  ]);
   const placeholders = {};
   for (const [key, value] of Object.entries(block)) {
     if (SYSTEM_FIELDS.has(key)) continue;
@@ -2189,6 +2191,32 @@ function extractFieldPlaceholders(block) {
     }
   }
   return placeholders;
+}
+
+/**
+ * A block with nothing of its own: what a slot nobody has filled holds once the
+ * admin's merge has placed the template's slot block in it. Every field but the
+ * template's machinery is empty (no text, no setting, no children) or is still
+ * the template's sample, which the placed block carries as its hint too
+ * (fieldPlaceholders).
+ */
+function isUntouchedSlotBlock(block) {
+  const childIds = Object.values(block.blocks_layout || {}).flat();
+  if (childIds.length > 0) return false;
+  const hints = block.fieldPlaceholders || {};
+  return Object.entries(block).every(([key, value]) => {
+    if (SYSTEM_FIELDS.has(key) || key === 'plaintext') return true;
+    if (key in hints && JSON.stringify(hints[key]) === JSON.stringify(value)) return true;
+    if (value === null || value === undefined || value === false) return true;
+    if (typeof value === 'string') return !value.trim();
+    if (Array.isArray(value)) {
+      if (value.length === 0) return true;
+      if (!value[0]?.children) return false;
+      return !value.map((n) => (n.children || []).map((c) => c.text || '').join('')).join('').trim();
+    }
+    if (typeof value === 'object') return Object.keys(value).length === 0;
+    return false;
+  });
 }
 
 /**
@@ -4127,6 +4155,10 @@ export function collectNestedAuthorContent(block, pendingContent, visited = new 
         collectNestedAuthorContent(child, pendingContent, visited);
         continue;
       }
+      // A slot of the outgoing layout that nobody filled holds the template's
+      // own slot block, not the author's: it goes with the layout. Taken as
+      // content, each switch moved one more into the next layout's default slot.
+      if (isUntouchedSlotBlock(child)) continue;
       // The author's block, taken WHOLE: its children go with it. Recursing
       // on collected each child a second time as content of its own, so a
       // grid's cards were drawn twice — in the grid, and alone after it
@@ -5650,6 +5682,16 @@ export function expandTemplatesSync(inputItems, options = {}) {
             [],
             ctx.existingFixedBlockIds,
           );
+          continue;
+        }
+        // The outgoing layout's slot that nobody filled: its template's slot
+        // block, which goes with the layout (as inside a frame, above).
+        if (
+          block.templateId &&
+          previousTemplateId &&
+          templateIdsMatch(block.templateId, previousTemplateId) &&
+          isUntouchedSlotBlock(block)
+        ) {
           continue;
         }
         if (block.slotId) {
