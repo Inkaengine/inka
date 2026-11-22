@@ -28,15 +28,9 @@ import SummaryItemBlock from './SummaryItemBlock.astro';
 const { block } = Astro.props;
 const blockId = block?.['@uid'];
 
-// The API this page renders against: the browser side reads `window._API_URL`
-// (main.js); the node render path reads HYDRA_API_URL, which the test setup
-// sets from HYDRA_MOCK_API_PORT (astro.config.mjs).
-const apiUrl = process.env.HYDRA_API_URL;
-if (!apiUrl) throw new Error('HYDRA_API_URL must be set');
-
 let items = [];
 try {
-  const fetchItems = ploneFetchItems({ apiUrl });
+  const fetchItems = ploneFetchItems({ apiUrl: API_URL });
   const result = await expandListingBlocks(
     [{ ...block, '@uid': blockId }],
     {
@@ -53,7 +47,7 @@ try {
   // runtime; doing it server-side matches that behavior.
   items = (result?.items || []).map((item) => ({
     ...item,
-    href: contentPath(item.href, apiUrl),
+    href: contentPath(item.href, API_URL),
   }));
 } catch (e) {
   console.warn('[astro] expandListingBlocks failed:', e?.message);

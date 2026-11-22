@@ -9,14 +9,12 @@ import path from 'path';
 /**
  * Function-valued globals get arrow wrappers so they resolve at call time
  * (main.js sets them after the component import chain is evaluated).
- * API_URL is a string, so we inject a getter function and rewrite references.
  */
 const GLOBAL_INJECTIONS = {
   expandListingBlocks: { inject: '(...a) => window.expandListingBlocks(...a)' },
   expandTemplatesSync: { inject: '(...a) => window.expandTemplatesSync(...a)' },
   ploneFetchItems: { inject: '(...a) => window.ploneFetchItems(...a)' },
   contentPath: { inject: '(...a) => window._contentPath(...a)' },
-  API_URL: { inject: '() => window._API_URL', rewrite: true, getterName: '_getApiUrl' },
 };
 
 /**
@@ -72,7 +70,8 @@ const HYDRA_API_URL = JSON.stringify(`http://localhost:${mockApiPort}`);
 
 export default defineConfig({
   plugins: [svelteExamplesPlugin(), svelte()],
-  define: { __HYDRA_API_URL__: HYDRA_API_URL },
+  // API_URL: the name the doc examples use for it (their listing blocks).
+  define: { __HYDRA_API_URL__: HYDRA_API_URL, API_URL: HYDRA_API_URL },
   resolve: {
     alias: {
       '$examples': path.resolve(__dirname, '../examples/svelte'),
