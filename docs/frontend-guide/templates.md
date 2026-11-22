@@ -362,7 +362,7 @@ A merge puts a template's blocks into a **target** document. Opening a page merg
    - A **fixed** block that is editable is the template's, with the target's fields over it.
    - A fixed block's regions are filled by these same rules.
    - A **slot** is replaced by the target's content for that slot, in order. A slot name that appears more than once in one region is filled where it first appears (in two regions, a template is refused: see above). A template inside that content, such as a snippet, is merged in place by these same rules, with its own instance and ids.
-   - A slot the target has nothing for is the template's slot block, without anything it holds. An empty slot is placed only by the admin's merge (`mergeTemplatesIntoPage`, which passes `keepEmptySlots`): a frontend's merge leaves it out, so a visitor never gets one.
+   - A slot the target has nothing for is the template's blocks for that slot, each one, in order (a hero's three suggested topics), without anything they hold. An empty slot is placed only by the admin's merge (`mergeTemplatesIntoPage`, which passes `keepEmptySlots`): a frontend's merge leaves it out, so a visitor never gets one.
 3. **Place the leftovers.** Content with no slot, or whose slot the template doesn't have, goes to the start of the first of these that exists:
 
    - the `"default"` slot;

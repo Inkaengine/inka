@@ -4386,8 +4386,8 @@ function templateSlotIds(template) {
  * - A fixed block takes the id the target already has for it (the next one in its
  *   slot), else a new one for this instance. An editable one keeps the target's fields.
  * - A slot is filled with the target's content for it, taken whole; a slot the target
- *   has nothing for is the template's slot block. One slot is one run, however many
- *   of the source's blocks it holds.
+ *   has nothing for is the template's blocks for it, each one. One slot is one run,
+ *   however many of the source's blocks it holds.
  * - Content whose slot the template doesn't have goes to the slot chosen for it
  *   (ctx.leftoverSlotId), else it is dropped.
  *
@@ -4400,6 +4400,25 @@ function fillRegionEntries(entries, templateState, options) {
   const { firstInsert } = options;
   const out = [];
   const slotOf = (block) => (block && !block.fixed ? block.slotId || 'default' : null);
+  // The slots of this region the target has nothing for: each of the template's
+  // blocks for one of them goes in, in order (a hero's three suggested topics).
+  const unfilledSlots = new Set();
+  // The target has nothing for this slot: the template's slot block, without
+  // what it holds (a slot's contents are a page's, never the template's).
+  const placeSlotBlock = (tplChildId, child, slotId) => {
+    // A template keeps a slot nobody has filled as an `empty` (inka#708): a
+    // place the editor offers to add to. A visitor's page has none — only the
+    // admin's merge asks for them (keepEmptySlots), so no frontend draws
+    // editing furniture for visitors.
+    if (child['@type'] === 'empty' && !options.keepEmptySlots) return;
+    const { blocks: _slotBlocks, blocks_layout: _slotLayout, ...childDef } = child;
+    const nb = { ...childDef, slotId, templateInstanceId: instanceId };
+    if (firstInsert) {
+      const placeholders = extractFieldPlaceholders(child);
+      if (Object.keys(placeholders).length > 0) nb.fieldPlaceholders = placeholders;
+    }
+    out.push({ id: mintChildBlockId(instanceId, tplChildId), block: nb });
+  };
   for (let idx = 0; idx < entries.length; idx++) {
     const { id: tplChildId, block: child } = entries[idx];
     if (!child || !child.templateId) continue; // not the template's: malformed, dropped
@@ -4469,7 +4488,12 @@ function fillRegionEntries(entries, templateState, options) {
     }
 
     const slotId = slotOf(child);
-    if (ctx.emittedSlotIds.has(slotId)) continue; // the rest of this slot's run
+    if (ctx.emittedSlotIds.has(slotId)) {
+      // The rest of this slot's run: the target's content is in its place, or,
+      // when the target has none, the template's blocks for the slot, each one.
+      if (unfilledSlots.has(slotId)) placeSlotBlock(tplChildId, child, slotId);
+      continue;
+    }
     ctx.emittedSlotIds.add(slotId);
     const leftovers =
       slotId === ctx.leftoverSlotId
@@ -4484,20 +4508,8 @@ function fillRegionEntries(entries, templateState, options) {
     ctx.pendingContent.delete(slotId);
 
     if (content.length === 0) {
-      // A template keeps a slot nobody has filled as an `empty` (inka#708): a
-      // place the editor offers to add to. A visitor's page has none — only the
-      // admin's merge asks for them (keepEmptySlots), so no frontend draws
-      // editing furniture for visitors.
-      if (child['@type'] === 'empty' && !options.keepEmptySlots) continue;
-      // The target has nothing for this slot: the template's slot block, without
-      // what it holds (a slot's contents are a page's, never the template's).
-      const { blocks: _slotBlocks, blocks_layout: _slotLayout, ...childDef } = child;
-      const nb = { ...childDef, slotId, templateInstanceId: instanceId };
-      if (firstInsert) {
-        const placeholders = extractFieldPlaceholders(child);
-        if (Object.keys(placeholders).length > 0) nb.fieldPlaceholders = placeholders;
-      }
-      out.push({ id: mintChildBlockId(instanceId, tplChildId), block: nb });
+      unfilledSlots.add(slotId);
+      placeSlotBlock(tplChildId, child, slotId);
       continue;
     }
 
