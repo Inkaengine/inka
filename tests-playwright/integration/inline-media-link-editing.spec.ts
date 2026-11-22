@@ -685,9 +685,10 @@ test.describe('Image upload and drag-drop', () => {
   test('the replace box stays open when the frontend moves focus by itself', async ({
     page,
   }) => {
-    // The bridge focuses fields in the frontend on its own (after a re-render,
-    // the field the author was in). Focus leaving the admin for the frontend is
-    // not the author clicking there, and must not close what they opened.
+    // The bridge selects blocks in the frontend on its own (after a re-render,
+    // the block the author was in; as it settles, the block it opened with).
+    // That never takes focus from the admin, so it neither closes what the
+    // author opened nor moves their caret out of it.
     const helper = new AdminUIHelper(page);
     await helper.login();
     await helper.navigateToEdit('/test-page');
@@ -703,12 +704,15 @@ test.describe('Image upload and drag-drop', () => {
     await urlInput.click();
     await expect(urlInput).toBeFocused();
 
-    const textField = await helper.getEditorLocator('block-1-uuid', 'value');
-    await textField.evaluate((el: HTMLElement) => {
-      window.focus();
-      el.focus();
+    await iframe.locator('body').evaluate(() => {
+      const bridge = (window as any).__hydraBridge;
+      // Re-selecting the block the box is for, as after a re-render: its
+      // heading is a field the bridge would have focused.
+      bridge.selectedBlockUid = null;
+      bridge.selectBlock('block-4-hero');
     });
-    await expect(urlInput).not.toBeFocused();
+    await page.evaluate(() => new Promise((r) => setTimeout(r, 500)));
+    await expect(urlInput, 'the caret stays in the box').toBeFocused();
 
     await urlInput.fill('https://placehold.co/999x999');
     await imageOverlay.locator('button[aria-label="Submit"]').click();

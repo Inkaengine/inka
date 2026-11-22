@@ -142,6 +142,7 @@ During editing the frontend is loaded inside an iframe owned by Inka's admin UI.
 
 - **Admin → frontend**: form-data updates, selection changes, route changes.
 - **Frontend → admin**: which block was clicked (selection), which slate node holds the cursor, where blocks live in the rendered DOM, slate transform requests so the admin can compute the new value.
+- **Focus**: the frontend never moves the keyboard into its page by itself: not as it loads, not when it selects a block on its own or because the admin selected one (from the sidebar, say). It moves focus within its page only when the page already has it. It reports when the author moves into it, by a click or Tab (`CANVAS_FOCUSED`, once per move), because the admin sees nothing when focus enters an iframe. The admin decides when the page should take the keyboard: as it loads, if nothing else has focus, and for a block the admin added.
 
 This split lets the frontend stay 100% headless when not in admin (just renders content), while the admin gets full visual editing without the frontend having to know any React, any block-form widgets, or any sidebar UI.
 

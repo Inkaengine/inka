@@ -37,9 +37,9 @@ const ViewPane = ({
   // onSelectBlock(uid): the block selected in the pane — by the author, by
   // the bridge settling or re-announcing, or answering showBlock.
   onSelectBlock,
-  // onAuthorInput(): the author pressed or typed in the pane (Tab into it
-  // included), as the bridge reports it.
-  onAuthorInput,
+  // onCanvasFocus(): the author moved into the pane — clicked or tabbed into
+  // its page (CANVAS_FOCUSED, once per switch).
+  onCanvasFocus,
   // Show this block: the counterpart of whatever is selected next door. The
   // bridge scrolls it into view as part of selecting it, which is what makes
   // the two panes follow each other.
@@ -51,8 +51,8 @@ const ViewPane = ({
   // again.
   const onSelectBlockRef = useRef(onSelectBlock);
   onSelectBlockRef.current = onSelectBlock;
-  const onAuthorInputRef = useRef(onAuthorInput);
-  onAuthorInputRef.current = onAuthorInput;
+  const onCanvasFocusRef = useRef(onCanvasFocus);
+  onCanvasFocusRef.current = onCanvasFocus;
   const intl = useIntl();
   const [frameLoaded, setFrameLoaded] = useState(false);
   const [mounted, setMounted] = useState(false);
@@ -97,8 +97,8 @@ const ViewPane = ({
         onSelectBlockRef.current?.(event.data.blockUid);
         return;
       }
-      if (event.data?.type === 'AUTHOR_POINTERDOWN' || event.data?.type === 'AUTHOR_KEY') {
-        onAuthorInputRef.current?.();
+      if (event.data?.type === 'CANVAS_FOCUSED') {
+        onCanvasFocusRef.current?.();
         return;
       }
       if (event.data?.type !== 'INIT') return;

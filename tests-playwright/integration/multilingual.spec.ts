@@ -465,6 +465,21 @@ test.describe('Multilingual editing', () => {
       await expect(fields(page), 'the page being edited has control again').toHaveCount(0);
     });
 
+    test('opening the other language leaves focus where the author was', async ({ page }) => {
+      const helper = new AdminUIHelper(page);
+      await helper.login();
+      await helper.enableMultilingual();
+      await page.goto(`${helper.adminUrl}/en/about/edit`);
+      await helper.waitForIframeReady();
+      const button = page.locator('.compare-languages').getByRole('button', { name: 'de' });
+      await button.click();
+      await expect(german(page).locator('body')).toContainText('Über uns', { timeout: 20000 });
+      await page.evaluate(() => new Promise((r) => setTimeout(r, 500)));
+      // The other language's page focused itself as it loaded.
+      expect(await focused(page), 'focus is not taken by the page that opened').not.toBe('translationSourceIframe');
+      await expect(fields(page), 'the page being edited keeps control').toHaveCount(0);
+    });
+
     test('tabbing from one pane into the other moves control with it', async ({ page }) => {
       const helper = await sideBySide(page);
       await helper.getIframe().locator('[data-block-uid="title-1"]').click();
@@ -615,6 +630,17 @@ test.describe('Multilingual editing', () => {
       await teaser.click();
       await expect(pane).toHaveAttribute('data-showing-block', canonicalOfSelected);
     }).toPass();
+
+    // Following along doesn't take the keyboard: the other pane selects its
+    // block, and focus stays in the page the author clicked. It used to move
+    // there — that pane's blocks are read-only, and the bridge focused a block
+    // with nothing to type into so that keys would reach it.
+    await page.evaluate(() => new Promise((r) => setTimeout(r, 500)));
+    expect(
+      await page.evaluate(() => document.activeElement?.id),
+      'focus stays in the page the author clicked',
+    ).toBe('previewIframe');
+    await expect(page.locator('.compare-language-fields'), 'and so does the sidebar').toHaveCount(0);
   });
 
   test('a block with no counterpart in the other language says so', async ({ page }) => {

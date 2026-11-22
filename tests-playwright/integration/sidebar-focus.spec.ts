@@ -62,3 +62,36 @@ test.describe('sidebar widgets and the preview caret', () => {
     expect((await field.textContent())?.trim(), 'typing lands in the clicked field').not.toBe(before);
   });
 });
+
+// Choosing a block in the sidebar's block list selects it in the page — and
+// doesn't take the keyboard into the page. Selecting from the sidebar is
+// working in the sidebar: a keyboard author must not be thrown into the page. A block the page can take the
+// caret in (text) and one it can't (an image) both went: the bridge focused the
+// text field, or the block itself, whenever the admin selected a block.
+test.describe('choosing a block in the sidebar', () => {
+  // Each listed by what it shows: block-3's text, block-2 the first Image.
+  for (const { label, uid, item } of [
+    { label: 'Text', uid: 'block-3-uuid', item: 'Another paragraph for testing' },
+    { label: 'Image', uid: 'block-2-uuid', item: 'Image' },
+  ]) {
+    test(`a ${label} block: focus stays in the sidebar`, async ({ page }) => {
+      const helper = new AdminUIHelper(page);
+      await helper.login();
+      await helper.navigateToEdit('/test-page');
+      await helper.clickBlockInIframe('block-1-uuid');
+      await helper.waitForSidebarOpen();
+      await page.locator('.sidebar-section-header .nav-back').click();
+
+      const list = page.locator('#sidebar-order .child-blocks-widget');
+      await list.locator('.child-block-item', { hasText: item }).first().click();
+      await helper.waitForBlockSelectedInAdmin(uid);
+      // The bridge's focus came two frames after the selection; let it.
+      await page.evaluate(() => new Promise((r) => setTimeout(r, 500)));
+
+      expect(
+        await page.evaluate(() => document.activeElement?.tagName),
+        'focus is not taken into the page',
+      ).not.toBe('IFRAME');
+    });
+  }
+});

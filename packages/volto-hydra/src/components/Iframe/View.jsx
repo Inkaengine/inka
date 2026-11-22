@@ -796,6 +796,18 @@ const rewriteTemplateRefs = (node, oldId, newId) => {
   return changed ? out : node;
 };
 
+/**
+ * The page being edited takes the keyboard as it loads, so keys reach it
+ * without a click first — when nothing else has focus. The author may already
+ * be in the sidebar or in a field of the admin, and the page can't see that, so
+ * the bridge doesn't focus itself: the admin does, from here.
+ */
+function focusEditingPageIfIdle() {
+  const iframe = document.getElementById('previewIframe');
+  const active = document.activeElement;
+  if (iframe && (!active || active === document.body)) iframe.focus();
+}
+
 const Iframe = (props) => {
   if (typeof window !== 'undefined' && window._formatT0) {
     console.log('[VIEW-TIMING] Iframe render +' + (performance.now() - window._formatT0).toFixed(0) + 'ms');
@@ -3838,10 +3850,10 @@ const Iframe = (props) => {
             log('BLOCK_SELECTED ignored: not in edit mode', event.data.blockUid, 'src:', event.data.src);
             break;
           }
-          // A selection never moves control between the panes: the author's
-          // own press or key does (AUTHOR_POINTERDOWN, AUTHOR_KEY). This page
-          // also re-announces its selection on a re-render, a scroll or a
-          // resize, and selects a block by itself as it settles.
+          // A selection never moves the sidebar between the panes: focus
+          // does (CANVAS_FOCUSED). This page also re-announces its
+          // selection on a re-render, a scroll or a resize, and selects a
+          // block by itself as it settles.
           // Update block UI state and selection atomically
           // Selection is included in BLOCK_SELECTED to prevent race conditions
 
@@ -4039,25 +4051,20 @@ const Iframe = (props) => {
           // Don't call onSelectBlock(null) - keep the block selected in Redux
           break;
 
-        case 'AUTHOR_POINTERDOWN': {
-          // The author pressed in the frontend: a click outside whatever the
-          // admin has open (a link or image box, a toolbar menu), which this
-          // document never sees. Their click-outside handlers listen for
+        case 'CANVAS_FOCUSED': {
+          // The author moved into the page being edited — clicked or tabbed
+          // into it. It takes the sidebar back from the other language.
+          setSelectedPane('edit');
+          // And it is a click (or key) outside whatever the admin has open (a
+          // link or image box, a toolbar menu), which this document never
+          // sees. Their click-outside handlers listen for
           // mousedown, so give them one. On body, not document: Volto's
           // handleClickOutside calls e.target.closest.
           document.body.dispatchEvent(
             new MouseEvent('mousedown', { bubbles: true, cancelable: true, view: window }),
           );
-          // Working in the page being edited gives it control.
-          setSelectedPane('edit');
           break;
         }
-
-        case 'AUTHOR_KEY':
-          // A key in the page being edited — typed there, or Tab into it from
-          // the other language — gives it control.
-          setSelectedPane('edit');
-          break;
 
         case 'MOUSE_ACTIVITY':
           // Throttled mousemove from iframe — reset toolbar fade timer
@@ -4860,6 +4867,7 @@ const Iframe = (props) => {
             slateConfig: { hotkeys: config.settings.slate?.hotkeys || {}, toolbarButtons },
           }, origin);
           pendingInitialDataRef.current = null;
+          focusEditingPageIfIdle();
         })().catch(err => {
           log('[INITIAL_DATA] ERROR in forced-layout merge:', err.message, err.stack);
           console.error('[INITIAL_DATA] Error (forced-layout):', err);
@@ -4963,6 +4971,7 @@ const Iframe = (props) => {
           slateConfig: { hotkeys: config.settings.slate?.hotkeys || {}, toolbarButtons },
         }, origin);
         pendingInitialDataRef.current = null;
+        focusEditingPageIfIdle();
 
         // Update Redux with the SAME data sent to the iframe (including seeded
         // empty placeholders). Committing the pre-seed mergedFormData instead
@@ -6614,9 +6623,12 @@ const Iframe = (props) => {
               it. Read-only — no bridge, no editing chrome — beside the draft,
               which is the pane the editor works in. */}
           {comparePreviewUrl && (
-            // The other language's pane has control while the author works in
-            // it: a press or key inside its page (onAuthorInput), or on this
-            // wrapper, which Tab also stops on.
+            // The sidebar belongs to the pane the author moved into last:
+            // focus arriving in this wrapper (a click, or Tab onto it) or in
+            // its page (CANVAS_FOCUSED, onCanvasFocus) gives it the sidebar,
+            // and the page being edited reporting focus takes it back. Focus
+            // going anywhere else — the sidebar itself — leaves it where it
+            // is. No page takes focus by itself, so focus is the author's.
             <div
               className={
                 selectedPane === 'compare'
@@ -6627,8 +6639,8 @@ const Iframe = (props) => {
               // counterpart of the one selected next door, or nothing when the
               // selected block was added after the copy.
               data-showing-block={counterpartOfSelected || ''}
+              onFocus={() => setSelectedPane('compare')}
               onClick={() => setSelectedPane('compare')}
-              onKeyUp={() => setSelectedPane('compare')}
               role="button"
               tabIndex={0}
               aria-pressed={selectedPane === 'compare'}
@@ -6655,7 +6667,7 @@ const Iframe = (props) => {
                 onSelectBlock={(uid) => {
                   setCompareSelectedBlock(uid);
                 }}
-                onAuthorInput={() => setSelectedPane('compare')}
+                onCanvasFocus={() => setSelectedPane('compare')}
               />
             </div>
           )}
