@@ -369,9 +369,7 @@ A merge puts a template's blocks into a **target** document. Opening a page merg
    - the slot after the template's last fixed block;
    - the slot before its first fixed block.
 
-   If none exists, it is dropped. Content takes the `slotId` of the slot it lands in. Any other target block in a fixed block's slot is a stale copy of that block, and is replaced.
-
-   When a page switches layouts, a block of the outgoing layout that nobody has filled in is not content, and goes with its layout. That is the template's slot block the admin's merge placed in an empty slot: every field is empty or still the template's sample (its hint), and it holds no blocks. Anything the author typed or set moves as above.
+   If none exists, it is dropped. Content takes the `slotId` of the slot it lands in. Any other target block in a fixed block's slot is a stale copy of that block, and is replaced. When a page switches layouts, a block of the outgoing layout that nobody has filled in is not content, and goes with its layout. That is the template's slot block the admin's merge placed in an empty slot: every field is empty or still the template's sample (its hint), and it holds no blocks. Anything the author typed or set moves as above.
 4. **Keep the ids.**
    - Every block the target already has keeps its id.
    - Fixed blocks match the target's by slot. Where two share a slot name, they match in order.
