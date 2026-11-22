@@ -5,6 +5,7 @@ import FormatDropdown from './FormatDropdown';
 import config from '@plone/volto/registry';
 import { Icon } from '@plone/volto/components';
 import { PAGE_BLOCK_UID } from '@volto-hydra/hydra-js';
+import { blockActionTargets } from '../../utils/blockActionTargets';
 import showSVG from '@plone/volto/icons/show.svg';
 import hideSVG from '@plone/volto/icons/hide.svg';
 import { revealFieldsLabel } from './OptionalFieldsToggle';
@@ -465,7 +466,7 @@ const DropdownMenu = ({
             onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
             onClick={() => {
               onClose();
-              const uids = multiSelectedUids?.length > 1 ? multiSelectedUids : [selectedBlock];
+              const uids = blockActionTargets(selectedBlock, multiSelectedUids);
               document.dispatchEvent(new CustomEvent('hydra-copy-blocks', {
                 detail: { blockIds: uids, action: 'copy' },
               }));
@@ -481,7 +482,7 @@ const DropdownMenu = ({
             onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
             onClick={() => {
               onClose();
-              const uids = multiSelectedUids?.length > 1 ? multiSelectedUids : [selectedBlock];
+              const uids = blockActionTargets(selectedBlock, multiSelectedUids);
               document.dispatchEvent(new CustomEvent('hydra-copy-blocks', {
                 detail: { blockIds: uids, action: 'cut' },
               }));

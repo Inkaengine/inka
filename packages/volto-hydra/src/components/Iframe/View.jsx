@@ -25,6 +25,7 @@ import { toast } from 'react-toastify';
 import { getIframeUrlCookieName } from '../../utils/cookieNames';
 import rememberedFrontendUrl from '../../utils/getRememberedFrontendUrl';
 import { PAGE_BLOCK_UID } from '@volto-hydra/hydra-js';
+import { blockActionTargets } from '../../utils/blockActionTargets';
 import { isObjectListRegion } from '@volto-hydra/helpers/regionWidgets.js';
 import { INKA_BLOCK_TYPES, undeclaredBlockProblems } from '@volto-hydra/helpers/inkaBlocks.js';
 import { mergeFrontendBlock } from '@volto-hydra/hydra-js/mergeFrontendBlock.js';
@@ -1543,7 +1544,40 @@ const Iframe = (props) => {
       );
     };
 
+    // Block shortcuts with focus in the admin. Choosing a block in the sidebar
+    // leaves focus there, where the page's own shortcuts (hydra.js) never hear
+    // the keys. Outside a field, the admin answers copy, cut and paste for the
+    // selected blocks itself, as the block menu does.
+    const handleBlockShortcut = (e) => {
+      if (!(e.ctrlKey || e.metaKey) || e.altKey || e.shiftKey) return;
+      const key = e.key.toLowerCase();
+      if (key !== 'c' && key !== 'x' && key !== 'v') return;
+      if (!selectedBlock || selectedBlock === PAGE_BLOCK_UID) return;
+      // In a field, a dialog or the page, the keys are theirs.
+      const active = document.activeElement;
+      if (active?.tagName === 'IFRAME') return;
+      if (
+        active?.closest?.(
+          'input, textarea, select, [contenteditable="true"], [role="dialog"], .ui.modal',
+        )
+      ) {
+        return;
+      }
+      // Text selected in the admin: copying that text.
+      if (key !== 'v' && !window.getSelection()?.isCollapsed) return;
+
+      e.preventDefault();
+      const blockIds = blockActionTargets(selectedBlock, multiSelectedRef.current);
+      if (key === 'v') {
+        handlePaste({ detail: { afterBlockId: blockIds[blockIds.length - 1], keepClipboard: false } });
+        return;
+      }
+      handleCopy({ detail: { blockIds, action: key === 'c' ? 'copy' : 'cut' } });
+      if (key === 'x') handleDelete({ detail: { blockIds } });
+    };
+
     document.addEventListener('hydra-copy-blocks', handleCopy);
+    document.addEventListener('keydown', handleBlockShortcut);
     document.addEventListener('hydra-delete-blocks', handleDelete);
     document.addEventListener('hydra-paste-blocks', handlePaste);
     document.addEventListener('hydra-exit-selection-mode', handleExitSelectionMode);
@@ -1551,6 +1585,7 @@ const Iframe = (props) => {
     document.addEventListener('hydra-move-block', handleMoveBlock);
     return () => {
       document.removeEventListener('hydra-copy-blocks', handleCopy);
+      document.removeEventListener('keydown', handleBlockShortcut);
       document.removeEventListener('hydra-delete-blocks', handleDelete);
       document.removeEventListener('hydra-paste-blocks', handlePaste);
       document.removeEventListener('hydra-exit-selection-mode', handleExitSelectionMode);
@@ -1560,7 +1595,7 @@ const Iframe = (props) => {
     // NOTE: templateEditMode must be a dep — these handlers (handleDelete) gate
     // on it via isBlockReadonly; without it the listener closure keeps a
     // stale edit mode and refuses to mutate template blocks while editing.
-  }, [blocksClipboard, properties, iframeSyncState?.blockPathMap, iframeSyncState?.templateEditMode, onChangeFormData, dispatch, intl]);
+  }, [blocksClipboard, properties, iframeSyncState?.blockPathMap, iframeSyncState?.templateEditMode, onChangeFormData, dispatch, intl, selectedBlock]);
 
   // Template cache: stores loaded template documents keyed by templateId
   // Used for comparison on save to detect template changes

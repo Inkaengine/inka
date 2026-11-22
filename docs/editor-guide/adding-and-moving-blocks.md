@@ -88,6 +88,8 @@ Standard keyboard shortcuts work on the selected block(s):
 - `Cmd/Ctrl+X` — cut (block disappears from the original spot when you paste)
 - `Cmd/Ctrl+V` — paste at the current selection
 
+They work with the keyboard in the page, and also after choosing a block in the sidebar, as long as you aren't typing in one of its fields.
+
 This works across pages — copy a block on one page, navigate to another, paste. Paste also **converts** like drag-and-drop: pasting into a region that only accepts a type the block can convert to converts it on paste. On touch devices, where dragging between distant spots is awkward, cut-and-paste is the easiest way to move (and convert) a block.
 
 ### Block-mode keyboard
