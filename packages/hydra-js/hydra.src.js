@@ -286,9 +286,6 @@ const isValidNodeId = (id) => id && /^\d+(\.\d+)*$/.test(id);
 // How many nested closed containers a reveal will open before giving up.
 const MAX_REVEAL_DEPTH = 5;
 
-// How long after a key or pointer press a selection still counts as the
-// author's doing: a click's selection, focus and caret all land within it.
-const AUTHOR_INPUT_MS = 1000;
 
 // What counts as the control a reveal handle activates — see
 // Bridge.activationTarget. A link needs an href to be one; a bare <a> is text.
@@ -4102,7 +4099,6 @@ export class Bridge {
       this.sendMessageToParent({
         type: 'BLOCK_SELECTED',
         src,
-        userInput: this.isAuthorInputRecent(),
         blockUid: null,
         rect: null,
       }, this.adminOrigin);
@@ -4198,8 +4194,6 @@ export class Bridge {
     const message = {
       type: 'BLOCK_SELECTED',
       src,
-      // Caused by the author's own key or pointer, not the bridge settling.
-      userInput: this.isAuthorInputRecent(),
       blockUid,
       // Where the block IS (outline) stays tight to its own elements. A
       // stand-in — a tab's label on the button that reveals it — is somewhere
@@ -4657,7 +4651,7 @@ export class Bridge {
         this.setupScrollHandler();
         this.setupResizeHandler();
         this.setupMouseActivityReporter();
-        this.trackAuthorInput();
+        this.reportCanvasFocus();
         this.setupStructuralObserver();
 
         // Add beforeunload warning to prevent accidental navigation
@@ -4759,10 +4753,11 @@ export class Bridge {
                 this._executeRender(this.onContentChangeCallback);
               }
 
-              // Focus the iframe window so keyboard events reach it on page load.
-              // Must happen inside the iframe (window.focus()) because the parent
-              // cannot call contentWindow.focus() on a cross-origin iframe.
-              window.focus();
+              // No focus here. Whether this page should take the keyboard as
+              // it loads is the admin's call: the author may be in the sidebar,
+              // or in another page the admin shows beside this one, and a page
+              // can't see either. The admin focuses the page being edited when
+              // nothing else has focus.
 
               // Mark bridge as initialized — block selection is now allowed
               this.initialized = true;
@@ -7656,6 +7651,13 @@ export class Bridge {
       return;
     }
 
+    // Editable, but the keyboard stays where the author is: no focus, so no
+    // caret to place either (see selectBlock's `focus`).
+    if (options.focus === false) {
+      this.updateEmptyState(fieldElement);
+      return;
+    }
+
     // Check if already focused (avoid disrupting cursor position)
     const isAlreadyFocused = document.activeElement === fieldElement;
     log('activateEditableField focus check:', { isAlreadyFocused, activeElement: document.activeElement?.tagName });
@@ -8152,7 +8154,9 @@ export class Bridge {
               // that selection — regression introduced in 97dd597b.
               log('Selecting new block from afterContentRender:', blockUidToProcess, 'transformedSelection:', !!transformedSelection);
               this.editMode = 'text';
-              this.selectBlock(el, transformedSelection ? {} : { fieldToFocus: 'first' });
+              // The admin switched to this block (one it added, or the new
+              // block after Enter) for the author to type in: it takes focus.
+              this.selectBlock(el, transformedSelection ? { focus: true } : { fieldToFocus: 'first', focus: true });
             }
           : (el) => this.updateBlockUIAfterFormData(el, skipFocus);
 
@@ -9349,6 +9353,14 @@ export class Bridge {
     // Back-compat: old callers pass a string as second arg (caller name for logging)
     const opts = typeof options === 'string' ? {} : options;
     const fieldToFocus = opts.fieldToFocus; // undefined=auto, null=block mode, string=specific field
+    // Whether selecting may focus a field or the block. By default only when
+    // this page already has focus: the bridge never moves the keyboard into
+    // its page by itself — selecting the block it opened with as it settles,
+    // re-selecting after a re-render, following the admin's selection. Focus
+    // stays where the author is, and the block is still selected and
+    // outlined. `focus: true` is the admin asking for the keyboard (a block it
+    // added); `focus: false` never focuses.
+    const takeFocus = opts.focus ?? this._iframeFocused;
     // Accept either a DOM element (from click handlers) or a block UID string
     const blockUidFromArg = typeof blockElementOrUid === 'string' ? blockElementOrUid : null;
 
@@ -9499,6 +9511,7 @@ export class Bridge {
             }
             if (targetField && targetField.getAttribute('contenteditable') === 'true') {
               if (textOf(currentElement) !== askedText) return;
+              if (!takeFocus) return;
               targetField.focus();
               if (cursorAt === 'end') {
                 this._placeCursorAtEnd(targetField);
@@ -9536,7 +9549,7 @@ export class Bridge {
       const active = document.activeElement;
       const caretAlreadyInside =
         !!active && blockElement.contains(active) && active.isContentEditable;
-      if (!hasEditableFields && !caretAlreadyInside) {
+      if (!hasEditableFields && !caretAlreadyInside && takeFocus) {
         if (!blockElement.hasAttribute('tabindex')) {
           blockElement.setAttribute('tabindex', '-1');
         }
@@ -9836,6 +9849,7 @@ export class Bridge {
               preventScroll: this._isReselectingSameBlock,
               wasAlreadyEditable,
               saveClickPosition: true, // Save for FORM_DATA handler after re-render
+              focus: takeFocus,
             });
           } else if (this.lastClickPosition) {
             // No editable field found, clear click position
@@ -11720,6 +11734,14 @@ export class Bridge {
         // This prevents ping-pong when Admin echoes back the selection from iframe click
         const alreadySelected = this.selectedBlockUid === uid;
 
+        // The admin selecting a block never takes the keyboard into this page.
+        // The author chose it somewhere else — the sidebar's block list, or the
+        // page beside this one, which this page follows — and keeps working
+        // there. Only when this page already has focus does the caret go to
+        // the block, as a click on it would. (_iframeFocused, not
+        // document.hasFocus(), which headless browsers always answer false.)
+        const focus = this._iframeFocused;
+
         this.selectedBlockUid = uid;
         // Don't update formData here - it's managed via FORM_DATA messages
         // Don't post FORM_DATA - form data syncing is handled separately
@@ -11728,7 +11750,7 @@ export class Bridge {
         // selectBlock handles these by computing bounding box from child elements
         if (this.blockPathMap?.[uid]?.isTemplateInstance) {
           if (!alreadySelected) {
-            this.selectBlock(uid);
+            this.selectBlock(uid, { focus });
           }
           return;
         }
@@ -11761,7 +11783,7 @@ export class Bridge {
             const stillWanted = this.awaitPendingSelect(uid);
             waitForVisible().then((visible) => {
               if (visible && stillWanted()) {
-                this.selectBlock(blockElement);
+                this.selectBlock(blockElement, { focus });
               }
             });
             return;
@@ -11773,7 +11795,7 @@ export class Bridge {
             const stillWanted = this.awaitPendingSelect(uid);
             waitForVisible().then((visible) => {
               if (visible && stillWanted()) {
-                this.selectBlock(blockElement);
+                this.selectBlock(blockElement, { focus });
               }
             });
             return; // Exit early - selection will happen in the async callback
@@ -11797,14 +11819,14 @@ export class Bridge {
           // Call selectBlock() to properly set up toolbar and contenteditable
           // This ensures blocks selected via Order tab work the same as clicking
           this.editMode = 'text';
-          this.selectBlock(blockElement);
+          this.selectBlock(blockElement, { focus });
 
           // Focus the contenteditable element for blocks with editable fields
           // This includes slate, string, and textarea field types
           const schemaProps = this.getBlockSchema(uid)?.properties;
           const hasEditableFields = schemaProps && Object.keys(schemaProps).length > 0;
 
-          if (hasEditableFields) {
+          if (hasEditableFields && focus) {
             // Use double requestAnimationFrame to wait for ALL DOM updates including Quanta toolbar
             requestAnimationFrame(() => {
               requestAnimationFrame(() => {
@@ -11848,7 +11870,7 @@ export class Bridge {
               clearTimeout(safetyTimer);
               if (!stillWanted()) return;
               log('Block element appeared via observer, selecting:', uid);
-              this.selectBlock(el);
+              this.selectBlock(el, { focus });
             }
           });
           observer.observe(document.body, { childList: true, subtree: true });
@@ -11966,38 +11988,20 @@ export class Bridge {
   }
 
   /**
-   * Note when the author last pressed a key or pointed in this page. The
-   * bridge also selects and focuses on its own — the block the editor opened
-   * with, once the page settles — and the admin, which can't see input inside
-   * the frame, needs to tell the two apart: focus the bridge gave itself is not
-   * the author choosing this pane (userInput on BLOCK_SELECTED).
+   * Tell the admin when this page gets focus (CANVAS_FOCUSED): the author
+   * clicked in it or tabbed into it, from the admin or from another page the
+   * admin shows. Once per switch: the window's focus event fires when focus
+   * arrives from elsewhere, not for each click or key inside.
    *
-   * A pointerdown is also reported to the admin (AUTHOR_POINTERDOWN): it is a
-   * click outside whatever the admin has open, and the admin's own document
-   * never sees it. Focus the bridge moves into this page by itself is not one.
+   * The admin can't see this itself: focus moving into an iframe, or from one
+   * iframe to another, fires nothing on the admin's side. And it is always the
+   * author: the bridge never moves focus into its own page by itself (not on
+   * load, nor when the admin selects a block — see SELECT_BLOCK).
    */
-  trackAuthorInput() {
-    const noted = (e) => {
-      if (e.isTrusted) this._lastAuthorInputAt = Date.now();
-    };
-    document.addEventListener('keydown', noted, true);
-    document.addEventListener(
-      'pointerdown',
-      (e) => {
-        noted(e);
-        if (e.isTrusted)
-          window.parent.postMessage(
-            { type: 'AUTHOR_POINTERDOWN' },
-            this.adminOrigin,
-          );
-      },
-      true,
-    );
-  }
-
-  /** Did the author press a key or point in this page just now? */
-  isAuthorInputRecent() {
-    return this._lastAuthorInputAt !== undefined && Date.now() - this._lastAuthorInputAt < AUTHOR_INPUT_MS;
+  reportCanvasFocus() {
+    window.addEventListener('focus', () => {
+      window.parent.postMessage({ type: 'CANVAS_FOCUSED' }, this.adminOrigin);
+    });
   }
 
   /**

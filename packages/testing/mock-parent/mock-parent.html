@@ -121,6 +121,14 @@
   </div>
 
   <script type="module">
+    // As the admin does (View.jsx): the frontend never takes focus by itself,
+    // so once the page has its data the admin focuses it, if nothing else has
+    // focus.
+    function focusEditingPageIfIdle() {
+      const iframe = document.getElementById('previewIframe');
+      const active = document.activeElement;
+      if (iframe && (!active || active === document.body)) iframe.focus();
+    }
     import { buildBlockPathMap, buildIdFieldMap } from '/inka-mock-parent/build-block-path-map.js';
     import { mergeTemplatesIntoPage } from '/inka-mock-parent/merge-templates.js';
     import { mergeFrontendBlock } from '/inka-mock-parent/merge-frontend-block.js';
@@ -818,6 +826,7 @@
           console.log('[MOCK_PARENT] Sending INITIAL_DATA with blockPathMap:', response);
           event.source.postMessage(response, event.origin);
           logMessage('sent', 'INITIAL_DATA', response.data);
+          focusEditingPageIfIdle();
 
           // Auto-select the first block after a short delay to allow hydra.js to initialize
           setTimeout(() => {
@@ -872,6 +881,7 @@
           console.log('[MOCK_PARENT] Sending INITIAL_DATA:', response);
           event.source.postMessage(response, event.origin);
           logMessage('sent', 'INITIAL_DATA', response.data);
+          focusEditingPageIfIdle();
 
           setTimeout(() => {
             const firstBlockId = mockFormData.blocks_layout.items[0];

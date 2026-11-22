@@ -25,6 +25,7 @@ import { toast } from 'react-toastify';
 import { getIframeUrlCookieName } from '../../utils/cookieNames';
 import rememberedFrontendUrl from '../../utils/getRememberedFrontendUrl';
 import { PAGE_BLOCK_UID } from '@volto-hydra/hydra-js';
+import { blockActionTargets } from '../../utils/blockActionTargets';
 import { isObjectListRegion } from '@volto-hydra/helpers/regionWidgets.js';
 import { INKA_BLOCK_TYPES, undeclaredBlockProblems } from '@volto-hydra/helpers/inkaBlocks.js';
 import { mergeFrontendBlock } from '@volto-hydra/hydra-js/mergeFrontendBlock.js';
@@ -796,6 +797,18 @@ const rewriteTemplateRefs = (node, oldId, newId) => {
   return changed ? out : node;
 };
 
+/**
+ * The page being edited takes the keyboard as it loads, so keys reach it
+ * without a click first — when nothing else has focus. The author may already
+ * be in the sidebar or in a field of the admin, and the page can't see that, so
+ * the bridge doesn't focus itself: the admin does, from here.
+ */
+function focusEditingPageIfIdle() {
+  const iframe = document.getElementById('previewIframe');
+  const active = document.activeElement;
+  if (iframe && (!active || active === document.body)) iframe.focus();
+}
+
 const Iframe = (props) => {
   if (typeof window !== 'undefined' && window._formatT0) {
     console.log('[VIEW-TIMING] Iframe render +' + (performance.now() - window._formatT0).toFixed(0) + 'ms');
@@ -1531,7 +1544,40 @@ const Iframe = (props) => {
       );
     };
 
+    // Block shortcuts with focus in the admin. Choosing a block in the sidebar
+    // leaves focus there, where the page's own shortcuts (hydra.js) never hear
+    // the keys. Outside a field, the admin answers copy, cut and paste for the
+    // selected blocks itself, as the block menu does.
+    const handleBlockShortcut = (e) => {
+      if (!(e.ctrlKey || e.metaKey) || e.altKey || e.shiftKey) return;
+      const key = e.key.toLowerCase();
+      if (key !== 'c' && key !== 'x' && key !== 'v') return;
+      if (!selectedBlock || selectedBlock === PAGE_BLOCK_UID) return;
+      // In a field, a dialog or the page, the keys are theirs.
+      const active = document.activeElement;
+      if (active?.tagName === 'IFRAME') return;
+      if (
+        active?.closest?.(
+          'input, textarea, select, [contenteditable="true"], [role="dialog"], .ui.modal',
+        )
+      ) {
+        return;
+      }
+      // Text selected in the admin: copying that text.
+      if (key !== 'v' && !window.getSelection()?.isCollapsed) return;
+
+      e.preventDefault();
+      const blockIds = blockActionTargets(selectedBlock, multiSelectedRef.current);
+      if (key === 'v') {
+        handlePaste({ detail: { afterBlockId: blockIds[blockIds.length - 1], keepClipboard: false } });
+        return;
+      }
+      handleCopy({ detail: { blockIds, action: key === 'c' ? 'copy' : 'cut' } });
+      if (key === 'x') handleDelete({ detail: { blockIds } });
+    };
+
     document.addEventListener('hydra-copy-blocks', handleCopy);
+    document.addEventListener('keydown', handleBlockShortcut);
     document.addEventListener('hydra-delete-blocks', handleDelete);
     document.addEventListener('hydra-paste-blocks', handlePaste);
     document.addEventListener('hydra-exit-selection-mode', handleExitSelectionMode);
@@ -1539,6 +1585,7 @@ const Iframe = (props) => {
     document.addEventListener('hydra-move-block', handleMoveBlock);
     return () => {
       document.removeEventListener('hydra-copy-blocks', handleCopy);
+      document.removeEventListener('keydown', handleBlockShortcut);
       document.removeEventListener('hydra-delete-blocks', handleDelete);
       document.removeEventListener('hydra-paste-blocks', handlePaste);
       document.removeEventListener('hydra-exit-selection-mode', handleExitSelectionMode);
@@ -1548,7 +1595,7 @@ const Iframe = (props) => {
     // NOTE: templateEditMode must be a dep — these handlers (handleDelete) gate
     // on it via isBlockReadonly; without it the listener closure keeps a
     // stale edit mode and refuses to mutate template blocks while editing.
-  }, [blocksClipboard, properties, iframeSyncState?.blockPathMap, iframeSyncState?.templateEditMode, onChangeFormData, dispatch, intl]);
+  }, [blocksClipboard, properties, iframeSyncState?.blockPathMap, iframeSyncState?.templateEditMode, onChangeFormData, dispatch, intl, selectedBlock]);
 
   // Template cache: stores loaded template documents keyed by templateId
   // Used for comparison on save to detect template changes
@@ -3838,38 +3885,10 @@ const Iframe = (props) => {
             log('BLOCK_SELECTED ignored: not in edit mode', event.data.blockUid, 'src:', event.data.src);
             break;
           }
-          // Back to the page being edited when the editor is WORKING IN it —
-          // and only then. This page also RE-ANNOUNCES its existing selection
-          // on a re-render, on scroll and on resize, and those must not snatch
-          // the sidebar back from the compared language.
-          //
-          // This used to ask whether the compare pane held focus. It never
-          // can: that pane's iframe takes no pointer events (the click lands
-          // on the wrapper, which is how the pane gets selected), so nothing
-          // inside it is ever `document.activeElement` and the guard was
-          // always true. Any re-announcement from this pane then took the
-          // sidebar back, a beat after the editor clicked the other one —
-          // which is why it only failed sometimes.
-          //
-          // Evidence of working in this pane instead: it has focus, or it is
-          // announcing a DIFFERENT block from the one already selected.
-          //
-          // Focus counts only when the author's own key or pointer moved it
-          // (userInput). The bridge focuses a field itself when it settles on
-          // the block the editor opened with, and on a slow load that comes
-          // after a click in the other language's pane: the iframe has focus
-          // then, but nobody is working in it.
-          const editPaneHasFocus =
-            typeof document !== 'undefined' &&
-            document.activeElement?.id === 'previewIframe' &&
-            event.data.userInput;
-          const isRepeatOfCurrentSelection =
-            event.data.blockUid === selectedBlock ||
-            event.data.src === 'scrollHandler' ||
-            event.data.src === 'resizeHandler';
-          if (editPaneHasFocus || !isRepeatOfCurrentSelection) {
-            setSelectedPane('edit');
-          }
+          // A selection never moves the sidebar between the panes: focus
+          // does (CANVAS_FOCUSED). This page also re-announces its
+          // selection on a re-render, a scroll or a resize, and selects a
+          // block by itself as it settles.
           // Update block UI state and selection atomically
           // Selection is included in BLOCK_SELECTED to prevent race conditions
 
@@ -4067,10 +4086,13 @@ const Iframe = (props) => {
           // Don't call onSelectBlock(null) - keep the block selected in Redux
           break;
 
-        case 'AUTHOR_POINTERDOWN': {
-          // The author pressed in the frontend: a click outside whatever the
-          // admin has open (a link or image box, a toolbar menu), which this
-          // document never sees. Their click-outside handlers listen for
+        case 'CANVAS_FOCUSED': {
+          // The author moved into the page being edited — clicked or tabbed
+          // into it. It takes the sidebar back from the other language.
+          setSelectedPane('edit');
+          // And it is a click (or key) outside whatever the admin has open (a
+          // link or image box, a toolbar menu), which this document never
+          // sees. Their click-outside handlers listen for
           // mousedown, so give them one. On body, not document: Volto's
           // handleClickOutside calls e.target.closest.
           document.body.dispatchEvent(
@@ -4880,6 +4902,7 @@ const Iframe = (props) => {
             slateConfig: { hotkeys: config.settings.slate?.hotkeys || {}, toolbarButtons },
           }, origin);
           pendingInitialDataRef.current = null;
+          focusEditingPageIfIdle();
         })().catch(err => {
           log('[INITIAL_DATA] ERROR in forced-layout merge:', err.message, err.stack);
           console.error('[INITIAL_DATA] Error (forced-layout):', err);
@@ -4983,6 +5006,7 @@ const Iframe = (props) => {
           slateConfig: { hotkeys: config.settings.slate?.hotkeys || {}, toolbarButtons },
         }, origin);
         pendingInitialDataRef.current = null;
+        focusEditingPageIfIdle();
 
         // Update Redux with the SAME data sent to the iframe (including seeded
         // empty placeholders). Committing the pre-seed mergedFormData instead
@@ -6634,8 +6658,12 @@ const Iframe = (props) => {
               it. Read-only — no bridge, no editing chrome — beside the draft,
               which is the pane the editor works in. */}
           {comparePreviewUrl && (
-            // The pane is inert (its iframe takes no pointer events), so a
-            // click lands here — which is how it gets selected.
+            // The sidebar belongs to the pane the author moved into last:
+            // focus arriving in this wrapper (a click, or Tab onto it) or in
+            // its page (CANVAS_FOCUSED, onCanvasFocus) gives it the sidebar,
+            // and the page being edited reporting focus takes it back. Focus
+            // going anywhere else — the sidebar itself — leaves it where it
+            // is. No page takes focus by itself, so focus is the author's.
             <div
               className={
                 selectedPane === 'compare'
@@ -6646,8 +6674,8 @@ const Iframe = (props) => {
               // counterpart of the one selected next door, or nothing when the
               // selected block was added after the copy.
               data-showing-block={counterpartOfSelected || ''}
+              onFocus={() => setSelectedPane('compare')}
               onClick={() => setSelectedPane('compare')}
-              onKeyDown={(e) => e.key === 'Enter' && setSelectedPane('compare')}
               role="button"
               tabIndex={0}
               aria-pressed={selectedPane === 'compare'}
@@ -6667,20 +6695,14 @@ const Iframe = (props) => {
                 // the copy has no counterpart, and nothing lights up: that is
                 // itself worth seeing, because the block is new.
                 showBlock={counterpartOfSelected}
-                onSelectBlock={(uid, { userInput }) => {
-                  // Only when the author chose it in that pane. The pane also
-                  // echoes back the selection we drive into it from the page
-                  // being edited, and that must not take the sidebar.
-                  //
-                  // Judged by the pane's own record of the author's key or
-                  // pointer (userInput), not by where focus is: the page being
-                  // edited, settling on a slow load, focuses a field on its
-                  // own, and when that landed between a click here and its
-                  // message, the click was lost.
-                  if (!userInput) return;
-                  setSelectedPane('compare');
+                // Which of its blocks to show the fields of. A selection
+                // there never takes control: the pane also answers the
+                // admin, which selects the counterpart of the block selected
+                // next door, and re-announces on a resize or a re-render.
+                onSelectBlock={(uid) => {
                   setCompareSelectedBlock(uid);
                 }}
+                onCanvasFocus={() => setSelectedPane('compare')}
               />
             </div>
           )}
