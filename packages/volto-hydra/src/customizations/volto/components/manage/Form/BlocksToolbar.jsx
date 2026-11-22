@@ -10,6 +10,8 @@
  * or rebuilding it — View.jsx already owns it.
  *
  * Events fired:
+ *   hydra-copy-blocks   — View.jsx puts selectedBlocks on the clipboard
+ *   hydra-cut-blocks    — View.jsx moves the movable selectedBlocks to the clipboard
  *   hydra-paste-blocks  — View.jsx inserts clipboard blocks after selectedBlock
  *   hydra-delete-blocks — View.jsx deletes selectedBlocks from their containers
  */
@@ -88,8 +90,11 @@ export class BlocksToolbarComponent extends React.Component {
   }
 
   cutBlocksToClipboard() {
-    this.setBlocksClipboard('cut');
-    this.deleteBlocks();
+    document.dispatchEvent(new CustomEvent('hydra-cut-blocks', {
+      detail: { blockIds: this.props.selectedBlocks },
+    }));
+    this.props.onSelectBlock(null);
+    this.props.onSetSelectedBlocks([]);
   }
 
   /**

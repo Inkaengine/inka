@@ -483,10 +483,7 @@ const DropdownMenu = ({
             onClick={() => {
               onClose();
               const uids = blockActionTargets(selectedBlock, multiSelectedUids);
-              document.dispatchEvent(new CustomEvent('hydra-copy-blocks', {
-                detail: { blockIds: uids, action: 'cut' },
-              }));
-              document.dispatchEvent(new CustomEvent('hydra-delete-blocks', {
+              document.dispatchEvent(new CustomEvent('hydra-cut-blocks', {
                 detail: { blockIds: uids },
               }));
             }}

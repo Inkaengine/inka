@@ -364,6 +364,7 @@ import {
   settleBlockStructure,
   emptiedByMove,
   deleteBlocks,
+  canMutateBlock,
   canInsertBesideBlock,
   createSchemaEnhancerFromRecipe,
   installVariationFieldEnhancers,
@@ -1384,6 +1385,18 @@ const Iframe = (props) => {
       if (onSetMultiSelected) onSetMultiSelected([]);
     };
 
+    // Cut moves blocks, so it takes only the blocks that can move: a locked one
+    // stays where it is and isn't on the clipboard to be pasted as a copy. The
+    // page's own cut filters the same way (hydra._filterMutableBlockUids).
+    const handleCut = (e) => {
+      const blockIds = e.detail.blockIds.filter((uid) =>
+        canMutateBlock(getBlockById(properties, bpm, uid), iframeSyncState.templateEditMode),
+      );
+      if (blockIds.length === 0) return;
+      handleCopy({ detail: { blockIds, action: 'cut' } });
+      handleDelete({ detail: { blockIds } });
+    };
+
     const handlePaste = (e) => {
       const { afterBlockId, keepClipboard } = e.detail;
       const mode = Object.keys(blocksClipboard).includes('cut') ? 'cut' : 'copy';
@@ -1572,11 +1585,12 @@ const Iframe = (props) => {
         handlePaste({ detail: { afterBlockId: blockIds[blockIds.length - 1], keepClipboard: false } });
         return;
       }
-      handleCopy({ detail: { blockIds, action: key === 'c' ? 'copy' : 'cut' } });
-      if (key === 'x') handleDelete({ detail: { blockIds } });
+      if (key === 'x') handleCut({ detail: { blockIds } });
+      else handleCopy({ detail: { blockIds, action: 'copy' } });
     };
 
     document.addEventListener('hydra-copy-blocks', handleCopy);
+    document.addEventListener('hydra-cut-blocks', handleCut);
     document.addEventListener('keydown', handleBlockShortcut);
     document.addEventListener('hydra-delete-blocks', handleDelete);
     document.addEventListener('hydra-paste-blocks', handlePaste);
@@ -1585,6 +1599,7 @@ const Iframe = (props) => {
     document.addEventListener('hydra-move-block', handleMoveBlock);
     return () => {
       document.removeEventListener('hydra-copy-blocks', handleCopy);
+      document.removeEventListener('hydra-cut-blocks', handleCut);
       document.removeEventListener('keydown', handleBlockShortcut);
       document.removeEventListener('hydra-delete-blocks', handleDelete);
       document.removeEventListener('hydra-paste-blocks', handlePaste);

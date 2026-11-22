@@ -1,0 +1,1 @@
+Choosing a block in the sidebar puts focus on that block's title in the sidebar, not the page body. Cut from the toolbar, the block menu or the sidebar shortcut leaves locked blocks where they are and off the clipboard, as the page's own cut does; all three go through one `hydra-cut-blocks` handler.

@@ -92,6 +92,13 @@ test.describe('choosing a block in the sidebar', () => {
         await page.evaluate(() => document.activeElement?.tagName),
         'focus is not taken into the page',
       ).not.toBe('IFRAME');
+      // The list item that had focus is gone (the sidebar now shows the
+      // block's settings): focus moves to the chosen block's title, not the
+      // page body, so a keyboard author carries on from there.
+      await expect(
+        page.locator('.sidebar-section-header[data-is-current="true"] .nav-title'),
+        'focus is on the chosen block',
+      ).toBeFocused();
     });
   }
 });
