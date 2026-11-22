@@ -34,6 +34,31 @@ describe('slate <-> markdown round-trip', () => {
     ] }]);
   });
 
+  // A list item may hold more than one paragraph (a numbered step with a note
+  // under it). Each was read as plain text beside the last, and plain text
+  // beside plain text is one run, so the paragraphs came back as one, joined
+  // with no space: "is replaced.When a page switches layouts".
+  describe('a list item with several paragraphs keeps them apart', () => {
+    const sameMarkdown = (md) => expect(slateToMd(mdToSlate(md))).toBe(md);
+    it('in a bullet item', () => {
+      sameMarkdown('- Item.\n\n  Para one.\n\n  Para two.');
+    });
+    it('in a numbered step', () => {
+      sameMarkdown('1. Step.\n\n   Para one.\n\n   Para two.');
+    });
+    it('after a list inside the step', () => {
+      sameMarkdown('1. Step.\n\n   - a\n   - b\n\n   Para one.\n\n   Para two.');
+    });
+    it('as slate, too', () => {
+      roundTrips([{ type: 'ol', children: [
+        { type: 'li', children: [
+          { text: 'Step.' },
+          { type: 'p', children: [{ text: 'A note under it.' }] },
+        ] },
+      ] }]);
+    });
+  });
+
   it('round-trips a nested list (a list item containing a sub-list)', () => {
     roundTrips([{ type: 'ul', children: [
       { type: 'li', children: [
