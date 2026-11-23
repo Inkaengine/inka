@@ -347,11 +347,20 @@ class Form extends Component {
     // The schema usually arrives AFTER mount, and the offer to restore a draft
     // needs it (it decides which fields the draft covers). Without this, coming
     // back to a page you left mid-edit silently keeps the server's copy.
+    // In the editor the draft is checked against the page as loaded
+    // (onEditorLoaded), once both are here.
     if (!prevProps.schema && this.props.schema) {
-      this.props.checkSavedDraft(
-        this.state.formData,
-        this.updateFormDataWithSaved,
-      );
+      if (!this.props.isEditForm) {
+        this.props.checkSavedDraft(
+          this.state.formData,
+          this.updateFormDataWithSaved,
+        );
+      } else if (this.draftBaseline) {
+        this.props.checkSavedDraft(
+          this.draftBaseline,
+          this.updateFormDataWithSaved,
+        );
+      }
     }
 
     if (!this.props.isFormSelected && prevProps.isFormSelected) {
@@ -390,15 +399,20 @@ class Form extends Component {
 
     // Hydra: Reset formData when navigating to a different page
     if (this.props?.location?.pathname !== prevProps?.location?.pathname) {
+      // A different page: nothing on it is the author's until it has loaded.
+      this.draftBaseline = null;
       this.setState({ formData: this.props.formData }, () => {
         // Arriving at a different page is the other moment a draft can exist
         // for it. The mount check only fires when the Form is created; hydra
         // navigates between pages inside the editor without remounting it, so
-        // without this you are only ever offered a draft on a cold load.
-        this.props.checkSavedDraft(
-          this.state.formData,
-          this.updateFormDataWithSaved,
-        );
+        // without this you are only ever offered a draft on a cold load. (The
+        // editor checks once the page has loaded: onEditorLoaded.)
+        if (!this.props.isEditForm) {
+          this.props.checkSavedDraft(
+            this.state.formData,
+            this.updateFormDataWithSaved,
+          );
+        }
       });
     }
 
@@ -509,8 +523,9 @@ class Form extends Component {
         this.setState({ translationSource: source });
     });
 
-    // Offer back anything autosaved from a previous visit to this page.
-    if (this.props.schema) {
+    // Offer back anything autosaved from a previous visit to this page. (The
+    // editor does so once the page has loaded: onEditorLoaded.)
+    if (this.props.schema && !this.props.isEditForm) {
       this.props.checkSavedDraft(
         this.state.formData,
         this.updateFormDataWithSaved,
@@ -558,31 +573,34 @@ class Form extends Component {
   onChangeField(id, value) {
     // Autosave (debounced inside the HOC) what the form holds AFTER this
     // change: drafting the state before it left the last edit out of the
-    // draft. Blocks are drafted too — see the withSaveAsDraft shadow — so
-    // canvas work survives leaving the page.
-    this.setState((prevState) => {
-      const { errors, formData } = prevState;
-      const newFormData = {
-        ...formData,
-        // We need to catch also when the value equals false this fixes #888
-        [id]: value || (value !== undefined && isBoolean(value)) ? value : null,
-      };
-      delete errors[id];
-      if (this.props.global) {
-        this.props.setFormData(newFormData);
-      }
-      return {
-        errors,
-        formData: newFormData,
-        // Changing the form data re-renders the select widget which causes the
-        // focus to get lost. To circumvent this, we set the focus back to
-        // the input.
-        // This could fix other widgets too but currently targeted
-        // against the select widget only.
-        // Ensure field to be in focus after the change
-        inFocus: { [id]: true },
-      };
-    }, () => this.props.onSaveDraft(this.state.formData));
+    // draft.
+    this.setState(
+      (prevState) => {
+        const { errors, formData } = prevState;
+        const newFormData = {
+          ...formData,
+          // We need to catch also when the value equals false this fixes #888
+          [id]:
+            value || (value !== undefined && isBoolean(value)) ? value : null,
+        };
+        delete errors[id];
+        if (this.props.global) {
+          this.props.setFormData(newFormData);
+        }
+        return {
+          errors,
+          formData: newFormData,
+          // Changing the form data re-renders the select widget which causes the
+          // focus to get lost. To circumvent this, we set the focus back to
+          // the input.
+          // This could fix other widgets too but currently targeted
+          // against the select widget only.
+          // Ensure field to be in focus after the change
+          inFocus: { [id]: true },
+        };
+      },
+      () => this.saveDraft(this.state.formData),
+    );
   }
 
   /**
@@ -955,12 +973,38 @@ class Form extends Component {
     });
     // Autosave the canvas too. This is THE path that matters in hydra: almost
     // everything an author does happens in the iframe and arrives here, not
-    // through onChangeField, so a draft wired only to the sidebar would save a
-    // title and lose every block.
-    this.props.onSaveDraft(newFormData);
+    // through onChangeField.
+    this.saveDraft(newFormData);
     if (this.props.global) {
       this.props.setFormData(newFormData);
     }
+  };
+
+  /**
+   * The page as the editor loaded it (Iframe's onEditorLoaded): its blocks'
+   * defaults filled in, templates merged, empty regions seeded. Loading
+   * changes the form, as Volto's own form never does; a draft is what the
+   * AUTHOR changed, so it is measured from here, not from the server's copy.
+   */
+  onEditorLoaded = (loadedFormData) => {
+    // Merged as onIframeChangeFormData merged the same data a moment ago.
+    this.draftBaseline = { ...this.state.formData, ...loadedFormData };
+    this.props.checkSavedDraft(
+      this.draftBaseline,
+      this.updateFormDataWithSaved,
+    );
+  };
+
+  /**
+   * Autosave the form, if it holds the author's work. In the editor, nothing
+   * is until the page has loaded, and the page as loaded is not.
+   */
+  saveDraft = (formData) => {
+    if (this.props.isEditForm) {
+      if (!this.draftBaseline) return;
+      if (isEqual(formData, this.draftBaseline)) return;
+    }
+    this.props.onSaveDraft(formData);
   };
 
   removeBlocksLayoutFields = (schema) => {
@@ -1116,6 +1160,7 @@ class Form extends Component {
             token={this.props.token}
             saveTemplatesRef={this.saveTemplatesRef}
             flushEditsRef={this.flushEditsRef}
+            onEditorLoaded={this.onEditorLoaded}
           />
           {/* BlocksForm removed - Hydra uses Iframe for block editing */}
           {this.state.isClient &&
