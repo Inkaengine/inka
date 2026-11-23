@@ -20,6 +20,9 @@ import { createPortal } from 'react-dom';
  */
 const MobileSubmenuClose = () => {
   const [open, setOpen] = useState(false);
+  // A sheet that brings its own back-arrow (the Frontend & Viewport panel)
+  // still hides the bottom bar, but gets no second arrow on top of its own.
+  const [ownClose, setOwnClose] = useState(false);
 
   useEffect(() => {
     if (typeof document === 'undefined') return undefined;
@@ -40,7 +43,12 @@ const MobileSubmenuClose = () => {
       return !!expanded && !!tc?.classList.contains('show');
     };
 
-    const sync = () => setOpen(computeOpen());
+    const sync = () => {
+      setOpen(computeOpen());
+      setOwnClose(
+        !!document.querySelector('#toolbar .toolbar-content .mobile-sheet-close'),
+      );
+    };
 
     // Watch ALL subtree attribute changes inside #toolbar — covers
     // toolbar-content.show class changes AND toolbar-button.expanded
@@ -90,7 +98,7 @@ const MobileSubmenuClose = () => {
     return () => document.body.removeAttribute('data-hydra-submenu-open');
   }, [open]);
 
-  if (!open) return null;
+  if (!open || ownClose) return null;
   if (typeof document === 'undefined') return null;
 
   const handleClick = () => {
