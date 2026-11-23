@@ -14941,6 +14941,18 @@ export class Bridge {
 
       this.setFieldValueByPath(block, resolved.fieldName, freshValue);
       log('handleTextChange: updated', editableField);
+
+      // The author has typed into this field, so its caret target (see
+      // _requestCaretTarget) has done its job: the frontend's node now holds
+      // their text. Forget it. Kept, it would fill its leaf with a zero-width
+      // space whenever the leaf is empty again — after linking the whole line,
+      // the empty leaf before the link — and the frontend, handed the same
+      // value it last drew there, would leave the typed text in that node, in
+      // front of the link.
+      const caretLeaf = this._caretLeaf;
+      if (caretLeaf && caretLeaf.blockUid === blockUid && caretLeaf.fieldName === editableField) {
+        this._caretLeaf = null;
+      }
     } else {
       // Non-Slate field - update field directly with text content
       // Resolve field path to handle /fieldName (page) and ../fieldName (parent) syntax
