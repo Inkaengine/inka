@@ -1,0 +1,1 @@
+A block moved by the toolbar's chevrons is scrolled into view once the page has rendered it, as a dragged one is. The bridge measured it before the frontend re-rendered, saw it where it had been, and the toolbar stayed hidden with the block off screen.
