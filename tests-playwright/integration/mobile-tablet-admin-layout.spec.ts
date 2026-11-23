@@ -1591,6 +1591,10 @@ test.describe('Admin layout — mobile (≤767px)', () => {
       back,
       'Frontend & Viewport panel must have a close affordance on mobile',
     ).toBeVisible();
+    await expect(
+      page.locator('.mobile-sheet-close:visible'),
+      'One back arrow: the panel brings its own, so the submenu one stays away',
+    ).toHaveCount(1);
 
     // And it must dismiss the panel.
     await back.click();
