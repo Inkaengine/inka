@@ -677,7 +677,11 @@ else {
   paths = args.sample
     ? // A bare `--sample` is the whole covering set; `--sample 8` caps it.
       // (`Number(true)` is 1, so the boolean must be excluded explicitly.)
-      await samplePages(all, args.sample === true ? Infinity : Number(args.sample))
+      // Replaying, a page the site gained since the recording has none: the
+      // sample takes a recorded page showing the same blocks where one exists.
+      await samplePages(all, args.sample === true ? Infinity : Number(args.sample), {
+        recorded: RECORD ? () => true : (p) => fs.existsSync(archiveFile(settings.archiveDir, slugOf(p))),
+      })
     : all;
 }
 // `--limit` is applied AFTER the block filter below, not here: `--blocks=search

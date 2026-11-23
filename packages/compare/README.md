@@ -34,7 +34,7 @@ And what a comparison runs on:
 | Module | |
 |---|---|
 | `fetch` | A request retried on a network failure, then failed loudly |
-| `pages` | Every page of the source site, or the fewest that still show every block it uses; a page's slug |
+| `pages` | Every page of the source site, or the fewest that still show every block it uses (replaying, only pages with a recording: the rest, and any block only they show, are named); a page's slug |
 | `source-archive` | A source site recorded once (HAR) and replayed with the network shut |
 
 Nothing here knows a design system or a site: a class prefix, the
