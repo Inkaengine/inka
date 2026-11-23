@@ -182,11 +182,6 @@
         "2371d419c": "the two apiSuffix cases. Not copied here: upstream's own Url.test.js is in vitest's `include` and now resolves `./Url` to our shadow, so those cases already run against our fork. This file holds only the hydra-specific cases."
       }
     },
-    "volto/helpers/Utils/withSaveAsDraft.jsx": {
-      "upstream": "core/packages/volto/src/helpers/Utils/withSaveAsDraft.jsx",
-      "hash": "7b3af5b3344e571afa761f1834f5ba1ac2dd2e1357ccb35a3c27010ecd6eeefc",
-      "why": "Same feature as core's — debounced localStorage autosave stamped with autoSaveDate, offered back if the author returns mid-edit, no API or server storage. The single change is WHICH fields get drafted, in mapSchemaToData."
-    },
     "volto/routes.js": {
       "upstream": "core/packages/volto/src/routes.js",
       "hash": "6a2e6c5e259137d8f5b8a7bbdf0f681b1bf5ee02a0de39233e5b690f5050611f",
