@@ -49,6 +49,10 @@
         },
         "tpl-grid-cell-2": {
           "@type": "slate",
+          "fixed": true,
+          "readOnly": true,
+          "templateInstanceId": "test-layout-def-instance",
+          "slotId": "grid-cell-2",
           "value": [
             {
               "type": "p",

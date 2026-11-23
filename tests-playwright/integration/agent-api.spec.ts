@@ -179,10 +179,17 @@ test.describe('Agent API', () => {
     expect(await refusal((a, x) => a.update(x), { id: 'template-header', fields: { value: slate('Changed') } }))
       .toMatch(/template-header.*locked.*\/_test_data\/templates\/test-layout/);
     expect(await refusal((a, x) => a.remove(x), 'template-header')).toMatch(/template-header.*cannot be (re)?moved/);
-    // Nothing goes between two of a template's fixed blocks.
-    expect(await refusal((a, x) => a.insert(x), { refId: 'template-header', action: 'after', block: { '@type': 'slate', value: slate('Wedged') } }))
-      .toMatch(/cannot add .* after template-header/);
-    expect(await layout(page)).toContain('template-header');
+    // Nothing goes between two of a template's fixed blocks: adding after the
+    // header goes where the editor's "+" there adds, the top of the default slot.
+    const before = await layout(page);
+    await agent(page, (a, x) => a.insert(x), { refId: 'template-header', action: 'after', block: { '@type': 'slate', value: slate('Not wedged') } });
+    await expect(helper.getIframe().getByText('Not wedged')).toBeVisible();
+    const after = await layout(page);
+    const next = (ids: string[], id: string) => ids[ids.indexOf(id) + 1];
+    expect(next(after, 'template-header')).toBe(next(before, 'template-header'));
+    const added = after.filter((id) => !before.includes(id));
+    expect(added).toHaveLength(1);
+    expect(next(after, added[0])).toBe('user-content-1');
 
     // A slot's blocks are the page's own.
     await agent(page, (a, arg) => a.update(arg), { id: 'user-content-1', fields: { value: slate('Slot text by the agent') } });
