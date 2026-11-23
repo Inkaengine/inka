@@ -9,6 +9,12 @@
  *   plone-content all      [<content-dir>]   — validate + check (+ schema with --schemas)
  *   plone-content search-text [<content-dir>] --schemas <schemas.json>
  *   plone-content field-mappings [<content-dir>] --schemas <schemas.json>
+ *   plone-content convert-block --schemas <schemas.json> --to <type>
+ *                                            — one block (JSON on stdin) converted to
+ *                                              <type> as the editor converts it, through
+ *                                              the site's field mappings (JSON on stdout):
+ *                                              for a program that makes content outside
+ *                                              the editor (a site converter, a migration)
  *                                            — writes each block's searchableText into the
  *                                              content, as the editor does on save: for
  *                                              content that doesn't pass through the editor
@@ -43,7 +49,7 @@ const { validate, checkIntegrity, checkBlockSchemas, checkEditorRules, checkChoo
 
 function usage() {
   console.error(
-    'Usage: plone-content <validate|check|schema|all|search-text|field-mappings> [<content-dir>] ' +
+    'Usage: plone-content <validate|check|schema|all|search-text|field-mappings|convert-block> [<content-dir>] ' +
       '[--schemas <schemas.json>] [--content-types <types.json>] [--exempt-slot <slot>]... [--json <report.json>] [--allow-missing-blobs]',
   );
   process.exit(2);
@@ -70,6 +76,8 @@ const contentTypes = contentTypesPath ? JSON.parse(fs.readFileSync(path.resolve(
 // not put them (a documentation page's examples). Repeatable.
 const allowMissingBlobs = argv.includes('--allow-missing-blobs');
 if (allowMissingBlobs) argv.splice(argv.indexOf('--allow-missing-blobs'), 1);
+// convert-block: the type to convert the block to.
+const toType = takeFlag('--to');
 const exemptSlots = [];
 for (let slot = takeFlag('--exempt-slot'); slot; slot = takeFlag('--exempt-slot')) exemptSlots.push(slot);
 
@@ -79,7 +87,51 @@ const schemas = schemasPath ? await loadSchemas(schemasPath) : null;
 const [cmd, dirArg] = argv;
 // Anything left over is a flag this CLI does not know: ignoring it would run a
 // different check from the one asked for.
-if (!cmd || !['validate', 'check', 'schema', 'all', 'search-text', 'field-mappings'].includes(cmd) || argv.length > 2) usage();
+if (!cmd || !['validate', 'check', 'schema', 'all', 'search-text', 'field-mappings', 'convert-block'].includes(cmd) || argv.length > 2) usage();
+// One block converted as the editor converts it (convertBlockType, through the
+// site's field mappings), for content made outside the editor. A type the block
+// does not convert to is an error, never a block of that type with nothing in it.
+if (cmd === 'convert-block') {
+  if (!schemas) {
+    console.error('convert-block needs --schemas <schemas.json>');
+    process.exit(2);
+  }
+  if (!toType) {
+    console.error('convert-block needs --to <type>');
+    process.exit(2);
+  }
+  const { convertBlockType } = require('@volto-hydra/helpers/blockSync.js');
+  const { getConvertibleTypes } = require('@volto-hydra/helpers/conversionValidation.js');
+  const intl = { formatMessage: (m) => m?.defaultMessage || '' };
+  const block = JSON.parse(fs.readFileSync(0, 'utf8'));
+  const fromType = block['@type'];
+  if (!schemas[toType]) {
+    console.error(`convert-block: the site has no block type ${toType}`);
+    process.exit(1);
+  }
+  const reachable = getConvertibleTypes(fromType, schemas).map((t) => t.type);
+  if (!reachable.includes(toType)) {
+    console.error(`convert-block: ${fromType} does not convert to ${toType}`);
+    process.exit(1);
+  }
+  const converted = convertBlockType(block, toType, schemas, '@type', intl);
+  // The editor keeps the old type's unmapped fields, so converting back
+  // restores them. Content made outside the editor is converted once, and the
+  // content check refuses a field its block does not declare: keep only what
+  // the new type declares, by the same reckoning the check uses.
+  const { blocks: declared, identityFields } = fieldMapFromSchemas(schemas);
+  const own = declared[toType];
+  const keeps = (field) =>
+    own.builtIn ||
+    own.fields.includes(field) ||
+    identityFields.includes(field) ||
+    field === 'blocks' ||
+    field === 'blocks_layout' ||
+    (own.defaultsPrefix && field.startsWith(`${own.defaultsPrefix}_`));
+  const kept = Object.fromEntries(Object.entries(converted).filter(([field]) => keeps(field)));
+  process.stdout.write(`${JSON.stringify(kept)}\n`);
+  return;
+}
 // What the editor stores on a block with a mapping widget, for content that
 // doesn't pass through it: the widget's default where there is none, every
 // entry with its conversion, the address under getURL. Only pages it changes
