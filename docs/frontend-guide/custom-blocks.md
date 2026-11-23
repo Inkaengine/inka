@@ -1042,6 +1042,10 @@ Only an **internal** link is a pull source. An external URL has no catalog item 
 - Transitive conversions use paths through intermediate types (e.g. hero → teaser → image).
 - Unmapped fields are kept in the data so converting back restores them.
 
+### Converting outside the editor
+
+A program that makes content without the editor (a site converter, a migration) converts a block the editor's way with `plone-content convert-block --schemas <schemas> --to <type>`: the block as JSON on stdin, the converted block as JSON on stdout. It follows the same conversion graph, so a type the block doesn't convert to is an error, never an empty block of that type. Unlike the editor it keeps only the fields the new type declares: there is no converting back, and the content check refuses a field its block doesn't declare.
+
 ### Drag and paste via conversion
 
 The same conversion graph gives drag-and-drop (and paste) more valid destinations: a block can be dropped or pasted into a container whose `allowedBlocks` only admits a type the block can *convert* to.
