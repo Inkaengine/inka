@@ -58,7 +58,7 @@ describe('prototype mapping', () => {
     // A template slot-fill (slotId/templateId/fixed/readOnly) still wraps, with
     // its value in the body — not dumped whole into a data-json blob.
     const slot = { '@type': 'introduction', value: [{ type: 'p', children: [{ text: 'Slot lead.' }] }],
-      slotId: 'content', templateId: '/inka-templates/event-view', templateInstanceId: 'tpl-ev-def', fixed: false, readOnly: false };
+      slotId: 'default', templateId: '/inka-templates/event-view', templateInstanceId: 'tpl-ev-def', fixed: false, readOnly: false };
     const slotMd = emitBlocks(withSlate, [slot]);
     expect(slotMd).toContain('<block type="introduction"');
     expect(slotMd).not.toContain('data-json=\'{"value"');
@@ -1797,7 +1797,7 @@ describe('an empty block is an empty tag, not JSON', () => {
 
   it('an empty slate block with its own fields (a template slot)', async () => {
     const protos = await protosP;
-    const block = { '@type': 'slate', slotId: 'content', value: empty, fixed: false };
+    const block = { '@type': 'slate', slotId: 'default', value: empty, fixed: false };
     const md = emitBlocks(protos, [block]);
     expect(md).not.toMatch(/data-json/);
     expect(matchBlocks(protos, md)).toEqual([block]);

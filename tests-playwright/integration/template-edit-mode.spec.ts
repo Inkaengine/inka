@@ -504,7 +504,7 @@ test.describe('Template Edit Mode - Save', () => {
     // template saved without its slot leaves every page using it nowhere to show its own.
     const saved = writes.find((w) => !pageEnds(w.url))!.body;
     const slots = saved.blocks_layout.items.map((id: string) => saved.blocks[id]);
-    expect(slots.filter((b: any) => !b.fixed).map((b: any) => b.slotId)).toEqual(['primary']);
+    expect(slots.filter((b: any) => !b.fixed).map((b: any) => b.slotId)).toEqual(['default']);
     expect(JSON.stringify(saved.blocks)).not.toContain('User content - different from template default');
   });
 
@@ -1120,12 +1120,12 @@ test.describe('Template Edit Mode - Drag and Drop', () => {
     await expect(iframe.locator(`[data-block-uid="${STANDALONE_BLOCK_1}"]`)).toBeVisible({ timeout: 15000 });
     await helper.unlockTemplate(headerBlockId);
 
-    // First check what slotId value user-content-1 has (should be "primary")
+    // First check what slotId value user-content-1 has (should be "default")
     await helper.clickBlockInIframe(USER_CONTENT_1);
     await helper.waitForSidebarOpen();
     const neighborPlaceholder = page.locator('.field-wrapper-slotId input');
     const expectedPlaceholder = await neighborPlaceholder.inputValue();
-    expect(expectedPlaceholder).toBe('primary');
+    expect(expectedPlaceholder).toBe('default');
 
     // Drag standalone block into template (between user-content-1 and user-content-2)
     await helper.dragBlockAfter(STANDALONE_BLOCK_1, USER_CONTENT_1);
@@ -1138,7 +1138,7 @@ test.describe('Template Edit Mode - Drag and Drop', () => {
     const slotIdInput = page.locator('.field-wrapper-slotId input');
     await expect(slotIdInput).toBeVisible({ timeout: 5000 });
 
-    // The slotId should match the neighbors (all are "primary" in this region)
+    // The slotId should match the neighbors (all are "default" in this region)
     const actualSlotId = await slotIdInput.inputValue();
     expect(actualSlotId).toBe(expectedPlaceholder);
   });
@@ -1147,13 +1147,13 @@ test.describe('Template Edit Mode - Drag and Drop', () => {
 test.describe('Template Edit Mode - Validation', () => {
   test('non-contiguous slot groups prevent exit from edit mode', async ({ page }) => {
     // Rule: all blocks with the same slotId must be adjacent.
-    //   Valid:   [header] [primary] [primary] [primary] [footer]
-    //   Invalid: [header] [primary] [secondary] [primary] [footer]  <- "primary" split in two
+    //   Valid:   [header] [default] [default] [default] [footer]
+    //   Invalid: [header] [default] [secondary] [default] [footer]  <- "default" split in two
     //
     // A block dragged out of a slot now EXITS the template (it can't be left as a stranded
-    // "primary" separated by the footer), so the split is created the way editing still can —
-    // re-slot the MIDDLE of three primary blocks. The validation must refuse the lock. (The
-    // fixture starts with three CONTIGUOUS primary blocks, valid on load.)
+    // "default" separated by the footer), so the split is created the way editing still can —
+    // re-slot the MIDDLE of three default blocks. The validation must refuse the lock. (The
+    // fixture starts with three CONTIGUOUS default blocks, valid on load.)
 
     const helper = new AdminUIHelper(page);
 
@@ -1166,8 +1166,8 @@ test.describe('Template Edit Mode - Validation', () => {
     await expect(iframe.locator('[data-block-uid="ss-content-2"]')).toBeVisible({ timeout: 15000 });
     await helper.unlockTemplate(headerBlockId);
 
-    // Split the contiguous "primary" group by re-slotting the MIDDLE block to "secondary":
-    // [primary] [secondary] [primary] — "primary" is no longer contiguous.
+    // Split the contiguous "default" group by re-slotting the MIDDLE block to "secondary":
+    // [default] [secondary] [default] — "default" is no longer contiguous.
     await helper.clickBlockInIframe('ss-content-2');
     await helper.waitForSidebarOpen();
     await page.locator('.field-wrapper-slotId input').fill('secondary');
@@ -1193,8 +1193,8 @@ test.describe('Template Edit Mode - Validation', () => {
     // Rule: Different slot groups must be separated by a fixed block.
     // Having two different slot groups adjacent is invalid.
     //
-    // Valid:   [header-fixed] [primary] [primary] [footer-fixed]
-    // Invalid: [header-fixed] [primary] [secondary] [footer-fixed]  <- no fixed block between groups
+    // Valid:   [header-fixed] [default] [default] [footer-fixed]
+    // Invalid: [header-fixed] [default] [secondary] [footer-fixed]  <- no fixed block between groups
 
     const helper = new AdminUIHelper(page);
 
@@ -1216,7 +1216,7 @@ test.describe('Template Edit Mode - Validation', () => {
     await helper.clickBlockInIframe(USER_CONTENT_2);
     await helper.waitForSidebarOpen();
 
-    // Change slotId in sidebar from "primary" to "secondary"
+    // Change slotId in sidebar from "default" to "secondary"
     const slotIdField = page.locator('.field-wrapper-slotId input');
     await slotIdField.fill('secondary');
 
@@ -1279,7 +1279,7 @@ test.describe('Template Edit Mode - Validation', () => {
     // Slots are checked when a template is locked, and a page can't be saved
     // with a template unlocked, so the page save doesn't check them again. A
     // page saved before a block and a block inside it could share no slot (its
-    // group and the group's child both name "primary") still saves an edit to
+    // group and the group's child both name "default") still saves an edit to
     // its own content.
     const helper = new AdminUIHelper(page);
 
@@ -1297,8 +1297,8 @@ test.describe('Template Edit Mode - Validation', () => {
 
   test('while editing a template, dragging a block to a different slot region keeps its slotId', async ({ page }) => {
     // In template edit mode the slotId is EXPLICIT — you rename slots, you don't change them
-    // by dragging. Dragging ts-p2 ("primary") into the "secondary" region (still inside the
-    // template) must KEEP it "primary" — NOT silently re-slot it to "secondary". (The author
+    // by dragging. Dragging ts-p2 ("default") into the "secondary" region (still inside the
+    // template) must KEEP it "default" — NOT silently re-slot it to "secondary". (The author
     // now has an invalid arrangement to fix, or save-time validation catches it.) This is the
     // template-edit half of the edit-mode-gated membership rule; the normal-mode half (content
     // takes the slot it lands in / exits) is covered by template-edit-mode:691 and :746.
@@ -1313,14 +1313,14 @@ test.describe('Template Edit Mode - Validation', () => {
     await expect(iframe.locator('[data-block-uid="ts-p2"]')).toBeVisible({ timeout: 15000 });
     await helper.unlockTemplate(headerBlockId);
 
-    // Drag ts-p2 (primary) into the secondary region: after ts-s1 (secondary), still inside
+    // Drag ts-p2 (default) into the secondary region: after ts-s1 (secondary), still inside
     // the template (between it and the fixed footer).
     await helper.dragBlockAfter('ts-p2', 'ts-s1');
 
-    // It moved into the secondary region but KEPT its authored slotId "primary".
+    // It moved into the secondary region but KEPT its authored slotId "default".
     await helper.clickBlockInIframe('ts-p2');
     await helper.waitForSidebarOpen();
-    await expect(page.locator('.field-wrapper-slotId input')).toHaveValue('primary');
+    await expect(page.locator('.field-wrapper-slotId input')).toHaveValue('default');
   });
 
   test('saved template changes persist and appear on other pages using the template', async ({ page }) => {
@@ -1488,23 +1488,23 @@ test.describe('Template Edit Mode - Block Settings', () => {
 
     // slotId input should be visible and have initial value from block data.
     const slotIdInput = page.locator('.field-wrapper-slotId input');
-    await expect(slotIdInput).toHaveValue('primary', { timeout: 5000 });
+    await expect(slotIdInput).toHaveValue('default', { timeout: 5000 });
     await helper.expectTemplateSettingsCount(1);
 
     // CRITICAL — wait for the sidebar form to STOP re-rendering before
-    // typing. Just-asserting toHaveValue('primary') above only catches
+    // typing. Just-asserting toHaveValue('default') above only catches
     // the first poll where the value matches; Volto's TextWidget can
     // still be receiving Redux dispatches from schema-inheritance
     // recompute / template state churn for several hundred ms after.
     // If we start typing during that window the input unmounts and our
     // keystrokes go nowhere (or land on the next mount with leftover
-    // text). Gate on N consecutive same-value polls of 'primary' before
+    // text). Gate on N consecutive same-value polls of 'default' before
     // touching it. (Cheap on the fast path: passes after ~300ms.)
     {
       let prev = '', stable = 0;
       await expect.poll(async () => {
         const v = await slotIdInput.inputValue();
-        if (v === prev && v === 'primary') stable++;
+        if (v === prev && v === 'default') stable++;
         else { stable = 0; prev = v; }
         return stable >= 3;
       }, { timeout: 5000, intervals: [100, 150, 200] }).toBe(true);

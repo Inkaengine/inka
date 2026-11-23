@@ -73,7 +73,7 @@
       "fixed": false,
       "readOnly": false,
       "templateInstanceId": "test-layout-def-instance",
-      "slotId": "primary",
+      "slotId": "default",
       "value": [
         {
           "type": "p",

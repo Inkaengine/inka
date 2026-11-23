@@ -92,7 +92,7 @@ describe('@templates feeds the merge', () => {
   });
 
   it('places page content into the template slots', async () => {
-    // The page's two `primary`-slot blocks must land between the template's fixed header
+    // The page's two `default`-slot blocks must land between the template's fixed header
     // and footer — that is the merge doing its job, not the blocks merely surviving.
     const page = await fetchPage(PAGE);
     const items = render(page);

@@ -50,7 +50,7 @@
       "value": [{ "type": "p", "children": [{ "text": "News article body text." }] }],
       "templateId": "resolveuid/tpl-ct-newsitem-view",
       "templateInstanceId": "tpl-ni-def",
-      "slotId": "content"
+      "slotId": "default"
     }
   },
   "blocks_layout": {

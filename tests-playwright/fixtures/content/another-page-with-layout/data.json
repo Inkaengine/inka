@@ -61,7 +61,7 @@
       ],
       "templateId": "resolveuid/test-layout-template-uid",
       "templateInstanceId": "tpl-instance-1",
-      "slotId": "primary"
+      "slotId": "default"
     },
     "apl-user-content-2": {
       "@type": "slate",
@@ -79,7 +79,7 @@
       ],
       "templateId": "resolveuid/test-layout-template-uid",
       "templateInstanceId": "tpl-instance-1",
-      "slotId": "primary"
+      "slotId": "default"
     },
     "apl-template-slider": {
       "@type": "slider",

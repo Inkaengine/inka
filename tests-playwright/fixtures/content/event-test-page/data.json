@@ -39,7 +39,7 @@
       "value": [{ "type": "p", "children": [{ "text": "Event description goes here." }] }],
       "templateId": "resolveuid/tpl-ct-event-view",
       "templateInstanceId": "tpl-ev-def",
-      "slotId": "content"
+      "slotId": "default"
     }
   },
   "blocks_layout": {

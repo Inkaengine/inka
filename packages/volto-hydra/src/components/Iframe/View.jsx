@@ -6080,7 +6080,7 @@ const Iframe = (props) => {
       ...blockData,
       templateId: newTemplateId,
       templateInstanceId: newInstanceId,
-      slotId: 'primary', // Default slot name
+      slotId: 'default', // a layout's main content slot is always 'default'
     }, idFieldMap);
 
     // Update the block in formData

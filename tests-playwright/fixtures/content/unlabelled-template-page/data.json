@@ -52,7 +52,7 @@
       ],
       "templateId": "/_test_data/templates/unlabelled-layout",
       "templateInstanceId": "tpl-instance-1",
-      "slotId": "primary"
+      "slotId": "default"
     },
     "user-content-2": {
       "@type": "slate",
@@ -70,7 +70,7 @@
       ],
       "templateId": "/_test_data/templates/unlabelled-layout",
       "templateInstanceId": "tpl-instance-1",
-      "slotId": "primary"
+      "slotId": "default"
     },
     "template-slider": {
       "@type": "slider",

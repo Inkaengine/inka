@@ -21,7 +21,7 @@
       "value": [{ "type": "p", "children": [{ "text": "First primary content" }] }],
       "templateId": "resolveuid/test-layout-template-uid",
       "templateInstanceId": "tpl-instance-ss",
-      "slotId": "primary"
+      "slotId": "default"
     },
     "ss-content-2": {
       "@type": "slate",
@@ -30,7 +30,7 @@
       "value": [{ "type": "p", "children": [{ "text": "Middle primary content" }] }],
       "templateId": "resolveuid/test-layout-template-uid",
       "templateInstanceId": "tpl-instance-ss",
-      "slotId": "primary"
+      "slotId": "default"
     },
     "ss-content-3": {
       "@type": "slate",
@@ -39,7 +39,7 @@
       "value": [{ "type": "p", "children": [{ "text": "Last primary content" }] }],
       "templateId": "resolveuid/test-layout-template-uid",
       "templateInstanceId": "tpl-instance-ss",
-      "slotId": "primary"
+      "slotId": "default"
     },
     "ss-footer": {
       "@type": "slate",

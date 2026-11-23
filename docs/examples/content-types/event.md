@@ -61,7 +61,7 @@ blocks-matched: |
 
 <block type="slate">
 
-<fields slotId="content" fixed=false readOnly=false />
+<fields slotId="default" fixed=false readOnly=false />
 
 </block>
 

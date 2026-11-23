@@ -275,7 +275,7 @@ test.describe('MCP server', () => {
     // placeholder, and stayed lost through every save after.
     test.setTimeout(240000);
     const USES = '/_test_data/template-test-page';
-    const slotOf = (page: any) => page.blocks.filter((b: any) => b.slotId === 'primary').map((b: any) => b.value?.md);
+    const slotOf = (page: any) => page.blocks.filter((b: any) => b.slotId === 'default').map((b: any) => b.value?.md);
     const read = (await call('get_page', { path: USES })).json();
     const before = slotOf(read);
     expect(before).toEqual(['User content - different from template default', 'Second user content block in placeholder']);

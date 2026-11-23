@@ -52,7 +52,7 @@
       ],
       "templateId": "resolveuid/test-layout-template-uid",
       "templateInstanceId": "tpl-instance-1",
-      "slotId": "primary"
+      "slotId": "default"
     },
     "template-slider": {
       "@type": "slider",
@@ -121,14 +121,14 @@
       "@type": "gridBlock",
       "templateId": "resolveuid/test-layout-template-uid",
       "templateInstanceId": "tpl-instance-1",
-      "slotId": "primary",
+      "slotId": "default",
       "fixed": false,
       "blocks": {
         "old-grp-child": {
           "@type": "slate",
           "templateId": "resolveuid/test-layout-template-uid",
           "templateInstanceId": "tpl-instance-1",
-          "slotId": "primary",
+          "slotId": "default",
           "value": [
             {
               "type": "p",

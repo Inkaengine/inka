@@ -163,7 +163,7 @@ test.describe('Templates', () => {
             ],
             "templateId": "/_test_data/templates/orphan-cell-layout",
             "templateInstanceId": "orphan-cell-def-instance",
-            "slotId": "primary",
+            "slotId": "default",
             "fixed": false
           }
         },
@@ -212,7 +212,7 @@ test.describe('Templates', () => {
             ],
             "templateId": "/_test_data/templates/orphan-cell-layout",
             "templateInstanceId": "oc-inst",
-            "slotId": "primary"
+            "slotId": "default"
           }
         },
         "blocks_layout": {

@@ -134,7 +134,7 @@ test.describe('deep-link fragments', () => {
   // harvested. This runs on admin-mock AND admin-nuxt: the real Nuxt example never
   // marks template read-only, so before hydra owned this the read-only anchor leaked
   // there. template-test-page uses test-layout (read-only header "Template Header -
-  // From Template" + editable "primary" slot).
+  // From Template" + editable "default" slot).
   test('hydra skips read-only template anchors from data (not the renderer), keeps editable ones', async ({
     page,
   }) => {
@@ -165,7 +165,7 @@ test.describe('deep-link fragments', () => {
       );
     });
 
-    // Add a heading in the editable "primary" slot so the harvest has an editable
+    // Add a heading in the editable "default" slot so the harvest has an editable
     // anchor to find (proves the harvest ran, not merely that it was empty). Use
     // addHeadingBlock — converting an existing block in place by select-all and
     // retyping doesn't reliably produce a tagged heading on every frontend.

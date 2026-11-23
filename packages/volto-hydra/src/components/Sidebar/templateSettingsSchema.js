@@ -129,7 +129,7 @@ export const getTemplateBlockSettingsSchema = ({ insideSlot = false } = {}) => (
     slotId: {
       title: 'Slot ID',
       description:
-        'Identifies where user content goes in the template (e.g., "header", "primary")',
+        'Identifies where user content goes in the template (e.g., "header", "default"; the main content slot of a layout is "default")',
       type: 'string',
     },
     kind: {

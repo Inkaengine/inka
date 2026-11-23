@@ -53,7 +53,7 @@ blocks-tagged: |
 
 <fields readOnly=false>
 
-<fields slotId="content" fixed=false>
+<fields slotId="default" fixed=false>
 
 <block type="introduction">
 
@@ -71,7 +71,7 @@ Percolator and extraction press luwak press aroma foam eu panna spoon espresso i
 
 <block type="eventMetadata" slotId="event-metadata" fixed=true required=true />
 
-<block type="slate" slotId="content" fixed=false />
+<block type="slate" slotId="default" fixed=false />
 
 </fields>
 

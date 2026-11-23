@@ -2513,7 +2513,7 @@
       ],
       "templateId": "resolveuid/test-layout-template-uid",
       "templateInstanceId": "tpl-heavy-instance",
-      "slotId": "primary"
+      "slotId": "default"
     },
     "tpl-heavy-footer": {
       "@type": "slate",
