@@ -2427,9 +2427,16 @@ function resolveHrefLinks(obj, baseUrl) {
   for (const [key, value] of Object.entries(obj)) {
     if (LINK_FIELDS.has(key) && Array.isArray(value) && value.length && value.every(isBareLink)) {
       out[key] = value.map((item) => {
-        const path = item['@id'].startsWith('http') ? new URL(item['@id']).pathname : item['@id'];
+        // An absolute URL names a page here only on this site's origin: one to
+        // another site (https://example.com) is not this site's page at its path.
+        let path = item['@id'];
+        if (/^https?:\/\//.test(path)) {
+          const url = new URL(path);
+          if (url.origin !== new URL(baseUrl).origin) return item;
+          path = url.pathname;
+        }
         const raw = loadRawContentFromDisk(path);
-        if (!raw) return item; // external / unresolvable -> keep the bare @id
+        if (!raw) return item; // unresolvable -> keep the bare @id
         return { ...formatSearchItem(raw, baseUrl), '@id': `${baseUrl}${path}` };
       });
     } else {
