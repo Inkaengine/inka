@@ -56,6 +56,42 @@ test("the sample picks the page whose nested block no other page has", async () 
   assert.deepEqual(await samplePages(["/a", "/b"]), ["/b"]);
 });
 
+// The source is replayed from recordings, made once. A page the site gained
+// since has none, so a sample of it compares nothing: the sample takes a
+// recorded page carrying the same blocks instead.
+const RECORDED_PAGES = {
+  "/new": { blocks: { l: layout([{ "@type": "listing", variation: "listItem" }]) } },
+  "/old": { blocks: { l: layout([{ "@type": "slate" }, { "@type": "listing", variation: "listItem" }]) } },
+  "/plain": { blocks: { l: layout([{ "@type": "slate" }]) } },
+};
+
+test("the sample takes a recorded page over one with no recording that shows the same blocks", async () => {
+  const { samplePages } = pageSource({ api: "", apiJson: async (url) => RECORDED_PAGES[url], concurrency: 1, ...OPTIONS });
+  // Unrestricted, the page with no recording is picked first.
+  assert.deepEqual(await samplePages(["/new", "/old", "/plain"]), ["/new", "/old"]);
+  assert.deepEqual(await samplePages(["/new", "/old", "/plain"], Infinity, { recorded: (p) => p !== "/new" }), ["/old"]);
+});
+
+test("a page with no recording is not compared, and a block only it shows is said to go unchecked", async () => {
+  // A page made on the new site after the recording: the source never had it.
+  const pages = { ...RECORDED_PAGES, "/video": { blocks: { l: layout([{ "@type": "video" }]) } } };
+  const { samplePages } = pageSource({ api: "", apiJson: async (url) => pages[url], concurrency: 1, ...OPTIONS });
+  const said = [];
+  const log = console.log;
+  console.log = (line) => said.push(line);
+  try {
+    assert.deepEqual(await samplePages(["/video", "/old"], Infinity, { recorded: (p) => p !== "/video" }), ["/old"]);
+  } finally {
+    console.log = log;
+  }
+  assert.ok(
+    said.some((l) =>
+      /1 page\(s\) with no recording are not compared; 1 block signature\(s\) only they show go unchecked: video:- \(\/video\)/.test(l),
+    ),
+    said.join("\n"),
+  );
+});
+
 test("every page: the source's paths under its mount, without the pages the conversion added", async () => {
   const asked = [];
   const items = ["/site/about", "/site", "/site/templates/footer", "/site/news/one"].map((p) => ({ "@id": `https://cms.example${p}` }));

@@ -120,7 +120,13 @@ export function pageSource({ api, apiJson, concurrency, types, stripPrefixes, ad
    * truncating keeps the most distinctive pages and drops the ones adding
    * only common blocks.
    */
-  async function samplePages(paths, limit = Infinity) {
+  /**
+   * `recorded(path)`, when the source is replayed from recordings, says which
+   * pages have one. A page with none (made on the new site, or on the source
+   * after the recording) has nothing to compare against: it is left out, and
+   * any block only such pages show is said, as not checked.
+   */
+  async function samplePages(paths, limit = Infinity, { recorded = () => true } = {}) {
     const seen = new Set();
     const chosen = [];
     const byPath = new Map();
@@ -142,12 +148,25 @@ export function pageSource({ api, apiJson, concurrency, types, stripPrefixes, ad
         rarity: Math.min(...r.sigs.map((s) => freq.get(s) ?? 1), Infinity),
       }))
       .sort((a, b) => a.rarity - b.rarity);
-    for (const r of scored) {
+    const unrecorded = scored.filter((r) => !recorded(r.p));
+    for (const r of scored.filter((row) => recorded(row.p))) {
       const fresh = r.sigs.filter((s) => !seen.has(s));
       if (!fresh.length) continue;
       fresh.forEach((s) => seen.add(s));
       byPath.set(r.p, r.sigs);
       chosen.push(r.p);
+    }
+    if (unrecorded.length) {
+      const unchecked = new Map();
+      for (const r of unrecorded)
+        for (const s of r.sigs) if (!seen.has(s) && !unchecked.has(s)) unchecked.set(s, r.p);
+      console.log(
+        `[sample] ${unrecorded.length} page(s) with no recording are not compared` +
+          (unchecked.size
+            ? `; ${unchecked.size} block signature(s) only they show go unchecked: ` +
+              [...unchecked].map(([s, p]) => `${s} (${p})`).join(", ")
+            : ""),
+      );
     }
     const capped = Number.isFinite(limit) ? chosen.slice(0, limit) : chosen;
     const dropped = chosen.length - capped.length;
