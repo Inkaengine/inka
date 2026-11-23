@@ -93,4 +93,31 @@ test.describe('save as draft', () => {
       page.getByText(/Autosaved content found|autosaved content/i).first(),
     ).toBeVisible({ timeout: 15000 });
   });
+
+  test('the last field changed is in the draft', async ({ page }) => {
+    // The sidebar drafted the form as it was BEFORE each change, so the last
+    // one, often the only one, was never in the draft.
+    const helper = new AdminUIHelper(page);
+    await helper.login();
+    await page.goto(helper.contentUrl('', '/add?type=Document'));
+    const title = page.locator('#field-title input, input[name="title"]').first();
+    await expect(title).toBeVisible({ timeout: 20000 });
+    await title.fill('A title typed and left');
+    await expect
+      .poll(
+        () =>
+          page.evaluate(() =>
+            Object.keys(window.localStorage).some((k) =>
+              (window.localStorage.getItem(k) || '').includes('A title typed and left'),
+            ),
+          ),
+        { timeout: 15000 },
+      )
+      .toBe(true);
+
+    await page.reload();
+    await expect(page.getByText(/Autosaved content found|autosaved content/i).first()).toBeVisible({
+      timeout: 15000,
+    });
+  });
 });

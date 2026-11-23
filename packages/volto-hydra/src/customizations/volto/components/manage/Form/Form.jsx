@@ -556,9 +556,10 @@ class Form extends Component {
    * @returns {undefined}
    */
   onChangeField(id, value) {
-    // Autosave (debounced inside the HOC). Blocks are drafted too — see the
-    // withSaveAsDraft shadow — so canvas work survives leaving the page.
-    this.props.onSaveDraft(this.state.formData);
+    // Autosave (debounced inside the HOC) what the form holds AFTER this
+    // change: drafting the state before it left the last edit out of the
+    // draft. Blocks are drafted too — see the withSaveAsDraft shadow — so
+    // canvas work survives leaving the page.
     this.setState((prevState) => {
       const { errors, formData } = prevState;
       const newFormData = {
@@ -581,7 +582,7 @@ class Form extends Component {
         // Ensure field to be in focus after the change
         inFocus: { [id]: true },
       };
-    });
+    }, () => this.props.onSaveDraft(this.state.formData));
   }
 
   /**
