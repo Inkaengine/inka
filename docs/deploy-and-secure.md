@@ -145,6 +145,8 @@ A site that already holds its content, and that nobody edits, can skip that full
 
 A deploy refuses to overwrite a page an editor changed on the site since the base was recorded, and lists it under `must_merge` in the report. Bring that change into the layout and deploy again. A field your site's schema cannot hold looks like an edit on every page that has it, because no export can carry it back; name such fields in `ignored_fields`.
 
+A site that is only a copy of its layout (one being tried out before it goes live, say) can have the layout win everywhere on every deploy instead: `run_delta(..., reset=True)`. Pages made on the site are deleted, pages deleted on the site are made again, and every page changed on the site since the last committed deploy is taken back from the layout. Each committed deploy records when it was classified, and a reset counts changes from then. A site with no deploy on record needs `changed_since`, the time to count from. The report lists what a reset undid under `reset`, and the change-set a caller's `review_changeset` sees names the deletions as `site_only`.
+
 ## Self-hosted or managed
 
 Inka is open source under the MIT licence, and you can run it on your own infrastructure. Nothing phones home.
