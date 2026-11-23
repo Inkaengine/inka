@@ -300,7 +300,7 @@ onMounted(() => {
                                 allowedTemplates: ['/_test_data/templates/test-layout'],
                                 allowedLayouts: CONTENT_TYPE_LAYOUTS[pageType]
                                     || contextNavLayoutForced.value
-                                    || [null, '/_test_data/templates/test-layout', '/_test_data/templates/header-footer-layout', '/_test_data/templates/header-only-layout', '/_test_data/templates/editable-fixed-layout'],
+                                    || [null, '/_test_data/templates/test-layout', '/_test_data/templates/header-footer-layout', '/_test_data/templates/header-only-layout', '/_test_data/templates/editable-fixed-layout', '/_test_data/templates/aside-layout'],
                             },
                             footer: {
                                 title: 'Footer',
@@ -368,7 +368,7 @@ const mainBlocksAllowedLayouts = computed(() => {
         return null;  // Use page's own blocks_layout directly
     }
     if (contextNavLayoutForced.value) return contextNavLayoutForced.value;
-    return [null, '/_test_data/templates/test-layout', '/_test_data/templates/header-footer-layout', '/_test_data/templates/header-only-layout', '/_test_data/templates/editable-fixed-layout'];
+    return [null, '/_test_data/templates/test-layout', '/_test_data/templates/header-footer-layout', '/_test_data/templates/header-only-layout', '/_test_data/templates/editable-fixed-layout', '/_test_data/templates/aside-layout'];
 });
 
 // Forced layouts, resolved by the backend alongside the page (expand.templates.extra).

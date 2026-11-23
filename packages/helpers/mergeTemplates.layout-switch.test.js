@@ -16,7 +16,7 @@
  * rail on /layout-demo), which is where it was found.
  */
 import { describe, test, expect } from 'vitest';
-import { mergeTemplatesIntoPage } from './mergeTemplates.js';
+import { mergeTemplatesIntoPage, withoutHiddenBlocks } from './mergeTemplates.js';
 
 // Two layouts shaped like the real ones: a `contentLayout` wrapper (fixed and
 // readOnly, as a layout's frame is), an empty slate in its `default` slot for
@@ -237,24 +237,27 @@ describe('mergeTemplatesIntoPage — switching layouts', () => {
 });
 
 /**
- * A layout's slot that the page never filled is the TEMPLATE's: when a page has
- * nothing for a slot, the admin's merge puts the template's own slot block there
- * (blank, its sample text turned into hints), so the author has somewhere to
- * type. Switching layouts took that block as the author's content, and, the
- * incoming layout having no such slot, moved it into `default`, where it stayed.
- * Each switch away from a layout with such a slot added one more block to the
- * page — a hero's empty intro, a blank suggested topic — and switching back
- * and forth piled them up in the page's content.
+ * A slot is the page's content for that slot, or it is empty: nothing else.
  *
- * What the author wrote still moves as before ("How the Merge Works", Place
- * the leftovers): only a block with nothing of its own is left behind.
+ * Content in a slot the incoming layout doesn't have is HIDDEN, not moved:
+ * like the fields a converted block has no place for, it stays with the page
+ * while it is edited, and comes back when a layout with that slot does. Only
+ * content with no slot, or in `default`, goes to the incoming layout's default
+ * slot ("How the Merge Works", Place the leftovers).
+ *
+ * Moving it into `default` instead renamed its slot, so switching back found
+ * the slot empty and placed the template's block again: each round trip added
+ * a block to the page's content (a hero's intro, a suggested topic, a side
+ * nav's listing).
  */
-describe('mergeTemplatesIntoPage — switching layouts leaves unfilled slots behind', () => {
+describe('mergeTemplatesIntoPage — switching layouts hides the slots the new layout lacks', () => {
   const PLAIN = '/templates/plain';
   const HERO = '/templates/hero';
   const TOPICS = '/templates/topics';
   const FLAT_ASIDE = '/templates/flat-aside';
   const FLAT_PLAIN = '/templates/flat-plain';
+  const NAV = '/templates/nav';
+  const NAV_SLOT = '/templates/nav-slot';
 
   const blank = (slotId) => ({
     '@type': 'slate',
@@ -311,7 +314,45 @@ describe('mergeTemplatesIntoPage — switching layouts leaves unfilled slots beh
       },
       blocks_layout: { items: ['head', 'd0'] },
     },
+    // An editable fixed block inside a fixed block: a side nav in a sidebar,
+    // with the listing it draws. The page may change the listing's query, but
+    // it is the layout's block: switching away drops it with its layout.
+    [NAV]: {
+      blocks: {
+        layout0: {
+          '@type': 'contentLayout',
+          fixed: true,
+          readOnly: true,
+          slotId: 'layout0',
+          blocks: {
+            m0: blank('default'),
+            h0: { '@type': 'title', fixed: true, slotId: 'hero' },
+            sn0: {
+              '@type': 'sideNav',
+              fixed: true,
+              slotId: 'leftSidebar',
+              blocks: {
+                l0: {
+                  '@type': 'listing',
+                  slotId: 'list',
+                  fixed: true,
+                  querystring: { query: [{ i: 'portal_type', o: 'plone.app.querystring.operation.selection.any', v: ['Document'] }] },
+                  fieldMapping: { title: { field: 'label', type: 'string' } },
+                },
+              },
+              blocks_layout: { items: ['l0'] },
+            },
+          },
+          blocks_layout: { main: ['m0'], hero: ['h0'], leftSidebar: ['sn0'] },
+        },
+      },
+      blocks_layout: { items: ['layout0'] },
+    },
   };
+  // The same side nav, its listing a slot the page fills (fixed: false), set
+  // up by the template with a query.
+  local[NAV_SLOT] = structuredClone(local[NAV]);
+  local[NAV_SLOT].blocks.layout0.blocks.sn0.blocks.l0.fixed = false;
   const load = async (id) => {
     if (!local[id]) throw new Error(`no such template: ${id}`);
     return structuredClone({ ...local[id], '@id': id });
@@ -357,38 +398,73 @@ describe('mergeTemplatesIntoPage — switching layouts leaves unfilled slots beh
     ["a fixed block's slot inside the layout's frame", [PLAIN, HERO, PLAIN, HERO, PLAIN]],
     ['a slot whose block has sample text', [PLAIN, TOPICS, HERO, TOPICS, PLAIN, TOPICS]],
     ["a slot in the page's own region", [FLAT_PLAIN, FLAT_ASIDE, FLAT_PLAIN, FLAT_ASIDE, FLAT_PLAIN]],
+    ['an editable fixed block inside a fixed block', [PLAIN, NAV, PLAIN, NAV, PLAIN]],
+    ['a slot inside a fixed block, set up by the template', [PLAIN, NAV_SLOT, PLAIN, NAV_SLOT, PLAIN]],
   ])('%s: switching back and forth adds nothing', async (_where, layouts) => {
     for (const k of Object.keys(shapes)) delete shapes[k];
     await each(PAGE, layouts);
   });
 
-  test('what the author typed into such a slot still moves to the content', async () => {
+  // Every block the page holds but no region lists: hidden, by slot.
+  const hidden = (page) => {
+    const listed = new Set(Object.values(page.blocks_layout || {}).flat());
+    return Object.entries(page.blocks)
+      .filter(([id]) => !listed.has(id))
+      .map(([, b]) => `${b.slotId}: ${b.plaintext || b.text || b['@type']}`);
+  };
+  const regionOf = (page, region, nth = 0) => {
+    const frameBlock = page.blocks[page.blocks_layout.items[0]];
+    const owner = frameBlock.blocks[frameBlock.blocks_layout.hero[0]];
+    return owner.blocks_layout[region].map((id) => owner.blocks[id]);
+  };
+
+  test('what the author typed into a slot the new layout lacks is hidden, and comes back', async () => {
     const hero = await switchTo(PAGE, HERO);
-    const frameBlock = hero.blocks[hero.blocks_layout.items[0]];
-    const heroBlock = frameBlock.blocks[frameBlock.blocks_layout.hero[0]];
-    const intro = heroBlock.blocks[heroBlock.blocks_layout.intro[0]];
+    const [intro] = regionOf(hero, 'intro');
     intro.value = [{ type: 'p', children: [{ text: 'An intro' }] }];
     intro.plaintext = 'An intro';
 
     const plain = await switchTo(hero, PLAIN);
-    expect(allText(plain)).toEqual(['An intro', 'Ways of working', 'Content design starts with the problem.']);
+    expect(allText(plain), 'drawn on the plain layout').toEqual([
+      'Ways of working',
+      'Content design starts with the problem.',
+    ]);
+    expect(hidden(plain), 'kept with the page').toEqual(['hero-intro: An intro']);
+
+    const back = await switchTo(plain, HERO);
+    expect(regionOf(back, 'intro').map((b) => b.plaintext)).toEqual(['An intro']);
+    expect(hidden(back)).toEqual([]);
   });
 
-  test('a sample the author changed is theirs, and moves to the content', async () => {
+  test('a sample the author changed is hidden, and comes back alone', async () => {
     const topics = await switchTo(PAGE, TOPICS);
-    const frameBlock = topics.blocks[topics.blocks_layout.items[0]];
-    const heroBlock = frameBlock.blocks[frameBlock.blocks_layout.hero[0]];
-    const topic = heroBlock.blocks[heroBlock.blocks_layout.suggested[0]];
+    const [topic] = regionOf(topics, 'suggested');
     expect(topic.text, 'placed with the sample').toBe('Popular topic');
     topic.text = 'Road closures';
 
     const plain = await switchTo(topics, PLAIN);
-    const frameAfter = plain.blocks[plain.blocks_layout.items[0]];
-    const main = frameAfter.blocks_layout.main.map((id) => frameAfter.blocks[id]);
-    expect(main.map((b) => b.text || b.plaintext)).toEqual([
-      'Road closures',
-      'Ways of working',
-      'Content design starts with the problem.',
-    ]);
+    expect(hidden(plain)).toEqual(['hero-suggested: Road closures']);
+
+    const back = await switchTo(plain, TOPICS);
+    expect(regionOf(back, 'suggested').map((b) => b.text)).toEqual(['Road closures']);
+  });
+
+  test('content with no slot, or in default, goes to the default slot', async () => {
+    const left = await switchTo(PAGE, PLAIN);
+    const right = await switchTo(left, NAV_SLOT);
+    expect(allText(right)).toEqual(['Ways of working', 'Content design starts with the problem.']);
+    expect(hidden(right)).toEqual([]);
+  });
+
+  test('the save keeps only what is drawn: hidden content is dropped, as a converted block\'s unmapped fields are', async () => {
+    const hero = await switchTo(PAGE, HERO);
+    regionOf(hero, 'intro')[0].plaintext = 'An intro';
+    const plain = await switchTo(hero, PLAIN);
+    expect(hidden(plain)).toEqual(['hero-intro: An intro']);
+
+    const saved = withoutHiddenBlocks(plain);
+    expect(hidden(saved)).toEqual([]);
+    expect(shape(saved)).toEqual(shape(plain));
+    expect(withoutHiddenBlocks(PAGE), 'a page with nothing hidden is unchanged').toBe(PAGE);
   });
 });

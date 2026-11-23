@@ -69,7 +69,7 @@ Templates are analogous to blocks themselves but are made up of blocks with spec
 
 - **Fixed + ReadOnly** — can't be edited or moved (e.g. branded headers/footers). Similar to fixed hard-coded HTML in a block.
 - **Fixed** — can be edited but not moved (e.g. required sections). Similar to a block field.
-- **Slot** (`fixed: false` / unset) — a named region (`slotId`) where editors can add their own blocks. Similar to a block field. The `"default"` slot receives leftover content.
+- **Slot** (`fixed: false` / unset) — a named region (`slotId`) where editors can add their own blocks. Similar to a block field. The `"default"` slot receives leftover content, so a layout's main content slot must be called `"default"`: it is the one slot every layout shares.
 - **Empty slot** — a slot nobody has filled yet: an `@type: "empty"` block naming it, `{ "@type": "empty", "slotId": "links", "fixed": false }`. A template stores it, so the slot keeps its place (a hero's links before any page has added one); a page never does. The editor shows it as a place to add to. A visitor's page never receives one: the merge a frontend runs leaves it out.
 
 The slot a block lives in is identified by its `slotId`. This is the field name used by `expandTemplates` / `expandTemplatesSync` and by the merge rules below — not `placeholder`.
@@ -369,7 +369,7 @@ A merge puts a template's blocks into a **target** document. Opening a page merg
    - the slot after the template's last fixed block;
    - the slot before its first fixed block.
 
-   If none exists, it is dropped. Content takes the `slotId` of the slot it lands in. Any other target block in a fixed block's slot is a stale copy of that block, and is replaced. When a page switches layouts, a block of the outgoing layout that nobody has filled in is not content, and goes with its layout. That is the template's slot block the admin's merge placed in an empty slot: every field is empty or still the template's sample (its hint), and it holds no blocks. Anything the author typed or set moves as above.
+   If none exists, it is dropped. Content takes the `slotId` of the slot it lands in. Any other target block in a fixed block's slot is a stale copy of that block, and is replaced. Switching layouts, content in a named slot the new layout doesn't have is hidden instead (see **Switching layout** below).
 4. **Keep the ids.**
    - Every block the target already has keeps its id.
    - Fixed blocks match the target's by slot. Where two share a slot name, they match in order.
@@ -392,7 +392,9 @@ What a page puts in a slot, or writes in an editable fixed block, is never writt
 
 **Removing a slot asks first.** Pages using the template may have content in it, which the merge then has nowhere to put. Nothing records which pages use which slots, so when **Change on all pages** would save a template without a slot it had (an open slot, or a fixed block a page edits), the editor names the slots and asks. Keeping on editing saves nothing and leaves the template unlocked.
 
-**Switching layout** treats the old layout's blocks as the target's. Its slot content is kept and lands by slot as above. An editable fixed block takes over the new layout's editable fixed block in the same slot, with its id and fields. The old layout's other fixed blocks are dropped, including any the page edited. **Removing a layout** (`null`) keeps the content and strips every template mark from it.
+**Switching layout** treats the old layout's blocks as the target's. Its slot content is kept and lands by slot as above. An editable fixed block takes over the new layout's editable fixed block in the same slot, with its id and fields. The old layout's other fixed blocks are dropped, including any the page edited.
+
+Content in a named slot the new layout doesn't have (a sidebar, a hero's intro) is **hidden**, as a converted block keeps the fields its new type has no place for. The page keeps it while it is edited, with its `slotId`, in its `blocks` but in no region, so no frontend draws it. A later switch to a layout with that slot shows it again, and since that slot has content, the template's block is not placed in it. Saving drops whatever is still hidden, and the editor says how many blocks a switch hid. Only content with no slot, or in `"default"`, moves to the new layout's default slot. Removing a layout (`null`) hides nothing. **Removing a layout** (`null`) keeps the content and strips every template mark from it.
 
 ### Diagram: opening a page
 

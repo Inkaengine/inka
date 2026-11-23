@@ -72,6 +72,7 @@ import {
 } from '@volto-hydra/helpers/searchableText.js';
 import { normalizeSlateStylesForSave } from '../../../../../utils/blockSync';
 import { buildBlockPathMap } from '@volto-hydra/helpers/buildBlockPathMap.js';
+import { withoutHiddenBlocks } from '@volto-hydra/helpers/mergeTemplates.js';
 import { createLog } from '../../../../../utils/log';
 const log = createLog('FORM');
 import { updateContent } from '@plone/volto/actions/content/content';
@@ -691,8 +692,9 @@ class Form extends Component {
     // Validate what will actually be PERSISTED. Empty slot blocks exist for the
     // canvas and are stripped on the way out (getOnlyFormModifiedValues), so a
     // block that will not be saved must not be able to refuse the save.
+    // Nor can content a layout switch hid, which the save drops.
     const persistedFormData = stripEmptyBlocks(
-      formData,
+      withoutHiddenBlocks(formData),
       config.blocks.blocksConfig,
       this.props.intl,
     );
@@ -909,9 +911,11 @@ class Form extends Component {
     // (a paste/programmatic path may have created that malformed state) before persisting.
     // `sourceFormData` defaults to state, but the save flow passes the template-id-
     // finalized page data so those rewritten references reach the PATCH.
+    // Content a layout switch hid (a slot the layout lacks) is kept only while
+    // the page is edited, as a converted block's unmapped fields are.
     const formData = stripFixedInsideSlots(
       stripEmptyBlocks(
-        sourceFormData,
+        withoutHiddenBlocks(sourceFormData),
         config.blocks.blocksConfig,
         this.props.intl,
       ),

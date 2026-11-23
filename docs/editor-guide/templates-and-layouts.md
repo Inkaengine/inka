@@ -123,6 +123,7 @@ When `allowedLayouts` is configured for a page (or a region), you choose it in t
 2. Your existing content is **redistributed** into the new layout's slots based on `slotId`:
 
 - Content tagged with a slot name is placed into the matching slot in the new layout.
+- Content in a slot the new layout doesn't have, such as a sidebar, is hidden, and a message says how many blocks were hidden. Switch back to a layout with that slot and it comes back. Saving the page removes it, so switch back before saving if you want to keep it.
 - Content with no slot tag falls into the `"default"` slot if the new layout has one; otherwise into the bottom or top slot, or is dropped.
 - Fixed blocks with the same `slotId` get their editable content carried over (text, media); their structural settings come from the new layout.
 
