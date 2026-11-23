@@ -120,4 +120,77 @@ test.describe('save as draft', () => {
       timeout: 15000,
     });
   });
+
+  // Saving ends the draft, as Volto's own form does: a draft is work that was
+  // never saved. Left behind, it was offered on the next edit as if someone
+  // else had changed the page, so authors learned to dismiss the offer.
+  test('a saved edit is not offered back as autosaved content', async ({ page }) => {
+    const helper = new AdminUIHelper(page);
+    await helper.login();
+    await helper.navigateToEdit('/test-page');
+    const block = helper.getIframe().locator('[data-block-uid="block-1-uuid"]').first();
+    await expect(block).toBeVisible({ timeout: 20000 });
+    await block.click();
+    await page.keyboard.type(' saved now');
+    await expect
+      .poll(
+        () =>
+          page.evaluate(() =>
+            Object.keys(window.localStorage).some((k) =>
+              (window.localStorage.getItem(k) || '').includes('saved now'),
+            ),
+          ),
+        { timeout: 15000 },
+      )
+      .toBe(true);
+    await helper.saveContent();
+
+    // Edit it again. The offer is made as the form opens, before the
+    // iframe's blocks appear: once they show the saved text, it would be there.
+    await page.reload();
+    await helper.navigateToEdit('/test-page');
+    await expect(
+      helper.getIframe().locator('[data-block-uid="block-1-uuid"]').first(),
+    ).toContainText('saved now', { timeout: 20000 });
+    await expect(page.getByText(/Autosaved content found|autosaved content/i)).toHaveCount(0);
+  });
+
+  test('a new page is not offered the last saved new page as autosaved content', async ({ page }) => {
+    const helper = new AdminUIHelper(page);
+    await helper.login();
+    const title = page.locator('#field-title input, input[name="title"]').first();
+
+    await page.goto(helper.contentUrl('', '/add?type=Document'));
+    await expect(title).toBeVisible({ timeout: 20000 });
+    await title.fill('First added page');
+    await expect
+      .poll(
+        () =>
+          page.evaluate(() =>
+            Object.keys(window.localStorage).some((k) =>
+              (window.localStorage.getItem(k) || '').includes('First added page'),
+            ),
+          ),
+        { timeout: 15000 },
+      )
+      .toBe(true);
+    await helper.saveContent();
+
+    // The add form's draft is gone, so there is nothing to offer the next page
+    // added here. (The offer is that stored draft; an empty add form has
+    // nothing visible that would show it had been and gone.)
+    await expect
+      .poll(
+        () =>
+          page.evaluate(() =>
+            Object.keys(window.localStorage).some((k) => k.endsWith('/add-Document')),
+          ),
+        { timeout: 15000 },
+      )
+      .toBe(false);
+    await page.goto(helper.contentUrl('', '/add?type=Document'));
+    await expect(title).toBeVisible({ timeout: 20000 });
+    await expect(title).toHaveValue('');
+    await expect(page.getByText(/Autosaved content found|autosaved content/i)).toHaveCount(0);
+  });
 });

@@ -816,6 +816,10 @@ class Form extends Component {
       } else {
         this.props.onSubmit(pageFormData);
       }
+      // Saved: the draft was this work, and must not be offered back on the
+      // next edit (or to the next page added here) as if it were unsaved.
+      // Volto's own onSubmit does the same.
+      this.props.onCancelDraft();
       if (this.props.resetAfterSubmit) {
         this.setState({
           formData: this.props.formData,
