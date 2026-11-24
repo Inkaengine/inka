@@ -1297,6 +1297,75 @@ async function fetchFolderContents({ apiUrl, contextPath, contextContent, mapped
   };
 }
 
+/**
+ * "Is the same as this page": a listing criterion with no value of its own,
+ * whose value is the page's (its tags, its type, its author, its language, or
+ * the page itself for what relates to it). The admin offers it on the indexes
+ * named here; ploneFetchItems fills in the page's values as Plone's own "any
+ * of", and leaves the page out of what it lists. Plone itself is unchanged.
+ */
+export const THIS_PAGE = 'inka.operation.thisPage';
+/** Index → the page content field holding its value (plone.restapi's names). */
+export const THIS_PAGE_FIELDS = {
+  Subject: 'subjects',
+  portal_type: '@type',
+  Creator: 'creators',
+  Language: 'language',
+  // What relates to this page: the pages whose relations name it.
+  getRawRelatedItems: 'UID',
+};
+const SELECTION_ANY = 'plone.app.querystring.operation.selection.any';
+
+/** The querystring indexes Plone describes (`@querystring`), with "is the
+ * same as this page" offered on those THIS_PAGE_FIELDS names: last among
+ * their operations, with no value to enter. A new object; the input is left
+ * as it is. */
+export function withThisPageOperation(indexes) {
+  return Object.fromEntries(
+    Object.entries(indexes || {}).map(([name, index]) => [
+      name,
+      THIS_PAGE_FIELDS[name]
+        ? {
+            ...index,
+            operations: [...(index.operations || []), THIS_PAGE],
+            operators: { ...(index.operators || {}), [THIS_PAGE]: { title: 'Is the same as this page', widget: null } },
+          }
+        : index,
+    ]),
+  );
+}
+
+/** The page's values for each "same as this page" criterion, in place; null
+ * when one has none (the listing then matches nothing). */
+async function thisPageSearches(query, { apiUrl, contextPath, contextContent }) {
+  if (!query.some((c) => c.o === THIS_PAGE)) return query;
+  const path = contextPath.replace(/\/$/, '');
+  const own = contextContent && new URL(contextContent['@id'], 'http://x').pathname.replace(/\/$/, '').endsWith(path);
+  let page = own ? contextContent : null;
+  if (!page) {
+    const response = await fetch(`${apiUrl}${path}/++api++`, { headers: _getAuthHeaders() });
+    if (!response.ok) throw new Error(`ploneFetchItems: reading ${path} for "same as this page": ${response.status}`);
+    page = await response.json();
+  }
+  const resolved = [];
+  for (const c of query) {
+    if (c.o !== THIS_PAGE) {
+      resolved.push(c);
+      continue;
+    }
+    const field = THIS_PAGE_FIELDS[c.i];
+    if (!field) throw new Error(`"same as this page" has no page field for the index ${c.i}`);
+    const raw = page[field];
+    const values = (Array.isArray(raw) ? raw : raw == null || raw === '' ? [] : [raw]).map((v) =>
+      typeof v === 'object' && v !== null ? v.token ?? v['@id'] : v,
+    );
+    if (!values.length) return null;
+    resolved.push({ i: c.i, o: SELECTION_ANY, v: values });
+  }
+  if (page.UID) resolved.push({ i: 'UID', o: UID_NONE, v: [page.UID] });
+  return resolved;
+}
+
 export function ploneFetchItems({
   apiUrl,
   contextPath = '/',
@@ -1319,6 +1388,9 @@ export function ploneFetchItems({
       extraCriteria,
     );
     if (body === null) return { items: [], total: 0 };
+    const own = await thisPageSearches(body.query, { apiUrl, contextPath, contextContent });
+    if (own === null) return { items: [], total: 0 };
+    body.query = own;
 
     // This folder's children in folder order, and nothing else, is the
     // question plone.restapi answers for every folderish page: its content

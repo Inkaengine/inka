@@ -230,6 +230,12 @@ In the editor, a listing's Location criterion is the place, its Depth, and **Chi
 
 A value Volto wrote (`.::1`, `..`, `<uid>::1`) is shown as Plone reads it (children only at depth 1), and an edit writes it with the ending that keeps that meaning.
 
+### Is the same as this page
+
+A "related" or "more like this" listing compares other pages with the one it is on. The query editor offers **Is the same as this page** as an operation on the indexes a page has a value for: Tags (`Subject`), Type (`portal_type`), Creator, Language, and `getRawRelatedItems` (the pages whose relations name this one). It takes no value: *Tag · Is the same as this page* lists the pages that share any of this page's tags.
+
+`ploneFetchItems` fills it in before it queries. It reads the page's own values (from `contextContent` when that is the page, else by reading the page), sends them as Plone's own "any of", and leaves the page itself out of the results. A page with no value for the index lists nothing, and nothing is asked of Plone. Plone itself needs nothing: the operation, `THIS_PAGE` (`inka.operation.thisPage`), never reaches it. The indexes it is offered on, and the page field each reads, are `THIS_PAGE_FIELDS`; `withThisPageOperation(indexes)` adds it to the indexes Plone describes, as the query editor does.
+
 ### Asked from the site root
 
 Plone's `@querystring-search` leaves out the page it is asked from (every page but the site root), whatever the query. `ploneFetchItems` asks every search from the site root, with its relative locations resolved for the page first, so a listing lists exactly what its criteria say. A page in its own section's navigation is listed there; a news item in a listing of `/news/*` is listed too.
