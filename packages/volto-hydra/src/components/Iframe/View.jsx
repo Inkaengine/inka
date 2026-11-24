@@ -831,6 +831,9 @@ const Iframe = (props) => {
     schema, // Content type schema for page-level field types
     saveTemplatesRef, // Ref that Form.jsx uses to trigger template save
     flushEditsRef, // Ref that Form.jsx awaits before validating a save
+    // Called with the page as the editor has loaded it (defaults filled in,
+    // templates merged, empty regions seeded) before the author touches it.
+    onEditorLoaded,
     multiSelected = [], // Array of block UIDs in multi-selection
     blocksErrors = {}, // blockId → { field: [messages] } from a refused save
     onSetMultiSelected, // Callback to set multi-selection in Redux
@@ -4891,6 +4894,7 @@ const Iframe = (props) => {
           // next Redux-sourced FORM_DATA sync. Edit-only seeds are stripped on
           // save by stripEmptyBlocks, so they never persist.
           onChangeFormData(formDataToSend);
+          onEditorLoaded(formDataToSend);
 
           sendHeldImages(source, origin);
           source.postMessage({
@@ -5015,6 +5019,7 @@ const Iframe = (props) => {
         // next Redux-sourced FORM_DATA sync. Edit-only seeds are stripped on save
         // by stripEmptyBlocks, so they never persist.
         onChangeFormData(formDataToSend);
+        onEditorLoaded(formDataToSend);
       })().catch(err => {
         log('[INITIAL_DATA] ERROR in template loading/merge:', err.message, err.stack);
         console.error('[INITIAL_DATA] Error:', err);
