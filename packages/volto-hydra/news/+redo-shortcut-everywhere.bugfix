@@ -1,0 +1,1 @@
+Ctrl+Shift+Z (Cmd+Shift+Z) redoes wherever the focus is, as it does on the canvas: in the sidebar, or straight after an undo while the block re-renders, it did nothing.
