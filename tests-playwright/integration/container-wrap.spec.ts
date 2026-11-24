@@ -61,6 +61,34 @@ test.describe('Container UX: Wrap', () => {
   // A container whose region only takes its default child (columns → column) is
   // offered for blocks that child takes: the wrap adds the child around them.
   // Unwrapping that lone column unwraps the columns too, giving the page back.
+  // Reported: a Button offered no "Wrap in…", so it couldn't be put in a
+  // section without deleting it and adding it again. Not the Button: a single
+  // block was only offered the wrap as part of a multi-selection.
+  test('a single selected block can be wrapped in a section', async ({ page }) => {
+    const helper = new AdminUIHelper(page);
+    await helper.login();
+    await helper.navigateToEdit('/section-test-page');
+    const iframe = helper.getIframe();
+    const parentOf = (uid: string) =>
+      iframe.locator(`[data-block-uid="${uid}"]`).evaluate(
+        (el) => el.parentElement?.closest('[data-block-uid]')?.getAttribute('data-block-uid') ?? null,
+      );
+    const home = await parentOf('slate-after');
+
+    await helper.clickBlockInIframe('slate-after');
+    await helper.waitForIframeBlockHandle('slate-after');
+    await page.locator('.quanta-toolbar .volto-hydra-menu-trigger').click();
+    await page.locator('[data-testid="wrap-selected"]').click();
+    await helper.selectBlockType('section');
+
+    await expect.poll(() => parentOf('slate-after')).not.toBe(home);
+    const wrapper = await parentOf('slate-after');
+    expect(wrapper).not.toBe('section-1'); // a new section, not the one already there
+    await expect(iframe.locator(`[data-block-uid="${wrapper}"] .section-body`)).toBeVisible();
+    // Only the selected block went in.
+    expect(await parentOf('slate-before')).toBe(home);
+  });
+
   test('Wrap two slates in columns: they sit in one new column; unwrapping the column gives them back', async ({ page }) => {
     const helper = new AdminUIHelper(page);
     await helper.login();
