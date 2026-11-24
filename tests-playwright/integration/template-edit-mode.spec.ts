@@ -2605,6 +2605,7 @@ test.describe('Template lock: only where locked, unlocked from the sidebar', () 
 
     // Fixed but editable: it stays where the template puts it, but the page
     // edits it. No lock.
+    await helper.cancelEdit();
     await helper.navigateToEdit('/another-page');
     await helper.waitForIframeReady();
     await page.locator('.sidebar-section-header .section-title').click();
