@@ -184,6 +184,38 @@ test.describe('save as draft', () => {
     ).toHaveCount(0);
   });
 
+  // The save ends the draft when it is made, not a moment later: an author
+  // who saves and closes the tab straight away was offered their saved work
+  // as "autosaved content" next time.
+  test('a saved edit leaves no draft behind, even when the page is left at once', async ({
+    page,
+  }) => {
+    const helper = new AdminUIHelper(page);
+    await helper.login();
+    await helper.navigateToEdit('/test-page');
+    const block = helper
+      .getIframe()
+      .locator('[data-block-uid="block-1-uuid"]')
+      .first();
+    await expect(block).toBeVisible({ timeout: 20000 });
+    await block.click();
+    await page.keyboard.type(' saved and left');
+    const drafted = () =>
+      page.evaluate(() =>
+        Object.keys(window.localStorage).some((k) =>
+          (window.localStorage.getItem(k) || '').includes('saved and left'),
+        ),
+      );
+    await expect.poll(drafted, { timeout: 15000 }).toBe(true);
+
+    await page.locator('#toolbar-save').click();
+    await page.waitForURL((url) => !url.pathname.endsWith('/edit'), {
+      timeout: 15000,
+    });
+    // Read once, as the page is left: no waiting for the draft to go.
+    expect(await drafted()).toBe(false);
+  });
+
   test('a new page is not offered the last saved new page as autosaved content', async ({
     page,
   }) => {
