@@ -398,25 +398,6 @@ class Form extends Component {
       });
     }
 
-    // Hydra: Reset formData when navigating to a different page
-    if (this.props?.location?.pathname !== prevProps?.location?.pathname) {
-      // A different page: nothing on it is the author's until it has loaded.
-      this.draftBaseline = null;
-      this.setState({ formData: this.props.formData }, () => {
-        // Arriving at a different page is the other moment a draft can exist
-        // for it. The mount check only fires when the Form is created; hydra
-        // navigates between pages inside the editor without remounting it, so
-        // without this you are only ever offered a draft on a cold load. (The
-        // editor checks once the page has loaded: onEditorLoaded.)
-        if (!this.props.isEditForm) {
-          this.props.checkSavedDraft(
-            this.state.formData,
-            this.updateFormDataWithSaved,
-          );
-        }
-      });
-    }
-
     if (!isEqual(prevProps.schema, this.props.schema)) {
       this.props.setMetadataFieldsets(
         this.removeBlocksLayoutFields(this.props.schema).fieldsets.map(
@@ -709,7 +690,46 @@ class Form extends Component {
     if (event) {
       event.preventDefault();
     }
+    // Nothing is drafted while saving: the save's own flush would set a draft
+    // write going (Volto's, 300ms on) that lands after the save, newer than
+    // the page, and is offered back as unsaved work.
+    this.saving = true;
+    let saved = false;
+    try {
+      saved = await this.save();
+    } finally {
+      this.saving = false;
+    }
+    if (saved) {
+      // Saved, so the draft goes now. onCancelDraft clears it 500ms later,
+      // which a tab closed straight after the save never sees.
+      this.draftBaseline = this.state.formData;
+      localStorage.removeItem(this.draftKey());
+    } else {
+      // Not saved (refused, or an upload failed): still the author's work.
+      this.saveDraft(this.state.formData);
+    }
+  }
 
+  /**
+   * Where Volto keeps this form's draft: withSaveAsDraft's getFormId, which it
+   * does not export. Edit names the page (`pathname`); Add does not, so the
+   * route's path stands in, as it does there (useLocation: in the browser,
+   * where saving happens, the window's path).
+   */
+  draftKey() {
+    const { type, isEditForm, schema } = this.props;
+    const pathname = this.props.pathname || window.location.pathname;
+    if (isEditForm) return ['form', type, pathname].join('-');
+    if (type) return ['form', pathname, type].join('-');
+    if (schema?.properties?.comment) return ['form', pathname, 'comment'].join('-');
+    return ['form', pathname].join('-');
+  }
+
+  /**
+   * Validate and save. Resolves true once the save has been sent.
+   */
+  async save() {
     // Flush the iframe's pending inline edits FIRST: text typed on the canvas
     // reaches formData after a debounce, so a required field typed and saved
     // straight away would otherwise be validated as empty and the save refused.
@@ -877,7 +897,9 @@ class Form extends Component {
           this.props.setFormData(this.props.formData);
         }
       }
+      return true;
     }
+    return false;
   }
 
   /**
@@ -1033,6 +1055,7 @@ class Form extends Component {
    * is until the page has loaded, and the page as loaded is not.
    */
   saveDraft = (formData) => {
+    if (this.saving) return;
     if (this.props.isEditForm) {
       if (!this.draftBaseline) return;
       if (isEqual(formData, this.draftBaseline)) return;

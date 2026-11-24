@@ -57,41 +57,6 @@ test.describe('save as draft', () => {
     ).toBeVisible({ timeout: 15000 });
   });
 
-  test('a draft is offered when you navigate back to the page in the editor', async ({
-    page,
-  }) => {
-    // The other way back: not a reload, but moving between pages inside the
-    // editor, where the Form is never rebuilt. Without a check on that
-    // transition a draft is only ever noticed on a cold load.
-    const helper = new AdminUIHelper(page);
-    await helper.login();
-    await helper.navigateToEdit('/test-page');
-    const iframe = helper.getIframe();
-    const block = iframe.locator('[data-block-uid="block-1-uuid"]').first();
-    await expect(block).toBeVisible({ timeout: 20000 });
-    await block.click();
-    await page.keyboard.type(' drafted here too');
-    await expect
-      .poll(
-        () =>
-          page.evaluate(() =>
-            Object.keys(window.localStorage).some((k) =>
-              (window.localStorage.getItem(k) || '').includes('drafted here too'),
-            ),
-          ),
-        { timeout: 15000 },
-      )
-      .toBe(true);
-
-    // Away to another page, then back — no reload.
-    await helper.navigateToEdit('/example-listings-page');
-    await helper.navigateToEdit('/test-page');
-
-    await expect(
-      page.getByText(/Autosaved content found|autosaved content/i).first(),
-    ).toBeVisible({ timeout: 15000 });
-  });
-
   test('the last field changed is in the draft', async ({ page }) => {
     // The sidebar drafted the form as it was BEFORE each change, so the last
     // one, often the only one, was never in the draft.
@@ -217,6 +182,38 @@ test.describe('save as draft', () => {
     await expect(
       page.getByText(/Autosaved content found|autosaved content/i),
     ).toHaveCount(0);
+  });
+
+  // The save ends the draft when it is made, not a moment later: an author
+  // who saves and closes the tab straight away was offered their saved work
+  // as "autosaved content" next time.
+  test('a saved edit leaves no draft behind, even when the page is left at once', async ({
+    page,
+  }) => {
+    const helper = new AdminUIHelper(page);
+    await helper.login();
+    await helper.navigateToEdit('/test-page');
+    const block = helper
+      .getIframe()
+      .locator('[data-block-uid="block-1-uuid"]')
+      .first();
+    await expect(block).toBeVisible({ timeout: 20000 });
+    await block.click();
+    await page.keyboard.type(' saved and left');
+    const drafted = () =>
+      page.evaluate(() =>
+        Object.keys(window.localStorage).some((k) =>
+          (window.localStorage.getItem(k) || '').includes('saved and left'),
+        ),
+      );
+    await expect.poll(drafted, { timeout: 15000 }).toBe(true);
+
+    await page.locator('#toolbar-save').click();
+    await page.waitForURL((url) => !url.pathname.endsWith('/edit'), {
+      timeout: 15000,
+    });
+    // Read once, as the page is left: no waiting for the draft to go.
+    expect(await drafted()).toBe(false);
   });
 
   test('a new page is not offered the last saved new page as autosaved content', async ({
