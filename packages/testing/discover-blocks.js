@@ -1202,8 +1202,9 @@ function collectWidgetShapeIssues(
 
   // Synced container: a container with an `itemTypeField` (a blockTypeSelect —
   // grid, tags, …) fixes ONE item type, so every child must be that type. A
-  // `listing` child is the one structural exception (it expands into the synced
-  // type). allowedBlocks permits several types at once, so THIS is the check that
+  // listing is the structural exception (it expands into the synced type): any
+  // block whose schema maps its results onto items (a `fieldMapping` field),
+  // not only the one named `listing` — a frontend's related-items source is one. allowedBlocks permits several types at once, so THIS is the check that
   // catches a MIXED synced container — e.g. a tags variation="link" holding a
   // textItem — which allowedBlocks alone can't.
   const regionEntry = Object.entries(props).find(([, p]) => p && p.itemTypeField);
@@ -1216,11 +1217,13 @@ function collectWidgetShapeIssues(
     if (typeof variation === 'string' && variation && variation !== 'default') {
       for (const kid of kids) {
         const kt = kid && kid['@type'];
-        if (kt && kt !== variation && kt !== 'listing') {
+        const expandsIntoItems =
+          kt === 'listing' || Boolean(blocksConfig?.[kt]?.blockSchema?.properties?.fieldMapping);
+        if (kt && kt !== variation && !expandsIntoItems) {
           issues.push(
             `synced container item type is ${JSON.stringify(variation)} but it holds a ` +
               `${JSON.stringify(kt)} child — a synced container can't mix types; every child ` +
-              `must be ${JSON.stringify(variation)} (or a structural "listing").`,
+              `must be ${JSON.stringify(variation)} (or a listing, which expands into them).`,
           );
         }
       }
