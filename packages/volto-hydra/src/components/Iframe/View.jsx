@@ -6181,8 +6181,15 @@ const Iframe = (props) => {
       blockId === PAGE_BLOCK_UID || isBlockReadonly(block, iframeSyncState.templateEditMode)
         ? []
         : convertTargetsFor(blockId);
-    // Copy, cut and wrap act on the whole selection when the block is part of it.
-    const selection = multiSelected?.includes(blockId) ? multiSelected : [];
+    // Copy, cut and wrap act on the whole selection when the block is part of
+    // it; otherwise wrap acts on the block itself (a lone Button goes into a
+    // section), unless it can't be changed here, as for Convert to….
+    const selection = multiSelected?.includes(blockId)
+      ? multiSelected
+      : blockId === PAGE_BLOCK_UID ||
+          isBlockReadonly(block, iframeSyncState.templateEditMode)
+        ? []
+        : [blockId];
     return {
       selectedBlock: blockId,
       onDeleteBlock,
