@@ -528,6 +528,32 @@ class Form extends Component {
       }
     };
     document.addEventListener('keydown', this.handleSaveShortcut);
+
+    // Redo is Ctrl+Shift+Z (Cmd+Shift+Z) on the canvas, where hydra.js asks
+    // for it; Volto's undo manager here knows only Ctrl+Y. Undo moves the
+    // focus while the block re-renders, so a redo pressed straight after it
+    // often lands here, in the sidebar or around the canvas, and did nothing.
+    // Handed on as the undo manager's own redo key. Capture phase, so it never
+    // sees a Shift+Z: a lower-case 'z' with Shift would be taken as UNDO.
+    this.handleRedoShortcut = (event) => {
+      if (
+        (event.ctrlKey || event.metaKey) &&
+        event.shiftKey &&
+        event.key?.toLowerCase() === 'z'
+      ) {
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        document.dispatchEvent(
+          new KeyboardEvent('keydown', {
+            key: 'y',
+            ctrlKey: true,
+            bubbles: true,
+            cancelable: true,
+          }),
+        );
+      }
+    };
+    document.addEventListener('keydown', this.handleRedoShortcut, true);
   }
 
   /**
@@ -541,6 +567,9 @@ class Form extends Component {
     releaseImages();
     if (this.handleSaveShortcut) {
       document.removeEventListener('keydown', this.handleSaveShortcut);
+    }
+    if (this.handleRedoShortcut) {
+      document.removeEventListener('keydown', this.handleRedoShortcut, true);
     }
   }
 
