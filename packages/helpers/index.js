@@ -2194,32 +2194,6 @@ function extractFieldPlaceholders(block) {
 }
 
 /**
- * A block with nothing of its own: what a slot nobody has filled holds once the
- * admin's merge has placed the template's slot block in it. Every field but the
- * template's machinery is empty (no text, no setting, no children) or is still
- * the template's sample, which the placed block carries as its hint too
- * (fieldPlaceholders).
- */
-function isUntouchedSlotBlock(block) {
-  const childIds = Object.values(block.blocks_layout || {}).flat();
-  if (childIds.length > 0) return false;
-  const hints = block.fieldPlaceholders || {};
-  return Object.entries(block).every(([key, value]) => {
-    if (SYSTEM_FIELDS.has(key) || key === 'plaintext') return true;
-    if (key in hints && JSON.stringify(hints[key]) === JSON.stringify(value)) return true;
-    if (value === null || value === undefined || value === false) return true;
-    if (typeof value === 'string') return !value.trim();
-    if (Array.isArray(value)) {
-      if (value.length === 0) return true;
-      if (!value[0]?.children) return false;
-      return !value.map((n) => (n.children || []).map((c) => c.text || '').join('')).join('').trim();
-    }
-    if (typeof value === 'object') return Object.keys(value).length === 0;
-    return false;
-  });
-}
-
-/**
  * Check if a template is a layout (has fixed blocks at edges).
  * Layout = first or last block has fixed: true (Volto standard property).
  *
@@ -4155,10 +4129,6 @@ export function collectNestedAuthorContent(block, pendingContent, visited = new 
         collectNestedAuthorContent(child, pendingContent, visited);
         continue;
       }
-      // A slot of the outgoing layout that nobody filled holds the template's
-      // own slot block, not the author's: it goes with the layout. Taken as
-      // content, each switch moved one more into the next layout's default slot.
-      if (isUntouchedSlotBlock(child)) continue;
       // The author's block, taken WHOLE: its children go with it. Recursing
       // on collected each child a second time as content of its own, so a
       // grid's cards were drawn twice — in the grid, and alone after it
@@ -5696,16 +5666,6 @@ export function expandTemplatesSync(inputItems, options = {}) {
           );
           continue;
         }
-        // The outgoing layout's slot that nobody filled: its template's slot
-        // block, which goes with the layout (as inside a frame, above).
-        if (
-          block.templateId &&
-          previousTemplateId &&
-          templateIdsMatch(block.templateId, previousTemplateId) &&
-          isUntouchedSlotBlock(block)
-        ) {
-          continue;
-        }
         if (block.slotId) {
           const slotId = block.slotId;
           if (!ctx.pendingContent.has(slotId)) {
@@ -5719,6 +5679,22 @@ export function expandTemplatesSync(inputItems, options = {}) {
           ctx.pendingContent.get('default').push({ blockId, block });
         }
       }
+    }
+  }
+
+  // What an earlier switch hid (its slot was missing from that layout) is the
+  // page's content for its slot, as if it were still drawn: a layout with the
+  // slot shows it again, and a slot with content is never given the
+  // template's block. templateState.hidden comes from mergeTemplatesIntoPage
+  // and is only read: expandTemplates re-runs a pass that met a template it
+  // hadn't loaded, so what is taken back and what is hidden are recorded by id.
+  if (ctx.previousTemplateId && templateState.hidden?.length) {
+    if (!templateState.restored) templateState.restored = new Set();
+    for (const entry of templateState.hidden) {
+      const slotId = entry.block.slotId;
+      if (!ctx.pendingContent.has(slotId)) ctx.pendingContent.set(slotId, []);
+      ctx.pendingContent.get(slotId).push(entry);
+      templateState.restored.add(entry.blockId);
     }
   }
 
@@ -5769,15 +5745,32 @@ export function expandTemplatesSync(inputItems, options = {}) {
     }
   }
 
-  // The page's region is a region like any other (fillRegionEntries). Content whose
-  // slot this template doesn't have goes to its default slot, else the bottom slot
-  // outside the last fixed block, else the top one; else it is dropped. Content in a
-  // fixed block's slot is that block's copy: the fixed block replaces it.
+  // The page's region is a region like any other (fillRegionEntries). Content with
+  // no slot, or whose slot this template doesn't have, goes to its default slot,
+  // else the bottom slot outside the last fixed block, else the top one; else it
+  // is dropped. Content in a fixed block's slot is that block's copy: the fixed
+  // block replaces it.
+  //
+  // Switching layouts, content in a named slot the incoming layout lacks is
+  // hidden instead, as a converted block keeps the fields its new type has no
+  // place for: kept with the page while it is edited (templateState.hidden), and
+  // shown again by a layout with that slot. Moved to default, it lost its slot,
+  // and switching back placed the template's block in it again. Removing the
+  // layout keeps everything, so nothing is hidden then.
   const slots = templateSlotIds(template);
   ctx.leftovers = [];
   for (const [slotId, content] of pendingContent) {
     if (!slots.has(slotId)) {
-      ctx.leftovers.push(...content);
+      if (ctx.previousTemplateId && !removingTemplate && slotId !== 'default') {
+        if (!templateState.hiding) templateState.hiding = new Map();
+        for (const { blockId, block } of content) {
+          const { '@uid': _uid, ...kept } = block;
+          templateState.restored?.delete(blockId);
+          templateState.hiding.set(blockId, { blockId, block: kept });
+        }
+      } else {
+        ctx.leftovers.push(...content);
+      }
       pendingContent.delete(slotId);
     }
   }

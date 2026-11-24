@@ -1,0 +1,153 @@
+{
+  "@type": "Document",
+  "effective": "2024-11-01T00:00:00+00:00",
+  "review_state": "published",
+  "preview_image": false,
+  "parent": {
+    "@id": "http://localhost:8888",
+    "@type": "Plone Site",
+    "title": "Site"
+  },
+  "@id": "http://localhost:8888/aside-layout-page",
+  "UID": "aside-layout-page-uid",
+  "id": "aside-layout-page",
+  "title": "Aside Layout Page",
+  "description": "Uses the aside layout, with the author's text in its aside slot",
+  "blocks": {
+    "alp-header": {
+      "@type": "slate",
+      "fixed": true,
+      "readOnly": true,
+      "templateId": "resolveuid/aside-layout-uid",
+      "templateInstanceId": "aside-instance-1",
+      "slotId": "header",
+      "value": [
+        {
+          "type": "h1",
+          "children": [
+            {
+              "text": "Aside Header"
+            }
+          ]
+        }
+      ]
+    },
+    "alp-main": {
+      "@type": "slate",
+      "templateId": "resolveuid/aside-layout-uid",
+      "templateInstanceId": "aside-instance-1",
+      "slotId": "default",
+      "value": [
+        {
+          "type": "p",
+          "children": [
+            {
+              "text": "Main paragraph of the page"
+            }
+          ]
+        }
+      ]
+    },
+    "alp-aside": {
+      "@type": "slate",
+      "templateId": "resolveuid/aside-layout-uid",
+      "templateInstanceId": "aside-instance-1",
+      "slotId": "aside",
+      "value": [
+        {
+          "type": "p",
+          "children": [
+            {
+              "text": "A note in the aside"
+            }
+          ]
+        }
+      ]
+    },
+    "alp-aside-heading": {
+      "@type": "slate",
+      "fixed": true,
+      "readOnly": true,
+      "templateId": "resolveuid/aside-layout-uid",
+      "templateInstanceId": "aside-instance-1",
+      "slotId": "aside-heading",
+      "value": [
+        {
+          "type": "h2",
+          "children": [
+            {
+              "text": "Related"
+            }
+          ]
+        }
+      ]
+    }
+  },
+  "blocks_layout": {
+    "items": [
+      "alp-header",
+      "alp-main",
+      "alp-aside-heading",
+      "alp-aside"
+    ]
+  },
+  "@components": {
+    "actions": {
+      "@id": "http://localhost:8888/aside-layout-page/@actions",
+      "document_actions": [],
+      "object": [
+        {
+          "id": "view",
+          "title": "View"
+        },
+        {
+          "id": "edit",
+          "title": "Edit"
+        },
+        {
+          "id": "folderContents",
+          "title": "Contents"
+        }
+      ],
+      "object_buttons": [],
+      "portal_tabs": [],
+      "site_actions": [],
+      "user": []
+    },
+    "breadcrumbs": {
+      "@id": "http://localhost:8888/aside-layout-page/@breadcrumbs",
+      "items": [
+        {
+          "@id": "http://localhost:8888",
+          "title": "Home"
+        },
+        {
+          "@id": "http://localhost:8888/aside-layout-page",
+          "title": "Another Page 2"
+        }
+      ],
+      "root": "http://localhost:8888"
+    },
+    "navigation": {
+      "@id": "http://localhost:8888/aside-layout-page/@navigation",
+      "items": []
+    },
+    "workflow": {
+      "@id": "http://localhost:8888/aside-layout-page/@workflow"
+    }
+  },
+  "allow_discussion": false,
+  "is_folderish": false,
+  "exclude_from_nav": true,
+  "created": "2025-01-02T12:00:00+00:00",
+  "modified": "2025-01-02T12:00:00+00:00",
+  "lock": {
+    "locked": false,
+    "stealable": true
+  },
+  "can_manage_portlets": true,
+  "can_view": true,
+  "can_edit": true,
+  "can_delete": true,
+  "can_add": true
+}

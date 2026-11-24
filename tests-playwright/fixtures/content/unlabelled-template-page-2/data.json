@@ -52,7 +52,7 @@
       ],
       "templateId": "/_test_data/templates/unlabelled-layout",
       "templateInstanceId": "tpl-instance-2",
-      "slotId": "primary"
+      "slotId": "default"
     },
     "page2-template-footer": {
       "@type": "slate",

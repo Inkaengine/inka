@@ -1,0 +1,114 @@
+{
+  "@id": "/templates/aside-layout",
+  "@type": "Document",
+  "UID": "aside-layout-uid",
+  "id": "aside-layout",
+  "title": "Aside Layout",
+  "description": "A layout with an aside slot that the other test layouts don't have",
+  "blocks": {
+    "aside-header": {
+      "@type": "slate",
+      "fixed": true,
+      "readOnly": true,
+      "templateId": "resolveuid/aside-layout-uid",
+      "templateInstanceId": "aside-def-instance",
+      "slotId": "header",
+      "value": [
+        {
+          "type": "h1",
+          "children": [
+            {
+              "text": "Aside Header"
+            }
+          ]
+        }
+      ]
+    },
+    "default-slot": {
+      "@type": "slate",
+      "fixed": false,
+      "templateId": "resolveuid/aside-layout-uid",
+      "templateInstanceId": "aside-def-instance",
+      "slotId": "default",
+      "value": [
+        {
+          "type": "p",
+          "children": [
+            {
+              "text": ""
+            }
+          ]
+        }
+      ]
+    },
+    "aside-slot": {
+      "@type": "slate",
+      "fixed": false,
+      "templateId": "resolveuid/aside-layout-uid",
+      "templateInstanceId": "aside-def-instance",
+      "slotId": "aside",
+      "value": [
+        {
+          "type": "p",
+          "children": [
+            {
+              "text": ""
+            }
+          ]
+        }
+      ]
+    },
+    "aside-heading": {
+      "@type": "slate",
+      "fixed": true,
+      "readOnly": true,
+      "templateId": "resolveuid/aside-layout-uid",
+      "templateInstanceId": "aside-def-instance",
+      "slotId": "aside-heading",
+      "value": [
+        {
+          "type": "h2",
+          "children": [
+            {
+              "text": "Related"
+            }
+          ]
+        }
+      ]
+    }
+  },
+  "blocks_layout": {
+    "items": [
+      "aside-header",
+      "default-slot",
+      "aside-heading",
+      "aside-slot"
+    ]
+  },
+  "@components": {
+    "actions": {
+      "@id": "/templates/aside-layout/@actions",
+      "object": [
+        {
+          "@id": "/templates/aside-layout/edit",
+          "id": "edit",
+          "title": "Edit"
+        }
+      ],
+      "object_buttons": []
+    },
+    "breadcrumbs": {
+      "@id": "/templates/aside-layout/@breadcrumbs",
+      "items": [
+        {
+          "@id": "/templates",
+          "title": "Templates"
+        },
+        {
+          "@id": "/templates/aside-layout",
+          "title": "Aside Layout"
+        }
+      ]
+    }
+  }
+}

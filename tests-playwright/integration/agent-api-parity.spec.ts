@@ -123,9 +123,9 @@ test.describe('Agent API parity with the editor', () => {
     // page; the page's own blocks in the template's slot were gone, and every
     // save after reset the slot to empty again.
     const slotText = ['User content - different from template default', 'Second user content block in placeholder'];
-    const slotOf = (doc: any) => shape(doc).filter((b: any) => b.slot === 'primary').map((b: any) => b.text);
+    const slotOf = (doc: any) => shape(doc).filter((b: any) => b.slot === 'default').map((b: any) => b.text);
     // The template keeps a place for each page's own content: without its
-    // primary slot, no page using it can show what it put there.
+    // default slot, no page using it can show what it put there.
     const templateSlots = async (p: Page) => shape(await stored(urls.mockApi, p, TEMPLATE)).map((b: any) => b.slot);
 
     const person = await editing(page);
@@ -138,7 +138,7 @@ test.describe('Agent API parity with the editor', () => {
     await person.lockTemplate('template-header', 'commit');
     await person.saveContent();
     expect(slotOf(await stored(urls.mockApi, page, STORED)), 'the page by a person').toEqual(slotText);
-    expect(await templateSlots(page), 'the template by a person').toContain('primary');
+    expect(await templateSlots(page), 'the template by a person').toContain('default');
 
     const agentPage = await browser.newPage();
     await editing(agentPage);

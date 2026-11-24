@@ -62,6 +62,40 @@ function ownTemplateMatcher(page) {
   };
 }
 
+const listedIds = (page) => new Set(Object.values(page.blocks_layout || {}).flat());
+
+/**
+ * Content a layout switch hid: in a slot the page's layout doesn't have
+ * (docs/frontend-guide/templates.md, "Switching layout"). The page's blocks
+ * that no region lists and that name a slot. No frontend draws them, as
+ * nothing lists them; the editor keeps them so that switching back shows them.
+ *
+ * @param {Object} page
+ * @returns {Array<{blockId: string, block: Object}>}
+ */
+export function hiddenBlocks(page) {
+  const listed = listedIds(page);
+  return Object.entries(page.blocks || {})
+    .filter(([id, block]) => !listed.has(id) && block?.slotId)
+    .map(([blockId, block]) => ({ blockId, block }));
+}
+
+/**
+ * The page as saved: without its hidden content, as a converted block is saved
+ * without the fields its type has no place for. The page itself when nothing
+ * is hidden.
+ *
+ * @param {Object} page
+ * @returns {Object}
+ */
+export function withoutHiddenBlocks(page) {
+  const hidden = hiddenBlocks(page);
+  if (!hidden.length) return page;
+  const blocks = { ...page.blocks };
+  for (const { blockId } of hidden) delete blocks[blockId];
+  return { ...page, blocks };
+}
+
 /**
  * Give a template definition's own blocks an instance id, so the editor treats
  * them as a template member and offers the unlock toggle. Editing a definition
@@ -223,6 +257,11 @@ export async function mergeTemplatesIntoPage(page, options = {}) {
   // edit and every capture the unit tests cover. Opt in, don't opt out.
   const isOwnTemplate = skipOwnTemplate ? ownTemplateMatcher(page) : () => false;
 
+  // Offered to each switch: expandTemplatesSync takes back what the incoming
+  // layout has a slot for, and hides what it hasn't.
+  const wasHidden = hiddenBlocks(result);
+  let hidden = wasHidden;
+
   for (const [fieldName, fieldDef] of Object.entries(fieldsToProcess)) {
     const blocksData = result.blocks || {};
     const layout = result.blocks_layout?.[fieldName] || [];
@@ -265,7 +304,7 @@ export async function mergeTemplatesIntoPage(page, options = {}) {
 
     // The ids the merge mints are seeded by where they are, this page's field
     // included, so another page's (or field's) differ.
-    const templateState = { scope: `${page['@id']}#${fieldName}` };
+    const templateState = { scope: `${page['@id']}#${fieldName}`, hidden };
     const { blocks: newBlocks, layout: newLayout } = await expandBlocksField(
       fieldBlocks,
       layout,
@@ -284,6 +323,22 @@ export async function mergeTemplatesIntoPage(page, options = {}) {
     }
     result.blocks = { ...updatedBlocks, ...newBlocks };
     result.blocks_layout = { ...result.blocks_layout, [fieldName]: newLayout };
+    const restored = templateState.restored || new Set();
+    hidden = [
+      ...hidden.filter(({ blockId }) => !restored.has(blockId)),
+      ...(templateState.hiding?.values() || []),
+    ];
+  }
+
+  if (wasHidden.length || hidden.length) {
+    result.blocks = { ...result.blocks };
+    // Taken back into a nested slot, it is there now; at the page's own level
+    // it keeps its id, and a region lists it.
+    const listedNow = listedIds(result);
+    for (const { blockId } of wasHidden) {
+      if (!listedNow.has(blockId)) delete result.blocks[blockId];
+    }
+    for (const { blockId, block } of hidden) result.blocks[blockId] = block;
   }
 
   return {

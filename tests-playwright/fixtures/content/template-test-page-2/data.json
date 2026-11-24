@@ -40,7 +40,7 @@
       ],
       "templateId": "resolveuid/test-layout-template-uid",
       "templateInstanceId": "tpl-instance-2",
-      "slotId": "primary"
+      "slotId": "default"
     },
     "page2-template-footer": {
       "@type": "slate",

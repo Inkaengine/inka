@@ -86,7 +86,7 @@
       "@type": "convGroupSrc",
       "templateId": "resolveuid/test-layout-template-uid",
       "templateInstanceId": "tpl-instance-1",
-      "slotId": "primary",
+      "slotId": "default",
       "fixed": false,
       "blocks": {
         "moved-grp-child": {

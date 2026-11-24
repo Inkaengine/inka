@@ -11530,15 +11530,19 @@ export class Bridge {
           const targetBlockData = this.getBlockData(closestBlockUid);
           const sourceBlockData = this.getBlockData(this.selectedBlockUid);
           const addability = getBlockAddability(closestBlockUid, this.blockPathMap, targetBlockData, this.templateEditMode, sourceBlockData);
+          // A '+' redirected elsewhere (insertAt: the top of the layout's default
+          // slot) means there is no room right here: a drop lands where it is
+          // shown, so it can't go after this block.
+          const canDropAfter = addability.canInsertAfter && !addability.insertAt;
 
           // Use preferred position if allowed, otherwise try the other side
           if (preferredInsertAt === 0 && addability.canInsertBefore) {
             insertAt = 0;
-          } else if (preferredInsertAt === 1 && addability.canInsertAfter) {
+          } else if (preferredInsertAt === 1 && canDropAfter) {
             insertAt = 1;
           } else if (addability.canInsertBefore) {
             insertAt = 0;
-          } else if (addability.canInsertAfter) {
+          } else if (canDropAfter) {
             insertAt = 1;
           } else {
             // Neither side is allowed - hide indicator

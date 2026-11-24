@@ -515,6 +515,66 @@ test.describe('allowedLayouts', () => {
     });
   });
 
+  // A slot the incoming layout doesn't have: its content is hidden, as a
+  // converted block's unmapped fields are. Switching back shows it again; the
+  // save drops it. Moved into default instead, it lost its slot, and each
+  // switch back placed the template's block in the slot again.
+  test.describe('Switching to a layout without a slot', () => {
+    const switchTo = async (page: Page, title: string) => {
+      await page.locator('.sidebar-section-header .section-title').click();
+      const layoutSelector = page.locator('.layout-selector select');
+      await expect(layoutSelector).toBeVisible({ timeout: 10000 });
+      await layoutSelector.selectOption(title);
+      await page.locator('.apply-layout-btn').click();
+    };
+
+    test('its content is hidden, with a toast, and comes back on switching back', async ({ page }) => {
+      const helper = new AdminUIHelper(page);
+      const iframe = helper.getIframe();
+      await helper.login();
+      await helper.navigateToEdit('/aside-layout-page');
+      await helper.waitForIframeReady();
+      const blocks = iframe.locator('main [data-block-uid], #content [data-block-uid]');
+      await expect(blocks.filter({ hasText: 'A note in the aside' })).toBeVisible();
+
+      await switchTo(page, 'Header Only Layout');
+      await expect(blocks.filter({ hasText: 'Header Only' }).first()).toBeVisible({ timeout: 5000 });
+      await expect(page.locator('.Toastify__toast')).toContainText('1 block is hidden');
+      await expect(blocks.filter({ hasText: 'Main paragraph of the page' })).toBeVisible();
+      await expect(blocks.filter({ hasText: 'A note in the aside' })).toHaveCount(0);
+
+      await switchTo(page, 'Aside Layout');
+      await expect(blocks.filter({ hasText: 'Aside Header' }).first()).toBeVisible({ timeout: 5000 });
+      await expect(blocks.filter({ hasText: 'A note in the aside' })).toHaveCount(1);
+      await expect(blocks.filter({ hasText: 'Main paragraph of the page' })).toHaveCount(1);
+    });
+
+    test('saving drops the hidden content', async ({ page }) => {
+      const helper = new AdminUIHelper(page);
+      const iframe = helper.getIframe();
+      await helper.login();
+      await helper.navigateToEdit('/aside-layout-page');
+      await helper.waitForIframeReady();
+      const blocks = iframe.locator('main [data-block-uid], #content [data-block-uid]');
+      await expect(blocks.filter({ hasText: 'A note in the aside' })).toBeVisible();
+
+      await switchTo(page, 'Header Only Layout');
+      await expect(blocks.filter({ hasText: 'Header Only' }).first()).toBeVisible({ timeout: 5000 });
+      await page.keyboard.press('Control+s');
+      await expect(page.locator('.toolbar-actions .edit, [aria-label="Edit"]')).toBeVisible({ timeout: 10000 });
+
+      const token = (await page.context().cookies()).find((c) => c.name === 'auth_token')!.value;
+      const saved = await (
+        await page.request.get(`${URLS.mockApi}/_test_data/aside-layout-page`, {
+          headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
+        })
+      ).json();
+      const texts = JSON.stringify(saved.blocks);
+      expect(texts).toContain('Main paragraph of the page');
+      expect(texts).not.toContain('A note in the aside');
+    });
+  });
+
   test.describe('Single Fixed Edge (Header Only)', () => {
     test('fixed header at top, content flows to free bottom edge', async ({ page }) => {
       const helper = new AdminUIHelper(page);

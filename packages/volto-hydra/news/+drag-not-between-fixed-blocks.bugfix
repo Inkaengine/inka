@@ -1,0 +1,1 @@
+Dragging a block could drop it between two of a template's fixed blocks when the layout has a default slot. A drop now lands only where the editor's "+" would add.

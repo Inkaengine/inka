@@ -21,7 +21,7 @@
       "value": [{ "type": "p", "children": [{ "text": "Primary content one" }] }],
       "templateId": "resolveuid/test-layout-template-uid",
       "templateInstanceId": "tpl-instance-two",
-      "slotId": "primary"
+      "slotId": "default"
     },
     "ts-p2": {
       "@type": "slate",
@@ -30,7 +30,7 @@
       "value": [{ "type": "p", "children": [{ "text": "Primary content two" }] }],
       "templateId": "resolveuid/test-layout-template-uid",
       "templateInstanceId": "tpl-instance-two",
-      "slotId": "primary"
+      "slotId": "default"
     },
     "ts-mid": {
       "@type": "slate",

@@ -82,7 +82,7 @@
       "readOnly": false,
       "templateId": "resolveuid/test-layout-template-uid",
       "templateInstanceId": "test-layout-def-instance",
-      "slotId": "primary",
+      "slotId": "default",
       "value": [
         {
           "type": "p",
