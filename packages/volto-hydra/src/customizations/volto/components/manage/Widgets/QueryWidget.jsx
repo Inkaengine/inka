@@ -18,6 +18,7 @@ import { defineMessages, injectIntl } from 'react-intl';
 import { withRouter } from 'react-router';
 import { getQuerystring } from '@plone/volto/actions/querystring/querystring';
 import { getQueryStringResults } from '@plone/volto/actions/querystringsearch/querystringsearch';
+import { withThisPageOperation } from '@volto-hydra/helpers';
 import Icon from '@plone/volto/components/theme/Icon/Icon';
 import ObjectBrowserWidget from '@plone/volto/components/manage/Widgets/ObjectBrowserWidget';
 import NumberWidget from '@plone/volto/components/manage/Widgets/NumberWidget';
@@ -713,13 +714,27 @@ export class QuerystringWidgetComponent extends Component {
   }
 }
 
+// "Is the same as this page" (@volto-hydra/helpers THIS_PAGE): offered beside
+// Plone's own operations on the indexes a page has a value for. Kept for the
+// indexes object it was made from, so the widget's props stay the same object
+// while Plone's do.
+let thisPageFor = null;
+let withThisPage = null;
+const offeringThisPage = (indexes) => {
+  if (indexes !== thisPageFor) {
+    thisPageFor = indexes;
+    withThisPage = withThisPageOperation(indexes);
+  }
+  return withThisPage;
+};
+
 export default compose(
   injectIntl,
   injectLazyLibs(['reactSelect']),
   withRouter,
   connect(
     (state, props) => ({
-      indexes: state.querystring.indexes,
+      indexes: offeringThisPage(state.querystring.indexes),
       reference: state.querystringsearch.subrequests,
     }),
     { getQuerystring, getQueryStringResults },
