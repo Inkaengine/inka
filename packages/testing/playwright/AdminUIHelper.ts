@@ -337,6 +337,40 @@ export class AdminUIHelper {
   }
 
   /**
+   * An author can't go from one page's editor to another page: in the editor a
+   * link does nothing unless it opts in for an in-page action, and the site's
+   * navigation leaves through the leave warning to the other page's VIEW. They
+   * save or cancel, then click Edit. A helper that jumps anyway puts the
+   * editor in a state no author reaches (the previous page's form, its edit
+   * counter, its draft baseline), and tests then find, or need code for, bugs
+   * nobody can hit. So: save (saveContent) or cancel (cancelEdit) first.
+   */
+  private refuseToLeaveAnEditor(call: string, contentPath: string): void {
+    const current = this.page.url();
+    if (!current.startsWith(this.adminUrl)) return;
+    const { pathname } = new URL(current);
+    const editing = pathname.match(/^(.*)\/(edit|add)\/?$/);
+    // Not in an editor, or in THIS page's: staying, or out to its own view
+    // (Back does that), hands no editor a different page.
+    if (!editing || (editing[2] === 'edit' && editing[1] === contentPath)) return;
+    throw new Error(
+      `${call}: the browser is in the editor at ${pathname}. An author can't ` +
+        'leave an editor for another page; save (saveContent) or cancel ' +
+        '(cancelEdit) first, as they would.',
+    );
+  }
+
+  /** Cancel the edit, as the toolbar's Cancel does, and wait for the view. */
+  async cancelEdit(): Promise<void> {
+    await this.page.locator('#toolbar button.cancel').click();
+    await this.page.waitForURL(
+      (url) => !/\/(edit|add)\/?$/.test(url.pathname),
+      { timeout: 15000 },
+    );
+    await this.waitForIframeReady();
+  }
+
+  /**
    * Navigate to the edit page for a piece of content.
    * Goes directly via page.goto() — Volto SSR reads the auth_token cookie
    * and forwards it as Authorization: Bearer to the API.
@@ -353,6 +387,7 @@ export class AdminUIHelper {
     const editPath = `${contentPath}/edit`;
     const currentUrl = this.page.url();
     const isOnVoltoPage = currentUrl.startsWith(this.adminUrl);
+    this.refuseToLeaveAnEditor(`navigateToEdit('${contentPath}')`, contentPath);
 
     if (isOnVoltoPage) {
       // Already on a Volto page — use client-side navigation (no SSR round-trip).
@@ -481,17 +516,10 @@ export class AdminUIHelper {
 
     const currentUrl = this.page.url();
     const isOnVoltoPage = currentUrl.startsWith(this.adminUrl);
+    this.refuseToLeaveAnEditor(`navigateToView('${contentPath}')`, contentPath);
 
-    // Navigate to edit mode first (reliable), then switch to view.
-    // Direct pushState to view mode triggers Volto SSR which may crash
-    // with "window is not defined" on pages with iframe components.
+    // Already in the admin: straight to the view, as following a link does.
     if (isOnVoltoPage) {
-      await this.page.evaluate((path) => {
-        window.history.pushState({}, '', path + '/edit');
-        window.dispatchEvent(new PopStateEvent('popstate'));
-      }, contentPath);
-      await this.page.waitForURL(`${this.adminUrl}${contentPath}/edit`, { timeout: 10000 });
-      // Switch to view mode
       await this.page.evaluate((path) => {
         window.history.pushState({}, '', path);
         window.dispatchEvent(new PopStateEvent('popstate'));
