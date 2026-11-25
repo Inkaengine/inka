@@ -178,14 +178,24 @@ async function measureBlockInformation(page: Page, iframe: FrameLocator, block: 
     }
   }
   if (!copies.length) return;
-  await page.evaluate((fd) => (window as any).mockParent.setFormData(fd), next);
+  // A copy with nothing removed, in the same update: what the frontend does
+  // with an inserted copy at all. It is drawn in the same pass as the others, so
+  // once it is there, a copy that isn't was not drawn because of what it lacks.
+  const control = probeCopy(next, pathMap, block.blockId, null, 'probe-control');
+  await page.evaluate((fd) => (window as any).mockParent.setFormData(fd), control.formData);
+  await expect(
+    iframe.locator(`[data-block-uid="${control.copyId}"]`).first(),
+    `a copy of ${block.blockType} [${block.blockId}] was never drawn beside it, so whether its slate information is used can't be judged there`,
+  ).toBeAttached({ timeout: 15000 });
   const original = iframe.locator(`[data-block-uid="${block.blockId}"]`).first();
   for (const { kind, copyId, field, text } of copies) {
     const copy = iframe.locator(`[data-block-uid="${copyId}"]`).first();
-    await expect(
-      copy,
-      `a copy of ${block.blockType} [${block.blockId}] without ${kind} was never drawn, so whether ${kind} is used can't be judged`,
-    ).toBeAttached({ timeout: 15000 });
+    // Not drawn without it, while the unchanged copy is: the biggest difference
+    // there is (a link with no address the frontend won't draw).
+    if ((await copy.count()) === 0) {
+      recordInformationUse(kind, block, true);
+      continue;
+    }
     const look = async (at: typeof copy, uid: string) =>
       (await measureTextStyles(at, [{ style: kind, text }], uid, field)).out[kind]?.sig ?? null;
     const looksDifferent = (await look(original, block.blockId)) !== (await look(copy, copyId));
