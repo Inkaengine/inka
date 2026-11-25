@@ -43,7 +43,8 @@ export function collectLinkableAnchors(rootEl) {
 }
 
 const HEADING_LEVEL = { H1: 1, H2: 2, H3: 3, H4: 4, H5: 5, H6: 6 };
-const LINKABLE_SELECTOR =
+/** The elements a frontend marks as link targets for the editor's anchor picker. */
+export const LINKABLE_SELECTOR =
   '[data-linkable-id],[data-linkable-h1],[data-linkable-h2],[data-linkable-h3],[data-linkable-h4],[data-linkable-h5],[data-linkable-h6]';
 
 /**

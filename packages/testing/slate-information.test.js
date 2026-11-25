@@ -5,7 +5,7 @@
  * `bold: true` on text that a frontend reads only as a `strong` element).
  */
 import { describe, test, expect } from 'vitest';
-import { slateInformation, probeCopy, drawsTheSame, recordInformationUse, drainInformationCoverage, informationNeverUsed } from './slate-information.js';
+import { slateInformation, probeCopy, recordInformationUse, drainInformationCoverage, informationNeverUsed } from './slate-information.js';
 
 const text = (t, extra = {}) => ({ text: t, ...extra });
 const p = (...children) => ({ type: 'p', children });
@@ -103,23 +103,6 @@ describe('probeCopy', () => {
     const out = probeCopy(formData, { s: { path: ['blocks', 's'], parentId: null, region: 'items' } }, 's',
       { field: 'value', nodePath: [0, 0], keyPath: ['data', 'item', 'getObjSize'] }, 'p4');
     expect(out.formData.blocks['s~p4'].value[0].children[0].data).toEqual({ url: './g.pdf', item: {} });
-  });
-});
-
-describe('drawsTheSame', () => {
-  test('the copy drawn the same, but for its own ids, is the same drawing', () => {
-    const original = '<p data-block-uid="s1" data-node-id="0">Loud</p>';
-    const copy = '<p data-block-uid="s1~p0" data-node-id="0">Loud</p>';
-    expect(drawsTheSame(original, copy, 'p0')).toBe(true);
-  });
-
-  test('any difference in markup is a different drawing', () => {
-    expect(drawsTheSame('<p data-block-uid="s1"><strong>Loud</strong></p>', '<p data-block-uid="s1~p0">Loud</p>', 'p0')).toBe(false);
-    expect(drawsTheSame('<a href="./g.pdf">G (PDF, 1 KB)</a>', '<a href="./g.pdf">G</a>', 'p0')).toBe(false);
-  });
-
-  test('ids the bridge numbers per node are not the drawing', () => {
-    expect(drawsTheSame('<p data-node-id="0.1">x</p>', '<p data-node-id="7.3">x</p>', 'p0')).toBe(true);
   });
 });
 

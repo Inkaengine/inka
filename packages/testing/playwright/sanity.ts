@@ -36,7 +36,8 @@ import { verifyPageIntegrity } from './PageIntegrityHelper';
 import { drainFieldCoverage } from '../field-coverage';
 import { measureTextStyles, recordTextStyles, slateStyles, drainStyleCoverage } from '../text-style-coverage';
 import { drainImageSizeCoverage } from '../imageSizes.mjs';
-import { slateInformation, probeCopy, drawsTheSame, recordInformationUse, drainInformationCoverage } from '../slate-information.js';
+import { slateInformation, probeCopy, recordInformationUse, drainInformationCoverage } from '../slate-information.js';
+import { LINKABLE_SELECTOR } from '@volto-hydra/hydra-js/linkableAnchors.js';
 import { axeCheckPage, formatViolations } from './axe-sanity';
 import { requireEnvironment } from './preconditions';
 import { harnessUrls } from '../ports';
@@ -146,9 +147,15 @@ async function measureBlockStyles(iframe: FrameLocator, block: DiscoveredBlock):
  * Whether the frontend uses each piece of slate information in a block (a flag
  * on text, a link's data: slate-information.js), recorded for the coverage
  * reporter. Every piece is drawn twice in ONE update: a copy of the block
- * without it goes right after the block, and the two drawings are compared. The
- * same drawing means the frontend never read it. Waiting is on the copies
- * appearing, so a piece that changes nothing needs no wait for "nothing".
+ * without it goes right after the block, and the two are compared as a reader
+ * and a browser get them — how the piece's words LOOK (the text-style
+ * signature), and what the page exposes (its accessibility tree: text, roles, a
+ * link's address; what it can be linked to, its elements' ids), and what the
+ * editor gets (the anchors the bridge harvests for the link picker, their
+ * labels included). Markup is not compared: a class nothing styles is no difference
+ * anyone gets. Both the same means the frontend never used it.
+ * Waiting is on the copies appearing, so a piece that changes nothing needs no
+ * wait for "nothing".
  *
  * It adds blocks to the page, so it runs after a test's other checks.
  */
@@ -161,26 +168,39 @@ async function measureBlockInformation(page: Page, iframe: FrameLocator, block: 
   if (!entry?.path) return; // drawn from a template, not stored on this page
   const stored = entry.path.reduce((o: any, k: string | number) => o?.[k], formData);
   let next = formData;
-  const copies: Array<{ kind: string; copyId: string; suffix: string }> = [];
+  const copies: Array<{ kind: string; copyId: string; field: string; text: string }> = [];
   for (const [field, value] of Object.entries(stored || {})) {
     for (const [kind, where] of slateInformation(value)) {
       const suffix = `probe${copies.length}`;
       const made = probeCopy(next, pathMap, block.blockId, { field, nodePath: where.nodePath, keyPath: where.keyPath }, suffix);
       next = made.formData;
-      copies.push({ kind, copyId: made.copyId, suffix });
+      copies.push({ kind, copyId: made.copyId, field, text: where.text });
     }
   }
   if (!copies.length) return;
   await page.evaluate((fd) => (window as any).mockParent.setFormData(fd), next);
   const original = iframe.locator(`[data-block-uid="${block.blockId}"]`).first();
-  for (const { kind, copyId, suffix } of copies) {
+  for (const { kind, copyId, field, text } of copies) {
     const copy = iframe.locator(`[data-block-uid="${copyId}"]`).first();
     await expect(
       copy,
       `a copy of ${block.blockType} [${block.blockId}] without ${kind} was never drawn, so whether ${kind} is used can't be judged`,
     ).toBeAttached({ timeout: 15000 });
-    const [a, b] = [await original.evaluate((e) => e.outerHTML), await copy.evaluate((e) => e.outerHTML)];
-    recordInformationUse(kind, block, !drawsTheSame(a, b, suffix));
+    const look = async (at: typeof copy, uid: string) =>
+      (await measureTextStyles(at, [{ style: kind, text }], uid, field)).out[kind]?.sig ?? null;
+    const looksDifferent = (await look(original, block.blockId)) !== (await look(copy, copyId));
+    // A frontend may build ids from the block's uid, so the copy's own suffix is not a difference.
+    const exposed = async (at: typeof copy, suffix: string) => [
+      await at.ariaSnapshot(),
+      ...(await at.evaluate((e, linkable) => [
+        ...[e, ...e.querySelectorAll('[id]')].map((el) => el.id).filter(Boolean),
+        ...[e, ...e.querySelectorAll(linkable)].filter((el) => el.matches(linkable))
+          .flatMap((el) => [...el.attributes].filter((x) => x.name.startsWith('data-linkable-')).map((x) => `${x.name}=${x.value}`)),
+      ], LINKABLE_SELECTOR)),
+    ].join('\n').split(suffix).join('');
+    const suffix = copyId.slice(block.blockId.length);
+    const exposesDifferent = (await exposed(original, suffix)) !== (await exposed(copy, suffix));
+    recordInformationUse(kind, block, looksDifferent || exposesDifferent);
   }
 }
 

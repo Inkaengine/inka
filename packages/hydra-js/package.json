@@ -5,7 +5,8 @@
   "private": true,
   "exports": {
     ".": "./hydra.src.js",
-    "./mergeFrontendBlock.js": "./mergeFrontendBlock.js"
+    "./mergeFrontendBlock.js": "./mergeFrontendBlock.js",
+    "./linkableAnchors.js": "./linkableAnchors.js"
   },
   "scripts": {
     "build": "esbuild hydra.src.js --bundle --format=esm --outfile=hydra.js --sourcemap",

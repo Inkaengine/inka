@@ -111,16 +111,6 @@ export function probeCopy(formData, pathMap, blockId, piece, suffix) {
   return { formData: out, copyId };
 }
 
-/**
- * Whether a block's copy (ids suffixed `~<suffix>` by probeCopy) draws the same
- * markup as the original. The copy's own ids, and the ids the bridge numbers
- * each slate node with while editing, are not the drawing.
- */
-export function drawsTheSame(originalHtml, copyHtml, suffix) {
-  const plain = (html) => html.split(`~${suffix}`).join('').replace(/ data-node-id="[^"]*"/g, '');
-  return plain(originalHtml) === plain(copyHtml);
-}
-
 // This test's records, drained (and cleared) by the spec's afterEach, which
 // attaches them; the coverage reporter merges every worker's.
 const pending = [];
