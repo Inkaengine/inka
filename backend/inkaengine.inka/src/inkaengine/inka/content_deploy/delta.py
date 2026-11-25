@@ -410,7 +410,7 @@ def run_delta(
             if rel in base
         )
         for rel in missing:
-            for bucket in (plan.noops, plan.leaves):
+            for bucket in (plan.noops, plan.leaves, plan.states):
                 if rel in bucket:
                     bucket.remove(rel)
             plan.creates.append(rel)
@@ -432,10 +432,11 @@ def run_delta(
         "/".join(site.getPhysicalPath()),
     )
     logger.info(
-        "content-delta: classified creates=%d updates=%d deletes=%d moves=%d "
-        "warnings=%d",
+        "content-delta: classified creates=%d updates=%d states=%d deletes=%d "
+        "moves=%d warnings=%d",
         len(plan.creates),
         len(plan.updates),
+        len(plan.states),
         len(plan.deletes),
         len(plan.moves),
         len(plan.warnings),

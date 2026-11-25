@@ -117,6 +117,7 @@ A Plone site whose content ships with its code, as a plone.exportimport layout, 
 `inkaengine.inka.content_deploy` applies only what the layout changed, in one transaction, so visitors see the old content until the new content is complete:
 
 - **Creates and updates** go through plone.exportimport's own importer, for just the changed items.
+- **A change of review state alone** is a workflow transition. The item is not imported again, so its text, a PDF's included, is not indexed again.
 - **Moves** keep the item's UID, history and place in its folder, and leave a redirect from the old path. **Deletes** remove the item, and its address answers 404. To send a deleted page's visitors somewhere else, add the redirect to `redirects.json`.
 - **Ordering, default pages, relations, workflow states and redirects** from the layout are applied too.
 
