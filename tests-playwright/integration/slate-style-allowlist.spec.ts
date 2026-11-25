@@ -11,7 +11,8 @@
  * deterministically in tests-playwright/unit/slateStyleGating.spec.ts — they
  * turn on a bridge predicate, not on admin rendering.
  */
-import { test, expect } from '../fixtures';
+import { test, expect, URLS } from '../fixtures';
+import { randomUUID } from 'node:crypto';
 import { AdminUIHelper } from '../helpers/AdminUIHelper';
 
 /** Titles offered by the block-format dropdown for the given block. */
@@ -605,12 +606,35 @@ test.describe('disallowed leaf marks', () => {
   test('are stripped on load, keeping their text', async ({ page }) => {
     const helper = new AdminUIHelper(page);
     await helper.login();
-    await helper.navigateToEdit('/restricted-styles-page');
+    // Content stored with a mark the page refuses, made here: a fixture holding
+    // it would be content that is wrong on purpose, and block sanity rightly
+    // fails stored information the frontend never draws. A page of its own, under
+    // the restricted-styles page so the frontend declares the same rules for it.
+    const marked = { '@type': 'slate', value: [{ type: 'p', children: [
+      { text: 'kept ', highlight: true },
+      { text: 'and kept', underline: true },
+    ] }] };
+    const auth = { Accept: 'application/json', 'Content-Type': 'application/json', Authorization: `Bearer ${helper.authToken}` };
+    const created = await fetch(`${URLS.mockApi}/_test_data/restricted-styles-page`, {
+      method: 'POST',
+      headers: auth,
+      body: JSON.stringify({
+        '@type': 'Document', id: `marks-${randomUUID()}`, title: 'Marks on load',
+        blocks: { marked }, blocks_layout: { items: ['marked'] },
+      }),
+    });
+    expect(created.status).toBe(201);
+    const pageUrl = (await created.json())['@id'];
+    // The refused mark has to be STORED, or this passes by never having had one.
+    const stored = await (await fetch(pageUrl, { headers: auth })).json();
+    expect(stored.blocks.marked.value[0].children[0].highlight, 'the refused mark is stored').toBe(true);
+
+    await helper.navigateToEdit(new URL(pageUrl).pathname);
     await helper.waitForIframeReady();
     await helper.waitForBridgeConnected();
 
     // Ask the bridge for the block as the editor now holds it — the mark is a
-    // data concern, and this frontend has no rendering for it to observe.
+    // data concern.
     const frame = page.frames().find((f) => f !== page.mainFrame())!;
     const leaves = await frame.evaluate(() => {
       const data = (window as any).__hydraBridge?.getBlockData('marked');
