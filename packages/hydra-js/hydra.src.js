@@ -5511,12 +5511,15 @@ export class Bridge {
         const clickedEditableField = this.clickedFieldAt(event.target, 'data-edit-text', blockUid);
         const editableField = clickedEditableField || this.getOwnFirstEditableField(blockElement);
 
-        // Clicking a data-edit-text element starts INLINE text editing, so prevent
-        // the element's OWN default action. A data-edit-text submit button would
-        // otherwise submit the form (showing the success state) instead of letting
-        // you edit its label. Links are handled above (data-edit-link); a plain
-        // <h3>/<p>/<label> has no default action so this is a no-op for them.
-        if (clickedEditableField) {
+        // Clicking a data-edit-text element starts INLINE text editing, and
+        // clicking a data-edit-link element edits its link, so prevent the
+        // element's OWN default action. A submit button would otherwise submit
+        // its form (showing the success state, or leaving the page) instead of
+        // letting you edit its label, or the page it goes to. An <a> is handled
+        // above; a plain <h3>/<p>/<label> has no default action so this is a
+        // no-op for them.
+        const clickedLinkableField = this.clickedFieldAt(event.target, 'data-edit-link', blockUid);
+        if (clickedEditableField || clickedLinkableField) {
           event.preventDefault();
         }
 
