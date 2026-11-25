@@ -27,6 +27,7 @@ import {
   getFieldDef,
   resolveFieldPath as resolveFieldPathHelper,
   isStarterUiField,
+  isLinkField,
 } from '@volto-hydra/helpers';
 import { expelAllowedTypes, findOnlyEmptyChildUid } from './containerOps.js';
 import { acceptableAt } from './conversionMap.js';
@@ -682,9 +683,20 @@ export class Bridge {
   }
 
   isFieldReadonly(fieldName, blockUid) {
-    return this.isBlockReadonly(
-      fieldName ? this.resolveFieldPath(fieldName, blockUid).blockId : blockUid,
-    );
+    if (!fieldName) return this.isBlockReadonly(blockUid);
+    const owner = this.resolveFieldPath(fieldName, blockUid);
+    // A listing is registered read-only (expandListingBlocks) because its
+    // results carry its uid, and what a result shows isn't the listing's to
+    // edit. A link field the listing's own schema declares is: its results can
+    // be where it's edited (search shortcuts' links all go to its search page).
+    // Locked only by the listing's own lock, then, not the registry's.
+    if (
+      this._readonlyBlocks.has(owner.blockId) &&
+      isLinkField(this.getNestedFieldDef(this.getBlockSchema(owner.blockId), owner.fieldName))
+    ) {
+      return isBlockReadonly(this.getBlockData(owner.blockId), this.templateEditMode);
+    }
+    return this.isBlockReadonly(owner.blockId);
   }
 
   /**

@@ -3756,6 +3756,11 @@ export function isBlockInEditedTemplate(blockData, templateEditMode) {
  * two never offer both, or neither.
  */
 export function isStarterUiField(fieldDef) {
+  return isLinkField(fieldDef);
+}
+
+/** A link field: an object_browser picking one target to link to. */
+export function isLinkField(fieldDef) {
   return fieldDef?.widget === 'object_browser' && fieldDef?.mode === 'link';
 }
 
