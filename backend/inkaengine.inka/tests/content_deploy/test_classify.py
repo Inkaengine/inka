@@ -216,6 +216,7 @@ def test_to_changeset_shape():
         "redirects",
         "warnings",
         "base_tid",
+        "states",
     }
     assert cs["moves"] == [{"src": "build", "dst": "services/build", "uid": UID_X}]
     assert ["/build", "/services/build"] in cs["redirects"]
@@ -583,3 +584,54 @@ def test_a_default_the_live_page_writes_is_not_an_editor_edit():
         rules,
     )
     assert plan.warnings == ["components/form"]
+
+
+def test_a_change_of_state_alone_is_a_state_change_not_an_update():
+    # A file the layout now says is published, and nothing else about it
+    # changed. Re-importing it reindexes its whole text, a PDF's included: a
+    # site with hundreds of files ran out of time doing that for a state.
+    base = doc("files/x", UID_X)
+    del base["review_state"]
+    disk = doc("files/x", UID_X, review_state="published")
+    live = doc("files/x", UID_X, review_state="published")
+    plan = classify(
+        tree(("files/x", base)), tree(("files/x", disk)), tree(("files/x", live))
+    )
+    assert plan.actions_for("files/x") == Action.STATE
+    assert plan.states == ["files/x"]
+    assert plan.updates == []
+    assert plan.warnings == []
+    assert plan.to_changeset()["states"] == ["files/x"]
+
+
+def test_a_change_of_state_and_content_is_an_update():
+    base = doc("files/x", UID_X, review_state="private")
+    disk = doc("files/x", UID_X, review_state="published", title="X v2")
+    plan = classify(
+        tree(("files/x", base)), tree(("files/x", disk)), tree(("files/x", base))
+    )
+    assert plan.actions_for("files/x") == Action.UPDATE
+    assert plan.states == []
+
+
+def test_a_change_of_state_warns_over_an_editor_s_change_of_state():
+    base = doc("files/x", UID_X, review_state="private")
+    disk = doc("files/x", UID_X, review_state="published")
+    live = doc("files/x", UID_X, review_state="pending")
+    plan = classify(
+        tree(("files/x", base)), tree(("files/x", disk)), tree(("files/x", live))
+    )
+    assert plan.actions_for("files/x") == Action.STATE
+    assert plan.warnings == ["files/x"]
+
+
+def test_a_change_of_state_does_not_warn_over_an_editor_s_content_edit():
+    # Only the state is applied, so the editor's text stays as it is.
+    base = doc("files/x", UID_X, review_state="private")
+    disk = doc("files/x", UID_X, review_state="published")
+    live = doc("files/x", UID_X, review_state="private", title="X edited")
+    plan = classify(
+        tree(("files/x", base)), tree(("files/x", disk)), tree(("files/x", live))
+    )
+    assert plan.actions_for("files/x") == Action.STATE
+    assert plan.warnings == []

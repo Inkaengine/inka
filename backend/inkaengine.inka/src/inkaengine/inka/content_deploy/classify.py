@@ -108,6 +108,10 @@ class Action(enum.Enum):
     NOOP = "noop"
     CREATE = "create"
     UPDATE = "update"
+    # Only the review state changed: a transition, not a re-import. Importing
+    # reindexes the item's whole text (a PDF's included), so a layout that
+    # starts declaring its files' states re-read every file.
+    STATE = "state"
     DELETE = "delete"
     MOVE = "move"
     LEAVE = "leave"  # disk unchanged but live has an editor edit — don't touch
@@ -124,6 +128,7 @@ class Move:
 class Plan:
     creates: list[str] = field(default_factory=list)
     updates: list[str] = field(default_factory=list)
+    states: list[str] = field(default_factory=list)
     deletes: list[str] = field(default_factory=list)
     moves: list[Move] = field(default_factory=list)
     leaves: list[str] = field(default_factory=list)
@@ -148,6 +153,7 @@ class Plan:
             "redirects": [list(r) for r in self.redirects],
             "warnings": list(self.warnings),
             "base_tid": self.base_tid,
+            "states": list(self.states),
         }
 
 
@@ -343,6 +349,10 @@ def _moved_key(data: dict[str, Any], rules: CompareRules) -> str:
     )
 
 
+def _without_state(data: dict[str, Any], rules: CompareRules) -> str:
+    return content_key({k: v for k, v in data.items() if k != "review_state"}, rules)
+
+
 def classify(  # noqa: C901
     base: dict[str, dict],
     disk: dict[str, dict],
@@ -417,6 +427,20 @@ def classify(  # noqa: C901
                 plan._action[rel] = Action.NOOP
             continue
 
+        # Only its state changed: transition it, leave its content alone. So
+        # an editor's content edit is not overwritten, and warns only when the
+        # editor changed the state itself.
+        if _without_state(base[rel], rules) == _without_state(disk[rel], rules):
+            plan.states.append(rel)
+            plan._action[rel] = Action.STATE
+            live_state = live[rel].get("review_state") if rel in live else None
+            if live_state is not None and live_state not in (
+                base[rel].get("review_state"),
+                disk[rel].get("review_state"),
+            ):
+                plan.warnings.append(rel)
+            continue
+
         # disk changed this item -> apply (disk wins)
         plan.updates.append(rel)
         plan._action[rel] = Action.UPDATE
@@ -452,7 +476,7 @@ def refresh_from_disk(
             disk[rel], rules
         ):
             continue
-        for bucket in (plan.leaves, plan.noops, plan.warnings):
+        for bucket in (plan.leaves, plan.noops, plan.states, plan.warnings):
             if rel in bucket:
                 bucket.remove(rel)
         if rel not in plan.updates:
