@@ -953,11 +953,6 @@ export async function expandListingBlocks(inputItems, options = {}) {
     const total = result.total || 0;
     listingTotals[blockId] = total;
     batchTotal += total;
-    // The bridge marks the stand-in of a listing that found nothing as "nothing
-    // to show", not as an empty slot to fill (it is not one).
-    if (bridgeInstance?.setBlockNoResults) {
-      bridgeInstance.setBlockNoResults(blockId, total === 0);
-    }
 
     // Now that we know the actual total, check if this listing truly overlaps
     const blockEnd = blockStart + total;

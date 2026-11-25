@@ -421,9 +421,6 @@ export class Bridge {
     // Readonly registry - blocks marked readonly won't have fields collected
     // Set by expandListingBlocks() or frontend code, not persisted to backend
     this._readonlyBlocks = new Set();
-    // Blocks that expand into items (listings) and found none: marked apart from
-    // an empty slot (see setBlockNoResults, markEmptyBlocks).
-    this._noResultsBlocks = new Set();
     // Template edit mode - when set to an instanceId, blocks inside that instance
     // become editable (even if readOnly), and blocks outside become locked
     this.templateEditMode = []; // v2: set of unlocked template instance ids (string[])
@@ -629,24 +626,6 @@ export class Bridge {
       this._readonlyBlocks.add(blockUid);
     } else {
       this._readonlyBlocks.delete(blockUid);
-    }
-  }
-
-  /**
-   * Record whether a block that expands into items (a listing) found any. While
-   * editing, one that found none is drawn as a single `empty` item carrying its
-   * uid, so the author has something to click. That item is not a slot (nothing
-   * can be added there), so markEmptyBlocks marks it apart from one. Reported by
-   * expandListingBlocks() on each expansion. Transient, never persisted.
-   *
-   * @param {string} blockUid - The expanding block's UID
-   * @param {boolean} none - Whether it found no items
-   */
-  setBlockNoResults(blockUid, none) {
-    if (none) {
-      this._noResultsBlocks.add(blockUid);
-    } else {
-      this._noResultsBlocks.delete(blockUid);
     }
   }
 
@@ -8975,15 +8954,6 @@ export class Bridge {
       } else {
         blockElement.removeAttribute('data-hydra-empty');
       }
-      // A block that found nothing: its stand-in is not a slot to fill, so it
-      // gets its own mark (and marker), never the empty slot's '+'.
-      if (this._noResultsBlocks?.has(blockUid)) {
-        blockElement.setAttribute('data-hydra-no-results', 'true');
-        blockElement.setAttribute('title', 'Nothing to show');
-      } else if (blockElement.hasAttribute('data-hydra-no-results')) {
-        blockElement.removeAttribute('data-hydra-no-results');
-        blockElement.removeAttribute('title');
-      }
     });
   }
 
@@ -15545,24 +15515,6 @@ export class Bridge {
         /* The frontend draws its own add button (data-block-add="button"). */
         [data-hydra-empty]:has([data-block-add="button"])::after {
           content: none;
-        }
-        /* A block that found nothing (a listing with no results): clickable, so it
-           can be selected and its settings changed, but not a slot, so no '+'. */
-        [data-hydra-no-results] {
-          border: 2px dashed #b8c6c8 !important;
-          border-radius: 4px;
-          background: rgba(200, 200, 200, 0.1);
-          min-height: 60px;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          cursor: pointer;
-        }
-        [data-hydra-no-results]::after {
-          content: '…';
-          font-size: 24px;
-          color: #b8c6c8;
-          pointer-events: none;
         }
       `;
     document.head.appendChild(style);

@@ -498,8 +498,6 @@ Empty blocks are stripped when a page is saved. (A template keeps one that names
 
 To give that '+' your own look, render a button inside the empty block and mark it `data-block-add="button"`. Inka then draws no '+' of its own, and clicking your button opens the block chooser beside it to fill the empty in place, as the '+' would. Your button is yours to draw as you like — an icon, a ghost, a label such as "Add a question" — and is the one thing in an empty block that may hold text.
 
-A listing that finds nothing gives back an `empty` too, while editing: one item with the listing's own uid and `readOnly: true` (see [Listings](./listings.md#notes)). Draw it the same way. It is not a slot, since nothing can be added there, so Inka draws no '+' on it: it marks it `data-hydra-no-results` and draws "…" (titled "Nothing to show") instead. Clicking it selects the listing, whose settings are where to change what it finds.
-
 ### Starting a region with set children — `default`
 
 A region's `default` lists the children it starts with. When a block is added, each entry becomes a child with a fresh id; when the region is emptied later, it is refilled with the same list. Each entry is a child block's data without an id: its `@type` (or, in a typed `object_list`, its `typeField`), and any fields to set. Fields an entry leaves out get the child type's own defaults. An entry with no type is an error.

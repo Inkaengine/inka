@@ -357,10 +357,10 @@ export function defineBlockSanityTests(options: SanityOptions): void {
         : '';
       const labelKind = block.kind ? ` [${block.kind}]` : '';
       const label = `${block.blockType}${labelVariation}${labelKind}`;
-      // A listing whose query matches nothing has no results to draw, but while
-      // editing it must still draw SOMETHING with its uid: otherwise the author has
-      // nothing to click to select it and fix the query. (Published, it may draw
-      // nothing — that is the frontend's edit-only placeholder.) Every listing
+      // While editing, a listing always draws at least one element with its uid,
+      // even when its query matches nothing: otherwise the author has nothing to
+      // click to select it and fix the query. What it draws is the frontend's
+      // choice, and so is what a visitor sees (nothing, typically). Every listing
       // example, with its query swapped for one that matches no content.
       if (block.isListing) {
         test(`${label} with no results still shows something to click while editing${src}`, async ({ page, helper }, testInfo) => {
@@ -385,34 +385,39 @@ export function defineBlockSanityTests(options: SanityOptions): void {
           const drawn = iframe.locator(`[data-block-uid="${block.blockId}"]`);
           await expect(drawn.first(), `${label} [${block.blockId}] did not render`).toBeAttached({ timeout: 15000 });
 
+          const noMatch = 'zzqx-no-content-matches-this';
           const stored = (block.blockData?.querystring ?? {}) as Record<string, unknown>;
           await page.evaluate(([id, querystring]) => (window as any).mockParent.updateBlock(id, { querystring }), [
             block.blockId,
             {
               ...stored,
-              query: [{
-                i: 'SearchableText',
-                o: 'plone.app.querystring.operation.string.contains',
-                v: 'zzqx-no-content-matches-this',
-              }],
+              query: [{ i: 'SearchableText', o: 'plone.app.querystring.operation.string.contains', v: noMatch }],
             },
           ] as const);
 
-          // What it draws now is the stand-in the bridge marks as having nothing to
-          // show (not an empty slot). Waiting for the mark, not for the drawing to
-          // change, also holds for an example that had no results to begin with (a
-          // listing whose criteria come from the page it is on, on its own template).
-          const standIn = iframe.locator(`[data-block-uid="${block.blockId}"][data-hydra-no-results]`);
+          // Judge the render that used the emptied query, once it has finished:
+          // the bridge records the data the frontend last rendered with.
+          await expect
+            .poll(
+              () =>
+                iframe.locator('body').evaluate(
+                  (_, [id, v]) => {
+                    const bridge = (window as any).__hydraBridge;
+                    const query = bridge?.getRenderedBlockData?.(id)?.querystring?.query;
+                    return !bridge?._renderInProgress && Array.isArray(query) && query.some((c: any) => c?.v === v);
+                  },
+                  [block.blockId, noMatch] as const,
+                ),
+              { message: `${label} [${block.blockId}] was never rendered with its emptied query`, timeout: 15000 },
+            )
+            .toBe(true);
+
           await expect(
-            standIn.first(),
-            `${label} [${block.blockId}] with no results drew nothing marked "nothing to show" while editing — the author has nothing to click to select it`,
-          ).toBeAttached({ timeout: 15000 });
-          await expect(
-            standIn.first(),
-            `${label} [${block.blockId}] with no results drew an empty slot's '+', but nothing can be added there`,
-          ).not.toHaveAttribute('data-hydra-empty', /.*/);
+            drawn.first(),
+            `${label} [${block.blockId}] with no results drew nothing while editing — the author has nothing to click to select it`,
+          ).toBeAttached({ timeout: 10000 });
           await revealBlock(iframe, block.blockId);
-          const box = await standIn.first().boundingBox();
+          const box = await drawn.first().boundingBox();
           expect(
             !!box && box.width > 0 && box.height > 0,
             `${label} [${block.blockId}] with no results has no size to click while editing, got ${JSON.stringify(box)}`,
