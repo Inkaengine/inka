@@ -1,0 +1,1 @@
+A listing (any block that expands into items) that finds nothing is drawn while editing as a dashed box with "…" ("Nothing to show"), not the "+" of an empty slot: nothing can be added there. Clicking it selects the listing.

@@ -383,9 +383,7 @@ export function defineBlockSanityTests(options: SanityOptions): void {
           test.skip(!queryDriven, `${block.blockId}'s results don't come from a query`);
           const iframe = helper.getIframe();
           const drawn = iframe.locator(`[data-block-uid="${block.blockId}"]`);
-          const textNow = () => drawn.evaluateAll((els) => els.map((e) => (e as HTMLElement).innerText).join('|'));
-          await expect(drawn.first(), `${label} [${block.blockId}] did not render with its results`).toBeAttached({ timeout: 15000 });
-          const before = await textNow();
+          await expect(drawn.first(), `${label} [${block.blockId}] did not render`).toBeAttached({ timeout: 15000 });
 
           const stored = (block.blockData?.querystring ?? {}) as Record<string, unknown>;
           await page.evaluate(([id, querystring]) => (window as any).mockParent.updateBlock(id, { querystring }), [
@@ -400,18 +398,21 @@ export function defineBlockSanityTests(options: SanityOptions): void {
             },
           ] as const);
 
-          // The old results are still drawn until the frontend re-renders; wait for
-          // what the listing shows to change before judging it.
-          if (before) {
-            await expect.poll(textNow, { message: `${label} [${block.blockId}] never re-rendered after its query changed`, timeout: 15000 })
-              .not.toBe(before);
-          }
+          // What it draws now is the stand-in the bridge marks as having nothing to
+          // show (not an empty slot). Waiting for the mark, not for the drawing to
+          // change, also holds for an example that had no results to begin with (a
+          // listing whose criteria come from the page it is on, on its own template).
+          const standIn = iframe.locator(`[data-block-uid="${block.blockId}"][data-hydra-no-results]`);
           await expect(
-            drawn.first(),
-            `${label} [${block.blockId}] with no results drew nothing while editing — the author has nothing to click to select it`,
-          ).toBeAttached({ timeout: 10000 });
+            standIn.first(),
+            `${label} [${block.blockId}] with no results drew nothing marked "nothing to show" while editing — the author has nothing to click to select it`,
+          ).toBeAttached({ timeout: 15000 });
+          await expect(
+            standIn.first(),
+            `${label} [${block.blockId}] with no results drew an empty slot's '+', but nothing can be added there`,
+          ).not.toHaveAttribute('data-hydra-empty', /.*/);
           await revealBlock(iframe, block.blockId);
-          const box = await drawn.first().boundingBox();
+          const box = await standIn.first().boundingBox();
           expect(
             !!box && box.width > 0 && box.height > 0,
             `${label} [${block.blockId}] with no results has no size to click while editing, got ${JSON.stringify(box)}`,
