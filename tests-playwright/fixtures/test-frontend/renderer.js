@@ -818,6 +818,7 @@ function renderChildren(children) {
             // Also handle old format (marks) for backward compatibility
             if (child.bold) content = `<span style="font-weight: bold">${content}</span>`;
             if (child.italic) content = `<span style="font-style: italic">${content}</span>`;
+            if (child.underline) content = `<span style="text-decoration: underline">${content}</span>`;
             if (child.code) content = `<code>${content}</code>`;
             if (child.del) content = `<span style="text-decoration: line-through">${content}</span>`;
 

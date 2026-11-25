@@ -28,7 +28,7 @@
  *
  * Works against any Plone API — mock or remote.
  */
-import { test as playwrightTest, type FrameLocator } from '@playwright/test';
+import { test as playwrightTest, errors as playwrightErrors, type FrameLocator, type Page } from '@playwright/test';
 import { test as base, expect } from './fixtures';
 import { AdminUIHelper } from './AdminUIHelper';
 import { verifyBlockRendering, revealBlock, checkEveryBlockOnPage, blocksToCheck, blockUidsShownAsText } from './BlockVerificationHelper';
@@ -36,6 +36,8 @@ import { verifyPageIntegrity } from './PageIntegrityHelper';
 import { drainFieldCoverage } from '../field-coverage';
 import { measureTextStyles, recordTextStyles, slateStyles, drainStyleCoverage } from '../text-style-coverage';
 import { drainImageSizeCoverage } from '../imageSizes.mjs';
+import { slateInformation, probeCopy, recordInformationUse, drainInformationCoverage } from '../slate-information.js';
+import { LINKABLE_SELECTOR } from '@volto-hydra/hydra-js/linkableAnchors.js';
 import { axeCheckPage, formatViolations } from './axe-sanity';
 import { requireEnvironment } from './preconditions';
 import { harnessUrls } from '../ports';
@@ -138,6 +140,147 @@ async function measureBlockStyles(iframe: FrameLocator, block: DiscoveredBlock):
       field,
     );
     recordTextStyles(block.blockType, block.pagePath, value, measured.out, measured.baseline);
+  }
+}
+
+/**
+ * Whether the frontend uses each piece of slate information in a block (a flag
+ * on text, a link's data: slate-information.js), recorded for the coverage
+ * reporter. Every piece is drawn twice in ONE update: a copy of the block
+ * without it goes right after the block, and the two are compared as a reader
+ * and a browser get them — how the piece's words LOOK (the text-style
+ * signature), and what the page exposes (its accessibility tree: text, roles, a
+ * link's address; what it can be linked to, its elements' ids), and what the
+ * editor gets (the anchors the bridge harvests for the link picker, their
+ * labels included). Markup is not compared: a class nothing styles is no difference
+ * anyone gets. Both the same means the frontend never used it.
+ * Waiting is on the copies appearing, so a piece that changes nothing needs no
+ * wait for "nothing".
+ * A copy the frontend refuses to draw at all (it throws on content it can't
+ * draw, taking the page with it) would hide every other copy, so when even the
+ * unchanged copy is missing, the copies are drawn one at a time instead.
+ *
+ * It adds blocks to the page, so it runs after a test's other checks.
+ */
+async function measureBlockInformation(
+  page: Page,
+  iframe: FrameLocator,
+  helper: AdminUIHelper,
+  block: DiscoveredBlock,
+): Promise<void> {
+  const { formData, pathMap } = await page.evaluate(() => {
+    const mp = (window as any).mockParent;
+    return { formData: mp.getFormData(), pathMap: mp.buildBlockPathMap() };
+  });
+  const entry = pathMap[block.blockId];
+  if (!entry?.path) return; // drawn from a template, not stored on this page
+  const stored = entry.path.reduce((o: any, k: string | number) => o?.[k], formData);
+  type Piece = { kind: string; field: string; text: string; nodePath: number[]; keyPath: string[] };
+  const pieces: Piece[] = [];
+  for (const [field, value] of Object.entries(stored || {})) {
+    for (const [kind, where] of slateInformation(value)) {
+      pieces.push({ kind, field, text: where.text, nodePath: where.nodePath, keyPath: where.keyPath });
+    }
+  }
+  if (!pieces.length) return;
+
+  // Copies of the block, each without one piece, plus one with nothing removed:
+  // what the frontend does with an inserted copy at all. It is drawn in the same
+  // pass as the others, so once it is there, a copy that isn't was not drawn
+  // because of what it lacks. Every attempt names its unchanged copy afresh, so
+  // the one found is always this attempt's, never one an earlier update drew.
+  let attempt = 0;
+  const draw = async (some: Piece[]) => {
+    let next = formData;
+    const copies: Array<Piece & { copyId: string }> = [];
+    for (const piece of some) {
+      const made = probeCopy(next, pathMap, block.blockId, piece, `probe${attempt}-${copies.length}`);
+      next = made.formData;
+      copies.push({ ...piece, copyId: made.copyId });
+    }
+    const control = probeCopy(next, pathMap, block.blockId, null, `probe${attempt}-control`);
+    attempt += 1;
+    await page.evaluate((fd) => (window as any).mockParent.setFormData(fd), control.formData);
+    const controlDrawn = await iframe
+      .locator(`[data-block-uid="${control.copyId}"]`)
+      .first()
+      .waitFor({ state: 'attached', timeout: 15000 })
+      .then(
+        () => true,
+        (e) => {
+          if (e instanceof playwrightErrors.TimeoutError) return false;
+          throw e;
+        },
+      );
+    return { copies, controlDrawn };
+  };
+
+  const original = iframe.locator(`[data-block-uid="${block.blockId}"]`).first();
+  const judge = async ({ kind, copyId, field, text }: Piece & { copyId: string }) => {
+    const copy = iframe.locator(`[data-block-uid="${copyId}"]`).first();
+    // Not drawn without it, while the unchanged copy is: the biggest difference
+    // there is (a link with no address the frontend won't draw).
+    if ((await copy.count()) === 0) {
+      recordInformationUse(kind, block, true);
+      return;
+    }
+    const look = async (at: typeof copy, uid: string) =>
+      (await measureTextStyles(at, [{ style: kind, text }], uid, field)).out[kind]?.sig ?? null;
+    const looksDifferent = (await look(original, block.blockId)) !== (await look(copy, copyId));
+    // A frontend may build ids from the block's uid, so the copy's own suffix is not a difference.
+    const exposed = async (at: typeof copy, suffix: string) => [
+      await at.ariaSnapshot(),
+      ...(await at.evaluate((e, linkable) => [
+        ...[e, ...e.querySelectorAll('[id]')].map((el) => el.id).filter(Boolean),
+        ...[e, ...e.querySelectorAll(linkable)].filter((el) => el.matches(linkable))
+          .flatMap((el) => [...el.attributes].filter((x) => x.name.startsWith('data-linkable-')).map((x) => `${x.name}=${x.value}`)),
+      ], LINKABLE_SELECTOR)),
+    ].join('\n').split(suffix).join('');
+    const suffix = copyId.slice(block.blockId.length);
+    const exposesDifferent = (await exposed(original, suffix)) !== (await exposed(copy, suffix));
+    recordInformationUse(kind, block, looksDifferent || exposesDifferent);
+  };
+
+  // This runs after a test's own checks, on the test's budget: the wait for its
+  // copies is added to it, so a test that used its time already still gets them.
+  const info = playwrightTest.info();
+  info.setTimeout(info.timeout + 20_000);
+
+  // All copies in one update: the usual case, one render for every piece.
+  const all = await draw(pieces);
+  if (all.controlDrawn) {
+    for (const copy of all.copies) await judge(copy);
+    return;
+  }
+
+  // The unchanged copy wasn't drawn either. Either a copy broke the whole page
+  // (a frontend may refuse content it can't draw, like a link with no address),
+  // or the frontend doesn't draw a copy there at all. One copy at a time tells
+  // which; a copy that breaks the page is reloaded away.
+  // That's a reload and a draw per piece this test didn't plan for, so its own
+  // budget grows by as much; the suite's limit stays.
+  info.setTimeout(info.timeout + (pieces.length + 1) * 45_000);
+  const reopen = async () => {
+    await page.reload();
+    await helper.waitForIframeReady();
+    await helper.waitForBridgeConnected();
+    await revealBlock(iframe, block.blockId);
+  };
+  await reopen();
+  const alone = await draw([]);
+  expect(
+    alone.controlDrawn,
+    `a copy of ${block.blockType} [${block.blockId}] was never drawn beside it, so whether its slate information is used can't be judged there`,
+  ).toBe(true);
+  for (const piece of pieces) {
+    const one = await draw([piece]);
+    if (one.controlDrawn) {
+      await judge(one.copies[0]);
+      continue;
+    }
+    // Without it, the frontend can't draw the page: it reads it, and needs it.
+    recordInformationUse(piece.kind, block, true);
+    await reopen();
   }
 }
 
@@ -349,6 +492,7 @@ export function defineBlockSanityTests(options: SanityOptions): void {
             `${block.blockType} [${block.blockId}], the example of "${block.forStyle}", did not render on ${block.pagePath}`,
           ).toBeAttached({ timeout: 15000 });
           await measureBlockStyles(iframe, block);
+          await measureBlockInformation(page, iframe, helper, block);
         });
         continue;
       }
@@ -631,6 +775,8 @@ export function defineBlockSanityTests(options: SanityOptions): void {
             `${label} has ${blocking.length} serious/critical a11y violation(s):\n${formatViolations(blocking)}`,
           ).toEqual([]);
         }
+
+        await measureBlockInformation(page, iframe, helper, block);
       });
     }
 
@@ -650,8 +796,9 @@ export function defineBlockSanityTests(options: SanityOptions): void {
       const fields = drainFieldCoverage();
       const styles = drainStyleCoverage();
       const imageSizes = drainImageSizeCoverage();
+      const information = drainInformationCoverage();
       await testInfo.attach('coverage', {
-        body: JSON.stringify({ fields, styles, imageSizes }),
+        body: JSON.stringify({ fields, styles, imageSizes, information }),
         contentType: 'application/json',
       });
     });

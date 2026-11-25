@@ -49,6 +49,22 @@ describe('styleExampleCases', () => {
     ]);
     expect(styleExampleCases([], candidates).map((c) => c.forStyle)).toEqual(['.lead', '.tag']);
   });
+
+  // The rest of a slate value's information (slate-information.js) needs an
+  // example the same way: a flag on text, a link's data.
+  test('a piece of slate information the block cases never show gets a case of its own', () => {
+    const loud = block('f', slate(para('Plain'), { type: 'p', children: [{ text: 'Loud', bold: true }] }), '/loud');
+    const cases = [{ ...block('a', slate(para('Body'))), kind: 'rich', isListing: false }];
+    expect(styleExampleCases(cases, new Map([['[bold]', loud]]))).toEqual([
+      { ...loud, kind: 'style:[bold]', forStyle: '[bold]', isListing: false },
+    ]);
+  });
+
+  test('a block case that holds the information needs nothing more', () => {
+    const loud = block('f', slate({ type: 'p', children: [{ text: 'Loud', bold: true }] }));
+    const cases = [{ ...loud, kind: 'rich', isListing: false }];
+    expect(styleExampleCases(cases, new Map([['[bold]', loud]]))).toEqual([]);
+  });
 });
 
 // Every style the toolbar offers needs an example in the content: one nobody

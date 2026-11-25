@@ -1282,6 +1282,11 @@
         if (!map[blockId]) throw new Error(`updateBlock: no block ${blockId}`);
         const formData = JSON.parse(JSON.stringify(mockFormData));
         Object.assign(getAtPath(formData, map[blockId].path), fields);
+        window.mockParent.setFormData(formData);
+      },
+      // Replace the whole page and send it to the frontend, as the editor does
+      // after any change (block sanity draws copies of blocks beside them).
+      setFormData: (formData) => {
         mockFormData = formData;
         document.getElementById('previewIframe').contentWindow.postMessage(
           { type: 'FORM_DATA', data: formData, blockPathMap: postableBlockPathMap(formData) }, '*',
