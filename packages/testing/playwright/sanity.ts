@@ -28,7 +28,7 @@
  *
  * Works against any Plone API — mock or remote.
  */
-import { test as playwrightTest, type FrameLocator } from '@playwright/test';
+import { test as playwrightTest, type FrameLocator, type Page } from '@playwright/test';
 import { test as base, expect } from './fixtures';
 import { AdminUIHelper } from './AdminUIHelper';
 import { verifyBlockRendering, revealBlock, checkEveryBlockOnPage, blocksToCheck, blockUidsShownAsText } from './BlockVerificationHelper';
@@ -36,6 +36,7 @@ import { verifyPageIntegrity } from './PageIntegrityHelper';
 import { drainFieldCoverage } from '../field-coverage';
 import { measureTextStyles, recordTextStyles, slateStyles, drainStyleCoverage } from '../text-style-coverage';
 import { drainImageSizeCoverage } from '../imageSizes.mjs';
+import { slateInformation, probeCopy, drawsTheSame, recordInformationUse, drainInformationCoverage } from '../slate-information.js';
 import { axeCheckPage, formatViolations } from './axe-sanity';
 import { requireEnvironment } from './preconditions';
 import { harnessUrls } from '../ports';
@@ -138,6 +139,48 @@ async function measureBlockStyles(iframe: FrameLocator, block: DiscoveredBlock):
       field,
     );
     recordTextStyles(block.blockType, block.pagePath, value, measured.out, measured.baseline);
+  }
+}
+
+/**
+ * Whether the frontend uses each piece of slate information in a block (a flag
+ * on text, a link's data: slate-information.js), recorded for the coverage
+ * reporter. Every piece is drawn twice in ONE update: a copy of the block
+ * without it goes right after the block, and the two drawings are compared. The
+ * same drawing means the frontend never read it. Waiting is on the copies
+ * appearing, so a piece that changes nothing needs no wait for "nothing".
+ *
+ * It adds blocks to the page, so it runs after a test's other checks.
+ */
+async function measureBlockInformation(page: Page, iframe: FrameLocator, block: DiscoveredBlock): Promise<void> {
+  const { formData, pathMap } = await page.evaluate(() => {
+    const mp = (window as any).mockParent;
+    return { formData: mp.getFormData(), pathMap: mp.buildBlockPathMap() };
+  });
+  const entry = pathMap[block.blockId];
+  if (!entry?.path) return; // drawn from a template, not stored on this page
+  const stored = entry.path.reduce((o: any, k: string | number) => o?.[k], formData);
+  let next = formData;
+  const copies: Array<{ kind: string; copyId: string; suffix: string }> = [];
+  for (const [field, value] of Object.entries(stored || {})) {
+    for (const [kind, where] of slateInformation(value)) {
+      const suffix = `probe${copies.length}`;
+      const made = probeCopy(next, pathMap, block.blockId, { field, nodePath: where.nodePath, keyPath: where.keyPath }, suffix);
+      next = made.formData;
+      copies.push({ kind, copyId: made.copyId, suffix });
+    }
+  }
+  if (!copies.length) return;
+  await page.evaluate((fd) => (window as any).mockParent.setFormData(fd), next);
+  const original = iframe.locator(`[data-block-uid="${block.blockId}"]`).first();
+  for (const { kind, copyId, suffix } of copies) {
+    const copy = iframe.locator(`[data-block-uid="${copyId}"]`).first();
+    await expect(
+      copy,
+      `a copy of ${block.blockType} [${block.blockId}] without ${kind} was never drawn, so whether ${kind} is used can't be judged`,
+    ).toBeAttached({ timeout: 15000 });
+    const [a, b] = [await original.evaluate((e) => e.outerHTML), await copy.evaluate((e) => e.outerHTML)];
+    recordInformationUse(kind, block, !drawsTheSame(a, b, suffix));
   }
 }
 
@@ -349,6 +392,7 @@ export function defineBlockSanityTests(options: SanityOptions): void {
             `${block.blockType} [${block.blockId}], the example of "${block.forStyle}", did not render on ${block.pagePath}`,
           ).toBeAttached({ timeout: 15000 });
           await measureBlockStyles(iframe, block);
+          await measureBlockInformation(page, iframe, block);
         });
         continue;
       }
@@ -625,6 +669,8 @@ export function defineBlockSanityTests(options: SanityOptions): void {
             `${label} has ${blocking.length} serious/critical a11y violation(s):\n${formatViolations(blocking)}`,
           ).toEqual([]);
         }
+
+        await measureBlockInformation(page, iframe, block);
       });
     }
 
@@ -644,8 +690,9 @@ export function defineBlockSanityTests(options: SanityOptions): void {
       const fields = drainFieldCoverage();
       const styles = drainStyleCoverage();
       const imageSizes = drainImageSizeCoverage();
+      const information = drainInformationCoverage();
       await testInfo.attach('coverage', {
-        body: JSON.stringify({ fields, styles, imageSizes }),
+        body: JSON.stringify({ fields, styles, imageSizes, information }),
         contentType: 'application/json',
       });
     });

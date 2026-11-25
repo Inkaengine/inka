@@ -1432,12 +1432,18 @@ function isContainmentExempt(entry, blockData, rules = { slots: [] }, pagePath =
 }
 
 import { slateStyles } from './slate-styles.js';
+import { slateInformation } from './slate-information.js';
 
-/** The text styles in every slate field of a block. */
+/**
+ * The text styles in every slate field of a block, and the rest of its slate
+ * information (a flag on text, a link's data: slate-information.js). Each needs
+ * an example the sanity suite draws.
+ */
 function stylesOfBlock(blockData) {
   const out = [];
   for (const value of Object.values(blockData || {})) {
-    if (Array.isArray(value)) out.push(...slateStyles(value).keys());
+    if (!Array.isArray(value)) continue;
+    out.push(...slateStyles(value).keys(), ...slateInformation(value).keys());
   }
   return out;
 }

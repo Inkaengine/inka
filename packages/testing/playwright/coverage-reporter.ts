@@ -39,11 +39,15 @@ import {
   type StyleRecord,
 } from '../text-style-coverage';
 import { multiScaleSeen } from '../imageSizes.mjs';
+import { informationNeverUsed } from '../slate-information.js';
+
+type InformationRecord = { kind: string; blockType: string; pagePath: string; used: boolean };
 
 interface CoveragePayload {
   fields: FieldRecord[];
   styles: StyleRecord[];
   imageSizes?: Array<{ field: string; available: number; offered: number }>;
+  information?: InformationRecord[];
 }
 
 /**
@@ -119,6 +123,7 @@ export default class CoverageReporter implements Reporter {
 
   private fields: FieldRecord[] = [];
   private styles: StyleRecord[] = [];
+  private information: InformationRecord[] = [];
   private imageSizes: Array<{ field: string; available: number; offered: number }> = [];
   private sawCoverage = false;
 
@@ -135,6 +140,7 @@ export default class CoverageReporter implements Reporter {
       this.sawCoverage = true;
       if (payload.fields?.length) this.fields.push(...payload.fields);
       if (payload.styles?.length) this.styles.push(...payload.styles);
+      if (payload.information?.length) this.information.push(...payload.information);
       if (payload.imageSizes?.length) this.imageSizes.push(...payload.imageSizes);
     }
   }
@@ -184,6 +190,15 @@ export default class CoverageReporter implements Reporter {
           never
             .map((n) => `  - ${n.style} (in ${n.blockType} on ${n.pagePath})\n      text: ${JSON.stringify(n.text.slice(0, 60))}`)
             .join('\n'),
+      );
+    }
+
+    const unused = informationNeverUsed(this.information);
+    if (unused.length > 0) {
+      problems.push(
+        `Slate information the frontend never uses (a copy of the block without ` +
+          `it draws exactly the same; it is stored, and nobody sees it):\n` +
+          unused.map((n) => `  - ${n.kind} (in ${n.blockType} on ${n.pagePath})`).join('\n'),
       );
     }
 

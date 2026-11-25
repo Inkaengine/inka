@@ -1,0 +1,1 @@
+Block sanity fails on slate information the frontend never uses: each piece of a slate value (a flag on text such as `bold: true`, a link's data) is drawn twice, with and without it, and the same drawing is reported.
