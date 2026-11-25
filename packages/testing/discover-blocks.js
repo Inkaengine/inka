@@ -1432,6 +1432,7 @@ function isContainmentExempt(entry, blockData, rules = { slots: [] }, pagePath =
 }
 
 import { slateStyles } from './slate-styles.js';
+import { canvasFieldsSet } from './canvas-fields.js';
 
 /** The text styles in every slate field of a block. */
 function stylesOfBlock(blockData) {
@@ -1458,6 +1459,27 @@ function styleExampleCases(cases, candidates) {
     if (covered.has(style)) continue;
     for (const s of stylesOfBlock(example.blockData)) covered.add(s);
     added.push({ ...example, kind: `style:${style}`, forStyle: style, isListing: false });
+  }
+  return added;
+}
+
+/**
+ * A case for each canvas field (a picture, a link: canvas-fields.js) that some
+ * example sets and no block case of its type does.
+ *
+ * A field drawn only when it has a value is drawn by none of a type's cases
+ * when none of them sets it, and its edit annotation is never seen, though an
+ * example that sets it is in the content. `candidates` maps `<blockType>
+ * <field>` to the first block setting it; `fieldsOf` gives a block's set canvas
+ * fields. One added example covers every field it sets.
+ */
+function fieldExampleCases(cases, candidates, fieldsOf) {
+  const covered = new Set(cases.flatMap((c) => fieldsOf(c).map((f) => `${c.blockType} ${f}`)));
+  const added = [];
+  for (const [key, example] of candidates) {
+    if (covered.has(key)) continue;
+    for (const f of fieldsOf(example)) covered.add(`${example.blockType} ${f}`);
+    added.push({ ...example, kind: `field:${key.slice(example.blockType.length + 1)}`, isListing: false });
   }
   return added;
 }
@@ -1574,6 +1596,10 @@ async function discoverBlocks(
 
   // style -> the first block carrying it, for styleExampleCases.
   const styleCandidates = new Map();
+  // `<blockType> <field>` -> the first block setting that canvas field, and each
+  // block's set canvas fields, for fieldExampleCases.
+  const fieldCandidates = new Map();
+  const canvasFieldsOf = new Map();
   // style -> where it is first offered: every style an author can pick in a
   // region some block's text sits in (see undemonstratedStyles).
   const offeredStyles = new Map();
@@ -1790,6 +1816,15 @@ async function discoverBlocks(
             styleCandidates.set(style, { blockType, variation, blockId, pagePath, blockData });
           }
         }
+        // Likewise each picture or link it sets, for fieldExampleCases.
+        const setFields = canvasFieldsSet(schema, blockData);
+        canvasFieldsOf.set(`${pagePath} ${blockId}`, setFields);
+        for (const field of setFields) {
+          const key = `${blockType} ${field}`;
+          if (!fieldCandidates.has(key)) {
+            fieldCandidates.set(key, { blockType, variation, blockId, pagePath, blockData });
+          }
+        }
 
         // Its container: the nearest real block above it. A template instance is in
         // the map (the editor groups a template's blocks by it) but stores nothing
@@ -1885,6 +1920,12 @@ async function discoverBlocks(
   for (const styleCase of styleExampleCases(result, styleCandidates)) {
     console.log(`[DISCOVER] Found ${styleCase.blockType} block "${styleCase.blockId}" on ${styleCase.pagePath} (adds text style ${styleCase.forStyle})`);
     result.push(styleCase);
+  }
+  // A case that isn't an editable block walked above (a region's holder) sets
+  // no field this knows of, so it covers none.
+  for (const fieldCase of fieldExampleCases(result, fieldCandidates, (c) => canvasFieldsOf.get(`${c.pagePath} ${c.blockId}`) ?? [])) {
+    console.log(`[DISCOVER] Found ${fieldCase.blockType} block "${fieldCase.blockId}" on ${fieldCase.pagePath} (adds ${fieldCase.kind})`);
+    result.push(fieldCase);
   }
   console.log(`[DISCOVER] Discovered ${result.length} unique (blockType, variation, kind) pairs from ${fetched} pages`);
   // Not render cases: the coverage reporter reads them from the discovery file.
@@ -2123,6 +2164,7 @@ export {
   paragraphShapeOf,
   editableInstance,
   styleExampleCases,
+  fieldExampleCases,
   undemonstratedStyles,
   // Exported so the content validator asks the same question this does — a
   // second list of "fields that are not schema fields" would drift, and the

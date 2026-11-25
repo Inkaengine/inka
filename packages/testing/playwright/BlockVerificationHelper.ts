@@ -12,6 +12,7 @@ import { expect } from '@playwright/test';
 import type { Page, FrameLocator, Locator, ElementHandle } from '@playwright/test';
 import { AdminUIHelper } from './AdminUIHelper';
 import { recordSlateFieldContainer, recordFieldEditable } from '../field-coverage';
+import { canvasFieldKind } from '../canvas-fields.js';
 import {
   usesAvailableSizes, resolveImageEntry, availableWidths, isProportionate,
 } from '../imageSizes.mjs';
@@ -818,23 +819,6 @@ function slateEqualIgnoringIds(a: unknown, b: unknown): boolean {
  * Values are normalised for the leading slash some renderers emit
  * (`data-edit-media="/image"`).
  */
-/**
- * The annotation a schema field is edited through, if any. `image` /
- * `object_browser` say what kind of picker the field wants; text and textarea
- * are deliberately absent (an image's `alt` is a sidebar attribute, and a
- * textarea is not uniformly canvas content).
- */
-function annotationFor(
-  prop: Record<string, unknown>,
-): { kind: 'text' | 'media' | 'link'; attr: string } | null {
-  const w = prop?.widget;
-  const mode = (prop as { mode?: string })?.mode;
-  if (w === 'image' || (w === 'object_browser' && mode === 'image'))
-    return { kind: 'media', attr: 'data-edit-media' };
-  if (w === 'object_browser' && mode === 'link')
-    return { kind: 'link', attr: 'data-edit-link' };
-  return null;
-}
 
 /** One annotated element: which attribute declares it, which field, and where. */
 interface EditableField {
@@ -1113,7 +1097,7 @@ export async function checkSlateAnnotations(
   // one settle below covers every kind.
   const annotatedFields: Array<[string, { kind: 'text' | 'media' | 'link'; attr: string }, unknown]> = [];
   for (const [field, prop] of Object.entries(blockSchema?.properties ?? {})) {
-    const a = annotationFor(prop as Record<string, unknown>);
+    const a = canvasFieldKind(prop as Record<string, unknown>);
     if (a) annotatedFields.push([field, a, prop]);
   }
   const expected: Array<[string, string]> = [
@@ -1624,9 +1608,13 @@ export async function verifyBlockRendering(
   // alone can't tell an intentional multi-element block from an accidental
   // duplicate anyway. Verify the block renders + carries its edit annotations via
   // the first match, then return — the assertions below use the multi-match
-  // `block` locator and would trip Playwright strict mode on >1 element.
+  // `block` locator and would trip Playwright strict mode on >1 element. Its
+  // fields are still recorded for coverage: the bridge collects a block's fields
+  // from every element carrying its uid, so asking from the first finds them all
+  // (a search shortcut's link to its search page is on each of its results).
   if ((await settledCount(block)) > 1) {
     await checkEditAnnotations(block.first(), blockData);
+    await checkSlateAnnotations(block.first(), blockData, undefined, iframe);
     return;
   }
 
