@@ -5003,9 +5003,16 @@ app.get('{/*path}/@relations', (req, res) => {
       UID: content.UID,
     };
   };
+  // A stored reference names a path as written, or (content authored for a
+  // site root, as mountInternalRefs reads it) under its page's own mount.
+  const names = (ref, fromPath, targetPath) => {
+    const asPath = new URL(ref, `http://localhost:${PORT}`).pathname.replace(/\/$/, '');
+    const prefix = prefixMountOf(fromPath);
+    return [asPath, prefix && prefix + asPath].some((p) => p && resolveContentReference(p, sessionId) === targetPath);
+  };
   const naming = (targetPath) => allContentPaths(sessionId).filter((p) => {
     const values = rawContentForComponents(p, sessionId)?.[name];
-    return Array.isArray(values) && values.some((v) => v?.['@id'] && new URL(v['@id'], `http://localhost:${PORT}`).pathname.replace(/\/$/, '') === targetPath);
+    return Array.isArray(values) && values.some((v) => v?.['@id'] && names(v['@id'], p, targetPath));
   });
   let items = [];
   if (name === 'iterate-working-copy') {
