@@ -2837,7 +2837,9 @@ function loadMarkdownMount(mount) {
   const { items, blobFiles, folderForm, order } = readTree(dirPath, { prefix, isFolderish: isFolderishType });
   const { resolveSchemaExamples, resolveLinkSummaries } = mdRuntime.fromSchemas;
   for (const page of items.values()) resolveSchemaExamples(page, { schemaFor: mdRuntime.schemaFor });
-  resolveLinkSummaries(items, { schemaFor: mdRuntime.schemaFor, prefix });
+  // A text link's item snapshot (data.item) is put back from the item it points
+  // at, as a search returns it: the link editor's snapshot, which Markdown omits.
+  resolveLinkSummaries(items, { schemaFor: mdRuntime.schemaFor, prefix, catalogEntry: (item) => formatSearchItem(item, '') });
   // The text search finds each block by, where the markdown stores none: the
   // editor's save writes it, and a tree read from disk was never saved.
   if (contentSchemas) {

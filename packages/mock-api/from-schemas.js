@@ -6,6 +6,7 @@
  * what a block's search text is.
  */
 import { searchTextOptions, withSearchableText } from '@volto-hydra/helpers/searchableText.js';
+import { linkItemSnapshot } from '@volto-hydra/helpers/linkItem.js';
 
 /** Build a `schemaFor(type) -> blockSchema` lookup from a block-schema registry.
  *  Handles both shapes the project uses:
@@ -56,7 +57,14 @@ export function resolveSchemaExamples(page, { schemaFor }) {
 // plain url string on a card, so only the schema knows which is a link. A
 // `url`-widget field is an external string and is left alone; an `@id` that
 // resolves to no local object (external / not in this tree) stays bare.
-export function resolveLinkSummaries(items, { schemaFor, prefix = '' }) {
+//
+// A TEXT link's snapshot is the same story: the link editor keeps the picked
+// item's catalog metadata beside the link's address (`data.item`, a file's type
+// and size a frontend draws after the link), and Markdown writes the link alone.
+// `catalogEntry` gives an item's catalog entry, as a search returns it; the
+// snapshot is the link editor's own (linkItemSnapshot). A link already carrying
+// one keeps it.
+export function resolveLinkSummaries(items, { schemaFor, prefix = '', catalogEntry = null }) {
   const localId = (id) => (prefix && id.startsWith(prefix) ? id.slice(prefix.length) : id) || '/';
   const isBareLink = (o) => o && typeof o === 'object' && !Array.isArray(o)
     && typeof o['@id'] === 'string' && Object.keys(o).length === 1;
@@ -95,8 +103,20 @@ export function resolveLinkSummaries(items, { schemaFor, prefix = '' }) {
     });
   };
 
+  // Every text link in a value: a slate node `{ type: 'link', data: { url } }`.
+  const fillTextLinks = (value) => {
+    if (!catalogEntry || !value || typeof value !== 'object') return;
+    if (Array.isArray(value)) { value.forEach(fillTextLinks); return; }
+    if (value.type === 'link' && typeof value.data?.url === 'string' && !value.data.item) {
+      const target = items.get(localId(value.data.url.split('#')[0]));
+      if (target) value.data = { ...value.data, item: linkItemSnapshot(catalogEntry(target)) };
+    }
+    if (Array.isArray(value.children)) fillTextLinks(value.children);
+  };
+
   const fillBlock = (block) => {
     if (!block || typeof block !== 'object') return;
+    for (const v of Object.values(block)) if (Array.isArray(v)) fillTextLinks(v);
     const schema = block['@type'] ? schemaFor(block['@type']) : null;
     if (schema && schema.properties) {
       for (const [field, def] of Object.entries(schema.properties)) {

@@ -2494,3 +2494,24 @@ describe("a container's own fields can read the same node twice", () => {
     expect(matchBlocks(protos, md)).toEqual([block]);
   });
 });
+
+describe("a text link's item snapshot is derived, like a Text block's plaintext", () => {
+  // The link editor keeps the picked item's catalog metadata beside a link
+  // (`data.item`); loading Markdown puts it back from the item the link points
+  // at. So the Markdown writes the link alone, and the block stays Markdown.
+  const protos = parsePrototypes('<block is="slate" value="${p,a/slate}" />');
+  const link = (data) => ({ '@type': 'slate', value: [{ type: 'p', children: [
+    { text: 'Read the ' },
+    { type: 'link', data, children: [{ text: 'annual report' }] },
+    { text: '.' },
+  ] }] });
+
+  it('writes the link alone', () => {
+    const md = emitBlocks(protos, [link({ url: '/report.pdf', item: { portal_type: 'File', getObjSize: '1.2 MB' } })]);
+    expect(md).toBe('Read the [annual report](/report.pdf).');
+  });
+
+  it('reads it back without the snapshot, which loading fills', () => {
+    expect(matchBlocks(protos, 'Read the [annual report](/report.pdf).')).toEqual([link({ url: '/report.pdf' })]);
+  });
+});

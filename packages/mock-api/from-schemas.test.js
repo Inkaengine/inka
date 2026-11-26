@@ -143,3 +143,39 @@ describe('a markdown export leaves out the search text the frontend would give a
     assert.equal(out.blocks.b.searchableText, 'Chosen words');
   });
 });
+
+describe('a text link gets back the item it was picked from', () => {
+  // The link editor keeps the picked item's catalog metadata beside a text
+  // link's address (`data.item`: a file's type and size, which a frontend draws
+  // after the link). Markdown writes the link alone, so loading it puts the
+  // metadata back from the item the link points at, as the editor would have.
+  const schemaFor = () => null;
+  const catalogEntry = (target) => ({
+    '@id': `http://site${target['@id'] ?? ''}`, portal_type: target['@type'], title: target.title,
+    mime_type: 'application/pdf', getObjSize: '1.2 MB', Creator: 'someone',
+  });
+  const load = (files) => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'link-items-'));
+    for (const [name, text] of Object.entries(files)) fs.writeFileSync(path.join(root, name), text);
+    const { items } = readTree(root, { isFolderish });
+    fs.rmSync(root, { recursive: true, force: true });
+    return resolveLinkSummaries(items, { schemaFor, catalogEntry });
+  };
+  const page = (body) => ['---', '"@type": Document', 'UID: srcuid1234567', 'id: source',
+    'blocks-matched: |', '  <block is="slate" value="${p,a/slate}" />', '---', '', body, ''].join('\n');
+  const report = '---\n"@type": File\nUID: reportuid123456\nid: report.pdf\ntitle: Annual report\n---\n';
+  const linkIn = (items) => Object.values(items.get('/source').blocks)[0].value[0].children
+    .find((n) => n.type === 'link');
+
+  it("fills the item's metadata, as the link editor keeps it", () => {
+    const link = linkIn(load({ 'report.pdf.md': report, 'source.md': page('Read the [annual report](/report.pdf).') }));
+    assert.deepEqual(link.data.item, {
+      portal_type: 'File', title: 'Annual report', mime_type: 'application/pdf', getObjSize: '1.2 MB',
+    });
+  });
+
+  it('leaves a link to somewhere outside the site as it is', () => {
+    const link = linkIn(load({ 'source.md': page('See [elsewhere](https://example.org/x).') }));
+    assert.equal(link.data.item, undefined);
+  });
+});

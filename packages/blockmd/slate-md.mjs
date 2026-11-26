@@ -145,6 +145,27 @@ function groupElements(nodes) {
   return out;
 }
 
+/**
+ * A value without the snapshots its text links keep of what they point at.
+ *
+ * The link editor stores the picked item's catalog metadata beside a link's
+ * address (`data.item`), and Markdown writes the link alone: loading it puts the
+ * snapshot back from the item (the mock API's resolveLinkSummaries). So the
+ * snapshot is derived, as a Text block's plaintext is, and neither written nor
+ * counted as lost.
+ */
+export function withoutLinkSnapshots(value) {
+  if (Array.isArray(value)) return value.map(withoutLinkSnapshots);
+  if (!value || typeof value !== 'object') return value;
+  const out = {};
+  for (const [key, child] of Object.entries(value)) out[key] = withoutLinkSnapshots(child);
+  if (value.type === 'link' && out.data && typeof out.data === 'object' && 'item' in out.data) {
+    const { item: _item, ...data } = out.data;
+    out.data = data;
+  }
+  return out;
+}
+
 /** mdast inline nodes -> slate children. */
 export function inlineToSlate(nodes) {
   nodes = groupElements(nodes || []);

@@ -21,7 +21,7 @@ import YAML from 'yaml';
 import { getAtPath, ensureMutablePath } from '@volto-hydra/helpers';
 import { joined } from '@volto-hydra/helpers/blockText.js';
 import { tagOf, mdParser, mdSerializer, blockToSlate, slateToMd, fmtTagAttrs, cleanAttrStr, normaliseTables, tableToMd, gridTableToMd, NoCellForm, NoFit, slateBlockToMdast, isBrTag,
-         mdastToHtml, htmlToMd, htmlRichtext, isFlatDict, boundAttr, attrName } from './slate-md.mjs';
+         mdastToHtml, htmlToMd, htmlRichtext, isFlatDict, boundAttr, attrName, withoutLinkSnapshots } from './slate-md.mjs';
 
 // ${node[n]/part} -- node kind, optional match-index, optional accessor part.
 // No `/part` means match-only: consume the node, capture nothing (separator,
@@ -1550,11 +1550,17 @@ function emitSegments(prototypes, blocks, depth = 2) {
  * out what matches it before emit (the mock API's export).
  */
 function withoutDerivedFields(value) {
-  if (Array.isArray(value)) return value.map(withoutDerivedFields);
+  // Also without a text link's item snapshot, which loading puts back
+  // (slate-md's withoutLinkSnapshots).
+  return withoutPlaintext(withoutLinkSnapshots(value));
+}
+
+function withoutPlaintext(value) {
+  if (Array.isArray(value)) return value.map(withoutPlaintext);
   if (!value || typeof value !== 'object') return value;
   const out = {};
   for (const [key, child] of Object.entries(value)) {
-    if (key !== 'plaintext') out[key] = withoutDerivedFields(child);
+    if (key !== 'plaintext') out[key] = withoutPlaintext(child);
   }
   return out;
 }
