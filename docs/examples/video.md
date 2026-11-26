@@ -94,7 +94,7 @@ The Video-Block can be aligned to the left with text floating around it on the r
 
 [](https://www.youtube.com/watch?v=_yaYy86jdk8)
 
-![](./content-types/image-dark)
+![](./content-types/image-dark.md)
 
 <fields align="left" />
 
@@ -110,7 +110,7 @@ The Video-Block can be aligned to the right with text floating around it on the 
 
 [](https://www.youtube.com/watch?v=_yaYy86jdk8)
 
-![](./content-types/image-dark)
+![](./content-types/image-dark.md)
 
 <fields align="right" />
 
