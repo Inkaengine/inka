@@ -2586,8 +2586,8 @@ describe("a form's fields, each a question and its hint", () => {
     ...parsePrototypes([
       '<block is="form">',
       '  <region name="subblocks" widget="object_list" idField="field_id" typeField="field_type">',
-      '    <block is="text" label="${dl/term}" description="${dl?/definition}" />',
-      '    <block is="single_choice" label="${dl/term}" description="${dl?/definition}" input_values="${ul?/items}" />',
+      '    <block is="text" label="${dt/text}" description="${dd?/text}" />',
+      '    <block is="single_choice" label="${dt/text}" description="${dd?/text}" input_values="${ul?/items}" />',
       '  </region>',
       '</block>',
     ].join('\n'), { explicit: true }),
@@ -2608,5 +2608,48 @@ describe("a form's fields, each a question and its hint", () => {
 
   it('reads them back', () => {
     expect(matchBlocks(protos, emitBlocks(protos, [form]))).toEqual([form]);
+  });
+});
+
+describe('a definition list\'s terms and definitions, by position or by term', () => {
+  // `${dt[n]}` / `${dd[n]}` are the nth term and definition of a block's
+  // definition list, as `${td[1]}` is a row's first cell; `${dd[Phone]}` is the
+  // definition under the term "Phone". A list holding more entries than the
+  // prototype names is not this block, rather than losing the rest.
+  const protos = parsePrototypes([
+    '<block is="slate" value="${p/slate}" />',
+    '<block is="contact" first="${dt[1]/text}" firstValue="${dd[1]/text}" second="${dt[2]/text}" secondValue="${dd?[2]/text}" />',
+  ].join('\n'));
+  const contact = { '@type': 'contact', first: 'Phone', firstValue: '1300 300 300', second: 'Email', secondValue: 'help@example.org' };
+  // The writer escapes the `@`, so GFM can't make the address an email link.
+  const md = 'Phone\n: 1300 300 300\n\nEmail\n: help\\@example.org';
+
+  it('reads each by position', () => {
+    expect(matchBlocks(protos, md)).toEqual([contact]);
+  });
+
+  it('writes them back as one list', () => {
+    expect(emitBlocks(protos, [contact])).toBe(md);
+  });
+
+  it('a list with an entry the prototype does not name is not that block', () => {
+    expect(() => matchBlocks(protos, `${md}\n\nWeb\n: example.org`)).toThrow(/no prototype matches node kind: dl/);
+  });
+});
+
+describe('a form field reads one question, not the next one too', () => {
+  const protos = [
+    ...parsePrototypes('<block is="slate" value="${p/slate}" />'),
+    ...parsePrototypes([
+      '<block is="form">',
+      '  <region name="subblocks" widget="object_list" idField="field_id" typeField="field_type">',
+      '    <block is="text" label="${dt/text}" description="${dd?/text}" />',
+      '  </region>',
+      '</block>',
+    ].join('\n'), { explicit: true }),
+  ];
+  it('refuses a field tag holding two questions, rather than dropping one', () => {
+    const md = '<block is="form">\n\n<block is="text">\n\nName\n: Your name.\n\nPhone\n: Your phone.\n\n</block>\n\n</block>';
+    expect(() => matchBlocks(protos, md)).toThrow();
   });
 });

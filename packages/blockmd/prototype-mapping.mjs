@@ -41,6 +41,9 @@ import { tagOf, mdParser, mdSerializer, blockToSlate, slateToMd, fmtTagAttrs, cl
 //   `[Contents][2]` -> the 2nd, within that label's scope
 const REF_RE = /^\$\{([a-z0-9|*,]+)(\?)?((?:\[[^\]]+\])*)(?:\/([a-z]+))?\}$/i;
 
+/** The parts of a definition list a ref can name: a term and its definition. */
+const DEF_PARTS = new Set(['dt', 'dd']);
+
 function parseRef(v) {
   if (typeof v !== 'string') return null;
   const m = REF_RE.exec(v.trim());
@@ -208,10 +211,14 @@ function slotsOf(proto) {
     if (!r) continue;
     // A NODE is optional only if EVERY ref to it is optional -- `url="${img/src}"`
     // makes the img node required even though `alt="${img?/alt}"` is optional.
-    const cur = need.get(r.node) ?? { count: 0, optional: true };
-    cur.count = Math.max(cur.count, r.index ?? 1);
+    // A term or definition (`${dt[2]}`, `${dd[Phone]}`) is inside the block's
+    // one definition list: every such ref shares that node, and its index is
+    // the entry's position in it, not a count of lists.
+    const key = DEF_PARTS.has(r.node) ? 'dl' : r.node;
+    const cur = need.get(key) ?? { count: 0, optional: true };
+    cur.count = Math.max(cur.count, DEF_PARTS.has(r.node) ? 1 : r.index ?? 1);
     cur.optional = cur.optional && !!r.optional;
-    need.set(r.node, cur);
+    need.set(key, cur);
   }
   const slots = [];
   for (const [nodeSet, { count, optional }] of need) {
@@ -458,17 +465,6 @@ function resolvePart(node, ref) {
       if (u === null) { if (ref.optional) return null; throw new NoFit(`no link url in ${kindOf(node)}`); }
       return u;
     }
-    // A definition list read as one entry: its first term, and that term's
-    // definition (absent when it is empty, `Name\n:`) -- a question and its hint.
-    case 'term': {
-      const t = (node.children ?? []).find((c) => kindOf(c) === 'dt');
-      return t ? phrasingText(t) : null;
-    }
-    case 'definition': {
-      const d = (node.children ?? []).find((c) => kindOf(c) === 'dd');
-      const text = d ? proseText(d) : '';
-      return text === '' ? null : text;
-    }
     // A list's items as plain strings (a choice field's options).
     case 'items': return (node.children ?? []).map((li) => proseText(li));
     case 'title': return findTitle(node); // `![a](u "title")` / `[t](u "title")` -> a caption/tooltip
@@ -513,8 +509,26 @@ function runAt(nodes, i, slots, depth) {
   return null;
 }
 
+/** A definition list's term or definition a `${dt…}` / `${dd…}` ref names: by
+ *  its term (`${dd[Phone]}`), or by position (`${dd[2]}`; the first if none). */
+function defEntry(dl, ref) {
+  const kids = dl.children ?? [];
+  if (ref.label) {
+    const t = kids.findIndex((c) => kindOf(c) === 'dt' && nodeText(c) === ref.label);
+    if (t < 0) return null;
+    return ref.node === 'dt' ? kids[t] : kids.slice(t + 1).find((c) => kindOf(c) === 'dd') ?? null;
+  }
+  return kids.filter((c) => kindOf(c) === ref.node)[(ref.index ?? 1) - 1] ?? null;
+}
+
 /** Resolve a ref against a run: the index-th node whose kind is in the ref's set. */
 function resolveRef(run, ref, depth) {
+  if (DEF_PARTS.has(ref.node)) {
+    const dl = run.find((n) => kindOf(n) === 'dl');
+    const entry = dl ? defEntry(dl, ref) : null;
+    if (!entry) throw new NoFit(`ref ${ref.node} not in run`);
+    return resolvePart(entry, ref);
+  }
   const kinds = ref.node.split(/[|,]/);
   const node = run.filter((n) => nodeInSlot(n, kinds, depth))[(ref.index ?? 1) - 1];
   if (!node) throw new NoFit(`ref ${ref.node}[${ref.index ?? 1}] not in run`);
@@ -530,6 +544,15 @@ function resolveRef(run, ref, depth) {
  * instead of being grabbed as a linkless teaser.
  */
 function runResolves(proto, run, depth) {
+  // A definition list holding more entries than the prototype names is not this
+  // block: reading it would drop the rest without a word.
+  const dl = run.find((n) => kindOf(n) === 'dl');
+  if (dl) {
+    const refs = Object.values(proto.fields).map(parseRef).filter((r) => r && DEF_PARTS.has(r.node));
+    const named = Math.max(0, ...refs.filter((r) => !r.label).map((r) => r.index ?? 1))
+      + new Set(refs.filter((r) => r.label).map((r) => r.label)).size;
+    if (refs.length && (dl.children ?? []).filter((c) => kindOf(c) === 'dt').length > named) return false;
+  }
   for (const val of Object.values(proto.fields)) {
     const ref = parseRef(val);
     if (!ref || ref.part === null) continue;
@@ -1080,11 +1103,6 @@ function emitNode(block, entry, depth) {
   if (entry.node === 'strong' && txt) return mdOf(para({ type: 'strong', children: text(txt) }));
   if (entry.node === 'em' && txt) return mdOf(para({ type: 'emphasis', children: text(txt) }));
   if ((entry.node === 'p' || entry.node === 'dd') && txt) return mdOf(para(...text(txt))); // a dd: emitFields adds the term
-  // A definition list's term and its definition; an empty one is `Term\n:`.
-  if (entry.node === 'dl' && p.term) {
-    const def = p.definition && block[p.definition] != null && block[p.definition] !== '' ? ` ${mdOf(para(...text(p.definition)))}` : '';
-    return `${mdOf(para(...text(p.term)))}\n:${def}`;
-  }
   if ((entry.node === 'ul' || entry.node === 'ol') && p.items) {
     return mdOf({ type: 'list', ordered: entry.node === 'ol', spread: false,
       children: (block[p.items] ?? []).map((item) => ({ type: 'listItem', spread: false, children: [para(...textNodes(item))] })) });
@@ -1106,9 +1124,28 @@ function emitFields(proto, obj, depth) {
   // An optional field that's absent (a grid with no headline) emits nothing; a
   // match-only node (no parts) always emits. A labelled entry re-emits its
   // `## Label` heading so the section round-trips.
+  // Unlabelled terms and definitions are one definition list, written where its
+  // first entry is: `Term\n: definition` per position (`Term\n:` when empty).
+  const defs = nodes.filter((e) => DEF_PARTS.has(e.node) && !e.label);
+  const defList = () => {
+    const at = (node, i) => defs.find((e) => e.node === node && (Number(/\[(\d+)\]$/.exec(e.slot)?.[1]) || 1) === i);
+    const count = Math.max(...defs.map((e) => Number(/\[(\d+)\]$/.exec(e.slot)?.[1]) || 1));
+    const textOf = (e) => (e ? obj[e.parts.text ?? e.parts.textarea] : null);
+    const entries = [];
+    for (let i = 1; i <= count; i += 1) {
+      const term = textOf(at('dt', i));
+      if (term == null || term === '') continue;
+      const def = textOf(at('dd', i));
+      const line = mdOf({ type: 'paragraph', children: textNodes(term) });
+      entries.push(def != null && def !== '' ? `${line}\n: ${mdOf({ type: 'paragraph', children: textNodes(def) })}` : `${line}\n:`);
+    }
+    return entries.join('\n\n');
+  };
   return nodes
-    .filter((e) => { const ps = Object.values(e.parts); return ps.length === 0 || ps.some((f) => obj[f] != null && obj[f] !== ''); })
+    .filter((e) => !(DEF_PARTS.has(e.node) && !e.label) || e === defs[0])
+    .filter((e) => e === defs[0] || (() => { const ps = Object.values(e.parts); return ps.length === 0 || ps.some((f) => obj[f] != null && obj[f] !== ''); })())
     .map((e) => {
+      if (e === defs[0]) return defList();
       const md = emitNode(obj, e, depth);
       if (e.label && e.node === 'dd') return `${e.label}\n: ${md}`; // def-list term
       return e.label ? `${'#'.repeat(depth)} ${e.label}\n\n${md}` : md; // heading section
