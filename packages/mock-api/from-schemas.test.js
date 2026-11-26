@@ -215,6 +215,25 @@ describe('a markdown export leaves out a value its schema declares as the defaul
     assert.deepEqual(out.blocks.a, { '@type': 'question', label: 'Name', size: 'l' });
   });
 
+  it("drops a list item's default without giving the item anything else", () => {
+    // A form's fields are typed by `field_type`, not `@type`; reading one as a
+    // block shows it a type, which must not be written back into the content.
+    const config = {
+      form: { blockSchema: { properties: { subblocks: {
+        widget: 'object_list', idField: 'field_id', typeField: 'field_type',
+        schema: { properties: { label: { type: 'string' }, required: { type: 'boolean', default: false } } },
+      } } } },
+    };
+    const out = withoutSchemaDefaults(page({ f: { '@type': 'form', subblocks: [
+      { field_id: 'n', field_type: 'text', label: 'Name', required: false },
+      { field_id: 'e', field_type: 'from', label: 'Email', required: true },
+    ] } }), config);
+    assert.deepEqual(out.blocks.f.subblocks, [
+      { field_id: 'n', field_type: 'text', label: 'Name' },
+      { field_id: 'e', field_type: 'from', label: 'Email', required: true },
+    ]);
+  });
+
   it('leaves a stored null alone, rather than turning it into the default', () => {
     const out = withSchemaDefaults(page({ a: { '@type': 'question', label: 'Name', size: null } }), blocksConfig);
     assert.equal(out.blocks.a.size, null);
