@@ -4118,28 +4118,6 @@ app.get('/embedded-document.html', (req, res) => {
 });
 
 /**
- * Walk every registered content dir and collect unique `subjects` values
- * across all data.json files. Returns the `{ value: { title } }` shape
- * Plone's @querystring endpoint uses for the Subject (Keywords) index.
- */
-function collectSubjectValues() {
-  const subjects = new Set();
-  for (const { dirPath } of Object.values(contentDirMap)) {
-    const dataFile = path.join(dirPath, 'data.json');
-    if (!fs.existsSync(dataFile)) continue;
-    try {
-      const data = JSON.parse(fs.readFileSync(dataFile, 'utf8'));
-      for (const s of (data.subjects || [])) {
-        if (typeof s === 'string' && s) subjects.add(s);
-      }
-    } catch { /* ignore malformed data.json */ }
-  }
-  const out = {};
-  for (const s of [...subjects].sort()) out[s] = { title: s };
-  return out;
-}
-
-/**
  * GET /@querystring
  * Get querystring schema (available indexes, operators, sortable indexes)
  * Used by QuerystringWidget to populate criteria and sort dropdowns
@@ -4174,6 +4152,10 @@ app.get('*/@querystring', (req, res) => {
             'operation': 'plone.app.querystring.operation.selection.none',
           },
         },
+        // Live Plone sets this even though it inlines the values, so an index
+        // being `fetch_vocabulary` is NOT on its own a reason to go fetch:
+        // a consumer must check whether `values` is empty too.
+        'fetch_vocabulary': true,
         'values': {
           'Document': { 'title': 'Page' },
           'News Item': { 'title': 'News Item' },
@@ -4369,7 +4351,18 @@ app.get('*/@querystring', (req, res) => {
             'operation': 'plone.app.querystring.operation.selection.none',
           },
         },
-        'values': collectSubjectValues(),
+        // As a real Plone answers for a KeywordIndex: it does NOT inline the
+        // terms, it names a vocabulary and asks the client to fetch it. Checked
+        // against a live Plone 6.2:
+        //   Subject      fetch_vocabulary: true   values: 0
+        //   portal_type  fetch_vocabulary: true   values: 9
+        // The mock used to inline every `subjects` value in the content tree
+        // here, which made a facet UI that reads `index.values` work locally and
+        // in CI while rendering one "All" button in production, where the
+        // vocabulary 401s an anonymous visitor (see the @vocabularies handler).
+        // That cost a user-visible defect nobody could see: #725.
+        'fetch_vocabulary': true,
+        'values': {},
       },
       'Title': {
         'title': 'Title',
@@ -5173,6 +5166,39 @@ app.get('/@vocabularies', (req, res) => {
       title: name,
     })),
   );
+});
+
+/**
+ * Vocabularies a real Plone closes to an anonymous visitor.
+ *
+ * Not all of them: checked against a live Plone 6.2, anonymously —
+ *
+ *   plone.app.vocabularies.Keywords                 401
+ *   plone.app.vocabularies.Users                    401
+ *   plone.app.vocabularies.ReallyUserFriendlyTypes  200
+ *   plone.app.vocabularies.MetadataFields           200
+ *
+ * The two that are closed are the two that expose a site's own data — every
+ * keyword in use (including private content's), and every user. Serving these
+ * to anyone, as this mock did, is what let a facet UI read a keyword
+ * vocabulary in CI and render an empty strip in production (#725).
+ */
+const ANONYMOUS_FORBIDDEN_VOCABS = new Set([
+  'plone.app.vocabularies.Keywords',
+  'plone.app.vocabularies.Users',
+]);
+
+app.get('/@vocabularies/:vocab', (req, res, next) => {
+  if (ANONYMOUS_FORBIDDEN_VOCABS.has(req.params.vocab) && !isAuthenticated(req)) {
+    // plone.restapi's own wording and shape, verbatim.
+    return res.status(401).json({
+      error: {
+        type: 'Not authenticated',
+        message: `You need to be authenticated to access the vocabulary '${req.params.vocab}'.`,
+      },
+    });
+  }
+  next();
 });
 
 app.get('/@vocabularies/:vocab', (req, res) => {

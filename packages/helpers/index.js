@@ -1258,21 +1258,121 @@ export function relatedItemsFetcher({ apiUrl, contextPath = '/' } = {}) {
   };
 }
 
-// Catalog index → vocabulary of its unique values (site-wide mode). Extend as
-// needed; falls back to a same-named vocabulary.
-const SEARCH_SHORTCUT_INDEX_VOCAB = {
-  Subject: 'plone.app.vocabularies.Keywords',
-};
-
 /**
  * Fetcher for the Search Shortcuts example block. Produces one result per value,
  * each a shortcut LINK into a search: `@id` is set to
  * `${searchUrl}?facet.${index}=${value}` so expandListingBlocks' default
  * @id→href mapping renders it as a link item — no special renderer.
  *
- * A linked `pageField` ⇒ THIS page's values of that field; no `pageField` ⇒ all
- * unique values of the index, site-wide (from the index's vocabulary).
+ * A linked `pageField` ⇒ THIS page's values of that field; no `pageField` ⇒ the
+ * values the index actually holds, read from the catalog (see
+ * `_indexValuesFromCatalog` — it used to read the index's vocabulary, which an
+ * anonymous visitor may not be allowed to, #762).
  */
+/** How many brains a shortcuts strip scans for an index's values. */
+const SHORTCUT_VALUE_SCAN = 500;
+
+/**
+ * Site path of a search URL, or null when it names no path we can query.
+ * Accepts `/case-studies`, a full URL, and either with a query string.
+ */
+function _searchTargetPath(searchUrl) {
+  if (!searchUrl || typeof searchUrl !== 'string') return null;
+  const withoutQuery = searchUrl.split('?')[0].split('#')[0];
+  const path = /^https?:\/\//.test(withoutQuery)
+    ? new URL(withoutQuery).pathname
+    : withoutQuery;
+  if (!path.startsWith('/')) return null;
+  const trimmed = path.replace(/\/+$/, '');
+  return trimmed === '' ? null : trimmed;
+}
+
+/**
+ * The values an index actually HOLDS, read from the catalog.
+ *
+ * This used to read the index's vocabulary — `@vocabularies/<vocab>` — and for
+ * the default index, `Subject`, that is `plone.app.vocabularies.Keywords`, which
+ * a real Plone refuses to an anonymous visitor:
+ *
+ *   GET /++api++/@vocabularies/plone.app.vocabularies.Keywords
+ *   401  "You need to be authenticated to access the vocabulary '...'."
+ *
+ * `_getAuthHeaders()` supplies a token when there is one, so the strip worked in
+ * the editor and for a signed-in user, and was EMPTY for the visitor the block
+ * exists for — silently, because `data.items` was undefined and `[]` renders as
+ * nothing (#762).
+ *
+ * The catalog answers the same question anonymously, and answers it better: the
+ * values of items the caller may actually see, rather than every term in a
+ * site-wide keyword vocabulary. A chip is a link into a faceted search, so a
+ * value with nothing behind it is a link to an empty page; and a keyword
+ * vocabulary includes the keywords of private content, which this cannot leak.
+ *
+ * Scope: the content the search these chips point at would return, when
+ * `searchUrl` names a path — so the chips match their destination. Otherwise
+ * this page's own subtree.
+ */
+async function _indexValuesFromCatalog({
+  apiUrl,
+  contextPath,
+  index,
+  searchUrl,
+  headers,
+}) {
+  const target = _searchTargetPath(searchUrl);
+  const criterion = target
+    ? {
+        i: 'path',
+        o: 'plone.app.querystring.operation.string.absolutePath',
+        v: target,
+      }
+    : {
+        i: 'path',
+        o: 'plone.app.querystring.operation.string.relativePath',
+        v: '.',
+      };
+
+  const url = `${apiUrl}${contextPath}/++api++/@querystring-search`;
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: { ...headers, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      query: [criterion],
+      b_start: 0,
+      b_size: SHORTCUT_VALUE_SCAN,
+      // The brains carry every catalog column, so `index` is on each one.
+      metadata_fields: '_all',
+    }),
+  });
+
+  // Loudly: the silent `[]` is the whole defect this replaces.
+  if (!response.ok) {
+    throw new Error(
+      `searchShortcutsFetcher: ${url} answered ${response.status} ` +
+        `asking for the values of '${index}'`,
+    );
+  }
+
+  const items = (await response.json())?.items || [];
+  // Distinct, in the result set's own order. Not sorted: a token is not its
+  // label (`gov-security` may read "Government Security"), so sorting tokens
+  // would order the strip by something the reader cannot see. A keyword column
+  // is a list; a single-valued index is a scalar; both are accepted.
+  const seen = [];
+  const known = new Set();
+  for (const item of items) {
+    const raw = item?.[index];
+    if (raw === null || raw === undefined) continue;
+    for (const value of Array.isArray(raw) ? raw : [raw]) {
+      if (typeof value !== 'string' || value === '') continue;
+      if (known.has(value)) continue;
+      known.add(value);
+      seen.push(value);
+    }
+  }
+  return seen;
+}
+
 export function searchShortcutsFetcher({ apiUrl, contextPath = '/' } = {}) {
   if (!apiUrl) throw new Error('searchShortcutsFetcher requires apiUrl');
   return async function fetchItems(block, { start, size }) {
@@ -1287,10 +1387,13 @@ export function searchShortcutsFetcher({ apiUrl, contextPath = '/' } = {}) {
       const v = content?.[block.pageField];
       values = Array.isArray(v) ? v : v == null ? [] : [v];
     } else {
-      const vocab = SEARCH_SHORTCUT_INDEX_VOCAB[index] || index;
-      const res = await fetch(`${apiUrl}/++api++/@vocabularies/${vocab}`, { headers });
-      const data = await res.json();
-      values = (data?.items || []).map((t) => t.token);
+      values = await _indexValuesFromCatalog({
+        apiUrl,
+        contextPath,
+        index,
+        searchUrl,
+        headers,
+      });
     }
 
     const all = values.map((value) => ({
