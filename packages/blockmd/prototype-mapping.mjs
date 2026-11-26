@@ -1590,16 +1590,21 @@ function itemShape(region, item) {
 export function unkeyBlocks(keyed, protos = []) {
   const flat = collectProtos(protos);
   const regionsOf = (type) => flat.find((p) => p.type === type)?.regions ?? [];
+  const itemRegions = (region, block) =>
+    region?.protos?.find((p) => p.type === block['@type'])?.regions ?? regionsOf(block['@type']);
   const assignments = [];
   // A blocks_layout region's children live in the shared `blocks` dict, ORDERED
   // by `blocks_layout[layoutKey]` -- and the region's NAME is that layout key
   // (gridBlock -> `items`, columns -> `columns`), exactly as the schema names its
   // blocks field. The page itself is the `items` region of the top level.
-  const unkeyChildren = ({ blocks, blocks_layout }, layoutKey = 'items') =>
+  // A child's own regions come from the region's declared item prototype when it
+  // declares one of the child's type, as decoding reads them: another block of
+  // the same name elsewhere (a code example's leaf `tab`) is not this one.
+  const unkeyChildren = ({ blocks, blocks_layout }, layoutKey = 'items', region = null) =>
     (blocks_layout?.[layoutKey] ?? []).map((uid) => {
       const block = { ...blocks[uid] };
       assignments.push({ uid });
-      unkeyRegions(block);
+      unkeyRegions(block, itemRegions(region, block));
       return block;
     });
   // `regions` defaults to the block's own prototype regions. An object_list item
@@ -1612,7 +1617,7 @@ export function unkeyBlocks(keyed, protos = []) {
       if (region.widget === 'blocks_layout') {
         if (block.blocks && block.blocks_layout?.[region.name]) {
           block[region.name] = unkeyChildren(
-            { blocks: block.blocks, blocks_layout: block.blocks_layout }, region.name,
+            { blocks: block.blocks, blocks_layout: block.blocks_layout }, region.name, region,
           );
           liftedBlocksLayout = true;
         }
@@ -1773,6 +1778,10 @@ export function emitPage(prototypes, keyed) {
 export function keyBlocks(blocks, assignments, protos = []) {
   const flat = collectProtos(protos);
   const regionsOf = (type) => flat.find((p) => p.type === type)?.regions ?? [];
+  // As in unkeyBlocks: a region's child takes its regions from the region's own
+  // declared item prototype of its type, not any block of the same name.
+  const itemRegions = (region, block) =>
+    region?.protos?.find((p) => p.type === block['@type'])?.regions ?? regionsOf(block['@type']);
   let i = 0;
   const next = () => {
     if (i >= assignments.length) throw new Error('ran out of assignments');
@@ -1792,7 +1801,7 @@ export function keyBlocks(blocks, assignments, protos = []) {
 
   // Key an ordered list of blocks into { dict, uids }, recursing into each block's
   // regions. Used for the page's top-level `items` and for object_list items.
-  const keyChildren = (list) => {
+  const keyChildren = (list, region = null) => {
     const dict = {}, uids = [];
     for (const block of list) {
       const a = mint ? { uid: mintUid(block['@type']) } : next();
@@ -1801,7 +1810,7 @@ export function keyBlocks(blocks, assignments, protos = []) {
       if (a.type !== undefined && a.type !== block['@type']) {
         throw new Error(`assignment ${a.uid} type "${a.type}" does not anchor block type "${block['@type']}"`);
       }
-      keyRegions(block);
+      keyRegions(block, itemRegions(region, block));
       dict[a.uid] = block;
       uids.push(a.uid);
     }
@@ -1818,7 +1827,7 @@ export function keyBlocks(blocks, assignments, protos = []) {
       const val = getAtPath(block, region.path);
       if (region.widget === 'blocks_layout') {
         if (Array.isArray(val)) {
-          const k = keyChildren(val);
+          const k = keyChildren(val, region);
           Object.assign(dict, k.dict);
           layout[region.name] = k.uids;
           delete block[region.name];

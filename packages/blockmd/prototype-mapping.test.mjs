@@ -2374,3 +2374,50 @@ describe('fields shared by a run of blocks are written once, in a region too', (
     expect(matchBlocks(protos, md)).toEqual([section]);
   });
 });
+
+describe("a container's items use the container's own prototypes, whatever else shares their name", () => {
+  // Two blocks may both be called `tab`: a code example's tab (a leaf) and a
+  // tabs block's tab (a container of blocks). Decoding already reads a region's
+  // items with that region's prototypes; keying and unkeying must too, or a
+  // tabs block's tabs lose their children to the code example's leaf.
+  const protos = [
+    ...parsePrototypes([
+      '<block is="slate" value="${p/slate}" />',
+      '<block is="codeExample">',
+      '  <region name="tabs" widget="object_list" idField="@id" typeField="@type">',
+      '    <block is="tab" label="${h3/text}" />',
+      '  </region>',
+      '</block>',
+    ].join('\n')),
+    ...parsePrototypes([
+      '<block is="tabs">',
+      '  <region name="items" widget="blocks_layout">',
+      '    <block is="tab">',
+      '      <region name="items" widget="blocks_layout" />',
+      '    </block>',
+      '  </region>',
+      '</block>',
+    ].join('\n'), { explicit: true }),
+  ];
+  const para = (text) => ({ '@type': 'slate', value: [{ type: 'p', children: [{ text }] }] });
+  const stored = {
+    blocks: {
+      tabs1: {
+        '@type': 'tabs',
+        blocks: { t1: { '@type': 'tab', title: 'One', blocks: { c1: para('Inside one') }, blocks_layout: { items: ['c1'] } } },
+        blocks_layout: { items: ['t1'] },
+      },
+    },
+    blocks_layout: { items: ['tabs1'] },
+  };
+
+  it("unkeys a tabs block's tab into its children", () => {
+    const { blocks } = unkeyBlocks(structuredClone(stored), protos);
+    expect(blocks[0].items[0]).toEqual({ '@type': 'tab', title: 'One', items: [para('Inside one')] });
+  });
+
+  it('keys them back to the stored shape', () => {
+    const { blocks, assignments } = unkeyBlocks(structuredClone(stored), protos);
+    expect(keyBlocks(blocks, assignments, protos)).toEqual(stored);
+  });
+});
