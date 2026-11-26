@@ -231,7 +231,9 @@ Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nib euismod tincidu
 
 </block>
 
-<fields templateId="/inka-templates/block-reference-layout" templateInstanceId="tpl-inst-button" :fixed="false" :readOnly="false">
+<defaults templateId="/inka-templates/block-reference-layout" templateInstanceId="tpl-inst-button">
+
+<fields :fixed="false" :readOnly="false">
 
 <block is="codeExample" slotId="schema">
 
@@ -240,6 +242,8 @@ Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nib euismod tincidu
 ```{literalinclude} ../../tests-playwright/fixtures/shared-block-schemas.js
 :jsobject: button
 ```
+
+<fields slotId="schema-tabs" />
 
 </block>
 
@@ -252,6 +256,8 @@ Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nib euismod tincidu
 :as: json
 ```
 
+<fields slotId="json-data-tabs" />
+
 </block>
 
 <block is="codeExample" slotId="rendering">
@@ -262,11 +268,15 @@ Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nib euismod tincidu
 :language: jsx
 ```
 
+<fields slotId="rendering-tabs" />
+
 ### Vue
 
 ```{literalinclude} examples/vue/ButtonBlock.vue
 :language: vue
 ```
+
+<fields slotId="rendering-tabs" />
 
 ### Svelte
 
@@ -274,6 +284,10 @@ Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nib euismod tincidu
 :language: svelte
 ```
 
+<fields slotId="rendering-tabs" />
+
 </block>
 
 </fields>
+
+</defaults>

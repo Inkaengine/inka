@@ -44,7 +44,9 @@ We use essential cookies to make this site work, and analytics cookies to see ho
 
 </block>
 
-<fields templateId="/inka-templates/block-reference-layout" templateInstanceId="tpl-inst-cookie-consent" :fixed="false" :readOnly="false">
+<defaults templateId="/inka-templates/block-reference-layout" templateInstanceId="tpl-inst-cookie-consent">
+
+<fields :fixed="false" :readOnly="false">
 
 <block is="codeExample" slotId="schema">
 
@@ -53,6 +55,8 @@ We use essential cookies to make this site work, and analytics cookies to see ho
 ```{literalinclude} ../../tests-playwright/fixtures/shared-block-schemas.js
 :jsobject: cookieConsent
 ```
+
+<fields slotId="schema-tabs" />
 
 </block>
 
@@ -65,6 +69,8 @@ We use essential cookies to make this site work, and analytics cookies to see ho
 :as: json
 ```
 
+<fields slotId="json-data-tabs" />
+
 </block>
 
 <block is="codeExample" slotId="rendering">
@@ -75,11 +81,15 @@ We use essential cookies to make this site work, and analytics cookies to see ho
 :language: jsx
 ```
 
+<fields slotId="rendering-tabs" />
+
 ### Vue
 
 ```{literalinclude} examples/vue/CookieConsentBlock.vue
 :language: vue
 ```
+
+<fields slotId="rendering-tabs" />
 
 ### Svelte
 
@@ -87,6 +97,10 @@ We use essential cookies to make this site work, and analytics cookies to see ho
 :language: svelte
 ```
 
+<fields slotId="rendering-tabs" />
+
 </block>
 
 </fields>
+
+</defaults>

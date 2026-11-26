@@ -51,7 +51,9 @@ We build tools that make content editing delightful.
 
 </block>
 
-<fields templateId="/inka-templates/block-reference-layout" templateInstanceId="tpl-inst-hero" :fixed="false" :readOnly="false">
+<defaults templateId="/inka-templates/block-reference-layout" templateInstanceId="tpl-inst-hero">
+
+<fields :fixed="false" :readOnly="false">
 
 <block is="codeExample" slotId="schema">
 
@@ -60,6 +62,8 @@ We build tools that make content editing delightful.
 ```{literalinclude} ../../tests-playwright/fixtures/shared-block-schemas.js
 :jsobject: hero
 ```
+
+<fields slotId="schema-tabs" />
 
 </block>
 
@@ -72,6 +76,8 @@ We build tools that make content editing delightful.
 :as: json
 ```
 
+<fields slotId="json-data-tabs" />
+
 </block>
 
 <block is="codeExample" slotId="rendering">
@@ -82,11 +88,15 @@ We build tools that make content editing delightful.
 :language: jsx
 ```
 
+<fields slotId="rendering-tabs" />
+
 ### Vue
 
 ```{literalinclude} examples/vue/HeroBlock.vue
 :language: vue
 ```
+
+<fields slotId="rendering-tabs" />
 
 ### Svelte
 
@@ -94,6 +104,10 @@ We build tools that make content editing delightful.
 :language: svelte
 ```
 
+<fields slotId="rendering-tabs" />
+
 </block>
 
 </fields>
+
+</defaults>

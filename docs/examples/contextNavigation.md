@@ -66,7 +66,9 @@ A vertical navigation list for grouped pages — a left sidebar on desktop and a
 
 </block>
 
-<fields templateId="/inka-templates/block-reference-layout" templateInstanceId="tpl-inst-contextNavigation" :fixed="false" :readOnly="false">
+<defaults templateId="/inka-templates/block-reference-layout" templateInstanceId="tpl-inst-contextNavigation">
+
+<fields :fixed="false" :readOnly="false">
 
 <block is="codeExample" slotId="schema">
 
@@ -75,6 +77,8 @@ A vertical navigation list for grouped pages — a left sidebar on desktop and a
 ```{literalinclude} ../../tests-playwright/fixtures/shared-block-schemas.js
 :jsobject: contextNavigation
 ```
+
+<fields slotId="schema-tabs" />
 
 </block>
 
@@ -87,6 +91,8 @@ A vertical navigation list for grouped pages — a left sidebar on desktop and a
 :as: json
 ```
 
+<fields slotId="json-data-tabs" />
+
 </block>
 
 <block is="codeExample" slotId="rendering">
@@ -97,11 +103,15 @@ A vertical navigation list for grouped pages — a left sidebar on desktop and a
 :language: jsx
 ```
 
+<fields slotId="rendering-tabs" />
+
 ### Vue
 
 ```{literalinclude} examples/vue/ContextNavigationBlock.vue
 :language: vue
 ```
+
+<fields slotId="rendering-tabs" />
 
 ### Svelte
 
@@ -109,6 +119,10 @@ A vertical navigation list for grouped pages — a left sidebar on desktop and a
 :language: svelte
 ```
 
+<fields slotId="rendering-tabs" />
+
 </block>
 
 </fields>
+
+</defaults>

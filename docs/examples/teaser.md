@@ -116,7 +116,9 @@ Lorem ipsum dolor sit amet, consetetur sadipscing elitr, sed diam nonumy eirmod 
 
 </block>
 
-<fields templateId="/inka-templates/block-reference-layout" templateInstanceId="tpl-inst-teaser" :fixed="false" :readOnly="false">
+<defaults templateId="/inka-templates/block-reference-layout" templateInstanceId="tpl-inst-teaser">
+
+<fields :fixed="false" :readOnly="false">
 
 <block is="codeExample" slotId="schema">
 
@@ -125,6 +127,8 @@ Lorem ipsum dolor sit amet, consetetur sadipscing elitr, sed diam nonumy eirmod 
 ```{literalinclude} ../../tests-playwright/fixtures/shared-block-schemas.js
 :jsobject: teaser
 ```
+
+<fields slotId="schema-tabs" />
 
 </block>
 
@@ -137,6 +141,8 @@ Lorem ipsum dolor sit amet, consetetur sadipscing elitr, sed diam nonumy eirmod 
 :as: json
 ```
 
+<fields slotId="json-data-tabs" />
+
 </block>
 
 <block is="codeExample" slotId="rendering">
@@ -147,11 +153,15 @@ Lorem ipsum dolor sit amet, consetetur sadipscing elitr, sed diam nonumy eirmod 
 :language: jsx
 ```
 
+<fields slotId="rendering-tabs" />
+
 ### Vue
 
 ```{literalinclude} examples/vue/TeaserBlock.vue
 :language: vue
 ```
+
+<fields slotId="rendering-tabs" />
 
 ### Svelte
 
@@ -159,6 +169,10 @@ Lorem ipsum dolor sit amet, consetetur sadipscing elitr, sed diam nonumy eirmod 
 :language: svelte
 ```
 
+<fields slotId="rendering-tabs" />
+
 </block>
 
 </fields>
+
+</defaults>

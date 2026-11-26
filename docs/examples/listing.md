@@ -76,7 +76,9 @@ Displays a list of content items from a query. The listing block fetches items f
 
 </fields>
 
-<fields templateId="/inka-templates/block-reference-layout" templateInstanceId="tpl-inst-listing" :fixed="false" :readOnly="false">
+<defaults templateId="/inka-templates/block-reference-layout" templateInstanceId="tpl-inst-listing">
+
+<fields :fixed="false" :readOnly="false">
 
 <block is="codeExample" slotId="schema">
 
@@ -85,6 +87,8 @@ Displays a list of content items from a query. The listing block fetches items f
 ```{literalinclude} ../../tests-playwright/fixtures/shared-block-schemas.js
 :jsobject: listing
 ```
+
+<fields slotId="schema-tabs" />
 
 </block>
 
@@ -97,6 +101,8 @@ Displays a list of content items from a query. The listing block fetches items f
 :as: json
 ```
 
+<fields slotId="json-data-tabs" />
+
 </block>
 
 <block is="codeExample" slotId="rendering">
@@ -107,11 +113,15 @@ Displays a list of content items from a query. The listing block fetches items f
 :language: jsx
 ```
 
+<fields slotId="rendering-tabs" />
+
 ### Vue
 
 ```{literalinclude} examples/vue/ListingBlock.vue
 :language: vue
 ```
+
+<fields slotId="rendering-tabs" />
 
 ### Svelte
 
@@ -119,6 +129,10 @@ Displays a list of content items from a query. The listing block fetches items f
 :language: svelte
 ```
 
+<fields slotId="rendering-tabs" />
+
 </block>
 
 </fields>
+
+</defaults>

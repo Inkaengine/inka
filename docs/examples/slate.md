@@ -92,7 +92,9 @@ Lorem ipsum dolor sit amet, consetetur sadipscing elitr, sed diam nonumy eirmod 
 
 Lorem ipsum dolor sit amet, consetetur sadipscing elitr, sed diam nonumy eirmod tempor invidunt ut labore et dolore magna aliquyam erat, sed diam voluptua. At vero eos et accusam et justo duo dolores et ea rebum. Stet clita kasd gubergren, no sea takimata sanctus est Lorem ipsum dolor sit amet. Lorem ipsum dolor sit amet, consetetur sadipscing elitr, sed diam nonumy eirmod tempor invidunt ut labore et dolore magna aliquyam erat, sed diam voluptua. At vero eos et accusam et justo duo dolores et ea rebum. Stet clita kasd gubergren, no sea takimata sanctus est Lorem ipsum dolor sit amet
 
-<fields templateId="/inka-templates/block-reference-layout" templateInstanceId="tpl-inst-text" :fixed="false" :readOnly="false">
+<defaults templateId="/inka-templates/block-reference-layout" templateInstanceId="tpl-inst-text">
+
+<fields :fixed="false" :readOnly="false">
 
 <block is="codeExample" slotId="schema">
 
@@ -101,6 +103,8 @@ Lorem ipsum dolor sit amet, consetetur sadipscing elitr, sed diam nonumy eirmod 
 ```{literalinclude} ../../tests-playwright/fixtures/shared-block-schemas.js
 :jsobject: slate
 ```
+
+<fields slotId="schema-tabs" />
 
 </block>
 
@@ -113,15 +117,25 @@ Lorem ipsum dolor sit amet, consetetur sadipscing elitr, sed diam nonumy eirmod 
 :as: json
 ```
 
+<fields slotId="json-data-tabs" />
+
 </block>
 
 <fields slotId="rendering">
 
 <block is="callout">
 
+<block is="slate">
+
 The Astro examples below omit `data-block-uid` on the block's root element because `BlockRenderer.astro` wraps every block in `<div data-block-uid={uid}>`. See [Server-rendered frontends](../frontend-guide/server-rendered-frontends.md) for why.
 
+<fields slotId="rendering-items" :fixed="false" :readOnly="false" />
+
 </block>
+
+</block>
+
+<block is="codeExample">
 
 ### React
 
@@ -145,6 +159,8 @@ function SlateNode({ node }) {
   return <Tag {...props}>{children}</Tag>;
 }
 ```
+
+<fields slotId="rendering-tabs" />
 
 ### Vue
 
@@ -176,6 +192,8 @@ defineProps({ node: Object });
 </script>
 ```
 
+<fields slotId="rendering-tabs" />
+
 ### Svelte
 
 ```svelte
@@ -205,6 +223,12 @@ defineProps({ node: Object });
 {/if}
 ```
 
+<fields slotId="rendering-tabs" />
+
+</block>
+
 </fields>
 
 </fields>
+
+</defaults>

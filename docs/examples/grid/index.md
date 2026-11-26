@@ -83,7 +83,9 @@ Explore the full documentation.
 
 </block>
 
-<fields templateId="/inka-templates/block-reference-layout" templateInstanceId="tpl-inst-grid" :fixed="false" :readOnly="false">
+<defaults templateId="/inka-templates/block-reference-layout" templateInstanceId="tpl-inst-grid">
+
+<fields :fixed="false" :readOnly="false">
 
 <block is="codeExample" slotId="schema">
 
@@ -92,6 +94,8 @@ Explore the full documentation.
 ```{literalinclude} ../../../tests-playwright/fixtures/shared-block-schemas.js
 :jsobject: gridBlock
 ```
+
+<fields slotId="schema-tabs" />
 
 </block>
 
@@ -104,6 +108,8 @@ Explore the full documentation.
 :as: json
 ```
 
+<fields slotId="json-data-tabs" />
+
 </block>
 
 <block is="codeExample" slotId="rendering">
@@ -114,11 +120,15 @@ Explore the full documentation.
 :language: jsx
 ```
 
+<fields slotId="rendering-tabs" />
+
 ### Vue
 
 ```{literalinclude} ../examples/vue/GridBlock.vue
 :language: vue
 ```
+
+<fields slotId="rendering-tabs" />
 
 ### Svelte
 
@@ -126,6 +136,10 @@ Explore the full documentation.
 :language: svelte
 ```
 
+<fields slotId="rendering-tabs" />
+
 </block>
 
 </fields>
+
+</defaults>

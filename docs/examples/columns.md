@@ -58,7 +58,9 @@ We build robust systems.
 
 </block>
 
-<fields templateId="/inka-templates/block-reference-layout" templateInstanceId="tpl-inst-columns" :fixed="false" :readOnly="false">
+<defaults templateId="/inka-templates/block-reference-layout" templateInstanceId="tpl-inst-columns">
+
+<fields :fixed="false" :readOnly="false">
 
 <block is="codeExample" slotId="schema">
 
@@ -67,6 +69,8 @@ We build robust systems.
 ```{literalinclude} ../../tests-playwright/fixtures/shared-block-schemas.js
 :jsobject: columns
 ```
+
+<fields slotId="schema-tabs" />
 
 </block>
 
@@ -79,6 +83,8 @@ We build robust systems.
 :as: json
 ```
 
+<fields slotId="json-data-tabs" />
+
 </block>
 
 <block is="codeExample" slotId="rendering">
@@ -89,11 +95,15 @@ We build robust systems.
 :language: jsx
 ```
 
+<fields slotId="rendering-tabs" />
+
 ### Vue
 
 ```{literalinclude} examples/vue/ColumnsBlock.vue
 :language: vue
 ```
+
+<fields slotId="rendering-tabs" />
 
 ### Svelte
 
@@ -101,6 +111,10 @@ We build robust systems.
 :language: svelte
 ```
 
+<fields slotId="rendering-tabs" />
+
 </block>
 
 </fields>
+
+</defaults>

@@ -111,7 +111,9 @@ A table with rich text (Slate) content in each cell. Supports adding/removing ro
 
 </fields>
 
-<fields templateId="/inka-templates/block-reference-layout" templateInstanceId="tpl-inst-table" :fixed="false" :readOnly="false">
+<defaults templateId="/inka-templates/block-reference-layout" templateInstanceId="tpl-inst-table">
+
+<fields :fixed="false" :readOnly="false">
 
 <block is="codeExample" slotId="schema">
 
@@ -120,6 +122,8 @@ A table with rich text (Slate) content in each cell. Supports adding/removing ro
 ```{literalinclude} ../../tests-playwright/fixtures/shared-block-schemas.js
 :jsobject: slateTable
 ```
+
+<fields slotId="schema-tabs" />
 
 </block>
 
@@ -132,6 +136,8 @@ A table with rich text (Slate) content in each cell. Supports adding/removing ro
 :as: json
 ```
 
+<fields slotId="json-data-tabs" />
+
 </block>
 
 <block is="codeExample" slotId="rendering">
@@ -142,11 +148,15 @@ A table with rich text (Slate) content in each cell. Supports adding/removing ro
 :language: jsx
 ```
 
+<fields slotId="rendering-tabs" />
+
 ### Vue
 
 ```{literalinclude} examples/vue/TableBlock.vue
 :language: vue
 ```
+
+<fields slotId="rendering-tabs" />
 
 ### Svelte
 
@@ -154,6 +164,10 @@ A table with rich text (Slate) content in each cell. Supports adding/removing ro
 :language: svelte
 ```
 
+<fields slotId="rendering-tabs" />
+
 </block>
 
 </fields>
+
+</defaults>

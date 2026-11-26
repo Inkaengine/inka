@@ -116,7 +116,9 @@ blandit praesent luptatum zzril qui.
 
 <block is="slate" />
 
-<fields templateId="/inka-templates/block-reference-layout" templateInstanceId="tpl-inst-maps" :fixed="false" :readOnly="false">
+<defaults templateId="/inka-templates/block-reference-layout" templateInstanceId="tpl-inst-maps">
+
+<fields :fixed="false" :readOnly="false">
 
 <block is="codeExample" slotId="schema">
 
@@ -125,6 +127,8 @@ blandit praesent luptatum zzril qui.
 ```{literalinclude} ../../tests-playwright/fixtures/shared-block-schemas.js
 :jsobject: maps
 ```
+
+<fields slotId="schema-tabs" />
 
 </block>
 
@@ -137,6 +141,8 @@ blandit praesent luptatum zzril qui.
 :as: json
 ```
 
+<fields slotId="json-data-tabs" />
+
 </block>
 
 <block is="codeExample" slotId="rendering">
@@ -147,11 +153,15 @@ blandit praesent luptatum zzril qui.
 :language: jsx
 ```
 
+<fields slotId="rendering-tabs" />
+
 ### Vue
 
 ```{literalinclude} examples/vue/MapsBlock.vue
 :language: vue
 ```
+
+<fields slotId="rendering-tabs" />
 
 ### Svelte
 
@@ -159,6 +169,10 @@ blandit praesent luptatum zzril qui.
 :language: svelte
 ```
 
+<fields slotId="rendering-tabs" />
+
 </block>
 
 </fields>
+
+</defaults>

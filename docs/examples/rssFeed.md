@@ -37,7 +37,9 @@ Renders entries from an external RSS feed. Its items are fetched at render time 
 
 <block is="rssFeed" :feedUrl='[{"@id":"https://pypi.org/rss/project/plone/releases.xml"}]' variation="default" />
 
-<fields templateId="/inka-templates/block-reference-layout" templateInstanceId="tpl-inst-rssFeed" :fixed="false" :readOnly="false">
+<defaults templateId="/inka-templates/block-reference-layout" templateInstanceId="tpl-inst-rssFeed">
+
+<fields :fixed="false" :readOnly="false">
 
 <block is="codeExample" slotId="schema">
 
@@ -46,6 +48,8 @@ Renders entries from an external RSS feed. Its items are fetched at render time 
 ```{literalinclude} ../../tests-playwright/fixtures/shared-block-schemas.js
 :jsobject: rssFeed
 ```
+
+<fields slotId="schema-tabs" />
 
 </block>
 
@@ -58,11 +62,15 @@ Renders entries from an external RSS feed. Its items are fetched at render time 
 :as: json
 ```
 
+<fields slotId="json-data-tabs" />
+
 </block>
 
 <fields slotId="rendering">
 
 This block has no bespoke renderer. Add its fetcher to your fetchItems map (keyed by @type) and expandListingBlocks expands it in any region you render — the same seam that powers [listings](../frontend-guide/listings.md) and other collection blocks. See [Custom Blocks](../frontend-guide/custom-blocks.md) to define the block type. Only the fetcher below is block-specific.
+
+<block is="codeExample">
 
 ### Fetcher
 
@@ -96,6 +104,10 @@ function parseRssEntries(xml) {
 }
 ```
 
+<fields slotId="rendering-tabs" />
+
+</block>
+
 <block is="codeExample">
 
 ### Render
@@ -114,8 +126,12 @@ const { items } = await expandListingBlocks(regionBlockIds, {
 items.forEach((item) => renderBlock(item)); // your normal per-block renderer
 ```
 
+<fields slotId="rendering-tabs" />
+
 </block>
 
 </fields>
 
 </fields>
+
+</defaults>

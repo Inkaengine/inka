@@ -58,7 +58,9 @@ A search interface with faceted filtering. Contains a child listing block for re
 
 </fields>
 
-<fields templateId="/inka-templates/block-reference-layout" templateInstanceId="tpl-inst-search" :fixed="false" :readOnly="false">
+<defaults templateId="/inka-templates/block-reference-layout" templateInstanceId="tpl-inst-search">
+
+<fields :fixed="false" :readOnly="false">
 
 <block is="codeExample" slotId="schema">
 
@@ -67,6 +69,8 @@ A search interface with faceted filtering. Contains a child listing block for re
 ```{literalinclude} ../../tests-playwright/fixtures/shared-block-schemas.js
 :jsobject: search
 ```
+
+<fields slotId="schema-tabs" />
 
 </block>
 
@@ -79,6 +83,8 @@ A search interface with faceted filtering. Contains a child listing block for re
 :as: json
 ```
 
+<fields slotId="json-data-tabs" />
+
 </block>
 
 <block is="codeExample" slotId="rendering">
@@ -89,11 +95,15 @@ A search interface with faceted filtering. Contains a child listing block for re
 :language: jsx
 ```
 
+<fields slotId="rendering-tabs" />
+
 ### Vue
 
 ```{literalinclude} examples/vue/SearchBlock.vue
 :language: vue
 ```
+
+<fields slotId="rendering-tabs" />
 
 ### Svelte
 
@@ -101,6 +111,10 @@ A search interface with faceted filtering. Contains a child listing block for re
 :language: svelte
 ```
 
+<fields slotId="rendering-tabs" />
+
 </block>
 
 </fields>
+
+</defaults>

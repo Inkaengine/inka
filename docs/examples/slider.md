@@ -67,7 +67,9 @@ Recognized for excellence in UX.
 
 </block>
 
-<fields templateId="/inka-templates/block-reference-layout" templateInstanceId="tpl-inst-slider" :fixed="false" :readOnly="false">
+<defaults templateId="/inka-templates/block-reference-layout" templateInstanceId="tpl-inst-slider">
+
+<fields :fixed="false" :readOnly="false">
 
 <block is="codeExample" slotId="schema">
 
@@ -76,6 +78,8 @@ Recognized for excellence in UX.
 ```{literalinclude} ../../tests-playwright/fixtures/shared-block-schemas.js
 :jsobject: slider
 ```
+
+<fields slotId="schema-tabs" />
 
 </block>
 
@@ -88,6 +92,8 @@ Recognized for excellence in UX.
 :as: json
 ```
 
+<fields slotId="json-data-tabs" />
+
 </block>
 
 <block is="codeExample" slotId="rendering">
@@ -98,11 +104,15 @@ Recognized for excellence in UX.
 :language: jsx
 ```
 
+<fields slotId="rendering-tabs" />
+
 ### Vue
 
 ```{literalinclude} examples/vue/SliderBlock.vue
 :language: vue
 ```
+
+<fields slotId="rendering-tabs" />
 
 ### Svelte
 
@@ -110,6 +120,10 @@ Recognized for excellence in UX.
 :language: svelte
 ```
 
+<fields slotId="rendering-tabs" />
+
 </block>
 
 </fields>
+
+</defaults>

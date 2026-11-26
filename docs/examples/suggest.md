@@ -34,7 +34,9 @@ A question whose answer is completed from a vocabulary the author picked.
 
 <block is="suggest" label="Topic" suggestFrom="plone.app.vocabularies.Keywords" value="" />
 
-<fields templateId="/inka-templates/block-reference-layout" templateInstanceId="tpl-inst-suggest" :fixed="false" :readOnly="false">
+<defaults templateId="/inka-templates/block-reference-layout" templateInstanceId="tpl-inst-suggest">
+
+<fields :fixed="false" :readOnly="false">
 
 <block is="codeExample" slotId="schema">
 
@@ -43,6 +45,8 @@ A question whose answer is completed from a vocabulary the author picked.
 ```{literalinclude} ../../tests-playwright/fixtures/shared-block-schemas.js
 :jsobject: suggest
 ```
+
+<fields slotId="schema-tabs" />
 
 </block>
 
@@ -55,6 +59,8 @@ A question whose answer is completed from a vocabulary the author picked.
 :as: json
 ```
 
+<fields slotId="json-data-tabs" />
+
 </block>
 
 <block is="codeExample" slotId="rendering">
@@ -64,16 +70,24 @@ A question whose answer is completed from a vocabulary the author picked.
 ```jsx
 ```
 
+<fields slotId="rendering-tabs" />
+
 ### Vue
 
 ```vue
 ```
+
+<fields slotId="rendering-tabs" />
 
 ### Svelte
 
 ```svelte
 ```
 
+<fields slotId="rendering-tabs" />
+
 </block>
 
 </fields>
+
+</defaults>

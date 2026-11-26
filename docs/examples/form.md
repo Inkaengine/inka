@@ -69,7 +69,9 @@ const response = await fetch(`${apiUrl}${pagePath}/@submit-form`, {
 
 If your frontend submits from its server, read the token from the `access_token` cookie the bridge sets instead. Either way, a submission made like this is the editor's, with the editor's permissions: see [How an editor's login reaches the front end](../deploy-and-secure.md#how-an-editors-login-reaches-the-front-end).
 
-<fields templateId="/inka-templates/block-reference-layout" templateInstanceId="tpl-inst-form" :fixed="false" :readOnly="false">
+<defaults templateId="/inka-templates/block-reference-layout" templateInstanceId="tpl-inst-form">
+
+<fields :fixed="false" :readOnly="false">
 
 <block is="codeExample" slotId="schema">
 
@@ -78,6 +80,8 @@ If your frontend submits from its server, read the token from the `access_token`
 ```{literalinclude} ../../tests-playwright/fixtures/shared-block-schemas.js
 :jsobject: form
 ```
+
+<fields slotId="schema-tabs" />
 
 </block>
 
@@ -90,6 +94,8 @@ If your frontend submits from its server, read the token from the `access_token`
 :as: json
 ```
 
+<fields slotId="json-data-tabs" />
+
 </block>
 
 <block is="codeExample" slotId="rendering">
@@ -100,11 +106,15 @@ If your frontend submits from its server, read the token from the `access_token`
 :language: jsx
 ```
 
+<fields slotId="rendering-tabs" />
+
 ### Vue
 
 ```{literalinclude} examples/vue/FormBlock.vue
 :language: vue
 ```
+
+<fields slotId="rendering-tabs" />
 
 ### Svelte
 
@@ -112,6 +122,10 @@ If your frontend submits from its server, read the token from the `access_token`
 :language: svelte
 ```
 
+<fields slotId="rendering-tabs" />
+
 </block>
 
 </fields>
+
+</defaults>
