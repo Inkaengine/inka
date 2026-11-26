@@ -1251,8 +1251,28 @@ function imageDimensions(file) {
 
     for (const { rel, data } of items) {
       if (isTemplateDoc(data)) continue; // a template, not an instance
-      const check = (container) => {
+      // `owner`: the nearest enclosing block of a template instance. Everything
+      // inside it belongs to a template too, at every depth -- the editor stamps
+      // the instance's templateId and templateInstanceId on each child, list
+      // items included (inheritTemplateMembershipDeep) -- and the merge takes a
+      // template's blocks by templateId, so a nested child without them is
+      // dropped. A child naming another instance starts one of its own (a
+      // snippet placed in a slot), and is the owner of what is inside it.
+      const check = (container, owner = null) => {
         for (const { id: bid, block } of childEntries(container, idFieldMap)) {
+          if (owner) {
+            const missing = ['templateId', 'templateInstanceId'].filter((k) => !block[k]);
+            if (missing.length) {
+              stats.instanceBlocksBroken = (stats.instanceBlocksBroken || 0) + 1;
+              fail(rel,
+                `  ${rel}: block ${bid} (${block['@type']}) is inside block ${owner.id}, which is ` +
+                `instance ${owner.block.templateInstanceId} of template ${owner.block.templateId}, ` +
+                `but is missing ${missing.join(' and ')} — everything inside a template's block ` +
+                `belongs to a template (the editor gives it the instance's), and the merge drops ` +
+                `a child that does not say so`,
+              );
+            }
+          }
           const chrome = block.templateId && templateChrome.get(block.templateId);
           if (chrome) {
             // On an INSTANCE only `slotId` is required, and it is the one that
@@ -1301,7 +1321,7 @@ function imageDimensions(file) {
               stats.instanceBlocksOk = (stats.instanceBlocksOk || 0) + 1;
             }
           }
-          check(block);
+          check(block, block.templateId && block.templateInstanceId ? { id: bid, block } : owner);
         }
       };
       check(data);

@@ -1,0 +1,1 @@
+The content check now reports a block or list item inside a template instance's block that doesn't carry a template's `templateId` and `templateInstanceId`. The editor gives every child the instance's, the merge drops a child without them, and the check used to pass such content on a page. @djay
