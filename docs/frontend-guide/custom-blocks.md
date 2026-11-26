@@ -1150,4 +1150,4 @@ const initBlocks = {
 };
 ```
 
-Content that never passes through the editor, such as an import, has no `searchableText` until it's saved. To fill it, run `plone-content search-text <content-dir> --schemas <schemas>` over the content before importing it. Run `plone-content field-mappings` too: a listing's stored mapping is the other thing the editor stores that an import doesn't have (see [Listings › Where the mapping lives](./listings.md#where-the-mapping-lives)).
+Content that never passes through the editor, such as an import, has no `searchableText` until it's saved. To fill it, run `plone-content search-text <content-dir> --schemas <schemas>` over the content before importing it. It reads every page under the folder, at any depth, and writes only the pages it changes, each in its file's own indentation. Run `plone-content field-mappings` too: a listing's stored mapping is the other thing the editor stores that an import doesn't have (see [Listings › Where the mapping lives](./listings.md#where-the-mapping-lives)).

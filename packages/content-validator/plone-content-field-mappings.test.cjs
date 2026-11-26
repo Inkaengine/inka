@@ -69,6 +69,17 @@ describe('plone-content field-mappings', () => {
     assert.equal(fs.readFileSync(path.join(dir, 'content', 'p', 'data.json'), 'utf8'), text);
   });
 
+  // A layout names its folders by path, so a page can sit at any depth.
+  it("writes a page at any depth, in its file's own indentation", () => {
+    const dir = site({ 'a/b/c': { blocks: { l: { '@type': 'listing', variation: 'card' } }, blocks_layout: { items: ['l'] } } });
+    const file = path.join(dir, 'content', 'a/b/c', 'data.json');
+    fs.writeFileSync(file, `${JSON.stringify(JSON.parse(fs.readFileSync(file, 'utf8')), null, 4)}\n`);
+    execFileSync('node', [CLI, 'field-mappings', ...run(dir)]);
+    const written = fs.readFileSync(file, 'utf8');
+    assert.ok(JSON.parse(written).blocks.l.fieldMapping);
+    assert.equal(written, `${JSON.stringify(JSON.parse(written), null, 4)}\n`);
+  });
+
   it('fails on a listing with no item type, naming it', () => {
     const dir = site({ a: { blocks: { l: { '@type': 'listing' } }, blocks_layout: { items: ['l'] } } });
     const { status, stderr } = spawnSync('node', [CLI, 'field-mappings', ...run(dir)], { encoding: 'utf8' });
