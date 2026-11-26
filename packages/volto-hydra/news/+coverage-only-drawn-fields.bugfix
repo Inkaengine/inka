@@ -1,0 +1,1 @@
+Block sanity no longer asks for an edit annotation on a picture or link field whose value is never drawn as itself, such as a listing's search page: it is a setting, edited in the sidebar. @djay
