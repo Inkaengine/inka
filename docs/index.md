@@ -46,13 +46,13 @@ The docs are a set of guides by audience — build a frontend, deploy it, edit c
 
 [](./static/hydra-demo.mp4)
 
-<fields align="full" autoplay=true loop=true muted=true controls=false />
+<fields align="full" :autoplay="true" :loop="true" :muted="true" :controls="false" />
 
 </block>
 
 ## The guides
 
-<block type="listing" data-json='{"headlineTag":"h2","variation":"summary","querystring":{"query":[{"i":"path","o":"plone.app.querystring.operation.string.relativePath","v":".::1"},{"i":"exclude_from_nav","o":"plone.app.querystring.operation.boolean.isFalse","v":""}],"sort_on":"getObjPositionInParent","sort_order":"ascending","depth":1},"fieldMapping":{"getURL":{"field":"href","type":"link"},"title":{"field":"title","type":"string"},"description":{"field":"description","type":"textarea"},"image":{"field":"image","type":"image_link"}}}' />
+<block type="listing" headlineTag="h2" variation="summary" :querystring='{"query":[{"i":"path","o":"plone.app.querystring.operation.string.relativePath","v":".::1"},{"i":"exclude_from_nav","o":"plone.app.querystring.operation.boolean.isFalse","v":""}],"sort_on":"getObjPositionInParent","sort_order":"ascending","depth":1}' :fieldMapping='{"getURL":{"field":"href","type":"link"},"title":{"field":"title","type":"string"},"description":{"field":"description","type":"textarea"},"image":{"field":"image","type":"image_link"}}' />
 
 ## Why Inka?
 

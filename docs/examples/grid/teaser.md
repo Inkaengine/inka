@@ -45,7 +45,7 @@ blocks-tagged: |
 
 Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincidunt ut laoreet dolore magna aliquam erat volutpat. Ut wisi enim ad minim veniam, quis nostrud exerci tation ullamcorper suscipit lobortis nisl ut aliquip ex ea commodo consequat. Duis autem vel eum iriure dolor in hendrerit in vulputate velit esse molestie consequat, vel illum dolore eu feugiat nulla facilisis at vero eros et accumsan et iusto odio dignissim qui blandit praesent luptatum zzril delenit augue duis dolore te feugait nulla facilisi.
 
-<fields styles:align="left" data-json='{"preview_image":[]}' />
+<fields :styles='{"align":"left"}' :preview_image="[]" />
 
 </block>
 
@@ -53,7 +53,7 @@ Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincid
 
 <block type="gridBlock">
 
-<fields styles:align="left">
+<fields :styles='{"align":"left"}'>
 
 <block type="teaser">
 
@@ -81,7 +81,7 @@ Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincid
 
 <block type="gridBlock">
 
-<fields styles:align="left">
+<fields :styles='{"align":"left"}'>
 
 <block type="teaser">
 
@@ -119,7 +119,7 @@ Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincid
 
 <block type="gridBlock">
 
-<fields styles:align="left">
+<fields :styles='{"align":"left"}'>
 
 <block type="teaser">
 
@@ -165,7 +165,7 @@ Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincid
 
 </block>
 
-<fields styles:backgroundColor="grey">
+<fields :styles='{"backgroundColor":"grey"}'>
 
 <block type="gridBlock">
 
@@ -179,7 +179,7 @@ Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincid
 
 Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincidunt ut laoreet dolore magna aliquam erat volutpat. Ut wisi enim ad minim veniam, quis nostrud exerci tation ullamcorper suscipit lobortis nisl ut aliquip ex ea commodo consequat. Duis autem vel eum iriure dolor in hendrerit in vulputate velit esse molestie consequat, vel illum dolore eu feugiat nulla facilisis at vero eros et accumsan et iusto odio dignissim qui blandit praesent luptatum zzril delenit augue duis dolore te feugait nulla facilisi.
 
-<fields styles:align="left" />
+<fields :styles='{"align":"left"}' />
 
 </block>
 
@@ -187,7 +187,7 @@ Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincid
 
 <block type="gridBlock">
 
-<fields styles:align="left">
+<fields :styles='{"align":"left"}'>
 
 <block type="teaser">
 
@@ -215,7 +215,7 @@ Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincid
 
 <block type="gridBlock">
 
-<fields styles:align="left">
+<fields :styles='{"align":"left"}'>
 
 <block type="teaser">
 
@@ -253,7 +253,7 @@ Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincid
 
 <block type="gridBlock">
 
-<fields styles:align="left">
+<fields :styles='{"align":"left"}'>
 
 <block type="teaser">
 

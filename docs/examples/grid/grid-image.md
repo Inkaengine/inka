@@ -109,7 +109,7 @@ The Image content type can be used to upload an image in various formats (JPG, G
 
 </block>
 
-<fields styles:backgroundColor="grey">
+<fields :styles='{"backgroundColor":"grey"}'>
 
 <block type="gridBlock">
 

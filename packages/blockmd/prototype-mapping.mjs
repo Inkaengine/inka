@@ -21,7 +21,7 @@ import YAML from 'yaml';
 import { getAtPath, ensureMutablePath } from '@volto-hydra/helpers';
 import { joined } from '@volto-hydra/helpers/blockText.js';
 import { tagOf, mdParser, mdSerializer, blockToSlate, slateToMd, fmtTagAttrs, cleanAttrStr, normaliseTables, tableToMd, gridTableToMd, NoCellForm, NoFit, slateBlockToMdast, isBrTag,
-         mdastToHtml, htmlToMd, htmlRichtext, isFlatDict, flatDictAttrs, attrName } from './slate-md.mjs';
+         mdastToHtml, htmlToMd, htmlRichtext, isFlatDict, boundAttr, attrName } from './slate-md.mjs';
 
 // ${node[n]/part} -- node kind, optional match-index, optional accessor part.
 // No `/part` means match-only: consume the node, capture nothing (separator,
@@ -52,38 +52,31 @@ function parseRef(v) {
   return { node: m[1], optional: !!m[2], index, label, part: m[4] ?? null };
 }
 
-// Parse a tag's attributes, typed by syntax: a bare name is `true` (HTML
-// boolean), an unquoted value is coerced (number / true / false / null / JSON),
-// a double-quoted value stays a string (so `${refs}` survive), and a
-// single-quoted value is a data JSON string (entities un-escaped).
-// `:` is in the key charset so a dict field's `field:key=value` attribute (and a
-// key that itself contains a colon, `styles:size:noprefix`) is one token.
-const ATTR_RE = /([\w@.$:-]+)(?:=(?:"([^"]*)"|'([^']*)'|(\S+)))?/g;
+// Parse a tag's attributes, typed by syntax as in Vue: `name="…"` is text,
+// `:name="…"` (either quote) is JSON data, and a bare `name` is `true` (an HTML
+// boolean). A single-quoted value without the prefix is text too (`data-json`
+// holds its JSON as text, read by its own caller). An unquoted value, or an old
+// `field:key` name, says nothing a schema-less reader can trust, so it is an
+// error naming the bound form to write instead.
+const ATTR_RE = /(:?[\w@.$:-]+)(?:=(?:"([^"]*)"|'([^']*)'|(\S+)))?/g;
+const unescapeAttr = (v) => v.replace(/&#39;/g, "'").replace(/&amp;/g, '&');
 function typedAttrs(raw) {
   const inner = raw.replace(/^\s*<\/?[A-Za-z][\w-]*/, '').replace(/\/?>\s*$/, '');
   const out = {};
   for (const [, k, dq, sq, bare] of inner.matchAll(ATTR_RE)) {
-    if (dq !== undefined) out[k] = dq;
-    else if (sq !== undefined) out[k] = sq.replace(/&#39;/g, "'").replace(/&amp;/g, '&');
-    else if (bare === undefined) out[k] = true; // HTML boolean
-    else if (bare === 'true' || bare === 'false') out[k] = bare === 'true';
-    else if (bare === 'null') out[k] = null;
-    else if (/^-?\d+(\.\d+)?$/.test(bare)) out[k] = Number(bare);
-    else if (bare[0] === '{' || bare[0] === '[') out[k] = JSON.parse(bare);
-    else out[k] = bare;
+    if (k.startsWith(':')) {
+      const value = dq ?? sq;
+      if (value === undefined) throw new Error(`blockmd: ${k} needs a JSON value: ${k}="…"`);
+      out[k.slice(1)] = JSON.parse(unescapeAttr(value));
+    } else if (k.includes(':')) {
+      throw new Error(`blockmd: "${k}" is the old object form; write :${k.split(':')[0]}='{…}'`);
+    } else if (bare !== undefined) {
+      throw new Error(`blockmd: ${k}=${bare} is unquoted; write text as ${k}="${bare}" or data as :${k}="${bare}"`);
+    } else if (dq !== undefined) out[k] = dq;
+    else if (sq !== undefined) out[k] = unescapeAttr(sq);
+    else out[k] = true; // HTML boolean
   }
-  // Fold a dict field's `field:key` attributes back into a nested object, split
-  // on the FIRST colon (everything after is the key, colons and all). The mirror
-  // of flatDictAttrs on emit; a bare attribute name never contains a colon, so
-  // only namespaced dict entries fold. The field sits where its first entry was
-  // written, so a re-emit keeps the authored order.
-  const folded = {};
-  for (const [k, v] of Object.entries(out)) {
-    const i = k.indexOf(':');
-    if (i === -1) { folded[k] = v; continue; }
-    (folded[k.slice(0, i)] ??= {})[k.slice(i + 1)] = v;
-  }
-  return folded;
+  return out;
 }
 
 /**
@@ -1069,10 +1062,7 @@ function emitOverrides(proto, block, keep = new Set()) {
     if (def !== undefined && deepEqual(def, v) && !keep.has(k)) return; // matches the prototype's value
     if (TAG_ATTRS.has(k)) { asData[k] = v; return; }
     if (v === true) out.push(k); // HTML boolean
-    else if (v === false || typeof v === 'number') out.push(`${k}=${v}`); // unquoted -> JSON
-    else if (typeof v === 'string') out.push(`${k}="${v}"`);
-    else if (isFlatDict(v)) out.push(...flatDictAttrs(k, v)); // a dict field -> `field:key=value` attrs
-    // a nested/array value still can't be a clean attribute; verify-on-emit tier-3s it
+    else out.push(boundAttr(k, v)); // text, or `:k` holding JSON
   };
   for (const [k, v] of Object.entries(block)) {
     if (k === '@type' || proto.regions.some((r) => r.name === k)) continue;
@@ -1296,17 +1286,12 @@ const TAG_ATTRS = new Set(['type', 'data-json']);
 function emitRawTag(block) {
   const { '@type': type, ...rest } = block;
   for (const k of Object.keys(rest)) if (isEmptyObject(rest[k])) delete rest[k]; // drop no-op {} defaults (styles: {})
-  // fmtTagAttrs hoists clean scalars to attributes and puts everything else in a
-  // trailing data-json — which reorders the block on decode (attrs come first).
-  // If ANY field must go to data-json, emit ALL of them there in AUTHORED order
-  // so the block round-trips byte-stably; an all-clean block keeps its attrs.
-  // Booleans and numbers are plain unquoted attributes too (read back as JSON).
-  const cleanScalar = (v) => (typeof v === 'string' ? cleanAttrStr(v)
-    : typeof v === 'boolean' || (typeof v === 'number' && Number.isFinite(v)));
-  // A flat dict field flattens to `field:key=value` attrs, so it no longer forces
-  // the whole block to data-json — only a nested/array value does.
-  const mixed = Object.values(rest).some((v) => v !== undefined && !cleanScalar(v) && !isFlatDict(v))
-    || Object.keys(rest).some((k) => TAG_ATTRS.has(k) || !attrName(k));
+  // Every value is an attribute (text, or `:name` holding JSON); only a field
+  // whose NAME no attribute can carry (`@id`, or one of the tag's own) goes to
+  // data-json. Then all of them do, in authored order: a trailing data-json
+  // reorders the block on decode (attrs come first), and byte-stable re-emit
+  // needs the authored order back.
+  const mixed = Object.keys(rest).some((k) => TAG_ATTRS.has(k) || !attrName(k));
   const attrs = mixed
     ? `data-json='${JSON.stringify(rest).replace(/&/g, '&amp;').replace(/'/g, '&#39;')}'`
     : fmtTagAttrs(rest);

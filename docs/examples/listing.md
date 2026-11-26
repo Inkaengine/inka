@@ -58,25 +58,25 @@ Displays a list of content items from a query. The listing block fetches items f
 
 <fields block="24280e07-e962-4414-8ee5-cdaf58ca5f35">
 
-<block type="listing" data-json='{"headline":"Listing: Default","variation":"default","styles":{"backgroundColor":"transparent"},"querystring":{"b_size":"4","limit":"10","query":[{"i":"portal_type","o":"plone.app.querystring.operation.selection.any","v":["Document"]},{"i":"Subject","o":"plone.app.querystring.operation.selection.none","v":["main folder"]}],"sort_on":"getId","sort_order":"ascending"},"query":[],"fieldMapping":{"getURL":{"field":"href","type":"link"},"title":{"field":"title","type":"string"},"description":{"field":"description","type":"textarea"}}}' />
+<block type="listing" headline="Listing: Default" variation="default" :styles='{"backgroundColor":"transparent"}' :querystring='{"b_size":"4","limit":"10","query":[{"i":"portal_type","o":"plone.app.querystring.operation.selection.any","v":["Document"]},{"i":"Subject","o":"plone.app.querystring.operation.selection.none","v":["main folder"]}],"sort_on":"getId","sort_order":"ascending"}' :query="[]" :fieldMapping='{"getURL":{"field":"href","type":"link"},"title":{"field":"title","type":"string"},"description":{"field":"description","type":"textarea"}}' />
 
-<block type="listing" data-json='{"headline":"Listing: Summary","variation":"summary","styles":{"backgroundColor":"grey"},"querystring":{"limit":"5","query":[{"i":"portal_type","o":"plone.app.querystring.operation.selection.any","v":["Document"]},{"i":"Subject","o":"plone.app.querystring.operation.selection.none","v":["main folder"]}],"sort_on":"getId","sort_order":"ascending"},"query":[],"fieldMapping":{"getURL":{"field":"href","type":"link"},"title":{"field":"title","type":"string"},"description":{"field":"description","type":"textarea"},"image":{"field":"image","type":"image_link"}}}' />
+<block type="listing" headline="Listing: Summary" variation="summary" :styles='{"backgroundColor":"grey"}' :querystring='{"limit":"5","query":[{"i":"portal_type","o":"plone.app.querystring.operation.selection.any","v":["Document"]},{"i":"Subject","o":"plone.app.querystring.operation.selection.none","v":["main folder"]}],"sort_on":"getId","sort_order":"ascending"}' :query="[]" :fieldMapping='{"getURL":{"field":"href","type":"link"},"title":{"field":"title","type":"string"},"description":{"field":"description","type":"textarea"},"image":{"field":"image","type":"image_link"}}' />
 
 </fields>
 
-<block type="gridBlock" styles:backgroundColor="transparent">
+<block type="gridBlock" :styles='{"backgroundColor":"transparent"}'>
 
 ## Listing: Grid (Teaser)
 
-<block type="listing" data-json='{"querystring":{"limit":"6","query":[{"i":"portal_type","o":"plone.app.querystring.operation.selection.any","v":["Document"]},{"i":"Subject","o":"plone.app.querystring.operation.selection.none","v":["main folder"]}],"sort_on":"getId","sort_order":"ascending"},"variation":"teaser","fieldMapping":{"getURL":{"field":"href","type":"link"},"title":{"field":"title","type":"string"},"description":{"field":"description","type":"textarea"},"image":{"field":"preview_image","type":"image_link"}}}' />
+<block type="listing" :querystring='{"limit":"6","query":[{"i":"portal_type","o":"plone.app.querystring.operation.selection.any","v":["Document"]},{"i":"Subject","o":"plone.app.querystring.operation.selection.none","v":["main folder"]}],"sort_on":"getId","sort_order":"ascending"}' variation="teaser" :fieldMapping='{"getURL":{"field":"href","type":"link"},"title":{"field":"title","type":"string"},"description":{"field":"description","type":"textarea"},"image":{"field":"preview_image","type":"image_link"}}' />
 
 </block>
 
-<block type="slider" data-json='{"headline":"Listing: Image Slider","autoplayDelay":4000,"autoplayEnabled":false,"autoplayJump":false,"slides":[{"@type":"listing","fieldMapping":{"getURL":{"field":"href","type":"link"},"title":{"field":"alt","type":"string"},"image":{"field":"url","type":"image_link"}},"querystring":{"query":[{"i":"portal_type","o":"plone.app.querystring.operation.selection.any","v":["Image"]}],"sort_order":"ascending"},"variation":"image"}]}' />
+<block type="slider" headline="Listing: Image Slider" :autoplayDelay="4000" :autoplayEnabled="false" :autoplayJump="false" :slides='[{"@type":"listing","fieldMapping":{"getURL":{"field":"href","type":"link"},"title":{"field":"alt","type":"string"},"image":{"field":"url","type":"image_link"}},"querystring":{"query":[{"i":"portal_type","o":"plone.app.querystring.operation.selection.any","v":["Image"]}],"sort_order":"ascending"},"variation":"image"}]' />
 
 </fields>
 
-<fields templateId="/inka-templates/block-reference-layout" templateInstanceId="tpl-inst-listing" fixed=false readOnly=false>
+<fields templateId="/inka-templates/block-reference-layout" templateInstanceId="tpl-inst-listing" :fixed="false" :readOnly="false">
 
 <block type="codeExample" slotId="schema">
 

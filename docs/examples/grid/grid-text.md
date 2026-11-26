@@ -71,7 +71,7 @@ Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincid
 
 </block>
 
-<fields styles:backgroundColor="grey">
+<fields :styles='{"backgroundColor":"grey"}'>
 
 <block type="gridBlock">
 

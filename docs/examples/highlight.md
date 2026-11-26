@@ -59,7 +59,7 @@ Lorem ipsum dolor sit amet, [consetetur sadipscing](./button.md) elitr, sed diam
 
 [](./content-types/page.md)
 
-<fields styles:descriptionColor="highlight-custom-color-1" />
+<fields :styles='{"descriptionColor":"highlight-custom-color-1"}' />
 
 </block>
 
@@ -69,7 +69,7 @@ Lorem ipsum dolor sit amet, [consetetur sadipscing](./button.md) elitr, sed diam
 
 [](./content-types/page.md)
 
-<fields styles:descriptionColor="highlight-custom-color-2" />
+<fields :styles='{"descriptionColor":"highlight-custom-color-2"}' />
 
 </block>
 
@@ -79,7 +79,7 @@ Lorem ipsum dolor sit amet, [consetetur sadipscing](./button.md) elitr, sed diam
 
 [](./content-types/page.md)
 
-<fields styles:descriptionColor="highlight-custom-color-3" />
+<fields :styles='{"descriptionColor":"highlight-custom-color-3"}' />
 
 </block>
 
@@ -89,7 +89,7 @@ Lorem ipsum dolor sit amet, [consetetur sadipscing](./button.md) elitr, sed diam
 
 [](./content-types/page.md)
 
-<fields styles:descriptionColor="highlight-custom-color-4" />
+<fields :styles='{"descriptionColor":"highlight-custom-color-4"}' />
 
 </block>
 
@@ -99,13 +99,13 @@ Lorem ipsum dolor sit amet, [consetetur sadipscing](./button.md) elitr, sed diam
 
 [](./content-types/page.md)
 
-<fields styles:descriptionColor="highlight-custom-color-5" />
+<fields :styles='{"descriptionColor":"highlight-custom-color-5"}' />
 
 </block>
 
 </fields>
 
-<fields templateId="/inka-templates/block-reference-layout" templateInstanceId="tpl-inst-highlight" fixed=false readOnly=false>
+<fields templateId="/inka-templates/block-reference-layout" templateInstanceId="tpl-inst-highlight" :fixed="false" :readOnly="false">
 
 <block type="codeExample" slotId="schema">
 

@@ -1008,7 +1008,7 @@ describe('plone-content-validator checkIntegrity()', () => {
 
   it('FAILS on an INSTANCE block that fills a template with no slotId', () => {
     // The mirror of the template-side rule, on the page that instantiates one.
-    // A block inside a `<fields templateId=...>` region is matched to a template
+    // A block inside a `<fields templateId="...">` region is matched to a template
     // slot by its slotId. Carry the templateId but omit the slotId (or give one
     // the template has no slot for) and forced-layout expansion matches it to
     // nothing — the block is composed into the page data (block-sanity discovers

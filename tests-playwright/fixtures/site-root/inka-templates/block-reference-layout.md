@@ -8,7 +8,7 @@ description: Template for code examples at the bottom of block reference pages
 effective: 2025-01-01T00:00:00
 blocks-matched: |
   <block type="slate" value="${p,h*,ul,ol,blockquote,strong,em/slate}" />
-  <block type="separator" _="${hr}" styles={"align":"full"} />
+  <block type="separator" _="${hr}" :styles='{"align":"full"}' />
   <block type="codeExample">
     <region name="tabs" widget="object_list" idField="@id" typeField="@type">
       <block type="tab" label="${h3/text}" language="${pre/lang}" code="${pre/textarea}" />

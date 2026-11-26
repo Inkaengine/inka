@@ -445,38 +445,43 @@ export function tagOf(line) {
 /**
  * Block fields -> HTML attributes.
  *
- * A string becomes an ordinary attribute; anything that is not a string goes
- * into one `data` attribute as JSON. HTML attribute values are string-typed,
- * so `collapsed="false"` could not say whether it meant the boolean or the
- * word -- putting non-strings in JSON removes the question rather than
- * inventing a convention to answer it.
+ * A string becomes an ordinary attribute; anything else is a bound one,
+ * `:name` holding JSON (boundAttr). HTML attribute values are string-typed, so
+ * `collapsed="false"` could not say whether it meant the boolean or the word;
+ * Vue's binding prefix answers that the way its users already read it.
  *
  * Attribute NAMES must be legal HTML. `@type` is not: GitHub escapes the whole
  * tag and renders it as visible text, where an unknown-but-legal tag is
  * stripped cleanly. So `@type` travels as `type` on the tag and stays `@type`
  * inside the JSON.
  */
-// A dict field encodes generically as one `field:key=value` attribute per entry
-// — split on the FIRST colon at decode, so a key that itself contains a colon
-// (`size:noprefix`) rides in the key. Values are typed exactly like any other
-// attribute (quoted string, or bare number/boolean/null). Only a FLAT dict of
-// attr-safe scalar entries can flatten; a nested/array value returns null and
-// the block tier-3s to data-json instead.
-const ATTR_SAFE = /^[\w@.$:-]+$/;
 /** A string a double-quoted attribute can hold: no `"` to end it early, no
  *  newline to break the tag. Length doesn't matter — a long value is no easier
  *  to read as JSON. */
 export const cleanAttrStr = (v) => typeof v === 'string' && !v.includes('"') && !v.includes('\n');
-const scalarAttrValue = (v) => cleanAttrStr(v) || typeof v === 'number' || typeof v === 'boolean' || v === null;
+
+/** A small object of plain values: a block's styles, which a `<fields>` wrapper
+ *  may hoist like any short attribute (a link list or a slate value it can't). */
 export function isFlatDict(v) {
   return !!v && typeof v === 'object' && !Array.isArray(v)
     && Object.keys(v).length > 0
-    && Object.entries(v).every(([k, x]) => ATTR_SAFE.test(`${k}`) && scalarAttrValue(x));
+    && Object.values(v).every((x) => cleanAttrStr(x) || typeof x === 'number' || typeof x === 'boolean' || x === null);
 }
-export function flatDictAttrs(field, obj) {
-  if (!ATTR_SAFE.test(field) || !isFlatDict(obj)) return null;
-  return Object.entries(obj).map(([k, v]) =>
-    cleanAttrStr(v) ? `${field}:${k}="${v}"` : `${field}:${k}=${v}`);
+
+/**
+ * One field as an attribute. As in Vue, `name="…"` is always text and
+ * `:name="…"` is always data: its value is JSON. Markdown decodes without
+ * schemas, so the syntax alone says a value is a number, a list or an object,
+ * and it says so per field — one list no longer sends its block to data-json.
+ * JSON holding `"` is single-quoted, with `&` and `'` escaped (`&` first, or
+ * the escapes escape each other).
+ */
+export function boundAttr(name, value) {
+  if (cleanAttrStr(value)) return `${name}="${value}"`;
+  const json = JSON.stringify(value);
+  return json.includes('"')
+    ? `:${name}='${json.replace(/&/g, '&amp;').replace(/'/g, '&#39;')}'`
+    : `:${name}="${json}"`;
 }
 
 /** A name CommonMark reads as an attribute. A tag with any other (`@id`) is not
@@ -487,21 +492,12 @@ export function fmtTagAttrs(fields) {
   const attrs = [], data = {};
   for (const [k, v] of Object.entries(fields)) {
     if (v === undefined) continue;          // an absent field is not an empty one
-    if (!attrName(k)) {
-      data[k] = v;
-    } else if (cleanAttrStr(v)) {
-      attrs.push(`${k}="${v}"`);
-    } else if (typeof v === 'boolean' || (typeof v === 'number' && Number.isFinite(v))) {
-      attrs.push(`${k}=${v}`);              // unquoted -> read back as JSON (fixed=false, n=3)
-    } else if (isFlatDict(v)) {
-      attrs.push(...flatDictAttrs(k, v));   // a dict field -> `field:key=value` attrs
-    } else data[k] = v;
+    if (attrName(k)) attrs.push(boundAttr(k, v));
+    else data[k] = v;                       // a name no attribute can have (`@id`)
   }
   if (Object.keys(data).length) {
-    // The attribute is single-quoted so the JSON's own double quotes need no
-    // escaping; an apostrophe inside the data would otherwise close it early
-    // (one slateTable's text contains "editor's" and truncated the whole
-    // block). `&` first, or the escapes escape each other.
+    // Single-quoted so the JSON's own double quotes need no escaping; an
+    // apostrophe inside would otherwise close it early.
     const json = JSON.stringify(data).replace(/&/g, '&amp;').replace(/'/g, '&#39;');
     attrs.push(`data-json='${json}'`);
   }

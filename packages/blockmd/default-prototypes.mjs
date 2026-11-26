@@ -12,7 +12,7 @@
 const MATCHED = [
   '<block type="slate" value="${p,h*,ul,ol,blockquote,strong,em,a/slate}" />',
   '<block type="title" _="${h1}" />',
-  '<block type="separator" _="${hr}" styles={"align":"full"} />',
+  '<block type="separator" _="${hr}" :styles=\'{"align":"full"}\' />',
   // One image form: the caption paragraph is an optional NODE (`${p?/textarea}`), so
   // this matches an image with OR without a caption -- no second prototype needed.
   '<block type="image" description="${p?/textarea}" url="${img/src}" alt="${img?/alt}" title="${img?/title}" align="center" size="l" />',
@@ -68,7 +68,7 @@ const TAGGED = [
     '</block>',
   ].join('\n'),
   [
-    '<block type="accordion" right_arrows=true>',
+    '<block type="accordion" right_arrows>',
     '  <region name="panels" widget="object_list" idField="@id" typeField="@type">',
     '    <block type="panel" title="${h/text}" />',
     '  </region>',

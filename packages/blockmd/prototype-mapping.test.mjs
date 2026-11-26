@@ -84,7 +84,7 @@ describe('prototype mapping', () => {
     // panel content is asserted as an ordered `blocks` list, not a dict.)
     const protos = parsePrototypes([
       '<block type="slate" value="${p/slate}" />',
-      '<block type="accordion" right_arrows=true>',
+      '<block type="accordion" right_arrows>',
       '  <region name="panels" widget="object_list" idField="@id" typeField="@type">',
       '    <block type="panel" title="${h2/text}" />',
       '  </region>',
@@ -173,7 +173,7 @@ describe('uid keying', () => {
   it('decodes accordion markdown end-to-end: matchBlocks then keyBlocks', () => {
     const protos = parsePrototypes([
       '<block type="slate" value="${p/slate}" />',
-      '<block type="accordion" right_arrows=true>',
+      '<block type="accordion" right_arrows>',
       '  <region name="panels" widget="object_list" idField="@id" typeField="@type">',
       '    <block type="panel" title="${h2/text}" />',
       '  </region>',
@@ -428,7 +428,7 @@ describe('verify-on-emit', () => {
 describe('emit container', () => {
   const protos = parsePrototypes([
     '<block type="slate" value="${p/slate}" />',
-    '<block type="accordion" right_arrows=true>',
+    '<block type="accordion" right_arrows>',
     '  <region name="panels" widget="object_list" idField="@id" typeField="@type">',
     '    <block type="panel" title="${h2/text}" />',
     '  </region>',
@@ -485,7 +485,7 @@ describe('emit a container with several regions', () => {
 describe('emitPage / full page round-trip', () => {
   const protos = parsePrototypes([
     '<block type="slate" value="${p/slate}" />',
-    '<block type="accordion" right_arrows=true>',
+    '<block type="accordion" right_arrows>',
     '  <region name="panels" widget="object_list" idField="@id" typeField="@type">',
     '    <block type="panel" title="${h2/text}" />',
     '  </region>',
@@ -699,20 +699,32 @@ describe('tier-3 data tag decode', () => {
   });
 });
 
-describe('generic dict field -> colon-namespaced attrs', () => {
-  // A block's dict field encodes as one `field:key="value"` attribute per entry
-  // (split on the FIRST colon, so a key that itself contains a colon rides in
-  // the key), values typed like any attribute. This is generic to ANY block's
-  // dict field, not styles-specific — the readable rung between clean and
-  // data-json. An empty dict emits nothing; a nested/array value can't flatten,
-  // so that block still tier-3s to data-json.
+// The forms before bound attributes, which the reader must now refuse. Kept out
+// of the tags the migration rewrote, so they stay as written.
+const OLD_UNQUOTED = ['<block type="toc"', 'levels=3 />'].join(' ');
+const OLD_DICT = ['<block type="toc"', 'styles:align="left" />'].join(' ');
+
+describe('a value that is not plain text is a bound attribute: `:field` holds JSON', () => {
+  // As in Vue: `field="…"` is always text, and `:field="…"` is always data.
+  // Markdown decodes without schemas, so the syntax alone has to say a value is
+  // a number, a list or an object; one rule says it for all of them, per field,
+  // so one such field no longer sends its whole block to data-json.
   const cases = [
-    ['flat styles', { '@type': 'separator', styles: { align: 'left', backgroundColor: 'grey' } },
-      ['styles:align="left"', 'styles:backgroundColor="grey"']],
-    ['a colon in the key', { '@type': 'image', styles: { 'size:noprefix': 'medium' } },
-      ['styles:size:noprefix="medium"']],
+    ['an object', { '@type': 'separator', styles: { align: 'left', backgroundColor: 'grey' } },
+      [`:styles='{"align":"left","backgroundColor":"grey"}'`]],
+    ['a colon in a key', { '@type': 'image', styles: { 'size:noprefix': 'medium' } },
+      [`:styles='{"size:noprefix":"medium"}'`]],
     ['typed values', { '@type': 'separator', styles: { noLine: false, span: 2 } },
-      ['styles:noLine=false', 'styles:span=2']],
+      [`:styles='{"noLine":false,"span":2}'`]],
+    ['a list', { '@type': 'cards', itemDefaults_elements: ['copy'] },
+      [`:itemDefaults_elements='["copy"]'`]],
+    ['an empty list', { '@type': 'search', facets: [] }, [':facets="[]"']],
+    ['a nested object', { '@type': 'listing', querystring: { query: [{ i: 'portal_type', v: ['News Item'] }] } },
+      [`:querystring='{"query":[{"i":"portal_type","v":["News Item"]}]}'`]],
+    ['a number and a boolean', { '@type': 'toc', levels: 3, ordered: false }, [':levels="3"', ':ordered="false"']],
+    ['null', { '@type': 'toc', title: null }, [':title="null"']],
+    ['text a plain attribute cannot hold', { '@type': 'toc', title: 'Say "hi"' }, [`:title='"Say \\"hi\\""'`]],
+    ["an apostrophe inside bound JSON", { '@type': 'toc', tags: ["editor's"] }, [':tags=\'["editor&#39;s"]\'']],
   ];
   for (const [name, block, wantAttrs] of cases) {
     it(`emits ${name} as attrs and round-trips`, () => {
@@ -727,6 +739,31 @@ describe('generic dict field -> colon-namespaced attrs', () => {
     const md = emitBlocks([], [{ '@type': 'separator', styles: {}, title: 'X' }]);
     expect(md).not.toContain('styles');
     expect(matchBlocks([], md)).toEqual([{ '@type': 'separator', title: 'X' }]);
+  });
+
+  it('keeps a prototyped block light when it also has a list field', () => {
+    const protos = parsePrototypes([
+      '<block type="slate" value="${p|h2/slate}" />',
+      '<block type="cards">',
+      '  <region name="blocks" widget="blocks_layout">',
+      '    <block type="card" title="${h2/text}" />',
+      '  </region>',
+      '</block>',
+    ].join('\n'));
+    const block = { '@type': 'cards', itemDefaults_elements: ['copy'], blocks: [{ '@type': 'card', title: 'One' }] };
+    const md = emitBlocks(protos, [block]);
+    expect(md).toContain(`:itemDefaults_elements='["copy"]'`);
+    expect(md).toContain('## One');
+    expect(md).not.toContain('data-json');
+    expect(matchBlocks(protos, md)).toEqual([block]);
+  });
+
+  it('refuses an unquoted value: text is quoted, data is bound', () => {
+    expect(() => matchBlocks([], OLD_UNQUOTED)).toThrow(/:levels/);
+  });
+
+  it('refuses the old `field:key` object form', () => {
+    expect(() => matchBlocks([], OLD_DICT)).toThrow(/:styles/);
   });
 
   it('still decodes the legacy data-json form (backward compatible)', () => {
@@ -803,18 +840,17 @@ describe('slateTable (iterate-children regions)', () => {
 });
 
 describe('typed attributes', () => {
-  // A dict field's `field:key` attributes fold back into the field AT ITS
-  // position, so what emit writes next is in the authored order — a re-emit of
-  // unchanged content is byte-identical, not reshuffled.
+  // A bound field decodes AT ITS position, so what emit writes next is in the
+  // authored order — a re-emit of unchanged content is byte-identical.
   it('keeps a dict field where it was written', () => {
     const protos = parsePrototypes('<block type="slate" value="${p/slate}" />');
-    const [block] = matchBlocks(protos, '<block type="toc" styles:align="left" levels=3 />');
+    const [block] = matchBlocks(protos, `<block type="toc" :styles='{"align":"left"}' :levels="3" />`);
     expect(Object.keys(block)).toEqual(['@type', 'styles', 'levels']);
   });
 
-  it('decodes HTML booleans (bare=true), unquoted numbers, quoted strings', () => {
+  it('decodes HTML booleans (bare=true), bound numbers, quoted strings', () => {
     const protos = parsePrototypes('<block type="slate" value="${p/slate}" />');
-    const md = '<block type="toc" celled levels=3 title="Contents" />';
+    const md = '<block type="toc" celled :levels="3" title="Contents" />';
     expect(matchBlocks(protos, md)).toEqual([{ '@type': 'toc', celled: true, levels: 3, title: 'Contents' }]);
   });
 });
@@ -956,7 +992,7 @@ describe('grid headline as heading (container scalar-ref)', () => {
 describe('local overrides', () => {
   const acc = parsePrototypes([
     '<block type="slate" value="${p|h*/slate}" />',
-    '<block type="accordion" right_arrows=true>',
+    '<block type="accordion" right_arrows>',
     '  <region name="panels" widget="object_list" idField="@id" typeField="@type">',
     '    <block type="panel" title="${h/text}" />',
     '  </region>',
@@ -964,7 +1000,7 @@ describe('local overrides', () => {
   ].join('\n'));
 
   it('attribute override: an instance attr beats the prototype default', () => {
-    const md = ['<block type="accordion" right_arrows=false>', '', '## A', '', 'x', '', '</block>'].join('\n');
+    const md = ['<block type="accordion" :right_arrows="false">', '', '## A', '', 'x', '', '</block>'].join('\n');
     expect(matchBlocks(acc, md)[0].right_arrows).toBe(false); // proto default is true
   });
 
@@ -1000,7 +1036,7 @@ describe('<fields> tag', () => {
   });
 
   it('decodes multiple fields from one <fields> tag', () => {
-    const md = '<block type="slate">\n\nHi.\n\n<fields fixed=true data-json=\'{"styles":{"align":"left"}}\' />\n\n</block>';
+    const md = '<block type="slate">\n\nHi.\n\n<fields fixed data-json=\'{"styles":{"align":"left"}}\' />\n\n</block>';
     expect(matchBlocks(protos, md)).toEqual([
       { '@type': 'slate', value: [{ type: 'p', children: [{ text: 'Hi.' }] }], fixed: true, styles: { align: 'left' } },
     ]);
@@ -1452,7 +1488,7 @@ describe('default slateTable decodes to the Volto table shape', () => {
     }
   });
 
-  // `typeField=null` — the same value a schema uses — says the items store no
+  // `:typeField="null"` — the same value a schema uses — says the items store no
   // type field: they are typed by their container (hydra's virtual
   // `slateTable:rows`). Only an ABSENT typeField is an error.
   const tableProto = (typeAttr) => [
@@ -1463,8 +1499,8 @@ describe('default slateTable decodes to the Volto table shape', () => {
     '</block>',
   ].join('\n');
 
-  it('an object_list region may declare typeField=null (items store no type)', () => {
-    const [proto] = parsePrototypes(tableProto(' typeField=null'), { explicit: true });
+  it('an object_list region may declare :typeField="null" (items store no type)', () => {
+    const [proto] = parsePrototypes(tableProto(' :typeField="null"'), { explicit: true });
     expect(proto.regions[0].typeField).toBeNull();
   });
 
@@ -1496,7 +1532,7 @@ describe('default slateTable decodes to the Volto table shape', () => {
 
   it('an object_list region still must declare idField', () => {
     expect(() => parsePrototypes([
-      '<block type="slateTable">', '  <region name="table.rows" typeField=null>', '    <block type="row" />', '  </region>', '</block>',
+      '<block type="slateTable">', '  <region name="table.rows" :typeField="null">', '    <block type="row" />', '  </region>', '</block>',
     ].join('\n'), { explicit: true })).toThrow(/must declare idField/);
   });
 });
@@ -1598,20 +1634,20 @@ describe('emitPage: hoisting only takes plain attributes', () => {
     expect(md).not.toMatch(/data-json/);
   });
 
-  // `fixed: false` marks a template slot and must be stated. An unquoted
-  // attribute is JSON, so `fixed=false` says it without a data-json wrapper.
-  it('writes a stated false as fixed=false, not data-json', async () => {
+  // `fixed: false` marks a template slot and must be stated. A bound
+  // attribute is JSON, so `:fixed="false"` says it without a data-json wrapper.
+  it('writes a stated false as :fixed="false", not data-json', async () => {
     const s = (text) => ({ '@type': 'slate', templateId: '/t', fixed: false, value: [{ type: 'p', children: [{ text }] }], plaintext: text });
     const md = await page([s('a'), s('b')]);
-    expect(md).toMatch(/fixed=false/);
+    expect(md).toMatch(/:fixed="false"/);
     expect(md).not.toMatch(/data-json/);
   });
 });
 
 describe('a block with no prototype is written as attributes where it can be', () => {
-  // Booleans and numbers are plain unquoted attributes (read back as JSON), so a
-  // block whose fields are all strings, booleans and numbers is an attribute
-  // tag, not a data-json blob.
+  // Booleans and numbers are bound attributes (`:levels="3"`), so a block whose
+  // fields are all strings, booleans and numbers is an attribute tag, not a
+  // data-json blob.
   it('booleans and numbers stay attributes', () => {
     const protos = parsePrototypes('<block type="slate" value="${p/slate}" />');
     const b = { '@type': 'toc', title: 'On this page', ordered: true, levels: 3, sticky: false };

@@ -20,7 +20,7 @@ table_of_contents: null
 title: Inka
 blocks-matched: |
   <block type="slate" value="${p,h*,ul,ol,blockquote,strong,em,a/slate}" />
-  <block type="separator" _="${hr}" styles={"align":"full"} />
+  <block type="separator" _="${hr}" :styles='{"align":"full"}' />
   <block type="image" description="${p?/textarea}" url="${img/src}" alt="${img?/alt}" title="${img?/title}" align="center" size="l" />
   <block type="image" url="${img/src}" alt="${img?/alt}" title="${img?/title}" align="center" size="l" />
   <block type="codeExample">
@@ -375,7 +375,7 @@ export const POST = async ({ request }) => {
 }
 ```
 
-<block type="slider" autoplayDelay=4000>
+<block type="slider" :autoplayDelay="4000">
 
 ## You can use this site to test Inka
 

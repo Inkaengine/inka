@@ -35,9 +35,9 @@ blocks-tagged: |
 
 <fields templateId="/inka-templates/newsitem-view" templateInstanceId="tpl-ni-def">
 
-<fields fixed=true readOnly=true>
+<fields :fixed="true" :readOnly="true">
 
-<block type="dateField" dateField="effective" slotId="date" showTime=false />
+<block type="dateField" dateField="effective" slotId="date" :showTime="false" />
 
 <block type="title">
 
@@ -49,23 +49,23 @@ blocks-tagged: |
 
 </fields>
 
-<fields readOnly=false>
+<fields :readOnly="false">
 
 <block type="introduction">
 
 Cinnamon skinny medium panna americano spice affogato froth frappuccino that.
 
-<fields slotId="default" fixed=false />
+<fields slotId="default" :fixed="false" />
 
 </block>
 
-<block type="leadimage" align="center" slotId="lead-image" fixed=true />
+<block type="leadimage" align="center" slotId="lead-image" :fixed="true" />
 
 <block type="slate">
 
 Ristretto so chicory skinny ristretto au decaffeinated sugar that spoon shop crema ut pot lungo. Flavour that milk brewed flavour whipped kopi black and robusta. Bar sugar americano eu froth variety brewed acerbic steamed. Aroma est milk doppio frappuccino half cream filter french froth luwak. Acerbic plunger au barista flavour in froth trade.
 
-<fields slotId="default" fixed=false />
+<fields slotId="default" :fixed="false" />
 
 </block>
 

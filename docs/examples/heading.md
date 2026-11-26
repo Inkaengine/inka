@@ -24,7 +24,7 @@ title: Heading
 blocks-matched: |
   <block type="slate" value="${p,h*,ul,ol,blockquote,strong,em,a/slate}" />
   <block type="title" _="${h1}" />
-  <block type="separator" _="${hr}" styles={"align":"full"} />
+  <block type="separator" _="${hr}" :styles='{"align":"full"}' />
   <block type="codeExample">
     <region name="tabs" widget="object_list" idField="@id" typeField="@type">
       <block type="tab" label="${h3/text}" language="${pre/lang}" code="${pre/textarea}" />
@@ -48,7 +48,7 @@ A standalone heading block that renders as h1–h6 based on a configurable tag f
 
 ---
 
-<fields styles:align="full" styles:backgroundColor="transparent" styles:noLine=false />
+<fields :styles='{"align":"full","backgroundColor":"transparent","noLine":false}' />
 
 </block>
 
@@ -90,7 +90,7 @@ Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincid
 
 Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincidunt ut laoreet dolore magna aliquam erat volutpat. Ut wisi enim ad minim veniam, quis nostrud exerci tation ullamcorper suscipit lobortis nisl ut aliquip ex ea commodo consequat. Duis autem vel eum iriure dolor in hendrerit in vulputate velit esse molestie consequat, vel illum dolore eu feugiat nulla facilisis at vero eros et accumsan et iusto odio dignissim qui blandit praesent luptatum zzril delenit augue duis dolore te feugait nulla facilisi.
 
-<fields styles:align="left" />
+<fields :styles='{"align":"left"}' />
 
 </block>
 
@@ -98,7 +98,7 @@ Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincid
 
 <block type="heading" heading="Getting Started" tag="h2" />
 
-<fields templateId="/inka-templates/block-reference-layout" templateInstanceId="tpl-inst-heading" fixed=false readOnly=false>
+<fields templateId="/inka-templates/block-reference-layout" templateInstanceId="tpl-inst-heading" :fixed="false" :readOnly="false">
 
 <block type="codeExample" slotId="schema">
 

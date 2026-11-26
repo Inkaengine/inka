@@ -29,7 +29,7 @@ title: Page
 blocks-matched: |
   <block type="slate" value="${p,h*,ul,ol,blockquote,strong,em,a/slate}" />
   <block type="title" _="${h1}" />
-  <block type="separator" _="${hr}" styles={"align":"full"} />
+  <block type="separator" _="${hr}" :styles='{"align":"full"}' />
   <block type="image" description="${p?/textarea}" url="${img/src}" alt="${img?/alt}" title="${img?/title}" align="center" size="l" />
 blocks-tagged: |
   <block type="introduction" value="${p,h*/slate}" />
@@ -105,7 +105,7 @@ Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincid
 
 ---
 
-<fields styles:align="left" />
+<fields :styles='{"align":"left"}' />
 
 </block>
 
@@ -115,7 +115,7 @@ Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincid
 
 ![](./image-dark "Title Image")
 
-<fields align="right" styles:size:noprefix="large" />
+<fields align="right" :styles='{"size:noprefix":"large"}' />
 
 </block>
 
@@ -129,43 +129,7 @@ Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincid
 
 ![](./image-dark "Title Image")
 
-<fields align="left" styles:size:noprefix="large" />
-
-</block>
-
-## Text Heading H3
-
-Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincidunt ut laoreet dolore magna aliquam erat volutpat. Ut wisi enim ad minim veniam, quis nostrud exerci tation ullamcorper suscipit lobortis nisl ut aliquip ex ea commodo consequat. Duis autem iusto odio dignissim qui blandit praesent luptatum zzril delenit auguevel eum iriure dolor in hendrerit in vulputate velit esse molestie consequat, vel illum dolore blandit praesent luptatum zzril qui Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincidunt ut laoreet dolore magna aliquam erat volutpat. Ut wisi enim ad minim veniam, quis nostrud exerci tation ullamcorper suscipit lobortis nisl ut aliquip ex ea commodo consequat. Duis autem vel eum iriure dolor in hendrerit in vulputate velit esse molestie consequat, vel illum dolore eu feugiat nulla facilisis at vero eros et accumsan et iusto odio dignissim qui blandit praesent luptatum zzril delenit augue duis dolore te feugait nulla facilisi.
-
-<block type="separator">
-
----
-
-<fields styles:align="left" />
-
-</block>
-
-<block type="image">
-
-Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincidunt.
-
-![](./image-dark "Title Image")
-
-<fields align="left" size="m" styles:size:noprefix="medium" />
-
-</block>
-
-## Text Heading H3
-
-Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincidunt ut laoreet dolore magna aliquam erat volutpat. Ut wisi enim ad minim veniam, quis nostrud exerci tation ullamcorper suscipit lobortis nisl ut aliquip ex ea commodo consequat. Duis autem iusto odio dignissim qui blandit praesent luptatum zzril delenit auguevel eum iriure dolor in hendrerit in vulputate velit esse molestie consequat, vel illum dolore blandit praesent luptatum zzril qui Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincidunt ut laoreet dolore magna aliquam erat volutpat. Ut wisi enim ad minim veniam, quis nostrud exerci tation ullamcorper suscipit lobortis nisl ut aliquip ex ea commodo consequat. Duis autem vel eum iriure dolor in hendrerit in vulputate velit esse molestie consequat, vel illum dolore eu feugiat nulla facilisis at vero eros et accumsan et iusto odio dignissim qui blandit praesent luptatum zzril delenit augue duis dolore te feugait nulla facilisi.
-
-<block type="image">
-
-Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincidunt.
-
-![](./image-dark "Title Image")
-
-<fields align="right" size="m" styles:size:noprefix="medium" />
+<fields align="left" :styles='{"size:noprefix":"large"}' />
 
 </block>
 
@@ -177,7 +141,7 @@ Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincid
 
 ---
 
-<fields styles:align="left" />
+<fields :styles='{"align":"left"}' />
 
 </block>
 
@@ -187,7 +151,7 @@ Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincid
 
 ![](./image-dark "Title Image")
 
-<fields align="left" size="s" styles:size:noprefix="small" />
+<fields align="left" size="m" :styles='{"size:noprefix":"medium"}' />
 
 </block>
 
@@ -201,7 +165,43 @@ Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincid
 
 ![](./image-dark "Title Image")
 
-<fields align="right" size="s" styles:size:noprefix="small" />
+<fields align="right" size="m" :styles='{"size:noprefix":"medium"}' />
+
+</block>
+
+## Text Heading H3
+
+Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincidunt ut laoreet dolore magna aliquam erat volutpat. Ut wisi enim ad minim veniam, quis nostrud exerci tation ullamcorper suscipit lobortis nisl ut aliquip ex ea commodo consequat. Duis autem iusto odio dignissim qui blandit praesent luptatum zzril delenit auguevel eum iriure dolor in hendrerit in vulputate velit esse molestie consequat, vel illum dolore blandit praesent luptatum zzril qui Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincidunt ut laoreet dolore magna aliquam erat volutpat. Ut wisi enim ad minim veniam, quis nostrud exerci tation ullamcorper suscipit lobortis nisl ut aliquip ex ea commodo consequat. Duis autem vel eum iriure dolor in hendrerit in vulputate velit esse molestie consequat, vel illum dolore eu feugiat nulla facilisis at vero eros et accumsan et iusto odio dignissim qui blandit praesent luptatum zzril delenit augue duis dolore te feugait nulla facilisi.
+
+<block type="separator">
+
+---
+
+<fields :styles='{"align":"left"}' />
+
+</block>
+
+<block type="image">
+
+Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincidunt.
+
+![](./image-dark "Title Image")
+
+<fields align="left" size="s" :styles='{"size:noprefix":"small"}' />
+
+</block>
+
+## Text Heading H3
+
+Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincidunt ut laoreet dolore magna aliquam erat volutpat. Ut wisi enim ad minim veniam, quis nostrud exerci tation ullamcorper suscipit lobortis nisl ut aliquip ex ea commodo consequat. Duis autem iusto odio dignissim qui blandit praesent luptatum zzril delenit auguevel eum iriure dolor in hendrerit in vulputate velit esse molestie consequat, vel illum dolore blandit praesent luptatum zzril qui Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincidunt ut laoreet dolore magna aliquam erat volutpat. Ut wisi enim ad minim veniam, quis nostrud exerci tation ullamcorper suscipit lobortis nisl ut aliquip ex ea commodo consequat. Duis autem vel eum iriure dolor in hendrerit in vulputate velit esse molestie consequat, vel illum dolore eu feugiat nulla facilisis at vero eros et accumsan et iusto odio dignissim qui blandit praesent luptatum zzril delenit augue duis dolore te feugait nulla facilisi.
+
+<block type="image">
+
+Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincidunt.
+
+![](./image-dark "Title Image")
+
+<fields align="right" size="s" :styles='{"size:noprefix":"small"}' />
 
 </block>
 

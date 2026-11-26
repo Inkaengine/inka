@@ -24,7 +24,7 @@ title: Separator
 blocks-matched: |
   <block type="slate" value="${p,h*,ul,ol,blockquote,strong,em,a/slate}" />
   <block type="title" _="${h1}" />
-  <block type="separator" _="${hr}" styles={"align":"full"} />
+  <block type="separator" _="${hr}" :styles='{"align":"full"}' />
   <block type="image" description="${p?/textarea}" url="${img/src}" alt="${img?/alt}" title="${img?/title}" align="center" size="l" />
   <block type="codeExample">
     <region name="tabs" widget="object_list" idField="@id" typeField="@type">
@@ -63,7 +63,7 @@ Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincid
 
 ---
 
-<fields styles:align="center" />
+<fields :styles='{"align":"center"}' />
 
 </block>
 
@@ -75,7 +75,7 @@ Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincid
 
 ---
 
-<fields styles:align="center" />
+<fields :styles='{"align":"center"}' />
 
 </block>
 
@@ -85,7 +85,7 @@ Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincid
 
 ![](./content-types/image-dark "Title Image")
 
-<fields align="right" styles:size:noprefix="large" />
+<fields align="right" :styles='{"size:noprefix":"large"}' />
 
 </block>
 
@@ -97,7 +97,7 @@ Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincid
 
 ---
 
-<fields styles:align="left" />
+<fields :styles='{"align":"left"}' />
 
 </block>
 
@@ -107,7 +107,7 @@ Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincid
 
 ![](./content-types/image-dark "Title Image")
 
-<fields align="left" size="m" styles:size:noprefix="medium" />
+<fields align="left" size="m" :styles='{"size:noprefix":"medium"}' />
 
 </block>
 
@@ -119,7 +119,7 @@ Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincid
 
 ---
 
-<fields styles:align="left" />
+<fields :styles='{"align":"left"}' />
 
 </block>
 
@@ -129,7 +129,7 @@ Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincid
 
 ![](./content-types/image-dark "Title Image")
 
-<fields align="left" size="s" styles:size:noprefix="small" />
+<fields align="left" size="s" :styles='{"size:noprefix":"small"}' />
 
 </block>
 
@@ -137,7 +137,7 @@ Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincid
 
 Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincidunt ut laoreet dolore magna aliquam erat volutpat. Ut wisi enim ad minim veniam, quis nostrud exerci tation ullamcorper suscipit lobortis nisl ut aliquip ex ea commodo consequat. Duis autem iusto odio dignissim qui blandit praesent luptatum zzril delenit auguevel eum iriure dolor in hendrerit in vulputate velit esse molestie consequat, vel illum dolore blandit praesent luptatum zzril qu. Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincidunt ut laoreet dolore magna aliquam erat volutpat. Ut wisi enim ad minim veniam, quis nostrud exerci tation ullamcorper suscipit lobortis nisl ut aliquip ex ea commodo consequat. Duis autem vel eum iriure dolor in hendrerit in vulputate velit esse molestie consequat, vel illum dolore eu feugiat nulla facilisis at vero eros et accumsan et iusto odio dignissim qui blandit praesent luptatum zzril delenit augue duis dolore te feugait nulla facilisi.&#x20;
 
-<fields templateId="/inka-templates/block-reference-layout" templateInstanceId="tpl-inst-separator" fixed=false readOnly=false>
+<fields templateId="/inka-templates/block-reference-layout" templateInstanceId="tpl-inst-separator" :fixed="false" :readOnly="false">
 
 <block type="codeExample" slotId="schema">
 

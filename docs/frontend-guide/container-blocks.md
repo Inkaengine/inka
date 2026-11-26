@@ -26,7 +26,7 @@ title: Container Blocks
 blocks-matched: |
   <block type="slate" value="${p,h*,ul,ol,blockquote,strong,em,a/slate}" />
   <block type="title" _="${h1}" />
-  <block type="separator" _="${hr}" styles={"align":"full"} />
+  <block type="separator" _="${hr}" :styles='{"align":"full"}' />
   <block type="codeExample">
     <region name="tabs" widget="object_list" idField="@id" typeField="@type">
       <block type="tab" label="${h3/text}" language="${pre/lang}" code="${pre/textarea}" />

@@ -45,23 +45,23 @@ blocks-matched: |
 
 <fields templateId="/inka-templates/event-view" templateInstanceId="tpl-ev-def">
 
-<fields fixed=true>
+<fields :fixed="true">
 
 <block type="title">
 
 # Event
 
-<fields slotId="title" readOnly=true />
+<fields slotId="title" :readOnly="true" />
 
 </block>
 
-<block type="eventMetadata" slotId="event-metadata" readOnly=false />
+<block type="eventMetadata" slotId="event-metadata" :readOnly="false" />
 
 </fields>
 
 <block type="slate">
 
-<fields slotId="default" fixed=false readOnly=false />
+<fields slotId="default" :fixed="false" :readOnly="false" />
 
 </block>
 

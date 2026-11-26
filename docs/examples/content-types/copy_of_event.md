@@ -47,13 +47,13 @@ blocks-tagged: |
 
 # Another Event
 
-<fields slotId="title" fixed=true readOnly=true />
+<fields slotId="title" :fixed="true" :readOnly="true" />
 
 </block>
 
-<fields readOnly=false>
+<fields :readOnly="false">
 
-<fields slotId="default" fixed=false>
+<fields slotId="default" :fixed="false">
 
 <block type="introduction">
 
@@ -69,9 +69,9 @@ Percolator and extraction press luwak press aroma foam eu panna spoon espresso i
 
 </fields>
 
-<block type="eventMetadata" slotId="event-metadata" fixed=true required=true />
+<block type="eventMetadata" slotId="event-metadata" :fixed="true" :required="true" />
 
-<block type="slate" slotId="default" fixed=false />
+<block type="slate" slotId="default" :fixed="false" />
 
 </fields>
 

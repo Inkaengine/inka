@@ -31,7 +31,7 @@ title: Table of Contents
 blocks-matched: |
   <block type="slate" value="${p,h*,ul,ol,blockquote,strong,em,a/slate}" />
   <block type="title" _="${h1}" />
-  <block type="separator" _="${hr}" styles={"align":"full"} />
+  <block type="separator" _="${hr}" :styles='{"align":"full"}' />
   <block type="image" description="${p?/textarea}" url="${img/src}" alt="${img?/alt}" title="${img?/title}" align="center" size="l" />
   <block type="codeExample">
     <region name="tabs" widget="object_list" idField="@id" typeField="@type">
@@ -62,7 +62,7 @@ Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincid
 
 ![](./content-types/image-dark "Title Image")
 
-<fields align="wide" copyright_and_sources="Copyright: unsplash.com" styles:size:noprefix="large" />
+<fields align="wide" copyright_and_sources="Copyright: unsplash.com" :styles='{"size:noprefix":"large"}' />
 
 </block>
 
@@ -106,11 +106,11 @@ Text can be **bold** or *italic*.
 
 ---
 
-<fields styles:align="left" />
+<fields :styles='{"align":"left"}' />
 
 </block>
 
-<fields templateId="/inka-templates/block-reference-layout" templateInstanceId="tpl-inst-toc" fixed=false readOnly=false>
+<fields templateId="/inka-templates/block-reference-layout" templateInstanceId="tpl-inst-toc" :fixed="false" :readOnly="false">
 
 <block type="codeExample" slotId="schema">
 

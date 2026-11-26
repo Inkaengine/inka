@@ -41,7 +41,7 @@ blocks-tagged: |
 
 A carousel/slider that cycles through slides. Slides are stored as an object_list — each slide has a title, description, image, and optional button.
 
-<block type="slider" autoplayEnabled=false autoplayDelay=5000>
+<block type="slider" :autoplayEnabled="false" :autoplayDelay="5000">
 
 ## Product Launch 2025
 
@@ -63,11 +63,11 @@ Recognized for excellence in UX.
 
 ![](<data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 width=%27800%27 height=%27400%27%3E%3Crect width=%27100%25%27 height=%27100%25%27 fill=%27%23aa5577%27/%3E%3Ctext x=%2750%25%27 y=%2750%25%27 fill=%27white%27 text-anchor=%27middle%27 font-size=%2724%27%3ESlide 2%3C/text%3E%3C/svg%3E>)
 
-<fields hideButton=true />
+<fields :hideButton="true" />
 
 </block>
 
-<fields templateId="/inka-templates/block-reference-layout" templateInstanceId="tpl-inst-slider" fixed=false readOnly=false>
+<fields templateId="/inka-templates/block-reference-layout" templateInstanceId="tpl-inst-slider" :fixed="false" :readOnly="false">
 
 <block type="codeExample" slotId="schema">
 

@@ -181,24 +181,25 @@ The `<fields>` tag sets field values on the blocks in its scope, and its form ch
 
 ## Typed attributes
 
-An attribute's type comes from how it is written, with no schema involved:
+An attribute's type comes from how it is written, with no schema involved. As in Vue, a plain attribute is always text and a bound one, prefixed with `:`, is always data:
 
-- a bare name, `collapsed`, is boolean `true`, and `collapsed=false` is `false` — a false value is written like any other, never dropped as if absent
-- an unquoted value, `size=3`, is coerced — number, boolean, null, or JSON
-- a double-quoted value, `title="Hi ${1/text}"`, is a string (so any references inside it survive)
-- a single-quoted `data='{ … }'` carries raw JSON object fields verbatim
+- a double-quoted value, `title="Hi ${1/text}"`, is text (so any references inside it survive)
+- a bound value, `:levels="3"`, is JSON: a number, `true` or `false`, `null`, a list or an object
+- a bare name, `collapsed`, is boolean `true`; a false value is bound, `:collapsed="false"`, never dropped as if absent
 
-## Dict fields
+Bound JSON holding double quotes is single-quoted: `:styles='{"align":"left"}'`. An unquoted value, `size=3`, is refused, because it could be either.
 
-A block field whose value is a flat dictionary — a block's `styles`, or any custom block's object field — is written as one namespaced attribute per entry, `field:key=value`, rather than a JSON blob.
+## Lists and objects
+
+A field holding a list or an object is one bound attribute, so the block stays a tag with its Markdown body rather than turning into a JSON blob. A teaser's styles, an object:
 
 ### Markdown
 
 ```markdown
-<block type="teaser" styles:align="left" styles:backgroundColor="grey" />
+<block type="teaser" :styles='{"align":"left","backgroundColor":"grey"}' />
 ```
 
-The name is split on the **first** colon, so a key that itself contains a colon rides in the key untouched — `styles:size:noprefix="medium"` decodes to `{ styles: { "size:noprefix": "medium" } }`. Each value is typed like any other attribute, so `styles:noLine=false` is a boolean and `styles:span=2` a number. An empty dict writes nothing, and a value that is itself nested or a list can't flatten, so that block falls to the `data='{…}'` form instead. This is generic — nothing about it is specific to `styles`; it is simply the readable rung between a bare attribute and a JSON blob for any dictionary.
+An empty list is `:facets="[]"`, so empty and absent stay different. Only a field whose name an attribute can't carry, such as `@id`, sends its block to the `data='{…}'` form.
 
 ## The fallback chain
 

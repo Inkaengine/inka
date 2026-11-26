@@ -23,7 +23,7 @@ title: Accordion
 blocks-matched: |
   <block type="slate" value="${p,h*,ul,ol,blockquote,strong,em,a/slate}" />
   <block type="title" _="${h1}" />
-  <block type="separator" _="${hr}" styles={"align":"full"} />
+  <block type="separator" _="${hr}" :styles='{"align":"full"}' />
   <block type="image" description="${p?/textarea}" url="${img/src}" alt="${img?/alt}" title="${img?/title}" align="center" size="l" />
   <block type="codeExample">
     <region name="tabs" widget="object_list" idField="@id" typeField="@type">
@@ -42,7 +42,7 @@ blocks-tagged: |
       </block>
     </region>
   </block>
-  <block type="accordion" right_arrows=true>
+  <block type="accordion" right_arrows>
     <region name="panels" widget="object_list" idField="@id" typeField="@type">
       <block type="panel" title="${h/text}" />
     </region>
@@ -71,7 +71,7 @@ Each panel is an object-list item with a title and a content area that holds chi
 
 </block>
 
-<block type="accordion" styles:backgroundColor="grey">
+<block type="accordion" :styles='{"backgroundColor":"grey"}'>
 
 ## Accordion with text
 
@@ -93,7 +93,7 @@ The Image content type can be used to upload an image in various formats (JPG, G
 
 ---
 
-<fields styles:align="left" />
+<fields :styles='{"align":"left"}' />
 
 </block>
 
@@ -121,7 +121,7 @@ Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincid
 
 ---
 
-<fields styles:align="left" />
+<fields :styles='{"align":"left"}' />
 
 </block>
 
@@ -131,7 +131,7 @@ The Image content type can be used to upload an image in various formats (JPG, G
 
 ![](./content-types/image-dark "Image")
 
-<fields align="left" size="m" image_field="image" styles:size:noprefix="medium" />
+<fields align="left" size="m" image_field="image" :styles='{"size:noprefix":"medium"}' />
 
 </block>
 
@@ -149,7 +149,7 @@ The Image content type can be used to upload an image in various formats (JPG, G
 
 ![](./content-types/image-light.jpg "Image - Light")
 
-<fields align="right" size="m" image_field="image" styles:size:noprefix="medium" />
+<fields align="right" size="m" image_field="image" :styles='{"size:noprefix":"medium"}' />
 
 </block>
 
@@ -165,7 +165,7 @@ Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincid
 
 ---
 
-<fields styles:align="left" />
+<fields :styles='{"align":"left"}' />
 
 </block>
 
@@ -175,7 +175,7 @@ The Image content type can be used to upload an image in various formats (JPG, G
 
 ![](./content-types/image-dark "Image")
 
-<fields align="left" size="s" image_field="image" styles:size:noprefix="small" />
+<fields align="left" size="s" image_field="image" :styles='{"size:noprefix":"small"}' />
 
 </block>
 
@@ -193,7 +193,7 @@ The Image content type can be used to upload an image in various formats (JPG, G
 
 ![](./content-types/image-dark "Image")
 
-<fields align="right" size="s" image_field="image" styles:size:noprefix="small" />
+<fields align="right" size="s" image_field="image" :styles='{"size:noprefix":"small"}' />
 
 </block>
 
@@ -213,7 +213,7 @@ Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincid
 
 Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincidunt ut laoreet dolore magna aliquam erat volutpat. Ut wisi enim ad minim veniam, quis nostrud exerci tation ullamcorper suscipit lobortis nisl ut aliquip ex ea commodo
 
-<fields styles:align="center" />
+<fields :styles='{"align":"center"}' />
 
 </block>
 
@@ -223,7 +223,7 @@ Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincid
 
 Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincidunt ut laoreet dolore magna aliquam erat volutpat. Ut wisi enim ad minim veniam, quis nostrud exerci tation ullamcorper
 
-<fields styles:align="left" />
+<fields :styles='{"align":"left"}' />
 
 </block>
 
@@ -233,17 +233,17 @@ Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincid
 
 Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincidunt ut laoreet dolore magna aliquam erat volutpat. Ut wisi enim ad minim veniam, quis nostrud exerci tation ullamcorper
 
-<fields styles:align="right" />
+<fields :styles='{"align":"right"}' />
 
 </block>
 
 ## Accordion with listing
 
-<block type="listing" data-json='{"headlineTag":"h2","querystring":{"limit":"3","query":[{"i":"Description","o":"plone.app.querystring.operation.string.contains","v":"block"}],"sort_order":"descending","sort_order_boolean":true},"variation":"summary","fieldMapping":{"getURL":{"field":"href","type":"link"},"title":{"field":"title","type":"string"},"description":{"field":"description","type":"textarea"},"image":{"field":"image","type":"image_link"}}}' />
+<block type="listing" headlineTag="h2" :querystring='{"limit":"3","query":[{"i":"Description","o":"plone.app.querystring.operation.string.contains","v":"block"}],"sort_order":"descending","sort_order_boolean":true}' variation="summary" :fieldMapping='{"getURL":{"field":"href","type":"link"},"title":{"field":"title","type":"string"},"description":{"field":"description","type":"textarea"},"image":{"field":"image","type":"image_link"}}' />
 
 ## Accordion with table
 
-<block type="slateTable" styles:backgroundColor="transparent" table.basic=false table.celled table.compact=false table.fixed table.hideHeaders=false table.inverted=false table.striped>
+<block type="slateTable" :styles='{"backgroundColor":"transparent"}' :table.basic="false" table.celled :table.compact="false" table.fixed :table.hideHeaders="false" :table.inverted="false" table.striped>
 
 | Title Tablehead&#x20; | Title Tablehead&#x20; | Title Tablehead&#x20; |
 | --- | --- | --- |
@@ -255,7 +255,7 @@ Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincid
 
 </block>
 
-<fields templateId="/inka-templates/block-reference-layout" templateInstanceId="tpl-inst-accordion" fixed=false readOnly=false>
+<fields templateId="/inka-templates/block-reference-layout" templateInstanceId="tpl-inst-accordion" :fixed="false" :readOnly="false">
 
 <block type="codeExample" slotId="schema">
 

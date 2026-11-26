@@ -41,7 +41,7 @@ A multi-field form with configurable field types, validation, and email submissi
 
 </block>
 
-<block type="form" data-json='{"default_from":"noreply@plone.org","title":"A simple form","default_to":"admin@example.com","default_subject":"New form submission","captcha":"honeypot","lastChange":1710238630312,"remove_data_after_days":-1,"send_email":true,"show_cancel":false,"store":true,"subblocks":[{"field_id":"1709833577467","field_type":"text","label":"Name","required":true},{"field_id":"1709833592544","field_type":"from","label":"Email","required":false,"use_as_bcc":false,"use_as_reply_to":false},{"field_id":"1709833604677","field_type":"textarea","label":"Message","required":false},{"field_id":"1709833616406","field_type":"multiple_choice","input_values":["Red","Green","Blue"],"label":"Select field","required":false}]}' />
+<block type="form" default_from="noreply@plone.org" title="A simple form" default_to="admin@example.com" default_subject="New form submission" captcha="honeypot" :lastChange="1710238630312" :remove_data_after_days="-1" :send_email="true" :show_cancel="false" :store="true" :subblocks='[{"field_id":"1709833577467","field_type":"text","label":"Name","required":true},{"field_id":"1709833592544","field_type":"from","label":"Email","required":false,"use_as_bcc":false,"use_as_reply_to":false},{"field_id":"1709833604677","field_type":"textarea","label":"Message","required":false},{"field_id":"1709833616406","field_type":"multiple_choice","input_values":["Red","Green","Blue"],"label":"Select field","required":false}]' />
 
 ## Submitting a form
 
@@ -69,7 +69,7 @@ const response = await fetch(`${apiUrl}${pagePath}/@submit-form`, {
 
 If your frontend submits from its server, read the token from the `access_token` cookie the bridge sets instead. Either way, a submission made like this is the editor's, with the editor's permissions: see [How an editor's login reaches the front end](../deploy-and-secure.md#how-an-editors-login-reaches-the-front-end).
 
-<fields templateId="/inka-templates/block-reference-layout" templateInstanceId="tpl-inst-form" fixed=false readOnly=false>
+<fields templateId="/inka-templates/block-reference-layout" templateInstanceId="tpl-inst-form" :fixed="false" :readOnly="false">
 
 <block type="codeExample" slotId="schema">
 

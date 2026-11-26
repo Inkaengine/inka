@@ -81,7 +81,7 @@ A table with rich text (Slate) content in each cell. Supports adding/removing ro
 
 </block>
 
-<fields styles:backgroundColor="grey">
+<fields :styles='{"backgroundColor":"grey"}'>
 
 <block type="heading" alignment="left" heading="Basic Table" tag="h2" />
 
@@ -111,7 +111,7 @@ A table with rich text (Slate) content in each cell. Supports adding/removing ro
 
 </fields>
 
-<fields templateId="/inka-templates/block-reference-layout" templateInstanceId="tpl-inst-table" fixed=false readOnly=false>
+<fields templateId="/inka-templates/block-reference-layout" templateInstanceId="tpl-inst-table" :fixed="false" :readOnly="false">
 
 <block type="codeExample" slotId="schema">
 

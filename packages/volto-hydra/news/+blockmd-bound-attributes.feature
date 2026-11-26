@@ -1,0 +1,1 @@
+Inka Markdown writes a value that isn't plain text as a bound attribute, as Vue does: `:levels="3"`, `:styles='{"align":"left"}'`, `:facets="[]"`. A block with a list or object field keeps its Markdown instead of becoming a JSON blob. The old forms (`levels=3`, `styles:align="left"`) are refused; migrate content by re-exporting it. @djay
