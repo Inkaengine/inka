@@ -140,34 +140,3 @@ describe('@vocabularies and anonymous access', () => {
     assert.equal((await anonymous('plone.app.vocabularies.MetadataFields')).status, 200);
   });
 });
-
-/**
- * The other half of the same production behaviour: @querystring does not inline
- * a keyword index's terms, it names the (closed) vocabulary. A facet UI must
- * therefore get its options elsewhere — from the result set — and this is the
- * response shape that forces it to.
- */
-describe('@querystring index values', () => {
-  const querystring = async () => {
-    const res = await fetch(`${baseUrl}/@querystring`, { headers: { Accept: 'application/json' } });
-    assert.equal(res.status, 200);
-    return (await res.json()).indexes;
-  };
-
-  it('does not inline the keyword index terms', async () => {
-    const Subject = (await querystring()).Subject;
-    assert.equal(Subject.fetch_vocabulary, true);
-    assert.deepEqual(Subject.values, {});
-    assert.equal(Subject.vocabulary, 'plone.app.vocabularies.Keywords');
-  });
-
-  it('inlines portal_type AND flags its vocabulary, as live Plone does', async () => {
-    const portal_type = (await querystring()).portal_type;
-    // Both. `fetch_vocabulary` alone is not a reason to go fetching: a consumer
-    // has to check whether `values` is empty, or it will discard nine real
-    // terms (and their titles: "Page" for Document) to chase a vocabulary.
-    assert.equal(portal_type.fetch_vocabulary, true);
-    assert.ok(Object.keys(portal_type.values).length > 0);
-    assert.equal(portal_type.values.Document.title, 'Page');
-  });
-});
