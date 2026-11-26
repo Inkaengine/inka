@@ -225,7 +225,7 @@ function eachBlockWithSchema(page, blocksConfig, fn) {
     if (!block) continue;
     const schema = resolveEffectiveBlockSchema(id, out, pathMap, blocksConfig, SEARCH_INTL);
     if (!schema) continue;
-    const next = fn(block, schema, info.blockType ?? block['@type']);
+    const next = fn(block, schema, info.blockType ?? block['@type'], info.path.join('/'));
     if (next !== block) out = updateBlockById(out, pathMap, id, next);
   }
   return out;
@@ -242,18 +242,43 @@ const sameValue = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 // `keep(type, field)`: a default to keep anyway -- one the block's prototype
 // states as a literal, which its bare Markdown implies (an image's `size`), so
 // dropping it would leave the bare form unable to read back.
+//
+// A default is only left out when loading puts it back: some come from the
+// block itself (a listing in a container defaults its item type to the one it
+// holds), and without the value there is no default to fill. So the page is
+// filled again and any value that did not come back is kept, until none is lost.
 export function withoutSchemaDefaults(page, blocksConfig, { keep = () => false } = {}) {
-  return eachBlockWithSchema(page, blocksConfig, (block, schema, type) => {
-    let out = block;
-    for (const [field, def] of fixedDefaults(schema)) {
-      if (keep(type, field)) continue;
-      if (field in out && sameValue(out[field], def.default)) {
-        if (out === block) out = { ...block };
-        delete out[field];
+  if (!page.blocks) return page;
+  const paths = Object.entries(buildBlockPathMap(page, blocksConfig, SEARCH_INTL))
+    .filter(([, info]) => info?.path).map(([id, info]) => [id, info.path]);
+  const kept = new Set(); // `${path}|${field}` that loading could not restore
+  for (;;) {
+    const out = eachBlockWithSchema(page, blocksConfig, (block, schema, type, path) => {
+      let next = block;
+      for (const [field, def] of fixedDefaults(schema)) {
+        if (keep(type, field) || kept.has(`${path}|${field}`)) continue;
+        if (field in next && sameValue(next[field], def.default)) {
+          if (next === block) next = { ...block };
+          delete next[field];
+        }
+      }
+      return next;
+    });
+    const back = withSchemaDefaults(out, blocksConfig);
+    let lost = false;
+    for (const [, path] of paths) {
+      const was = getBlockByPath(page, path);
+      const now = getBlockByPath(back, path);
+      if (!was || !now) continue;
+      for (const field of Object.keys(was)) {
+        if (!sameValue(was[field], now[field]) && !kept.has(`${path.join('/')}|${field}`)) {
+          kept.add(`${path.join('/')}|${field}`);
+          lost = true;
+        }
       }
     }
-    return out;
-  });
+    if (!lost) return out;
+  }
 }
 
 /** The page with each absent field its schema declares a default for set to
