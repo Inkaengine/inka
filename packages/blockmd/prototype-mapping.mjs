@@ -715,7 +715,50 @@ function itemRefOf(proto) {
   return Object.values(proto.fields).map(parseRef).find((r) => r && MDAST_OF_KIND[r.node]);
 }
 
+/** The item prototypes of a region whose items are a definition list's
+ *  entries: each names its term (`title="${dt/text}"`), so the region is one
+ *  Markdown definition list, an entry per item, as a table's rows are its
+ *  rows. Null for any other region. */
+function defEntryProtos(region) {
+  if (!region.protos.length) return null;
+  const names = (p) => Object.values(p.fields).some((v) => parseRef(v)?.node === 'dt');
+  return region.protos.every(names) ? region.protos : null;
+}
+
+/** A definition list's entries: each term with the definitions after it. */
+function defEntries(dl) {
+  const entries = [];
+  for (const c of dl.children ?? []) {
+    if (kindOf(c) === 'dt') entries.push({ dt: c, dds: [] });
+    else if (kindOf(c) === 'dd' && entries.length) entries[entries.length - 1].dds.push(c);
+  }
+  return entries;
+}
+
+/** Each entry of a definition list as an item: its term and definition read by
+ *  the item's refs, its definition's content as the item's regions' blocks. */
+function decodeDefEntries(protos, region, dl, depth) {
+  return defEntries(dl).map(({ dt, dds }) => {
+    const proto = region.protos[0];
+    const item = { '@type': proto.type };
+    for (const [field, val] of Object.entries(proto.fields)) {
+      const ref = parseRef(val);
+      if (!ref) { item[field] = val; continue; }
+      if (field === '_' || ref.part === null) continue;
+      const node = ref.node === 'dt' ? dt : ref.node === 'dd' ? dds[0] : null;
+      const v = node ? resolvePart(node, ref) : null;
+      if (v != null && v !== '') item[field] = v;
+    }
+    const content = dds.flatMap((d) => d.children ?? []);
+    for (const r of proto.regions) setAt(item, r.path, decodeContent(protos, r, content, depth));
+    return item;
+  });
+}
+
 function decodeRegion(protos, region, inner, depth) {
+  if (region.widget === 'blocks_layout' && defEntryProtos(region) && inner.length === 1 && kindOf(inner[0]) === 'dl') {
+    return decodeDefEntries(protos, region, inner[0], depth);
+  }
   if (region.widget === 'blocks_layout') { // a plain block sequence one level
     return matchNodes([...protos, ...region.protos], inner, depth + 1); // deeper, with scoped protos
   }
@@ -1304,6 +1347,34 @@ function structuralProtoOf(region, item, at) {
   return proto;
 }
 
+/** A region's items as one definition list: each item's term from its
+ *  `${dt}` field, its definition the Markdown of its regions' blocks. A field
+ *  the entry has no place for can't be written so; verify-on-emit keeps the
+ *  tagged form then. */
+function defListOf(protos, entryProtos, items, depth) {
+  return { type: 'defList', children: items.flatMap((item) => {
+    const proto = entryProtos.find((p) => p.type === item['@type']);
+    const termField = Object.entries(proto.fields).find(([, v]) => parseRef(v)?.node === 'dt')?.[0];
+    const regionRoots = new Set(proto.regions.map((r) => r.path[0]));
+    for (const k of Object.keys(item)) {
+      if (k === '@type' || k === termField || regionRoots.has(k)) continue;
+      if (!(k in proto.fields) || parseRef(proto.fields[k]) || !deepEqual(proto.fields[k], item[k])) {
+        throw new NoFit(`a definition-list entry has no place for field "${k}"`);
+      }
+    }
+    const content = proto.regions.flatMap((r) => {
+      const blocks = getAtPath(item, r.path) ?? [];
+      return blocks.length
+        ? normaliseTables(mdParser.parse(emitBlocks(contentScope(protos, r), blocks, depth + 1))).children
+        : [];
+    });
+    return [
+      { type: 'defListTerm', children: textNodes(item[termField]) },
+      ...(content.length ? [{ type: 'defListDescription', children: content }] : []),
+    ];
+  }) };
+}
+
 /** Emit a container block as a `<block is>` tag over its regions. */
 function emitContainer(protos, proto, block, depth) {
   const head = emitFields(proto, block, depth); // the container's own scalar refs (a grid headline)
@@ -1328,6 +1399,11 @@ function emitContainer(protos, proto, block, depth) {
     }).join('\n\n');
   const renderRegion = (region, wrap, tableForm, hoist) => {
     const val = getAtPath(block, region.path);
+    const entries = defEntryProtos(region);
+    if (region.widget === 'blocks_layout' && entries && val.length
+      && val.every((b) => entries.some((p) => p.type === b['@type']))) {
+      return mdOf(defListOf(protos, entries, val, depth));
+    }
     if (region.widget === 'blocks_layout') {
       const scope = [...protos, ...region.protos];
       if (hoist) return hoistFields(scope, val, depth + 1);

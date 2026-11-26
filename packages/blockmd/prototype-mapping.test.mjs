@@ -2653,3 +2653,40 @@ describe('a form field reads one question, not the next one too', () => {
     expect(() => matchBlocks(protos, md)).toThrow();
   });
 });
+
+describe("a region whose items are a definition list's entries", () => {
+  // A block that is a list of terms and definitions (a Definition list of
+  // Definition items) is one Markdown definition list: each entry an item, its
+  // term the item's title, its definition's content the item's blocks -- as a
+  // Markdown table's rows are a table's row items.
+  const protos = [
+    ...parsePrototypes('<block is="slate" value="${p,a/slate}" />'),
+    ...parsePrototypes([
+      '<block is="definitionList">',
+      '  <region name="items" widget="blocks_layout">',
+      '    <block is="definitionItem" title="${dt/text}">',
+      '      <region name="items" widget="blocks_layout" />',
+      '    </block>',
+      '  </region>',
+      '</block>',
+    ].join('\n'), { explicit: true }),
+  ];
+  const para = (text) => ({ '@type': 'slate', value: [{ type: 'p', children: [{ text }] }] });
+  const list = { '@type': 'definitionList', items: [
+    { '@type': 'definitionItem', title: 'Opening hours', items: [para('9am to 5pm, Monday to Friday.')] },
+    { '@type': 'definitionItem', title: 'Street Address', items: [para('2-24 Rawson Place'), para('Haymarket NSW 2000')] },
+    { '@type': 'definitionItem', title: 'Phone', items: [para('1300 300 300')] },
+  ] };
+
+  it('writes one definition list', () => {
+    const md = emitBlocks(protos, [list]);
+    expect(md).toMatch(/Opening hours\n: +9am to 5pm, Monday to Friday\./);
+    expect(md).toMatch(/Street Address\n: +2-24 Rawson Place\n\n +Haymarket NSW 2000/);
+    expect(md).toMatch(/Phone\n: +1300 300 300/);
+    expect(md).not.toContain('<block is="definitionItem"');
+  });
+
+  it('reads each entry back as an item, a multi-paragraph definition whole', () => {
+    expect(matchBlocks(protos, emitBlocks(protos, [list]))).toEqual([list]);
+  });
+});
