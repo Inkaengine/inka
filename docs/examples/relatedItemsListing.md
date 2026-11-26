@@ -21,7 +21,7 @@ subjects:
   - listings
 title: Related Items Block
 blocks-matched: |
-  <block type="slate" value="${p,h*,ul,ol,blockquote,strong,em,a/slate}" plaintext="${p,h*,ul,ol,blockquote,strong,em,a/text}" />
+  <block type="slate" value="${p,h*,ul,ol,blockquote,strong,em,a/slate}" />
   <block type="title" _="${h1}" />
   <block type="codeExample">
     <region name="tabs" widget="object_list" idField="@id" typeField="@type">
@@ -36,7 +36,7 @@ Renders the current page's related items relation field (default relatedItems). 
 
 ## Live example
 
-<block type="relatedItemsListing" relationField="relatedItems" variation="summary" />
+<block type="relatedItemsListing" data-json='{"relationField":"relatedItems","variation":"summary","fieldMapping":{"getURL":{"field":"href","type":"link"},"title":{"field":"title","type":"string"},"description":{"field":"description","type":"textarea"},"image":{"field":"image","type":"image_link"}}}' />
 
 <fields templateId="/inka-templates/block-reference-layout" templateInstanceId="tpl-inst-relatedItemsListing" fixed=false readOnly=false>
 

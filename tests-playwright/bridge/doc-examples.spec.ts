@@ -13,12 +13,12 @@
  */
 import { test as base, expect, URLS } from '../fixtures';
 import { AdminUIHelper } from '../helpers/AdminUIHelper';
-import { verifyBlockRendering } from '../helpers/BlockVerificationHelper';
+import { verifyBlockRendering } from '@inka/testing/playwright/BlockVerificationHelper';
 import { getFrontendUrl } from './fixtures';
 import * as fs from 'fs';
 import * as path from 'path';
 import { fileURLToPath } from 'url';
-import { requireEnvironment, unreachable } from '../helpers/preconditions';
+import { requireEnvironment, unreachable } from '@inka/testing/playwright/preconditions';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 // Doc-example tests run on frontends that render blocks from fixture data.
@@ -152,7 +152,9 @@ const examples = [
   {
     type: 'toc',
     blockId: 'ex-toc',
-    expectedText: 'Getting Started',
+    // A text block's heading is listed by its own words, bold ones included;
+    // not by `plaintext`, which is the whole block's and can be out of date.
+    expectedText: 'Plain bold heading',
   },
   {
     type: 'maps',

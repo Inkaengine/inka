@@ -23,7 +23,7 @@ subjects:
   - templates
 title: Templates & Layouts
 blocks-matched: |
-  <block type="slate" value="${p,h*,ul,ol,blockquote,strong,em,a/slate}" plaintext="${p,h*,ul,ol,blockquote,strong,em,a/text}" />
+  <block type="slate" value="${p,h*,ul,ol,blockquote,strong,em,a/slate}" />
   <block type="title" _="${h1}" />
   <block type="separator" _="${hr}" styles={"align":"full"} />
   <block type="codeExample">
@@ -34,7 +34,7 @@ blocks-matched: |
 blocks-tagged: |
   <block type="callout">
     <region name="items" widget="blocks_layout">
-      <block type="slate" value="${p,h*,ul,ol,blockquote,strong,em,a/slate}" plaintext="${p,h*,ul,ol,blockquote,strong,em,a/text}" />
+      <block type="slate" value="${p,h*,ul,ol,blockquote,strong,em,a/slate}" />
     </region>
   </block>
   <block type="slateTable">
@@ -69,7 +69,8 @@ Templates are analogous to blocks themselves but are made up of blocks with spec
 
 - **Fixed + ReadOnly** — can't be edited or moved (e.g. branded headers/footers). Similar to fixed hard-coded HTML in a block.
 - **Fixed** — can be edited but not moved (e.g. required sections). Similar to a block field.
-- **Slot** (`fixed: false` / unset) — a named region (`slotId`) where editors can add their own blocks. Similar to a block field. The `"default"` slot receives leftover content.
+- **Slot** (`fixed: false` / unset) — a named region (`slotId`) where editors can add their own blocks. Similar to a block field. The `"default"` slot receives leftover content, so a layout's main content slot must be called `"default"`: it is the one slot every layout shares.
+- **Empty slot** — a slot nobody has filled yet: an `@type: "empty"` block naming it, `{ "@type": "empty", "slotId": "links", "fixed": false }`. A template stores it, so the slot keeps its place (a hero's links before any page has added one); a page never does. The editor shows it as a place to add to. A visitor's page never receives one: the merge a frontend runs leaves it out.
 
 The slot a block lives in is identified by its `slotId`. This is the field name used by `expandTemplates` / `expandTemplatesSync` and by the merge rules below — not `placeholder`.
 
@@ -89,7 +90,9 @@ The slot a block lives in is identified by its `slotId`. This is the field name 
 
 <block type="callout" variation="important">
 
-**Every block in a template must declare a `slotId`** — not just slot blocks, but **`fixed` and `fixed+readOnly` blocks too, and every block *nested* inside a container.** The recursive merge keeps a nested block only when it has a `slotId` (or a `templateId`): `if (nested.slotId || nested.templateId)`. A block without one is **silently dropped** — the container survives but renders empty, with no error. This is the most common reason a template "half renders". The editor keeps this true for blocks an author places: an added, pasted or moved block, and everything nested in it, takes its slot from where it lands — one rule, described in [Template membership](../architecture.md#template-membership-edit-side-slot-assignment).
+**Every block in a template must declare a `slotId`** — not just slot blocks, but **`fixed` and `fixed+readOnly` blocks too, and every block *nested* inside a container.** Locking a template (a new one from Make template included) refuses a template block that names no slot: the refusal opens the block, with the problem on its Slot ID. A page can't be saved with a template unlocked, so the page save, which writes the templates that changed, doesn't check slots again. The content check reports one too. The recursive merge keeps a nested block only when it has a `slotId` (or a `templateId`): `if (nested.slotId || nested.templateId)`. A block without one is **silently dropped** — the container survives but renders empty, with no error. This is the most common reason a template "half renders". The editor keeps this true for blocks an author places: an added, pasted or moved block, and everything nested in it, takes its slot from where it lands — one rule, described in [Template membership](../architecture.md#template-membership-edit-side-slot-assignment).
+
+**A slot is in one place.** The same `slotId` in two regions of one template is refused the same way: the merge would put the slot's content in whichever region it meets first. That holds at every depth: a block and a block inside it never share a slot, or the merge finds the block as content of its own slot. Each region inside a template block is a slot of its own, named from the block's slot and the region (`primary-items`): open blocks in it share that slot, and a fixed one, which is matched by its slot, gets one of its own (`primary-items-1`). A region of a template with nothing in it has lost its slot; store an empty slot there instead. Emptying a slot in the editor keeps it: the placeholder left behind names the slot.
 
 </block>
 
@@ -182,26 +185,23 @@ ordered by a `blocks_layout` region (as above).
 
 - **\`object_list\`** (a slider's slides, a table's rows): children are an **inline array**
 
-of block objects, each identified by an **id field** (`@id` by default).
+of block objects, each identified by the **id field** its schema names (`idField`; none is assumed).
 
 Everything else is identical: every object_list item still needs a `slotId` (plus `templateId` / `fixed` / `readOnly` as appropriate), and a slot item fills from the page's content just like a `blocks_layout` slot.
 
-The merge identifies object_list items by their **id field**, and it varies per field — a form's `subblocks` key on `field_id`, a slider's `slides` on `@id`, a table's `rows` on `key`. The merge doesn't read block schemas, so whenever you expand a template or layout that contains an object_list container you MUST tell it each field's id field via an **\`idFieldMap\`** (`{ blockType: { field: idField } }`). Build it from the same blocks config you pass to `initBridge` with `buildIdFieldMap`, exactly as the admin does, rather than writing it by hand. Without it the merge falls back to `@id` — and for a `field_id`-keyed field that mints a broken id and the item is dropped on the next merge.
+The merge identifies object_list items by their **id field**, and it varies per field — a form's `subblocks` key on `field_id`, a slider's `slides` on `@id`, a table's `rows` on `key`. The merge doesn't read block schemas. Your block's code knows its own field, so it passes `idField` when it hands the list to the merge, `@id` included. Without it the merge throws: it never guesses a list's key.
+
+Inside one call the merge reads other lists only by their blocks, never by their ids. It takes content by slot, and a list item's id is in the item itself, read by that list's own call.
 
 ### Javascript
 
 ```javascript
-import { buildIdFieldMap } from '@hydra-js/hydra.js';
-
-// Once, from your block definitions: { form: { subblocks: 'field_id' }, slider: { slides: '@id' }, … }
-const idFieldMap = buildIdFieldMap(blocksConfig);
-
-const items = expandTemplatesSync(layout, {
-    blocks, templateState, templates, idFieldMap,
+// In the form block's code: its fields are keyed on field_id.
+const fields = expandTemplatesSync(block.subblocks, {
+    templateState, templates, idField: 'field_id',
 });
+// Each field carries its id in field_id, and in @uid.
 ```
-
-(When you re-enter to expand a **single** object_list array on its own, the `idField` shorthand is enough: `expandTemplatesSync(block.slides, { templateState, templates, idField: '@id' })`.)
 
 ## allowedTemplates vs allowedLayouts
 
@@ -231,7 +231,7 @@ initBridge({
 
 Use `expandTemplates` (async) or `expandTemplatesSync` (sync with pre-fetched templates) to merge template content during rendering.
 
-- **Edit Mode**: These functions auto-detect edit mode via `isEditMode()` and pass blocks through unchanged (just adding `@uid`). The admin handles template merging and adds `nodeId` attributes for inline editing.
+- **Edit Mode**: These functions auto-detect edit mode via `isEditMode()` and pass blocks through unchanged (just adding `@uid`). The admin handles template merging and adds `nodeId` attributes for inline editing. Leave `editMode` unset unless you know better than the detection: `false` on the admin's blocks applies their template to them again, and a container comes back holding its template's top-level block, with no error. Don't merge the stored page in edit mode at all ([wait for `onEditChange`](./advanced.md#lazy-load-the-bridge)).
 - **SSR**: On SSR (no window), `isEditMode()` returns false so templates are expanded — this is correct since edit mode only exists in the browser iframe.
 
 **Sync vs Async**:
@@ -249,11 +249,21 @@ Use `expandTemplates` (async) or `expandTemplatesSync` (sync with pre-fetched te
 
 **Pass the children of every container through the merge** — every `blocks_layout` region and every object_list field, in every container block you render, at every depth — with the same `templateState` the page-level call used.
 
-An editor can place a template anywhere a block can go: inside a grid, a column, an accordion panel, a slider. The merge has no block schema, so it cannot find your containers by itself. It fills the regions of a template it applies, but a template placed inside a plain container stays exactly as stored — stale fixed content, no instance — until that container hands its children to the merge. A container that renders its children directly is a place where templates silently don't work.
+An editor can place a template anywhere a block can go: inside a grid, a column, an accordion panel, a slider. The merge has no block schema, so it cannot find your containers by itself. **Each call expands one list.** That is as true of a template's own containers as of plain ones: a fixed block's children wait, as the template has them, until that block hands them to the merge. A container that renders its children directly is a place where templates don't work.
+
+The merge throws when it can tell it isn't being used this way:
+
+- A list called without its `idField`, even one keyed by `@id`: pass it.
+- A list whose items have no value in their `idField`.
+- An `idFieldMap` option: there isn't one. Each call names its own list's `idField`.
+
+The merge can't see a call that never happens. So at the end of a render, ask: **\`assertAllExpanded(templateState)\`** throws, naming any template region no container passed through the merge in that `templateState`. Call it in your tests, and in dev if your frontend has a clear end of render. Don't call it in production: a block that deliberately doesn't draw a region would break the page.
+
+A region inside a `widget: 'object'` is a region of the block like any other: your block's code passes its children to the merge in the same way.
 
 The page-level call is no exception: each of the page's own blocks fields (`items`, a `footer` region, …) goes through the merge too.
 
-The Inka editor follows the same contract for the page it edits (see [Merging templates](../architecture.md#merging-templates-every-container-is-expanded-by-whoever-renders)).
+The Inka editor follows the same contract for the page it edits. It has no block code to do this for it, so it walks every container itself, taking each list's id field from the schema with `buildIdFieldMap` (see [Merging templates](../architecture.md#merging-templates-every-container-is-expanded-by-whoever-renders)).
 
 ## Pre-loading with loadTemplates
 
@@ -327,6 +337,17 @@ const { templates, errors } = await loadTemplates(
 - **A template the backend couldn't return** (missing, or one the visitor isn't allowed to view) is listed in `errors` and isn't requested again.
 - **Only list the layouts your rules actually force in view mode.** Every template named in `extra` is included in every page response it's added to.
 
+## Keeping templates out of search
+
+Templates are content, so a visitor could find one on its own. Which content type a template is, and where new ones are saved, is each site's choice. Inka doesn't add a type for them. **Make Template** in the editor saves a new template as the type and in the folder the deployment's settings name (see [Configuration](../deploy-and-secure.md#configuration)). Templates aren't tied to that folder: the editor can save one anywhere.
+
+A site that wants templates kept out of search gives them a type of their own, then:
+
+- **Leaves the type out of site search.** Add it to the site's "types not searched", so any search made with the site's search settings (`use_site_search_settings`) skips templates. Build your sitemap from such a search and templates stay out of it too.
+- **Marks them noindex in its front end.** A template page can still be opened by its URL. Send `<meta name="robots" content="noindex">` for content of that type.
+
+**Deploying content** (`inkaengine.inka.content_deploy`) treats an item on its type's default view as having no view of its own, whatever the type. So an item whose type a site changes in place doesn't read as an editor's edit.
+
 ## How the Merge Works
 
 A merge puts a template's blocks into a **target** document. Opening a page merges the template into the page. **Change on all pages** merges the page's instance into the stored template. Both directions follow the same rules, and every rule applies in every region: the page's own blocks fields, and every region inside a block (`blocks_layout` or object_list), at any depth.
@@ -340,15 +361,15 @@ A merge puts a template's blocks into a **target** document. Opening a page merg
    - A **fixed, readOnly** block is the template's.
    - A **fixed** block that is editable is the template's, with the target's fields over it.
    - A fixed block's regions are filled by these same rules.
-   - A **slot** is replaced by the target's content for that slot, in order. A slot name that appears more than once is filled where it first appears. A template inside that content, such as a snippet, is merged in place by these same rules, with its own instance and ids.
-   - A slot the target has nothing for is the template's slot block, without anything it holds.
+   - A **slot** is replaced by the target's content for that slot, in order. A slot name that appears more than once in one region is filled where it first appears (in two regions, a template is refused: see above). A template inside that content, such as a snippet, is merged in place by these same rules, with its own instance and ids.
+   - A slot the target has nothing for is the template's blocks for that slot, each one, in order (a hero's three suggested topics), without anything they hold. An empty slot is placed only by the admin's merge (`mergeTemplatesIntoPage`, which passes `keepEmptySlots`): a frontend's merge leaves it out, so a visitor never gets one.
 3. **Place the leftovers.** Content with no slot, or whose slot the template doesn't have, goes to the start of the first of these that exists:
 
    - the `"default"` slot;
    - the slot after the template's last fixed block;
    - the slot before its first fixed block.
 
-   If none exists, it is dropped. Content takes the `slotId` of the slot it lands in. Any other target block in a fixed block's slot is a stale copy of that block, and is replaced.
+   If none exists, it is dropped. Content takes the `slotId` of the slot it lands in. Any other target block in a fixed block's slot is a stale copy of that block, and is replaced. Switching layouts, content in a named slot the new layout doesn't have is hidden instead (see **Switching layout** below).
 4. **Keep the ids.**
    - Every block the target already has keeps its id.
    - Fixed blocks match the target's by slot. Where two share a slot name, they match in order.
@@ -369,7 +390,11 @@ Applied in each direction, the rules give:
 
 What a page puts in a slot, or writes in an editable fixed block, is never written to the template. To change an editable block's text for every page, edit the template itself.
 
-**Switching layout** treats the old layout's blocks as the target's. Its slot content is kept and lands by slot as above. An editable fixed block takes over the new layout's editable fixed block in the same slot, with its id and fields. The old layout's other fixed blocks are dropped, including any the page edited. **Removing a layout** (`null`) keeps the content and strips every template mark from it.
+**Removing a slot asks first.** Pages using the template may have content in it, which the merge then has nowhere to put. Nothing records which pages use which slots, so when **Change on all pages** would save a template without a slot it had (an open slot, or a fixed block a page edits), the editor names the slots and asks. Keeping on editing saves nothing and leaves the template unlocked.
+
+**Switching layout** treats the old layout's blocks as the target's. Its slot content is kept and lands by slot as above. An editable fixed block takes over the new layout's editable fixed block in the same slot, with its id and fields. The old layout's other fixed blocks are dropped, including any the page edited.
+
+Content in a named slot the new layout doesn't have (a sidebar, a hero's intro) is **hidden**, as a converted block keeps the fields its new type has no place for. The page keeps it while it is edited, with its `slotId`, in its `blocks` but in no region, so no frontend draws it. A later switch to a layout with that slot shows it again, and since that slot has content, the template's block is not placed in it. Saving drops whatever is still hidden, and the editor says how many blocks a switch hid. Only content with no slot, or in `"default"`, moves to the new layout's default slot. Removing a layout (`null`) hides nothing. **Removing a layout** (`null`) keeps the content and strips every template mark from it.
 
 ### Diagram: opening a page
 

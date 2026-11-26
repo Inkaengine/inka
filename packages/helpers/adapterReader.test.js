@@ -215,7 +215,7 @@ describe('searchShortcutsFetcher with an adapter', () => {
       vocabularies: { Subject: 'tags' },
     });
     const { items, total } = await fetchItems(
-      { index: 'Subject', searchUrl: '/search' },
+      { index: 'Subject', searchUrl: [{ '@id': '/search' }] },
       { start: 0, size: 10 },
     );
 
@@ -234,7 +234,7 @@ describe('searchShortcutsFetcher with an adapter', () => {
 
     const fetchItems = searchShortcutsFetcher({ adapter, contextPath: '/p' });
     const { items } = await fetchItems(
-      { index: 'Subject', pageField: 'subjects', searchUrl: '/search' },
+      { index: 'Subject', pageField: 'subjects', searchUrl: [{ '@id': '/search' }] },
       { start: 0, size: 10 },
     );
 

@@ -96,7 +96,6 @@ test.describe('Templates', () => {
                 ]
               }
             ],
-            "plaintext": "Orphan Cell Header",
             "templateId": "/_test_data/templates/orphan-cell-layout",
             "templateInstanceId": "orphan-cell-def-instance",
             "slotId": "header",
@@ -123,7 +122,6 @@ test.describe('Templates', () => {
                     ]
                   }
                 ],
-                "plaintext": "Marked Grid Cell",
                 "templateId": "/_test_data/templates/orphan-cell-layout",
                 "templateInstanceId": "orphan-cell-def-instance",
                 "slotId": "oc-cell-1",
@@ -141,8 +139,7 @@ test.describe('Templates', () => {
                       }
                     ]
                   }
-                ],
-                "plaintext": "Unmarked Grid Cell"
+                ]
               }
             },
             "blocks_layout": {
@@ -164,10 +161,9 @@ test.describe('Templates', () => {
                 ]
               }
             ],
-            "plaintext": "",
             "templateId": "/_test_data/templates/orphan-cell-layout",
             "templateInstanceId": "orphan-cell-def-instance",
-            "slotId": "primary",
+            "slotId": "default",
             "fixed": false
           }
         },
@@ -196,7 +192,6 @@ test.describe('Templates', () => {
                 ]
               }
             ],
-            "plaintext": "Orphan Cell Header",
             "templateId": "/_test_data/templates/orphan-cell-layout",
             "templateInstanceId": "oc-inst",
             "slotId": "header",
@@ -215,10 +210,9 @@ test.describe('Templates', () => {
                 ]
               }
             ],
-            "plaintext": "The page content",
             "templateId": "/_test_data/templates/orphan-cell-layout",
             "templateInstanceId": "oc-inst",
-            "slotId": "primary"
+            "slotId": "default"
           }
         },
         "blocks_layout": {
@@ -566,20 +560,15 @@ test.describe('Templates', () => {
     await expect(gridBlock).toBeVisible({ timeout: 5000 });
     const gridBlockId = await gridBlock.getAttribute('data-block-uid');
 
-    // Select the template header (first fixed block)
-    // template-header is followed by the grid block (both fixed)
+    // The template header is followed by the grid block (both fixed). Its "+"
+    // can't add between them: the layout has a default slot, so it adds at the
+    // top of that slot instead, before the page's first block there.
     const headerBlockId = await helper.clickBlockByContent('Template Header');
+    const added = await helper.addBlockOnCanvas(headerBlockId, 'slate');
 
-    // The add button should NOT be visible because you can't insert
-    // between two adjacent fixed blocks
-    const addButton = page.locator('.volto-hydra-add-button');
-    await expect(addButton).not.toBeVisible();
-
-    // Verify blocks are still adjacent (no blocks in between)
     const blockOrder = await helper.getBlockOrder();
-    const headerIndex = blockOrder.indexOf(headerBlockId);
-    const gridIndex = blockOrder.indexOf(gridBlockId!);
-    expect(gridIndex).toBe(headerIndex + 1);
+    expect(blockOrder.indexOf(gridBlockId!)).toBe(blockOrder.indexOf(headerBlockId) + 1);
+    expect(blockOrder.indexOf('user-content-1')).toBe(blockOrder.indexOf(added) + 1);
   });
 
   test('cannot insert blocks at container edges around fixed nested block', async ({ page }) => {

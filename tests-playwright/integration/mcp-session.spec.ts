@@ -4,13 +4,18 @@
  * afresh for every call, and left between calls on a page with no editor, so
  * nothing a call did is held: no unsaved dry run, no lock.
  */
+import { mintToken } from '@inka/mock-api/tokens';
 import { randomUUID } from 'node:crypto';
-import { test, expect } from '../fixtures';
-import { mintToken } from '../fixtures/mock-tokens.cjs';
-import { freshPage, whileEditing } from '../helpers/otherUser';
-import { headlessAdmin } from '../../packages/inka-mcp/server.mjs';
-import { getPage, editPage, search, movePage } from '../../packages/inka-mcp/tools.mjs';
 import { draftCheck } from '../../packages/inka-mcp/checkDraft.mjs';
+import { headlessAdmin } from '../../packages/inka-mcp/server.mjs';
+import {
+  editPage,
+  getPage,
+  movePage,
+  search,
+} from '../../packages/inka-mcp/tools.mjs';
+import { expect, test } from '../fixtures';
+import { freshPage, whileEditing } from '../helpers/otherUser';
 
 const PAGE = '/_test_data/test-page';
 const OTHER = '/_test_data/accordion-test-page';

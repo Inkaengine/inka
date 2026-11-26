@@ -2,6 +2,15 @@ import { test, expect } from '../fixtures';
 import { AdminUIHelper } from '../helpers/AdminUIHelper';
 
 test.describe('Authentication and Access Control', () => {
+  test('the login page names Inka and links to its site', async ({ page, urls }) => {
+    // The editor every site signs in to is Inka; the old project name and
+    // repository were still the first thing an editor saw.
+    await page.goto(`${urls.voltoSsr}/login`);
+    const name = page.getByRole('heading', { level: 2 }).getByRole('link', { name: 'Inka', exact: true });
+    await expect(name).toHaveAttribute('href', 'https://inka.sh');
+    await expect(page.getByText('Hydra', { exact: true })).toHaveCount(0);
+  });
+
   test('signing in happens in the proxy frame, not the admin', async ({ page }) => {
     // The admin holds no CMS credentials under the bridge: the adapter in the
     // frontend owns the session, and there is no canonical intent for @login
@@ -15,7 +24,6 @@ test.describe('Authentication and Access Control', () => {
     const helper = new AdminUIHelper(page);
     await helper.login();
     await page.goto(helper.contentUrl('/test-page'));
-
     // The session belongs to an adapter hosted in the frontend's proxy frame:
     // it must be connected and have announced itself. What must NOT happen is
     // the admin having a CMS session of its own.

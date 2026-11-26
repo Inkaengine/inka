@@ -1,3 +1,4 @@
+import { describe, test, expect } from 'vitest';
 import { expandTemplatesSync } from '@volto-hydra/helpers';
 
 /**
@@ -302,10 +303,10 @@ const cases = [
 
 describe('re-entry render harness', () => {
   for (const c of cases) {
-    // `failing: true` marks a known, captured bug — jest's test.failing passes
+    // `failing: true` marks a known, captured bug — test.fails passes
     // while the test fails and FLIPS to a failure once the bug is fixed (prompting
     // removal of the flag). Keeps the suite green while documenting the defect.
-    const t = c.failing ? test.failing : test;
+    const t = c.failing ? test.fails : test;
     t(c.name, () => {
       const out = renderReentry(c.layout, c.blocks, { templates: c.templates, allowedLayouts: c.allowedLayouts });
       c.check(out);

@@ -72,6 +72,29 @@ describe('translatableFieldIds', () => {
   });
 });
 
+describe('translatableFieldIds — a widget is prose only if it is for writing', () => {
+  // A field with a widget and no type reads as a string, so every custom widget passed:
+  // a block's regions, its image, its size and alignment, a variation picker.
+  it('leaves out every other widget, known or not', () => {
+    const fields = translatableFieldIds({
+      properties: {
+        title: { title: 'Title' },
+        text: { widget: 'text' },
+        description: { widget: 'textarea' },
+        value: { widget: 'slate' },
+        items: { widget: 'blocks_layout' },
+        box: { widget: 'object', schema: { properties: {} } },
+        image: { widget: 'image' },
+        size: { widget: 'size' },
+        align: { widget: 'align' },
+        variation: { widget: 'blockTypeSelect' },
+        field: { widget: 'a_widget_nobody_has_heard_of' },
+      },
+    });
+    expect(fields).toEqual(['title', 'text', 'description', 'value']);
+  });
+});
+
 describe('sourceFingerprint', () => {
   it('is the same for the same content, whatever order the keys arrive in', () => {
     const reordered = {

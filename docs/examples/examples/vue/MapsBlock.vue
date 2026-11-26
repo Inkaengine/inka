@@ -1,8 +1,8 @@
 <template>
   <div :data-block-uid="block['@uid']" class="maps-block">
     <iframe
-      v-if="block.url"
-      :src="block.url"
+      v-if="block.url?.[0]?.['@id']"
+      :src="block.url?.[0]?.['@id']"
       :title="block.title || 'Map'"
       allowfullscreen
       loading="lazy"

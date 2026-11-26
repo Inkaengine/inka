@@ -23,13 +23,13 @@ rights: ""
 subjects: []
 title: Templates and layouts
 blocks-matched: |
-  <block type="slate" value="${p,h*,ul,ol,blockquote,strong,em,a/slate}" plaintext="${p,h*,ul,ol,blockquote,strong,em,a/text}" />
+  <block type="slate" value="${p,h*,ul,ol,blockquote,strong,em,a/slate}" />
   <block type="title" _="${h1}" />
   <block type="image" description="${p?/textarea}" url="${img/src}" alt="${img?/alt}" title="${img?/title}" align="center" size="l" />
 blocks-tagged: |
   <block type="callout">
     <region name="items" widget="blocks_layout">
-      <block type="slate" value="${p,h*,ul,ol,blockquote,strong,em,a/slate}" plaintext="${p,h*,ul,ol,blockquote,strong,em,a/text}" />
+      <block type="slate" value="${p,h*,ul,ol,blockquote,strong,em,a/slate}" />
     </region>
   </block>
 ---
@@ -87,7 +87,7 @@ Regular blocks where you can do anything — add, edit, move, delete. The templa
 
 <block type="image">
 
-![A snippet template applied to a page. The "Snippet Header" block is selected, rendered muted as a locked block. Its sidebar shows its content read-only — a "Text" field with the value "Snippet Header - From Template" — above the template's own read-only settings (Template Name, Save Location).](../images/template-locked.png)
+![A snippet template applied to a page. The "Snippet Header" block is selected, rendered muted as a locked block. Its sidebar shows its content read-only — a "Text" field with the value "Snippet Header - From Template" — under the template it belongs to.](../images/template-locked.png)
 
 </block>
 
@@ -117,12 +117,13 @@ Locked and fixed template blocks are the exception: they can't be moved at all (
 
 ## Switching the layout
 
-When `allowedLayouts` is configured for a page (or a region), the sidebar shows a **Layout** dropdown. Pick a different layout and:
+When `allowedLayouts` is configured for a page (or a region), you choose it in the page's settings, in the **Layouts** section (one row per region), which is there whatever you have selected. A locked layout's own section of the sidebar, where a 🔒 on one of its blocks takes you, offers the same choice. Pick a different layout and:
 
 1. The new layout's structure replaces the old one.
 2. Your existing content is **redistributed** into the new layout's slots based on `slotId`:
 
 - Content tagged with a slot name is placed into the matching slot in the new layout.
+- Content in a slot the new layout doesn't have, such as a sidebar, is hidden, and a message says how many blocks were hidden. Switch back to a layout with that slot and it comes back. Saving the page removes it, so switch back before saving if you want to keep it.
 - Content with no slot tag falls into the `"default"` slot if the new layout has one; otherwise into the bottom or top slot, or is dropped.
 - Fixed blocks with the same `slotId` get their editable content carried over (text, media); their structural settings come from the new layout.
 
@@ -134,23 +135,31 @@ Editing a template changes its **definition** — the change will appear on **ev
 
 </block>
 
+## Making a template
+
+Select a block, open its `⋯` menu and choose **Make Template**. The block becomes the start of a new template, unlocked so you can add to it. Give it a **Name**, and choose its **Save Location** if it shouldn't go in your site's usual templates folder: a template can be saved in any folder the site lets you add templates to. If you pick one that doesn't take them, it says so and keeps the location you had. Lock it when you're done; it is created when you save the page.
+
+A template is saved as its own kind of page, a **Template**. Site search leaves templates out, and so do search engines: they are templates, not pages for visitors to find on their own.
+
 ## Editing content inside a template
 
-A template's own (fixed) blocks are **locked** by default — you can edit *this page's* content, but not the template. To change the template itself, **unlock** it: select one of its blocks and click the 🔒 on its **sidebar bar** ("Template: *name*"), on the block's **block toolbar**, or **Edit template** in the bar's `⋯` menu. The 🔒 becomes 🔓, and the template's blocks — plus its Name / Save Location — become editable.
+A template's own locked blocks stay locked — you can edit *this page's* content, but not the template. Only a locked block shows a 🔒; its open slots and the fixed blocks you can edit don't, because there is nothing to unlock to use them.
+
+To change the template itself, **unlock** it. Click the 🔒 in a locked block's toolbar, or choose **Edit template** from a template block's `⋯` menu: this doesn't unlock anything yet. It opens the template's section of the sidebar ("Template: *name*"), which says which template this is, that changes to it apply to **every page using it**, and has the **Unlock template** button. Unlocking asks you to confirm once more. The 🔒 on the sidebar bar becomes 🔓, and the template's blocks — plus its Name / Save Location — become editable.
 
 Unlocking one template unlocks only *that* template. The rest of the page stays editable as normal, and you can **unlock several templates at once** and edit them together.
 
-**Locking is where your template edits commit.** When you lock a template you choose:
+**Locking is where you decide what happens to your template edits**, and where they are checked: a problem, such as two slots with the same name, stops the lock and takes you to the block at fault. When you lock a template you choose:
 
-- **Change on all pages** — save your edits to the template's locked blocks; every page using it picks them up. What you write in its editable blocks and its slots stays this page's.
+- **Change on all pages** — keep your edits to the template's locked blocks; when you save the page, the template is saved with them and every page using it picks them up. What you write in its editable blocks and its slots stays this page's.
 - **Reset changes** — discard the edits and revert the template to its saved version. Only the template reverts; any page content you edited while it was unlocked stays.
 - **Cancel** — keep editing (stay unlocked).
 
-Templates are saved when you **lock** them, not when you save the page. If you save the page while a template is still unlocked, you're prompted to lock it first.
+Templates are saved when you **save the page**, and only the ones you changed. A page can't be saved with a template still unlocked: you're prompted to lock it first. While you have a template unlocked, and until you save the page, nobody else can unlock it.
 
 <block type="image">
 
-![A template's sidebar bar, locked (🔒) — the Template Settings show as read-only text. Clicking the lock unlocks it (🔓) and makes the template editable.](../images/template-edit-locked.png)
+![A template's section in the sidebar, locked (🔒): it says the template is locked and that changes apply to every page using it, and has the Unlock template button.](../images/template-edit-locked.png)
 
 </block>
 

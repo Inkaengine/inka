@@ -1,3 +1,5 @@
+import { test, expect } from 'vitest';
+import { expandEveryContainer } from './expandEveryContainer.testutil.js';
 import { expandTemplatesSync } from '@volto-hydra/helpers';
 
 /**
@@ -69,14 +71,14 @@ test('two forced layouts of the same template → unique block ids + distinct in
   let c = 0;
   const uuidGenerator = () => `u-${++c}`;
 
-  const container1 = expandTemplatesSync([], {
+  const container1 = expandEveryContainer([], {
     blocks: {},
     templates,
     templateState,
     allowedLayouts: ['/templates/footer-layout'],
     uuidGenerator,
   });
-  const container2 = expandTemplatesSync([], {
+  const container2 = expandEveryContainer([], {
     blocks: {},
     templates,
     templateState,

@@ -297,11 +297,9 @@ test.describe('Page Metadata Editing', () => {
     const helper = new AdminUIHelper(page);
     await helper.login();
 
-    // The defect is this exception, not a broken editor: the bridge re-posts
-    // INIT with backoff (_retryInitUntilAcknowledged), so a retry eventually
-    // lands after the schema and editing works. What is left behind is an
-    // uncaught error per lost INIT — PRETAGOVSITE-K — plus seconds of backoff,
-    // and a genuinely dead editor if the schema outlasts the retry budget.
+    // The bridge posts INIT once, so an INIT that lands before the schema has
+    // to be held and answered when the schema arrives — dropped, the editor
+    // never connects. It used to throw (PRETAGOVSITE-K) and lean on a retry.
     const pageErrors: string[] = [];
     page.on('pageerror', (e) => pageErrors.push(e.message));
 

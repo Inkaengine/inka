@@ -1,0 +1,1 @@
+Block sanity accepts any listing in a grid of one item type, not only the block named listing: a block whose schema maps its results onto items (a fieldMapping field), such as a related-items source in cards.

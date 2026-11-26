@@ -1,0 +1,228 @@
+import { describe, test, expect } from 'vitest';
+import { validateTemplatePlaceholders } from './formDataValidation.js';
+
+/**
+ * validateTemplatePlaceholders enforces the slot-grouping rules a template author must follow:
+ *   1. blocks with the same slotId must be contiguous
+ *   2. different slot groups must be separated by a fixed block
+ *
+ * It used to validate ONLY the page's `items` region (a single flat pass over
+ * formData.blocks_layout.items), so a violation in ANOTHER page region (footer) or inside a
+ * nested container (blocks_layout OR object_list) went unreported. It must walk every region of
+ * the whole tree, region-aware.
+ */
+describe('validateTemplatePlaceholders — every region, every container (region-aware)', () => {
+  const twoAdjacentSlots = { message: /separated by a fixed block/ };
+
+  test('catches a slot-grouping violation in a NON-items page region (footer)', () => {
+    const formData = {
+      blocks: {
+        'ok-1': { '@type': 'slate' },
+        'slot-a': { '@type': 'slate', slotId: 'x' },
+        'slot-b': { '@type': 'slate', slotId: 'y' },
+      },
+      // items is clean; the footer region has two slot groups with no fixed separator.
+      blocks_layout: { items: ['ok-1'], footer: ['slot-a', 'slot-b'] },
+    };
+    const { valid, blocksErrors } = validateTemplatePlaceholders(formData);
+    expect(valid).toBe(false);
+    expect(blocksErrors['slot-b']?._layout?.message).toMatch(
+      twoAdjacentSlots.message,
+    );
+  });
+
+  test('catches a violation inside a NESTED blocks_layout container', () => {
+    const formData = {
+      blocks: {
+        cols: {
+          '@type': 'columns',
+          blocks: {
+            sa: { '@type': 'slate', slotId: 'x' },
+            sb: { '@type': 'slate', slotId: 'y' },
+          },
+          blocks_layout: { items: ['sa', 'sb'] },
+        },
+      },
+      blocks_layout: { items: ['cols'] },
+    };
+    const { valid, blocksErrors } = validateTemplatePlaceholders(formData);
+    expect(valid).toBe(false);
+    expect(blocksErrors['sb']?._layout?.message).toMatch(
+      twoAdjacentSlots.message,
+    );
+  });
+
+  test('catches a violation inside a NESTED object_list container (slider slides)', () => {
+    const formData = {
+      blocks: {
+        sl: {
+          '@type': 'slider',
+          slides: [
+            { '@id': 'sa', '@type': 'slate', templateId: '/t', slotId: 'x' },
+            { '@id': 'sb', '@type': 'slate', templateId: '/t', slotId: 'y' },
+          ],
+        },
+      },
+      blocks_layout: { items: ['sl'] },
+    };
+    // An object_list is a region because the SCHEMA says so: the map names
+    // the field and the key its items are addressed by. Without it this walk
+    // skips object_lists — the templateId shortcut is the merge's alone now.
+    const { valid, blocksErrors } = validateTemplatePlaceholders(formData, {
+      slider: { slides: '@id' },
+    });
+    expect(valid).toBe(false);
+    expect(blocksErrors['sb']?._layout?.message).toMatch(
+      twoAdjacentSlots.message,
+    );
+  });
+
+  // --- regression: the original page-items rules still hold ---
+
+  test('still flags two adjacent slot groups in the page items region', () => {
+    const formData = {
+      blocks: {
+        'slot-a': { '@type': 'slate', slotId: 'x' },
+        'slot-b': { '@type': 'slate', slotId: 'y' },
+      },
+      blocks_layout: { items: ['slot-a', 'slot-b'] },
+    };
+    const { valid } = validateTemplatePlaceholders(formData);
+    expect(valid).toBe(false);
+  });
+
+  test('valid when slot groups are separated by a fixed block, across regions', () => {
+    const formData = {
+      blocks: {
+        'f-1': { '@type': 'slate', fixed: true, slotId: 'top' },
+        'sx-1': { '@type': 'slate', slotId: 'x' },
+        'sx-2': { '@type': 'slate', slotId: 'x' },
+        'f-2': { '@type': 'slate', fixed: true, slotId: 'mid' },
+        'sy-1': { '@type': 'slate', slotId: 'y' },
+        foot: { '@type': 'slate', fixed: true, slotId: 'footer' },
+      },
+      blocks_layout: {
+        items: ['f-1', 'sx-1', 'sx-2', 'f-2', 'sy-1'],
+        footer: ['foot'],
+      },
+    };
+    const { valid, blocksErrors } = validateTemplatePlaceholders(formData);
+    expect(valid).toBe(true);
+    expect(Object.keys(blocksErrors)).toHaveLength(0);
+  });
+});
+
+/**
+ * A template's blocks are matched to a page's by slot, so a block of a template
+ * that names no slot belongs nowhere: the merge drops it, or moves it to another
+ * region on every save (inka#708). And a slot is one place: the same slot id in
+ * two regions of one template sends its content to whichever the merge meets
+ * first. Both are refused, with what to do about it. Ordinary page blocks, with
+ * no template, have no slot and need none.
+ */
+describe('validateTemplatePlaceholders — every template block names its own slot', () => {
+  const T = '/templates/layout';
+
+  test('refuses a template block that names no slot, and says to name it', () => {
+    const formData = {
+      blocks: {
+        head: { '@type': 'slate', templateId: T, templateInstanceId: 'i1', fixed: true, readOnly: true, slotId: 'head' },
+        loose: { '@type': 'slate', templateId: T, templateInstanceId: 'i1', fixed: false },
+      },
+      blocks_layout: { items: ['head', 'loose'] },
+    };
+    const { valid, blocksErrors } = validateTemplatePlaceholders(formData);
+    expect(valid).toBe(false);
+    expect(blocksErrors.loose?._layout?.message).toMatch(/names no slot/);
+    expect(blocksErrors.loose?._layout?.message).toMatch(/name/i);
+    expect(blocksErrors.head).toBeUndefined();
+  });
+
+  test('refuses a placeholder in a template region that names no slot', () => {
+    const formData = {
+      blocks: { ph: { '@type': 'empty', templateId: T, templateInstanceId: 'i1', readOnly: true } },
+      blocks_layout: { items: ['ph'] },
+    };
+    const { valid, blocksErrors } = validateTemplatePlaceholders(formData);
+    expect(valid).toBe(false);
+    expect(blocksErrors.ph?._layout?.message).toMatch(/names no slot/);
+  });
+
+  test('says nothing about ordinary page blocks, which have no template', () => {
+    const formData = {
+      blocks: { a: { '@type': 'slate' }, b: { '@type': 'image' } },
+      blocks_layout: { items: ['a', 'b'] },
+    };
+    expect(validateTemplatePlaceholders(formData).valid).toBe(true);
+  });
+
+  test('refuses one slot id in two regions of one template, naming both', () => {
+    const formData = {
+      blocks: {
+        layout: {
+          '@type': 'contentLayout', templateId: T, templateInstanceId: 'i1', fixed: true, readOnly: true, slotId: 'layout',
+          blocks: {
+            m: { '@type': 'slate', templateId: T, templateInstanceId: 'i1', slotId: 'default' },
+            s: { '@type': 'slate', templateId: T, templateInstanceId: 'i1', slotId: 'default' },
+          },
+          blocks_layout: { main: ['m'], sidebar: ['s'] },
+        },
+      },
+      blocks_layout: { items: ['layout'] },
+    };
+    const { valid, blocksErrors } = validateTemplatePlaceholders(formData);
+    expect(valid).toBe(false);
+    const message = blocksErrors.s?._layout?.message;
+    expect(message).toMatch(/"default"/);
+    expect(message).toMatch(/main/);
+    expect(message).toMatch(/sidebar/);
+  });
+
+  // A slot is one place at every depth: a block and a block inside it never
+  // share one. (They did — a hero search and its suggestions both `hero` — and a
+  // commit then found the fixed block as content of its own slot, and nested it
+  // in itself forever.)
+  test("a block's regions have slots of their own, not the block's", () => {
+    const formData = {
+      blocks: {
+        layout: {
+          '@type': 'contentLayout', templateId: T, templateInstanceId: 'i1', fixed: true, readOnly: true, slotId: 'layout',
+          blocks: {
+            hs: {
+              '@type': 'heroSearch', templateId: T, templateInstanceId: 'i1', fixed: true, readOnly: false, slotId: 'hero',
+              blocks: { t1: { '@type': 'textItem', templateId: T, templateInstanceId: 'i1', slotId: 'hero', fixed: false } },
+              blocks_layout: { suggested: ['t1'] },
+            },
+          },
+          blocks_layout: { hero: ['hs'] },
+        },
+      },
+      blocks_layout: { items: ['layout'] },
+    };
+    const { blocksErrors } = validateTemplatePlaceholders(formData);
+    expect(blocksErrors.t1?._layout?.message).toMatch(/"hero"/);
+  });
+
+  test('the same slot id in two different templates is two slots', () => {
+    const formData = {
+      blocks: {
+        a: { '@type': 'slate', templateId: T, templateInstanceId: 'i1', slotId: 'default' },
+        sep: { '@type': 'slate', templateId: T, templateInstanceId: 'i1', fixed: true, readOnly: true, slotId: 'sep' },
+      },
+      blocks_layout: { items: ['a', 'sep'], footer: ['b'] },
+    };
+    formData.blocks.b = { '@type': 'slate', templateId: '/templates/footer', templateInstanceId: 'f1', slotId: 'default' };
+    expect(validateTemplatePlaceholders(formData).valid).toBe(true);
+  });
+
+  test('two instances of one template each have their own slots', () => {
+    const formData = {
+      blocks: {
+        a: { '@type': 'slate', templateId: T, templateInstanceId: 'i1', slotId: 'default' },
+        b: { '@type': 'slate', templateId: T, templateInstanceId: 'i2', slotId: 'default' },
+      },
+      blocks_layout: { items: ['a'], footer: ['b'] },
+    };
+    expect(validateTemplatePlaceholders(formData).valid).toBe(true);
+  });
+});

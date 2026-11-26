@@ -1,5 +1,6 @@
 import { defineConfig } from 'vite';
 import path from 'path';
+import { mockParent } from '@inka/testing/mock-parent';
 
 // Ports come from the same HYDRA_<NAME>_PORT overrides as tests-playwright/ports.ts.
 // Resolving them HERE means every launcher inherits them — playwright's webServer,
@@ -14,7 +15,7 @@ import path from 'path';
 // ERR_CONNECTION_REFUSED on every test. A fixture should be told which API it is
 // talking to, not assert one.
 // No fallback argument, deliberately: a default is the version of this bug
-// that passes. See tests-playwright/fixtures/env-port.cjs, which says it at
+// that passes. See packages/mock-api/env-port.js, which says it at
 // length; this config is ESM and loaded by vite before that module would be
 // resolvable, so the few lines live here too.
 const envPort = (name) => {
@@ -37,6 +38,9 @@ const MOCK_API_ORIGIN = `http://localhost:${envPort('HYDRA_MOCK_API_PORT')}`;
 export default defineConfig({
   root: __dirname,
   plugins: [
+    // /mock-parent.html, from @inka/testing. Same origin as the test frontend,
+    // which is the frontend it frames by default.
+    mockParent(),
     {
       // Tell the fixture which API it is talking to. Injected as a tag rather
       // than substituted into the page: `define` never reaches index.html's
@@ -117,8 +121,7 @@ export default defineConfig({
       '/merge-templates.js': path.resolve(__dirname, '../../../packages/volto-hydra/src/utils/mergeTemplates.mjs'),
       // The admin's own region helpers, so block-sanity can empty a region exactly
       // as an editor's delete does (deleteBlockFromContainer + ensureEmptyBlockIfEmpty).
-      '/block-path.js': path.resolve(__dirname, '../../../packages/volto-hydra/src/utils/blockPath.js'),
-      '/shared-block-schemas.js': path.resolve(__dirname, '../shared-block-schemas.js'),
+      '/block-path.js': path.resolve(__dirname, '../../../packages/volto-hydra/src/utils/blockPath.js'),      '/shared-block-schemas.js': path.resolve(__dirname, '../shared-block-schemas.js'),
       '/core-block-schemas.js': path.resolve(__dirname, '../core-block-schemas.js'),
     },
   },

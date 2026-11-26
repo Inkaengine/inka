@@ -116,6 +116,17 @@ describe('ploneFetchItems: a folder-contents listing', () => {
     expect(new URL(calls[0].url).searchParams.get('metadata_fields')).toBe('_all');
   });
 
+  // The mapping is stored under the field the listing's recipe names
+  // (`mappingField`); the frontend knows it and says so.
+  test('a mapping stored under another field is the one read', async () => {
+    const contextContent = { items: Array.from({ length: 25 }, (_, i) => child(i)), items_total: 62 };
+    await fetcher({ contextContent, mappingField: 'resultMapping' })(
+      { querystring: CONTENTS, resultMapping: { Subject: { field: 'tags', type: 'array' } } },
+      { start: 0, size: 25 },
+    );
+    expect(calls).toHaveLength(1);
+  });
+
   test('an empty folder answers from the content too', async () => {
     const { items, total } = await fetcher({ contextContent: { items: [], items_total: 0 } })(
       { querystring: CONTENTS },

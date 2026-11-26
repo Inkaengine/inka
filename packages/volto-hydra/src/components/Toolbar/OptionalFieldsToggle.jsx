@@ -1,6 +1,7 @@
 import React from 'react';
 import { Icon } from '@plone/volto/components';
-import addSVG from '@plone/volto/icons/add.svg';
+import showSVG from '@plone/volto/icons/show.svg';
+import hideSVG from '@plone/volto/icons/hide.svg';
 
 /**
  * Reveal the selected block's empty optional fields so they can be filled from
@@ -15,14 +16,21 @@ import addSVG from '@plone/volto/icons/add.svg';
  * disappear on their own.
  *
  * Reveal is ALWAYS EXPLICIT: nothing is revealed on selection or on insert. The
- * button is rendered only when the block actually has something to reveal, so a
- * fully populated block shows no control at all.
+ * button is rendered only when the block actually has something to reveal: an
+ * empty field its frontend marked `optionalOnCanvas` (inka#765). An eye, not a
+ * `+`, which reads as "add a block".
  *
  * @param {string} blockUid - block whose optional fields this toggles
  * @param {string[]} revealableFields - empty inline-editable fields (from BLOCK_SELECTED)
  * @param {boolean} revealed - are they currently revealed
  * @param {(blockUid: string) => void} onToggle
  */
+/** What the reveal control says, on the toolbar and in the ⋯ menu alike. */
+export const revealFieldsLabel = (revealableFields, revealed) =>
+  revealed
+    ? 'Hide empty fields'
+    : `Show ${revealableFields.length} empty field${revealableFields.length === 1 ? '' : 's'}`;
+
 export default function OptionalFieldsToggle({
   blockUid,
   revealableFields,
@@ -31,11 +39,7 @@ export default function OptionalFieldsToggle({
 }) {
   if (!revealableFields?.length && !revealed) return null;
 
-  const title = revealed
-    ? 'Hide empty optional fields'
-    : `Show ${revealableFields.length} empty optional field${
-        revealableFields.length === 1 ? '' : 's'
-      }`;
+  const title = revealFieldsLabel(revealableFields, revealed);
 
   return (
     <button
@@ -50,7 +54,7 @@ export default function OptionalFieldsToggle({
         onToggle(blockUid);
       }}
     >
-      <Icon name={addSVG} size="18px" title={title} />
+      <Icon name={revealed ? hideSVG : showSVG} size="18px" title={title} />
     </button>
   );
 }

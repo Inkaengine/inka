@@ -1,0 +1,88 @@
+{
+  "@id": "http://localhost:8888/text-styles-page",
+  "@type": "Document",
+  "UID": "text-styles-page-uid",
+  "id": "text-styles-page",
+  "title": "Text Styles Page",
+  "description": "One example of each text style the editor offers that no other content uses, so block sanity checks each renders as something.",
+  "review_state": "published",
+  "parent": {
+    "@id": "http://localhost:8888",
+    "@type": "Plone Site",
+    "title": "Site"
+  },
+  "blocks": {
+    "title-block": {
+      "@type": "title"
+    },
+    "scripts": {
+      "@type": "slate",
+      "value": [
+        {
+          "type": "p",
+          "children": [
+            {
+              "text": "Water is H"
+            },
+            {
+              "type": "sub",
+              "children": [
+                {
+                  "text": "2"
+                }
+              ]
+            },
+            {
+              "text": "O and the tank holds 10 m"
+            },
+            {
+              "type": "sup",
+              "children": [
+                {
+                  "text": "3"
+                }
+              ]
+            },
+            {
+              "text": "."
+            }
+          ]
+        }
+      ]
+    },
+    "spaced-list": {
+      "@type": "slate",
+      "value": [
+        {
+          "type": "ul",
+          "styleName": "list-spaced",
+          "children": [
+            {
+              "type": "li",
+              "children": [
+                {
+                  "text": "A spaced list item"
+                }
+              ]
+            },
+            {
+              "type": "li",
+              "children": [
+                {
+                  "text": "Another spaced list item"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  },
+  "blocks_layout": {
+    "items": [
+      "title-block",
+      "scripts",
+      "spaced-list"
+    ]
+  }
+}

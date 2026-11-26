@@ -1,0 +1,1 @@
+content_deploy: a layout's ordering, local roles and permissions are matched by UID, as plone.exportimport keys them, so a layout whose folders are named by path deploys, and an entry for an item it no longer holds is skipped instead of failing. @djay

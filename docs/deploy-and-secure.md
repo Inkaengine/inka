@@ -22,7 +22,7 @@ subjects:
   - security
 title: Deploy and secure Inka
 blocks-matched: |
-  <block type="slate" value="${p,h*,ul,ol,blockquote,strong,em,a/slate}" plaintext="${p,h*,ul,ol,blockquote,strong,em,a/text}" />
+  <block type="slate" value="${p,h*,ul,ol,blockquote,strong,em,a/slate}" />
   <block type="title" _="${h1}" />
   <block type="codeExample">
     <region name="tabs" widget="object_list" idField="@id" typeField="@type">
@@ -86,7 +86,11 @@ Inka is configured with environment variables:
 - `RAZZLE_API_PATH`: the URL of the CMS API that editors' browsers use.
 - `RAZZLE_INTERNAL_API_PATH` (optional): the address the Inka server uses to reach the same API from inside your network.
 - `RAZZLE_DEFAULT_IFRAME_URL`: the front ends offered in the front-end switcher, as `Name|EditURL[|PublishURL],…`. The optional publish URL is for a public site on a different origin from its editing build. If this is set when the editor is built, that value is fixed into the browser code and wins; otherwise the value at run time is used.
+- `RAZZLE_TEMPLATES_PATH`: the folder **Make Template** saves a new template in, such as `/templates`. Editors can choose another folder for each template.
+- `RAZZLE_TEMPLATE_TYPE` (optional): the content type of a new template. Unset, a template is a plain `Document`. Name a type your site adds for templates to keep them apart (see [Keeping templates out of search](./frontend-guide/templates.md#keeping-templates-out-of-search)).
 - `PORT`: the port the server listens on.
+
+Without `RAZZLE_TEMPLATES_PATH`, **Make Template** tells the editor the setting is missing and does nothing. As with `RAZZLE_DEFAULT_IFRAME_URL`, a value set when the editor is built wins.
 
 Don't set `RAZZLE_PUBLIC_URL`. Inka follows whichever front end the editor has selected; pinning one public URL breaks link handling for the others. See [URL flattening](./architecture.md#url-flattening-and-publicurl).
 
@@ -105,6 +109,44 @@ Inka keeps no content, no database and no files. Content, users and history stay
 - **Scale to zero.** Stop the server between editing sessions and start it on the next request.
 - **Scale out.** Run more than one instance behind a load balancer. There is no shared state to synchronise.
 - **Recover by redeploying.** There is nothing to back up or restore in Inka itself. Back up the CMS as you do now.
+
+## Deploy a site's content without taking it down
+
+A Plone site whose content ships with its code, as a plone.exportimport layout, is often deployed by deleting the site and importing the layout again. While that import runs there is no site: every page is a 404 to visitors, on every machine that shares the database.
+
+`inkaengine.inka.content_deploy` applies only what the layout changed, in one transaction, so visitors see the old content until the new content is complete:
+
+- **Creates and updates** go through plone.exportimport's own importer, for just the changed items.
+- **A change of review state alone** is a workflow transition. The item is not imported again, so its text, a PDF's included, is not indexed again.
+- **Moves** keep the item's UID, history and place in its folder, and leave a redirect from the old path. **Deletes** remove the item, and its address answers 404. To send a deleted page's visitors somewhere else, add the redirect to `redirects.json`.
+- **Ordering, default pages, relations, workflow states and redirects** from the layout are applied too.
+
+The site keeps its own base: the layout it was last deployed from, saved in the same transaction as the content. The release step needs nothing else, so it can run on a throwaway machine. A dry run, a failure or a refused deploy leaves both the content and the base as they were.
+
+Run it from a script that `zconsole` runs in your release step. On RelStorage the running instances keep serving while it works.
+
+### Python
+
+```python
+from inkaengine.inka.content_deploy.stored_base import deploy_content
+from inkaengine.inka.content_deploy.stored_base import has_base
+from inkaengine.inka.content_deploy.stored_base import record_base
+
+if has_base(site):
+    report = deploy_content(site, request, layout, commit=True)
+else:
+    # First deploy: import the layout in full, as you do now, then
+    record_base(site, layout)
+    transaction.commit()
+```
+
+A site that already holds its content, and that nobody edits, can skip that full import: `deploy_content(site, request, layout, commit=True, seed_from_live=True)` starts from what the site holds. The layout then wins everywhere, as a full import would, so an editor's change is overwritten and content the layout lacks is deleted. A site that has a base keeps it.
+
+`layout` is the folder that holds `content/`, and `redirects.json`, `relations.json`, `principals.json` or `site-settings.json` if the layout has them.
+
+A deploy refuses to overwrite a page an editor changed on the site since the base was recorded, and lists it under `must_merge` in the report. Bring that change into the layout and deploy again. A field your site's schema cannot hold looks like an edit on every page that has it, because no export can carry it back; name such fields in `ignored_fields`.
+
+A site that is only a copy of its layout (one being tried out before it goes live, say) can have the layout win everywhere on every deploy instead: `run_delta(..., reset=True)`. Pages made on the site are deleted, pages deleted on the site are made again, and every page changed on the site since the last committed deploy is taken back from the layout. Each committed deploy records when it was classified, and a reset counts changes from then. A site with no deploy on record needs `changed_since`, the time to count from. The report lists what a reset undid under `reset`, and the change-set a caller's `review_changeset` sees names the deletions as `site_only`.
 
 ## Self-hosted or managed
 
@@ -127,7 +169,7 @@ The token is the editor's CMS session token, so its lifetime is set by the CMS. 
 
 - Keep the editing front end private, as above. The token is only ever sent to it.
 - Don't log query strings on the editing front end, or strip `access_token` from its logs.
-- Send `Referrer-Policy: no-referrer` (or `same-origin`) from the editing front end.
+- Send `Referrer-Policy: same-origin` from the editing front end. It sends no `Referer` to any other site, and the only one it sends goes to the editing front end itself, which already has the URL. Don't use `no-referrer`: under it the browser sends `Origin: null` with a form's plain POST, so a form the editor submits before the page's JavaScript has loaded is refused by a server that checks the origin (Next.js server actions do, as protection against cross-site requests).
 - Serve everything over HTTPS.
 - Keep the CMS token lifetime short, and let editors sign out when they finish.
 
@@ -161,7 +203,7 @@ initBridge({
 
 ```text
 Content-Security-Policy: frame-ancestors https://inka.example.org
-Referrer-Policy: no-referrer
+Referrer-Policy: same-origin
 ```
 
 ## Keep the bridge out of the public build

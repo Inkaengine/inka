@@ -4247,10 +4247,24 @@ test.describe('Multi-Container Field Operations', () => {
 
     await helper.clickBlockInIframe('facet-type');
 
-    const sidebar = page.locator('.sidebar-container');
-    // checkboxFacet's "Title" field (the user-facing label) should be
-    // editable in the sidebar.
-    await expect(sidebar.getByLabel('Title').first()).toBeVisible({ timeout: 5_000 });
+    await helper.waitForSidebarCurrentBlock('Checkboxes');
+  });
+
+  test('a facet clicked while the caret is in the page title shows the facet sidebar', async ({
+    page,
+  }) => {
+    // The caret left in the title (a contenteditable) must not pull the
+    // selection back to the title when a non-text block is clicked.
+    const helper = new AdminUIHelper(page);
+    await helper.login();
+    await helper.navigateToEdit('/search-test-page');
+
+    await helper.clickBlockInIframe('title-block');
+    await helper.waitForBlockSelectedInAdmin('title-block');
+
+    await helper.clickBlockInIframe('facet-type');
+
+    await helper.waitForSidebarCurrentBlock('Checkboxes');
   });
 
   test('selecting block in columns field shows Column sidebar', async ({

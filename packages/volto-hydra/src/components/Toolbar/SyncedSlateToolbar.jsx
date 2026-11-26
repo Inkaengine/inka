@@ -11,9 +11,10 @@ import slateTransforms, { withEmptyInlineRemoval } from '../../utils/slateTransf
 import { syncCreateSlateBlock } from '@plone/volto-slate/utils/volto-blocks';
 import { getBlockById, updateBlockById, getResolvedSchema } from '../../utils/blockPath';
 import { calculateDragHandlePosition, PAGE_BLOCK_UID } from '@volto-hydra/hydra-js';
-import { isSlateFieldType, isBlockPositionLocked, isBlockReadonly, getFieldValue, getFieldDef, isStarterUiField } from '@volto-hydra/helpers';
+import { isSlateFieldType, isBlockPositionLocked, isBlockReadonly, getFieldValue, getFieldDef, isStarterUiField, topTemplateInstanceOf } from '@volto-hydra/helpers';
+import { expandSidebar } from '../Sidebar/expandSidebar';
 import { starterPickerTakesFocus } from '../../utils/starterUi';
-import { isStyleAllowed } from '../../../../hydra-js/slateStyles.js';
+import { isStyleAllowed } from '@volto-hydra/helpers/slateStyles.js';
 import { blockFormatButtons, paragraphStyleItems } from '../../utils/blockFormats';
 import { useDispatch, useSelector } from 'react-redux';
 import FormatDropdown from './FormatDropdown';
@@ -28,6 +29,7 @@ import lockSVG from '@plone/volto/icons/lock.svg';
 import AddLinkForm from '@plone/volto/components/manage/AnchorPlugin/components/LinkButton/AddLinkForm';
 import { ImageInput } from '@plone/volto/components/manage/Widgets/ImageWidget';
 import { createLog } from '../../utils/log';
+import { probeToolbarButtons } from '../../utils/toolbarButtonKinds';
 
 const log = createLog('TOOLBAR');
 
@@ -63,6 +65,31 @@ function isSelectionValidForDocument(selection, children) {
 }
 
 /**
+ * Pasted lists in the editor's shape: a sub-list beside the item it belongs
+ * to (ul > [li, ul]), as indenting makes it. Valid HTML has it inside the
+ * item (li > [text, ul]), which Slate will not keep: it flattens the sub-list
+ * into the item's text ("ParentChild"). So each sub-list inside an item moves
+ * out to follow it.
+ */
+function subListsBesideTheirItems(nodes) {
+  const isList = (n) => n?.type === 'ul' || n?.type === 'ol';
+  return nodes.map((node) => {
+    if (!isList(node)) return node;
+    const children = [];
+    for (const child of node.children || []) {
+      if (child.type === 'li' && (child.children || []).some(isList)) {
+        const own = child.children.filter((c) => !isList(c));
+        children.push({ ...child, children: own.length ? own : [{ text: '' }] });
+        children.push(...subListsBesideTheirItems(child.children.filter(isList)));
+      } else {
+        children.push(...subListsBesideTheirItems([child]));
+      }
+    }
+    return { ...node, children };
+  });
+}
+
+/**
  * Error boundary to catch ReactEditor DOM errors from toolbar editors
  * The toolbar editor isn't in a resolvable DOM tree, so Slate DOM operations fail
  */
@@ -83,54 +110,6 @@ class SlateErrorBoundary extends Component {
 
   render() {
     return this.props.children;
-  }
-}
-
-/**
- * Checks if a button factory creates a BlockButton component.
- *
- * Button factories in config.settings.slate.buttons are arrow functions that
- * return React elements: (props) => <MarkElementButton ... /> or <BlockButton ... />
- *
- * We call the factory (with empty props) to get the element, then compare the
- * element's type to the imported BlockButton component reference.
- *
- * BlockButtons are used for block-level formatting (headings, lists, blockquote).
- * They should go in the FormatDropdown. Other buttons (MarkElementButton for bold,
- * italic, etc.) stay in the toolbar.
- *
- * NOTE: We compare element.type === BlockButton directly, which works in both
- * development and production builds because it's a reference comparison, not
- * a string name comparison that would be affected by minification.
- */
-function isBlockButton(Btn, BlockButtonRef) {
-  if (!Btn || !BlockButtonRef) return false;
-  try {
-    // Call the factory function to get the React element
-    // The factory is like: (props) => <BlockButton format="h2" ... />
-    // Calling it returns the element {type: BlockButton, props: {...}}
-    const element = Btn({});
-    // Compare element.type to the imported BlockButton component reference
-    // This is a reference comparison that works in production builds
-    return element?.type === BlockButtonRef;
-  } catch (e) {
-    // If the factory throws (shouldn't happen), treat as non-block button
-    return false;
-  }
-}
-
-/**
- * The element type a toolbar button applies, or undefined when it doesn't name
- * one (the link editor, the style menu). Both button kinds carry it as
- * `format`: BlockButton for block-level types, MarkElementButton for the inline
- * ones — volto-slate models bold/italic as inline ELEMENTS, so one prop covers
- * both. A button with no `format` is left alone rather than guessed at.
- */
-function buttonFormat(Btn) {
-  try {
-    return Btn({})?.props?.format;
-  } catch (e) {
-    return undefined;
   }
 }
 
@@ -230,7 +209,7 @@ const SyncedSlateToolbar = ({
   completedFlushRequestId,
   transformAction,
   onTransformApplied,
-  blockUI,
+  blockUI: liveBlockUI,
   blockFieldTypes,
   iframeElement,
   onDeleteBlock,
@@ -243,14 +222,7 @@ const SyncedSlateToolbar = ({
   flushEdits, // () => Promise: resolves once text typed on the canvas is in the form
   onOpenObjectBrowser, // Handler to open object browser for media fields
   onFileUpload, // Handler for file uploads: (fieldName, file) => void
-  convertibleTypes = [], // Array of { type, title } for block type conversion
-  onConvertBlock, // Handler for block conversion: (newType) => void
-  onOpenConvertChooser, // Handler to open BlockChooser for convert: () => void
-  canWrap = false, // True when there's a multi-selection that can be wrapped
-  onOpenWrapChooser, // Handler to open BlockChooser for wrap: () => void
-  canUnwrap = false, // True when selected container can be unwrapped into its parent
-  onUnwrap, // Handler for unwrap: () => void
-  onMakeTemplate, // Handler for "Make Template" action
+  menuProps, // The selected block's ⋯ menu (View's blockMenuProps): the sidebar draws the same
   templateEditMode, // instanceId of template being edited, or null
   onToggleTemplateEditMode, // Enter/exit template edit mode: (instanceId|null) => void
   templatePermissions, // Map templateId -> { can_edit } (defaults to editable)
@@ -283,6 +255,23 @@ const SyncedSlateToolbar = ({
   const slateStyleAliases = () => config.settings.slate?.styleAliases || {};
   const slateDefaultType = () => config.settings.slate?.defaultBlockType || 'p';
 
+
+  // State for field link editor popup
+  const [fieldLinkEditorOpen, setFieldLinkEditorOpen] = useState(false);
+  const [fieldLinkEditorField, setFieldLinkEditorField] = useState(null);
+
+  // State for field image editor popup
+  const [fieldImageEditorOpen, setFieldImageEditorOpen] = useState(false);
+  const [fieldImageEditorField, setFieldImageEditorField] = useState(null);
+
+  // A scroll hides the block's UI (HIDE_BLOCK_UI) until it settles. A link or
+  // image box the author has open stays, drawn where the block last was:
+  // unmounting it would throw away what they had typed.
+  const lastBlockUIRef = useRef(null);
+  if (liveBlockUI) lastBlockUIRef.current = liveBlockUI;
+  const blockUI =
+    liveBlockUI ||
+    (fieldImageEditorOpen || fieldLinkEditorOpen ? lastBlockUIRef.current : null);
 
   // The move target is computed by hydra.js from RENDER geometry (reusing the
   // container edge-handle machinery) and delivered on BLOCK_SELECTED. The chevron
@@ -332,7 +321,6 @@ const SyncedSlateToolbar = ({
 
   // Redux dispatch for closing persistent helpers
   const dispatch = useDispatch();
-  const blocksClipboard = useSelector((state) => state?.blocksClipboard || {});
 
   // Wrap ReactEditor.focus to handle toolbar editor gracefully
   // The toolbar editor isn't in a resolvable DOM tree, so focus calls will fail
@@ -373,37 +361,6 @@ const SyncedSlateToolbar = ({
   }, [editor]);
 
 
-  // Detect clicks in iframe to close popups like LinkEditor
-  // Clicks in iframe don't bubble to parent document, so handleClickOutside never fires
-  // Solution: When Admin window loses focus to iframe, dispatch synthetic mousedown
-  useEffect(() => {
-    const handleWindowBlur = () => {
-      // Check if focus went to the iframe
-      const iframe = document.getElementById('previewIframe');
-      if (document.activeElement === iframe) {
-        // Dispatch a synthetic mousedown so Volto's Toolbar handleClickOutside runs
-        // and closes any open toolbar menu now that focus left for the iframe.
-        //
-        // Dispatch on document.body, NOT document. handleClickOutside does
-        // `e.target.closest('.ui.modal')`, and `document` has no `.closest` — dispatching
-        // on document made `e.target === document` and threw
-        // `TypeError: target.closest is not a function`, aborting handleClickOutside
-        // before closeMenu() ran, on EVERY focus-to-iframe transition (e.g. cancelling
-        // the LinkEditor). body is an Element with .closest and the event still bubbles
-        // to the document-level listener, so the menu actually closes.
-        const mousedownEvent = new MouseEvent('mousedown', {
-          bubbles: true,
-          cancelable: true,
-          view: window,
-        });
-        document.body.dispatchEvent(mousedownEvent);
-      }
-    };
-
-    window.addEventListener('blur', handleWindowBlur);
-    return () => window.removeEventListener('blur', handleWindowBlur);
-  }, []);
-
   // Track internal value to detect external changes (like Volto does)
   const internalValueRef = useRef(null);
 
@@ -411,30 +368,16 @@ const SyncedSlateToolbar = ({
   // State for dropdown menu
   const [menuOpen, setMenuOpen] = useState(false);
   const [menuButtonRect, setMenuButtonRect] = useState(null);
-  const [pasteAllowed, setPasteAllowed] = useState(true);
 
-  // Listen for paste-allowed state from View.jsx
+
+  // Close the image editor when the selection moves to another block or to
+  // none. Not when blockUI is merely absent: a scroll hides the block's UI
+  // (HIDE_BLOCK_UI) until it settles, and the editor the author opened has to
+  // be there when it comes back.
   useEffect(() => {
-    const handler = (e) => setPasteAllowed(e.detail.allowed);
-    document.addEventListener('hydra-paste-state', handler);
-    return () => document.removeEventListener('hydra-paste-state', handler);
-  }, []);
-
-  // State for field link editor popup
-  const [fieldLinkEditorOpen, setFieldLinkEditorOpen] = useState(false);
-  const [fieldLinkEditorField, setFieldLinkEditorField] = useState(null);
-
-  // State for field image editor popup
-  const [fieldImageEditorOpen, setFieldImageEditorOpen] = useState(false);
-  const [fieldImageEditorField, setFieldImageEditorField] = useState(null);
-
-  // Close image editor when block is deselected or changes
-  useEffect(() => {
-    if (!selectedBlock || !blockUI) {
-      setFieldImageEditorOpen(false);
-      setFieldImageEditorField(null);
-    }
-  }, [selectedBlock, blockUI]);
+    setFieldImageEditorOpen(false);
+    setFieldImageEditorField(null);
+  }, [selectedBlock]);
 
   // Helper to replace editor content using proper Slate APIs
   // Direct assignment (editor.children = X) bypasses Slate-react's state tracking,
@@ -774,7 +717,45 @@ const SyncedSlateToolbar = ({
           } else {
             dt.setData('text/plain', pasteContent);
           }
-          editor.insertData(dt);
+          // Pasted blocks go in whole beside a text block. Slate's own
+          // insertFragment merges the first pasted block into the one at the
+          // cursor and sets the rest beside it, so a pasted list lost its
+          // first item into the paragraph and the rest became bare list
+          // items, each split out as a block of its own. A list (or any
+          // block) at the cursor of a list keeps Slate's merge: its items
+          // join the list.
+          const insertFragment = editor.insertFragment;
+          editor.insertFragment = (pasted) => {
+            const fragment = subListsBesideTheirItems(pasted);
+            const [top] = editor.children;
+            if (!Element.isElement(top) || ['ul', 'ol'].includes(top.type) || !fragment.some((n) => ['ul', 'ol'].includes(n.type))) {
+              insertFragment(fragment);
+              return;
+            }
+            Editor.withoutNormalizing(editor, () => {
+              if (editor.selection && !Range.isCollapsed(editor.selection)) {
+                Transforms.delete(editor);
+              }
+              if (Editor.isEmpty(editor, top)) {
+                Transforms.removeNodes(editor, { at: [0] });
+                Transforms.insertNodes(editor, fragment, { at: [0] });
+                return;
+              }
+              // Split the text block at the cursor and put the pasted blocks
+              // between its two halves; an empty second half goes.
+              Transforms.splitNodes(editor, { always: true, mode: 'highest' });
+              Transforms.insertNodes(editor, fragment, { at: [1] });
+              const after = fragment.length + 1;
+              if (editor.children[after] && Editor.isEmpty(editor, editor.children[after])) {
+                Transforms.removeNodes(editor, { at: [after] });
+              }
+            });
+          };
+          try {
+            editor.insertData(dt);
+          } finally {
+            editor.insertFragment = insertFragment;
+          }
 
           // Paste is the one surface with no keystroke to intercept — the HTML
           // is deserialized by volto-slate before we see it — so the allow-list
@@ -1130,7 +1111,9 @@ const SyncedSlateToolbar = ({
       const currentFieldValue = getFieldValue(block, fieldName);
       const currentText = currentFieldValue?.[0]?.children?.[0]?.text?.substring(0, 40);
 
-      if (isEqual(newValue, currentFieldValue)) {
+      // Unless a paste left blocks to add after this one: a list pasted at
+      // the end of a paragraph leaves the paragraph as it was.
+      if (isEqual(newValue, currentFieldValue) && !editor._extraBlocks) {
         log('onChange: values equal, skipping');
         return;
       }
@@ -1245,9 +1228,12 @@ const SyncedSlateToolbar = ({
     [],
   );
 
-  // Classify buttons into block buttons (FormatDropdown) and inline buttons (toolbar)
-  // Computed inline (not in useMemo) because isBlockButton() calls the factory
-  // function which may use hooks - calling hooks inside useMemo violates Rules of Hooks
+  // Sort the listed buttons into block buttons (FormatDropdown) and inline
+  // buttons (toolbar). Every registered button is probed on every render,
+  // whatever is listed or the region allows (utils/toolbarButtonKinds.js), so
+  // a button can be left out below for any reason without changing the
+  // toolbar's hook count.
+  const kinds = probeToolbarButtons(buttons, BlockButton);
   const blockButtons = [];
   const allInlineButtons = [];
 
@@ -1258,9 +1244,11 @@ const SyncedSlateToolbar = ({
 
     // A button whose format this region disallows isn't offered. Cosmetic on
     // its own — paste, hotkeys and markdown are gated at their own surfaces —
-    // but this is the one the author sees.
-    const format = buttonFormat(Btn);
+    // but this is the one the author sees. The link button names no format,
+    // so it is gated by name.
+    const { block, format } = kinds[name];
     if (format && !isStyleAllowed(format, slateRules)) return;
+    if (name === 'link' && !isStyleAllowed('link', slateRules)) return;
 
     // Create element for later rendering. The region's rules go to every
     // button: a plain format button is already gated by name above, but the
@@ -1276,9 +1264,7 @@ const SyncedSlateToolbar = ({
         <Btn slateRules={slateRules} />
       );
 
-    // Check if this is a BlockButton (block-level format like h2, h3, ul, ol)
-    // isBlockButton compares element.type to imported BlockButton reference
-    if (isBlockButton(Btn, BlockButton)) {
+    if (block) {
       blockButtons.push({ name, element });
     } else {
       allInlineButtons.push({ name, element });
@@ -1346,16 +1332,7 @@ const SyncedSlateToolbar = ({
   // instance, skipping nested ones) so the ⋯ dropdown can offer "Edit template" /
   // "Save template" straight from the Quanta toolbar — i.e. unlock AND
   // lock/save a template WITHOUT opening the settings sidebar.
-  let toolbarTemplateInstanceId = null;
-  {
-    let cur = selectedBlock;
-    while (cur) {
-      const pi = blockPathMap?.[cur];
-      if (!pi) break;
-      if (pi.isTemplateInstance && !pi.isNestedTemplateInstance) toolbarTemplateInstanceId = cur;
-      cur = pi.parentId;
-    }
-  }
+  const toolbarTemplateInstanceId = topTemplateInstanceOf(blockPathMap, selectedBlock);
   const toolbarTemplateId = toolbarTemplateInstanceId
     ? blockPathMap?.[toolbarTemplateInstanceId]?.templateId
     : null;
@@ -1364,6 +1341,13 @@ const SyncedSlateToolbar = ({
   const isEditingToolbarTemplate = (templateEditMode || []).includes(
     toolbarTemplateInstanceId,
   );
+
+  // Take the author to a template: select it, so the sidebar shows its
+  // section — what it is, what unlocking it does, and the Unlock button.
+  const openTemplate = (instanceId) => {
+    onSelectBlock(instanceId);
+    expandSidebar();
+  };
 
   // Determine if we should show format buttons based on field type
   // Also hide for readonly blocks (e.g., fixed template blocks, or blocks outside template in edit mode)
@@ -1476,23 +1460,6 @@ const SyncedSlateToolbar = ({
   // Block action buttons (e.g., add row/column for tables) also need slots
   const blockActionToolbarItems = blockActions?.toolbar || [];
 
-  // Reveal empty optional fields on the selected block (#296). Hydra owns the
-  // revealed set — it's ephemeral edit state that must never reach the admin's
-  // formData, so the admin only sends the intent and reads the result back off
-  // BLOCK_SELECTED (blockUI.revealableFields / blockUI.revealed).
-  // NOT a hook: this sits below the component's early returns, so a useCallback
-  // here would change hook order between renders ("Rendered more hooks than
-  // during the previous render"). It needs no memoisation anyway.
-  const toggleOptionalFields = (blockUid) => {
-    const iframe = document.getElementById('previewIframe');
-    if (iframe?.contentWindow) {
-      iframe.contentWindow.postMessage(
-        { type: 'TOGGLE_OPTIONAL_FIELDS', blockUid },
-        '*',
-      );
-    }
-  };
-
   // Slate buttons come first in toolbar, so they get priority for slots
   // Calculate slots for Slate (format dropdown + inline buttons) first
   const slotsAfterFormatDropdown = Math.max(0, availableSlots - formatDropdownSlots);
@@ -1503,6 +1470,11 @@ const SyncedSlateToolbar = ({
   const slotsForBlockActions = Math.max(0, availableSlots - slotsUsedBySlate);
   const visibleBlockActions = blockActionToolbarItems.slice(0, slotsForBlockActions);
   const overflowBlockActions = blockActionToolbarItems.slice(slotsForBlockActions);
+  // Show/Hide empty fields (the eye) is the least important control: it gets a
+  // slot only if one is left, last on the right, and is always in the ⋯ menu.
+  const revealOnToolbar =
+    !!menuProps?.onToggleReveal &&
+    slotsForBlockActions - visibleBlockActions.length > 0;
 
   // Show format dropdown only if there's room for it plus at least 1 inline button
   const showFormatDropdown = hasFormatDropdown && availableSlots >= formatDropdownSlots + 1;
@@ -1567,12 +1539,14 @@ const SyncedSlateToolbar = ({
         );
       })()}
 
-      {/* Drag handle + template lock/unlock toggle — only for blocks, not page fields.
-          A template block the user can edit shows a lock/unlock toggle in a CONSISTENT
-          spot next to the drag handle: 🔒 to enter template edit (unlock), 🔓 to lock &
-          save. While editing the block is movable, so the drag handle sits beside it —
-          same location for both lock and unlock. Clicking raises the unlock-warning /
-          lock-decision modal, so a template can be saved WITHOUT opening the sidebar. */}
+      {/* Drag handle + template lock — only for blocks, not page fields.
+          A lock says the block is LOCKED: the page may not edit it. It stands in for
+          (or, if the block still moves, sits beside) the drag handle. A block in a
+          template's open slot, or a fixed block the page edits, shows no lock — it
+          needs no unlocking (inka#774). Clicking the lock never unlocks: it selects
+          the template, whose sidebar section says what unlocking does and holds the
+          Unlock button. While the template is unlocked, 🔓 locks it again (asking
+          what to do with the edits), so it can be saved without the sidebar. */}
       {(() => {
         if (!selectedBlock || selectedBlock === PAGE_BLOCK_UID) {
           return <div style={{ width: '8px' }} />; // Spacer for page-level fields
@@ -1599,50 +1573,52 @@ const SyncedSlateToolbar = ({
             ⠿
           </div>
         );
+        const beside = (...items) => (
+          <div style={{ display: 'flex', alignItems: 'center', gap: '2px' }}>
+            {items}
+          </div>
+        );
 
-        // The lock/unlock toggle shows for the template's fixed "chrome" (🔒, tap to
-        // edit) and for ANY block while its template is unlocked (🔓, tap to lock &
-        // save). Editable slot content in a LOCKED template is just normal movable
-        // content — it keeps the drag handle (below), no toggle.
         const isPositionLocked = isBlockPositionLocked(block, templateEditMode);
-        const canToggleTemplate =
-          !!instanceId && !!onToggleTemplateEditMode && canEditToolbarTemplate;
-        if (canToggleTemplate && (isPositionLocked || isEditingToolbarTemplate)) {
-          const editing = isEditingToolbarTemplate;
-          // The ONE shared template lock/unlock control (same component the sidebar
-          // renders) — a whole-template action.
-          const toggle = (
+        const isLocked = isBlockReadonly(block, templateEditMode);
+        // While editing the block is movable — the drag handle keeps its canonical
+        // (leftmost) position so DnD alignment is unaffected; the toggle sits to its
+        // right, next to it.
+        if (instanceId && onToggleTemplateEditMode && isEditingToolbarTemplate) {
+          return beside(
+            <React.Fragment key="drag">{dragHandle}</React.Fragment>,
             <TemplateLockToggle
+              key="lock"
               instanceId={instanceId}
-              editing={editing}
+              editing
               canEdit={canEditToolbarTemplate}
               onToggle={onToggleTemplateEditMode}
               variant="toolbar"
-            />
-          );
-          // While editing the block is movable — the drag handle keeps its canonical
-          // (leftmost) position so DnD alignment is unaffected; the toggle sits to its
-          // right, next to it.
-          return editing ? (
-            <div style={{ display: 'flex', alignItems: 'center', gap: '2px' }}>
-              {dragHandle}
-              {toggle}
-            </div>
-          ) : (
-            toggle
+            />,
           );
         }
-
-        // Fixed template block the user CANNOT toggle (no Modify permission) → static lock.
-        if (isPositionLocked) {
-          return (
+        if (isLocked && instanceId && onSelectBlock) {
+          const lock = (
+            <TemplateLockToggle
+              key="lock"
+              instanceId={instanceId}
+              editing={false}
+              onToggle={openTemplate}
+              opens
+              variant="toolbar"
+            />
+          );
+          return isPositionLocked
+            ? lock
+            : beside(<React.Fragment key="drag">{dragHandle}</React.Fragment>, lock);
+        }
+        // Locked, but with no template to open (a block the page itself flags).
+        if (isLocked) {
+          const lock = (
             <div
+              key="lock"
               className="lock-icon"
-              title={
-                instanceId && !canEditToolbarTemplate
-                  ? 'You don’t have permission to edit this template'
-                  : 'This block is part of a template and cannot be moved'
-              }
+              title="This block is locked"
               style={{
                 padding: '4px 6px',
                 display: 'flex',
@@ -1658,25 +1634,14 @@ const SyncedSlateToolbar = ({
               <Icon name={lockSVG} size="16px" color="#999" />
             </div>
           );
+          return isPositionLocked
+            ? lock
+            : beside(<React.Fragment key="drag">{dragHandle}</React.Fragment>, lock);
         }
+        // Fixed but editable: it can't be dragged, and there is nothing to unlock.
+        if (isPositionLocked) return <div style={{ width: '8px' }} />;
         return dragHandle;
       })()}
-
-      {/* Reveal empty optional fields (#296). Rendered only when the selected block
-          actually has some — a fully populated block shows no control. pointerEvents
-          must be re-enabled: the toolbar itself sets 'none' so drag events reach the
-          iframe's invisible drag button underneath. */}
-      {selectedBlock && selectedBlock !== PAGE_BLOCK_UID &&
-        !isBlockReadonly(getBlock(selectedBlock), templateEditMode) && (
-          <div style={{ pointerEvents: 'auto', display: 'flex', alignItems: 'center' }}>
-            <OptionalFieldsToggle
-              blockUid={selectedBlock}
-              revealableFields={blockUI?.revealableFields}
-              revealed={blockUI?.revealed}
-              onToggle={toggleOptionalFields}
-            />
-          </div>
-        )}
 
       {/* Real Slate buttons - only show if we have a valid slate field value */}
       {/* IMPORTANT: Wrap in div with pointerEvents: 'auto' to make buttons clickable
@@ -1820,6 +1785,21 @@ const SyncedSlateToolbar = ({
         );
       })()}
 
+      {/* Show/Hide empty fields (#296, #765): the eye, last of the block's own
+          controls. Rendered only when the block has an empty field marked
+          optionalOnCanvas. pointerEvents re-enabled: the toolbar sets 'none' so
+          drag events reach the iframe's invisible drag button underneath. */}
+      {revealOnToolbar && (
+        <div style={{ pointerEvents: 'auto', display: 'flex', alignItems: 'center' }}>
+          <OptionalFieldsToggle
+            blockUid={selectedBlock}
+            revealableFields={menuProps.revealableFields}
+            revealed={menuProps.revealed}
+            onToggle={menuProps.onToggleReveal}
+          />
+        </div>
+      )}
+
       {/* Step-up button — mobile equivalent of the Escape key.
        * The state machine (text → block → parent → deselect) lives in
        * hydra.js's stepUpSelection() method. The button simply posts a
@@ -1889,18 +1869,12 @@ const SyncedSlateToolbar = ({
     {/* Dropdown menu with overflow buttons and actions */}
     {menuOpen && (
       <DropdownMenu
-        selectedBlock={selectedBlock}
-        onDeleteBlock={onDeleteBlock}
+        {...menuProps}
         menuButtonRect={menuButtonRect}
         onClose={() => setMenuOpen(false)}
-        onOpenSettings={() => {
-          // Expand sidebar if collapsed
-          const sidebarContainer = document.querySelector('.sidebar-container');
-          if (sidebarContainer?.classList.contains('collapsed')) {
-            const triggerButton = sidebarContainer.querySelector('.trigger');
-            triggerButton?.click();
-          }
-        }}
+        // What only the toolbar's menu has: Settings opens the sidebar, and the
+        // format buttons and block actions that don't fit on the toolbar.
+        onOpenSettings={expandSidebar}
         overflowButtons={overflowButtons}
         showFormatDropdown={!showFormatDropdown}
         blockButtons={blockButtons}
@@ -1908,43 +1882,7 @@ const SyncedSlateToolbar = ({
         onChange={handleChange}
         onMouseDownCapture={handleButtonMouseDownCapture}
         onClickCapture={handleButtonClickCapture}
-        tableActions={blockActions}
         overflowBlockActions={overflowBlockActions}
-        onTableAction={onBlockAction}
-        addMode={blockPathMap?.[selectedBlock]?.addMode}
-        parentAddMode={blockPathMap?.[selectedBlock]?.parentAddMode}
-        addDirection={blockUI?.addDirection}
-        convertibleTypes={convertibleTypes}
-        onConvertBlock={onConvertBlock}
-        onOpenConvertChooser={onOpenConvertChooser}
-        canWrap={canWrap}
-        onOpenWrapChooser={onOpenWrapChooser}
-        canUnwrap={canUnwrap}
-        onUnwrap={onUnwrap}
-        // `fixed` means "not yours to remove from THIS page" — the point of a
-        // template's chrome. It is not meant to survive unlocking: once the
-        // author has taken the template into edit mode, they are editing the
-        // template itself, and a member they can retype but never delete is a
-        // dead end (the site announcement's alert could be reworded forever and
-        // never taken out).
-        isFixed={
-          !!blockPathMap?.[selectedBlock]?.isFixed && !isEditingToolbarTemplate
-        }
-        isInTemplate={!!block?.templateId}
-        onMakeTemplate={onMakeTemplate}
-        // Template edit/lock straight from the toolbar ⋯ menu (no sidebar needed):
-        // "Edit template" when locked, "Save template" (→ lock/save decision)
-        // while editing. Gated on Modify permission.
-        isTemplateInstance={!!toolbarTemplateInstanceId && canEditToolbarTemplate && !!onToggleTemplateEditMode}
-        isEditingTemplate={isEditingToolbarTemplate}
-        onToggleTemplateEdit={
-          toolbarTemplateInstanceId && onToggleTemplateEditMode
-            ? () => onToggleTemplateEditMode(toolbarTemplateInstanceId)
-            : null
-        }
-        multiSelectedUids={isMultiSelected ? blockUI.multiSelectedUids : null}
-        hasClipboard={!!(blocksClipboard?.cut || blocksClipboard?.copy)}
-        pasteAllowed={pasteAllowed}
       />
     )}
 

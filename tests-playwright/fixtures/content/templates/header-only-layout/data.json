@@ -18,8 +18,7 @@
           "type": "h1",
           "children": [{ "text": "Header Only" }]
         }
-      ],
-      "plaintext": "Header Only"
+      ]
     },
     "default-slot": {
       "@type": "slate",
@@ -32,8 +31,7 @@
           "type": "p",
           "children": [{ "text": "" }]
         }
-      ],
-      "plaintext": ""
+      ]
     }
   },
   "blocks_layout": {

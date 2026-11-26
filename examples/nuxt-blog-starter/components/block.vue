@@ -31,10 +31,10 @@
                @nuxt/image emitting one URL at every width — the browser then
                downloads the full-size file on every viewport. -->
           <NuxtImg data-edit-media="url" :src="props.url" :srcset="props.srcset || undefined"
-                   :sizes="props.sizes || undefined" :width="props.width" :alt="block.alt" />
+                   :sizes="imageSizes(props)" :width="props.width" :alt="block.alt" />
         </a>
         <NuxtImg v-else data-edit-media="url" data-edit-link="href" :src="props.url"
-                 :srcset="props.srcset || undefined" :sizes="props.sizes || undefined"
+                 :srcset="props.srcset || undefined" :sizes="imageSizes(props)"
                  :width="props.width" :alt="block.alt" />
       </template>
       <img v-else-if="isInListing" data-edit-media="url" src="/placeholder.svg"
@@ -104,7 +104,7 @@
               <template v-for="item in items" :key="item['@uid']">
                 <template v-if="item.readOnly"><!-- hydra block-readonly --></template>
                 <Block :block_uid="item['@uid']" :block="item" :data="data" :contained="true" :is-in-listing="true"
-                       class="grid-cell p-4"
+                       :slot-sizes="gridCellSizes(block)" class="grid-cell p-4"
                        :style="!block.styles?.backgroundColor ? { backgroundColor: '#f1f5f9' } : {}" />
               </template>
             </template>
@@ -116,7 +116,7 @@
         <!-- Static child: filtered by paging window -->
         <template v-else v-for="item in entry.items" :key="item['@uid']">
           <Block :block_uid="item['@uid']" :block="item" :data="data" :contained="true"
-                 class="grid-cell p-4"
+                 :slot-sizes="gridCellSizes(block)" class="grid-cell p-4"
                  :style="!block.styles?.backgroundColor ? { backgroundColor: '#f1f5f9' } : {}" />
         </template>
       </template>
@@ -490,7 +490,8 @@
         </p>
         <div v-if="block.showSortOn && block.sortOnOptions?.length" class="search-sort">
           <label class="text-sm text-gray-600 mr-2">Sort by:</label>
-          <select class="px-3 py-1 border border-gray-300 rounded text-sm" @change="handleSortChange" data-linkable-allow>
+          <select class="px-3 py-1 border border-gray-300 rounded text-sm" :value="shownSort(block)" @change="handleSortChange" data-linkable-allow>
+            <option value="" :disabled="!hasSearchKeyword(currentSearchText)">Relevance</option>
             <option v-for="opt in block.sortOnOptions" :key="opt" :value="opt">{{ opt }}</option>
           </select>
         </div>
@@ -567,7 +568,8 @@
             </p>
             <div v-if="block.showSortOn && block.sortOnOptions?.length" class="search-sort">
               <label class="text-sm text-gray-600 mr-2">Sort by:</label>
-              <select class="px-3 py-1 border border-gray-300 rounded text-sm" @change="handleSortChange" data-linkable-allow>
+              <select class="px-3 py-1 border border-gray-300 rounded text-sm" :value="shownSort(block)" @change="handleSortChange" data-linkable-allow>
+                <option value="" :disabled="!hasSearchKeyword(currentSearchText)">Relevance</option>
                 <option v-for="opt in block.sortOnOptions" :key="opt" :value="opt">{{ opt }}</option>
               </select>
             </div>
@@ -579,7 +581,7 @@
     </template>
   </div>
 
-  <component v-else-if="block['@type'] == 'heading'" :is="block.tag || 'h2'"
+  <component v-else-if="block['@type'] == 'heading'" :is="block.tag"
     :data-block-uid="block_uid" data-edit-text="heading"
     :class="{ 'text-center': block.alignment === 'center', 'text-right': block.alignment === 'right' }">
     {{ block.heading }}
@@ -638,21 +640,28 @@
     </NuxtLink>
   </div>
 
-  <div v-else-if="block['@type'] == 'video'" :data-block-uid="block_uid" class="my-4">
-    <div v-if="getYouTubeId(block.url)" class="relative w-full pb-[56.25%]">
+  <div v-else-if="block['@type'] == 'video'" :data-block-uid="block_uid" data-edit-link="url" class="my-4">
+    <!-- The preview image shows before the video plays: the <video>'s poster,
+         or for YouTube a picture linked to the video. Empty means absent. -->
+    <a v-if="getYouTubeId(linkUrl(block.url)) && imageProps(block.preview_image).url"
+       :href="`https://www.youtube.com/watch?v=${getYouTubeId(linkUrl(block.url))}`" data-edit-link="url">
+      <img data-edit-media="preview_image" :src="imageProps(block.preview_image).url" alt="Play video" class="w-full h-auto rounded-lg" />
+    </a>
+    <div v-else-if="getYouTubeId(linkUrl(block.url))" class="relative w-full pb-[56.25%]">
       <iframe class="absolute inset-0 w-full h-full rounded-lg"
-          :src="`https://www.youtube.com/embed/${getYouTubeId(block.url)}`"
+          :src="`https://www.youtube.com/embed/${getYouTubeId(linkUrl(block.url))}`"
           frameborder="0" allowfullscreen></iframe>
     </div>
-    <video v-else-if="block.url"
+    <video v-else-if="linkUrl(block.url)"
            class="w-full h-auto max-w-full rounded-lg"
-           data-edit-media="url"
            :controls="block.controls !== false"
            :autoplay="!!block.autoplay"
            :loop="!!block.loop"
            :muted="!!block.muted || !!block.autoplay"
+           :poster="imageProps(block.preview_image).url || undefined"
+           :data-edit-media="imageProps(block.preview_image).url ? 'preview_image' : undefined"
            playsinline>
-      <source :src="getVideoSrc(block.url)" type="video/mp4">
+      <source :src="getVideoSrc(linkUrl(block.url))" type="video/mp4">
     </video>
   </div>
 
@@ -723,7 +732,10 @@
     <div v-if="formState[block_uid]?.success" class="form-success p-4 bg-green-50 text-green-800 rounded-lg mb-4">
       {{ block.send_message || 'Form submitted successfully.' }}
     </div>
-    <form v-else @submit.prevent="handleFormSubmit($event, block)" novalidate class="space-y-4">
+    <p v-if="formState[block_uid]?.submitError" class="form-submit-error p-4 bg-red-50 text-red-800 rounded-lg mb-4">
+      {{ formState[block_uid].submitError }}
+    </p>
+    <form v-if="!formState[block_uid]?.success" @submit.prevent="handleFormSubmit($event, block)" novalidate class="space-y-4">
       <template v-for="field in expand(block.subblocks, null, 'field_id')" :key="field['@uid']">
         <div :data-block-uid="field['@uid']" :data-block-type="field.field_type" data-block-add="bottom"
              class="form-field">
@@ -950,11 +962,11 @@
     <span class="text-sm text-gray-500 dark:text-gray-400">Follow us:</span>
     <a v-for="link in expand(block.links || [], null, '@id')" :key="link['@uid']"
        :data-block-uid="link['@uid']" data-block-add="right"
-       :href="link.url" target="_blank" rel="noopener"
+       :href="linkUrl(link.url)" target="_blank" rel="noopener"
        data-edit-link="url"
-       :title="socialInfo(link.url).name"
+       :title="socialInfo(linkUrl(link.url)).name"
        class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 transition-colors">
-      <span v-html="socialInfo(link.url).svg" />
+      <span v-html="socialInfo(linkUrl(link.url)).svg" />
     </a>
   </div>
 
@@ -962,7 +974,7 @@
   <div v-else-if="block['@type'] == 'maps'" :data-block-uid="block_uid"
        :class="['maps-block my-4', { 'mx-auto max-w-2xl': block.align === 'center', 'float-left mr-4': block.align === 'left', 'float-right ml-4': block.align === 'right' }]">
     <h3 v-if="block.title" data-edit-text="title" class="text-lg font-semibold mb-2">{{ block.title }}</h3>
-    <iframe v-if="block.url" :src="block.url" data-edit-link="url"
+    <iframe v-if="linkUrl(block.url)" :src="linkUrl(block.url)" data-edit-link="url"
       :class="{ 'w-full': block.align === 'full' || block.align === 'center', 'w-96': block.align === 'left' || block.align === 'right' }"
       height="450" style="border:0;" allowfullscreen="" loading="lazy" referrerpolicy="no-referrer-when-downgrade"></iframe>
     <p v-else class="text-gray-400 italic">No map URL configured</p>
@@ -977,8 +989,8 @@
 </template>
 <script setup>
 import { ref, reactive, watch, watchEffect, nextTick, computed, toRefs, inject, onMounted, unref } from 'vue';
-import { isEditMode } from '@hydra-js/hydra.js';
-import { staticBlocks, expandTemplatesSync, isEmptySlate } from '@hydra-js/helpers';
+import { isEditMode, getAuthHeaders } from '@hydra-js/hydra.js';
+import { staticBlocks, expandTemplatesSync, isEmptySlate, hasSearchKeyword, keepsChosenSort } from '@hydra-js/helpers';
 import RichText from './richtext.vue';
 
 // Inject page-level context for nested components
@@ -1022,11 +1034,19 @@ const props = defineProps({
   isInListing: {
     type: Boolean,
     default: false,
-  }
+  },
+  // How wide this block is drawn at each breakpoint, as NuxtImg `sizes`, from
+  // the container that lays it out. Without it an image guesses a third of
+  // the screen, and a cell of a four-column grid downloads three times the
+  // pixels it paints.
+  slotSizes: {
+    type: String,
+    default: '',
+  },
 });
 
 // Use toRefs to maintain reactivity (destructuring props directly can lose reactivity in Vue 3)
-const { block_uid, block, data, contained, apiUrl, isInListing } = toRefs(props);
+const { block_uid, block, data, contained, apiUrl, isInListing, slotSizes } = toRefs(props);
 
 const placeholderImage = '/placeholder.svg';
 
@@ -1381,6 +1401,26 @@ const responsiveColsClass = (count) => {
 
 const gridColsClass = (block) => responsiveColsClass(block.blocks_layout?.items?.length);
 
+// The page's content column (pages/[...slug].vue: px-4 inside max-w-4xl) and a
+// grid cell's gap-4 and p-4, which gridCellSizes measures a cell from.
+const CONTENT_MAX = 896;
+const GAP = 16;
+const CELL_PADDING = 32;
+
+// NuxtImg `sizes` for a grid cell, following responsiveColsClass column by
+// column: one column on a phone, then up to 2 (sm), 3 (md) and the real count
+// (lg). From lg the content column is at its 896px cap, so the cell's width is
+// exact; below it a share of the screen, which never undershoots.
+const gridCellSizes = (block) => {
+  const cols = Math.min(block.blocks_layout?.items?.length || 4, 4);
+  const cell = Math.floor((CONTENT_MAX - (cols - 1) * GAP) / cols) - CELL_PADDING;
+  return `100vw sm:${Math.ceil(100 / Math.min(cols, 2))}vw md:${Math.ceil(100 / Math.min(cols, 3))}vw lg:${cell}px`;
+};
+
+// An image's `sizes`: the slot it is drawn in when its container says, or the
+// page-wide default imageProps gives a responsive image.
+const imageSizes = (props) => (props.sizes && slotSizes.value) || props.sizes || undefined;
+
 // Helper to extract YouTube video ID from various URL formats
 const getYouTubeId = (url) => {
   if (!url) return null;
@@ -1515,16 +1555,21 @@ const tocEntries = computed(() => {
     const b = blocks[id];
     if (!b) continue;
     if (b['@type'] === 'heading' && b.heading) {
-      result.push({ id, level: parseInt((b.tag || 'h2').slice(1)), text: b.heading });
+      result.push({ id, level: parseInt(b.tag.slice(1)), text: b.heading });
     } else if (b['@type'] === 'slate' && b.value?.[0]?.type?.match(/^h[1-6]$/)) {
       const level = parseInt(b.value[0].type.slice(1));
-      const text = b.plaintext || b.value[0].children?.map(c => c.text).join('') || '';
+      // The heading's own words: inline ones (bold, a link) hold theirs in children.
+      const words = (nodes) => nodes.map((n) => (typeof n.text === 'string' ? n.text : words(n.children))).join('');
+      const text = words(b.value[0].children);
       if (text.trim()) result.push({ id, level, text });
     }
   }
   return result;
 });
 
+// How a search sorts (plone/volto#4000, Inka's helpers): a keyword is ranked
+// by relevance unless the reader chose a sort; with no keyword the listing's
+// own sort applies. A chosen sort goes when the keyword starts or ends.
 const handleSearchSubmit = (event) => {
   const formData = new FormData(event.target);
   const searchText = formData.get('SearchableText');
@@ -1535,12 +1580,34 @@ const handleSearchSubmit = (event) => {
   } else {
     delete query.SearchableText;
   }
+  if (!keepsChosenSort(route.query.SearchableText, searchText)) {
+    delete query.sort_on;
+    delete query.sort_order;
+  }
   navigateTo({ path: route.path, query });
 };
 
 const handleSortChange = (event) => {
   const route = useRoute();
-  navigateTo({ path: route.path, query: { ...route.query, sort_on: event.target.value } });
+  const query = { ...route.query };
+  if (event.target.value) {
+    query.sort_on = event.target.value;
+  } else {
+    // Relevance: no sort chosen.
+    delete query.sort_on;
+    delete query.sort_order;
+  }
+  navigateTo({ path: route.path, query });
+};
+
+// What the sort control shows: the sort chosen, else Relevance ("") with a
+// keyword, else the search's listing's own sort.
+const shownSort = (block) => {
+  const chosen = useRoute().query.sort_on;
+  if (chosen) return chosen;
+  if (hasSearchKeyword(currentSearchText.value)) return '';
+  const listingUid = block.blocks_layout?.listing?.[0];
+  return block.blocks?.[listingUid]?.querystring?.sort_on || '';
 };
 
 // Querystring metadata — fetched once globally, cached in Nuxt payload.
@@ -1712,9 +1779,12 @@ const handleFormSubmit = async (event, formBlock) => {
 
   const apiUrl = effectiveApiUrl.value;
   const contextPath = effectiveContextPath.value;
+  // Sending the editor's token lets an author try a form on a page that
+  // isn't published yet: Plone refuses an anonymous submission there. A
+  // public visitor has no token, so getAuthHeaders() adds nothing for them.
   const response = await fetch(`${apiUrl}${contextPath}/@submit-form`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+    headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
     body: JSON.stringify({
       block_id: uid,
       data: submitData,
@@ -1725,8 +1795,13 @@ const handleFormSubmit = async (event, formBlock) => {
         : {}),
     }),
   });
-  if (response.ok || response.status === 204) {
+  if (response.ok) {
     formState.value = { ...formState.value, [uid]: { success: true } };
+  } else {
+    formState.value = {
+      ...formState.value,
+      [uid]: { submitError: `The form could not be submitted (${response.status}).` },
+    };
   }
 };
 

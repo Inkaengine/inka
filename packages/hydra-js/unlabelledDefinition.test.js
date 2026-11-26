@@ -5,6 +5,7 @@
  * validator and every frontend ask the same question — a frontend so it does
  * not force a page layout on a template — so they ask it of one function.
  */
+import { describe, test, expect } from 'vitest';
 import { isUnlabelledDefinition } from '@volto-hydra/helpers';
 
 const doc = (blocks, layout = { items: Object.keys(blocks) }) => ({

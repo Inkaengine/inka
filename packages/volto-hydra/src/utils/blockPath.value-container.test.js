@@ -25,7 +25,7 @@ const cfg = {
     blockSchema: {
       properties: {
         blocks: {
-          widget: 'object_list',
+          widget: 'object_list', idField: '@id',
           typeField: '@type',
           allowedBlocks: ['slate', 'image'],
         },

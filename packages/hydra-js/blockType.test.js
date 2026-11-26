@@ -1,3 +1,4 @@
+import { describe, test, expect } from 'vitest';
 import { getBlockType, setBlockType, clearBlockType } from '@volto-hydra/helpers';
 
 /**

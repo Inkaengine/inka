@@ -1,7 +1,7 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { PORTS, URLS } from '../ports';
+import { URLS } from '../ports';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 
@@ -21,18 +21,9 @@ const HERE = path.dirname(fileURLToPath(import.meta.url));
  */
 const FRONTENDS: Record<string, { adapter: string; cms: string }> = {
   'journey-plone': { adapter: 'plone', cms: URLS.mockApi },
-  'journey-plone-seeded': {
-    adapter: 'plone',
-    cms: `http://localhost:${PORTS.plonSeeded}`,
-  },
-  'journey-drupal': {
-    adapter: 'drupal',
-    cms: `http://127.0.0.1:${PORTS.mockDrupal}`,
-  },
-  'journey-wordpress': {
-    adapter: 'wordpress',
-    cms: `http://127.0.0.1:${PORTS.wordpress}`,
-  },
+  'journey-plone-seeded': { adapter: 'plone', cms: URLS.ploneSeeded },
+  'journey-drupal': { adapter: 'drupal', cms: URLS.mockDrupal },
+  'journey-wordpress': { adapter: 'wordpress', cms: URLS.wordpress },
   'journey-strapi': { adapter: 'strapi', cms: URLS.strapi },
 };
 

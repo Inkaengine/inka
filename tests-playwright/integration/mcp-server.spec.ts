@@ -2,11 +2,12 @@
  * The MCP server end to end: an MCP client starts it over stdio, as an agent's
  * host would, and it drives its own headless admin against the mock API.
  */
-import { writeFileSync } from 'node:fs';
+import { mintToken } from '@inka/mock-api/tokens';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
-import { test, expect } from '../fixtures';
-import { mintToken } from '../fixtures/mock-tokens.cjs';
-import { connect, CALL } from '../helpers/mcpClient';
+import { writeFileSync } from 'node:fs';
+import { expect, test } from '../fixtures';
+import { CALL, connect } from '../helpers/mcpClient';
+import { freshPage } from '../helpers/otherUser';
 
 const PAGE = '/_test_data/test-page';
 
@@ -52,13 +53,110 @@ test.describe('MCP server', () => {
     } };
   };
 
+  test('an earlier save can be read, seen and restored', async () => {
+    test.setTimeout(180000);
+    const path = await freshPage(token);
+    const read = (await call('get_page', { path })).json();
+    await call('edit_blocks', { path, expectedVersion: read.version, ops: [{ op: 'update', id: '_page', set: { title: 'A new title' } }] });
+
+    const saves = (await call('get_history', { path })).json().history.filter((entry: any) => 'version' in entry);
+    expect(saves.map((entry: any) => entry.version)).toEqual([1, 0]);
+
+    // What version 0 held, as Compare shows it: its blocks, and its look.
+    const old = (await call('get_page', { path, version: 0 })).json();
+    expect(old).toMatchObject({ path, historyVersion: 0, title: 'A page of its own' });
+    expect(old).not.toHaveProperty('version');
+    const seen = (await call('view_page', { path, version: 0 })).json();
+    expect(seen.historyVersion).toBe(0);
+    expect(seen.renderedText).toContain('A page of its own');
+    expect((await call('view_page', { path })).json().renderedText).toContain('A new title');
+    expect((await call('get_page', { path, version: 7 })).text).toMatch(/has no version 7/);
+
+    const now = (await call('get_page', { path })).json();
+    const restored = (await call('revert_page', { path, version: 0, expectedVersion: now.version })).json();
+    expect(restored).toMatchObject({ path, restored: 0 });
+    expect((await call('get_page', { path })).json().title).toBe('A page of its own');
+  });
+
+  test('a page with a draft: reading and editing it reach the draft, visitors keep the page', async () => {
+    test.setTimeout(180000);
+    const path = '/_test_data/another-page-2';
+    const before = (await call('get_page', { path })).json();
+    expect(before).not.toHaveProperty('draft');
+    const made = (await call('transition_page', { path, id: 'checkout', expectedVersion: before.version })).json();
+    expect(made.path).toBe(path);
+
+    // Same page, same path: the edit lands on the draft.
+    const reading = (await call('get_page', { path })).json();
+    expect(reading.path).toBe(path);
+    expect(reading.draft.url).toMatch(/^http.*\/_test_data\/copy_of_another-page-2$/);
+    expect(reading.draft).not.toHaveProperty('path');
+
+    // Found by its state, and as the page: the copy is not a page of its own.
+    const drafted = (await call('search', { hasDraft: true })).json();
+    expect(drafted.items.map((i: { path: string }) => i.path)).toEqual([path]);
+    expect(drafted.items[0].hasDraft).toBe(true);
+    const unseen = (await call('search', { reviewState: ['private'], path: '/_test_data' })).json();
+    expect(unseen.items.map((i: { path: string }) => i.path)).not.toContain('/_test_data/copy_of_another-page-2');
+    const listed = (await call('list_children', { path: '/_test_data', limit: 100 })).json();
+    expect(listed.items.find((i: { path: string }) => i.path === path).hasDraft).toBe(true);
+    expect(listed.items.map((i: { path: string }) => i.path)).not.toContain('/_test_data/copy_of_another-page-2');
+    const edited = (await call('edit_blocks', {
+      path,
+      expectedVersion: reading.version,
+      ops: [{ op: 'update', id: '_page', set: { title: 'Title on the draft' } }],
+    })).json();
+    expect(edited.draft).toEqual(reading.draft);
+    expect((await call('get_page', { path })).json().title).toBe('Title on the draft');
+
+    // Visitors still see the page as it was, unless the draft is asked for.
+    expect((await call('view_page', { path })).json().renderedText).not.toContain('Title on the draft');
+    const shown = (await call('view_page', { path, draft: true })).json();
+    expect(shown).toMatchObject({ path, draft: reading.draft });
+    expect(shown.renderedText).toContain('Title on the draft');
+
+    // An emergency: an edit can choose the live page, and is told the draft hasn't got it.
+    const live = (await call('get_page', { path, live: true })).json();
+    expect(live).toMatchObject({ path, live: true });
+    expect(live.title).not.toBe('Title on the draft');
+    const fixed = (await call('edit_blocks', {
+      path,
+      live: true,
+      expectedVersion: live.version,
+      ops: [{ op: 'update', id: '_page', set: { description: 'Fixed on the live page' } }],
+    })).json();
+    expect(fixed.live).toBe(true);
+    expect(fixed.warning).toMatch(/draft does not have this change/);
+    expect((await call('get_page', { path, live: true })).json().description).toBe('Fixed on the live page');
+    expect((await call('get_page', { path })).json().description).not.toBe('Fixed on the live page');
+
+    // Published: the page takes it, at the same path, and has no draft now.
+    const offered = (await call('get_transitions', { path })).json();
+    const done = (await call('transition_page', { path, id: 'checkin', expectedVersion: offered.version })).json();
+    expect(done.path).toBe(path);
+    expect(done).not.toHaveProperty('draft');
+    expect((await call('search', { hasDraft: true })).json().items).toEqual([]);
+    const after = (await call('get_page', { path })).json();
+    expect(after.title).toBe('Title on the draft');
+    // What the warning said: publishing the draft replaces the live page, the fix included.
+    expect(after.description).not.toBe('Fixed on the live page');
+    expect(after).not.toHaveProperty('draft');
+    expect((await call('view_page', { path, draft: true })).text).toMatch(/has no draft/);
+    // With no draft, there is only the live page to edit, and nothing to warn of.
+    const plain = (await call('get_page', { path, live: true })).json();
+    const edited2 = (await call('edit_blocks', {
+      path, live: true, expectedVersion: plain.version, ops: [{ op: 'update', id: '_page', set: { description: 'Plain' } }],
+    })).json();
+    expect(edited2).not.toHaveProperty('warning');
+  });
+
   test('lists its tools', async () => {
     const { tools } = await client.listTools();
-    // `picture` is for the screenshot view alone: a client lists it to the view, not the model.
-    expect(tools.map((t) => t.name).sort()).toEqual(['create_page', 'delete_page', 'describe_block', 'edit_blocks', 'get_page', 'list_block_types', 'list_children', 'move_page', 'picture', 'preview_layout', 'rename_page', 'search', 'view_page']);
+    // `picture` and `stage_dropped` are for the views alone: a client lists them to a view, not the model.
+    expect(tools.map((t) => t.name).sort()).toEqual(['ask_for_files', 'copy_page', 'create_page', 'delete_page', 'describe_block', 'edit_blocks', 'find_undeclared_fields', 'get_history', 'get_page', 'get_transitions', 'list_block_types', 'list_children', 'list_content_types', 'move_page', 'picture', 'preview_layout', 'rename_page', 'revert_page', 'search', 'stage_dropped', 'stage_media', 'transition_page', 'view_page']);
     // Those that change nothing say so, so a client need not ask the person every time.
     expect(tools.filter((t) => t.annotations?.readOnlyHint).map((t) => t.name).sort())
-      .toEqual(['describe_block', 'get_page', 'list_block_types', 'list_children', 'picture', 'preview_layout', 'search', 'view_page']);
+      .toEqual(['ask_for_files', 'describe_block', 'find_undeclared_fields', 'get_history', 'get_page', 'get_transitions', 'list_block_types', 'list_children', 'list_content_types', 'picture', 'preview_layout', 'search', 'stage_dropped', 'stage_media', 'view_page']);
     expect(tools.find((t) => t.name === 'delete_page')!.annotations).toMatchObject({ destructiveHint: true });
   });
 
@@ -70,6 +168,13 @@ test.describe('MCP server', () => {
     expect(instructions).toMatch(/saves anything|saves nothing/);
     expect(instructions).toMatch(/a change to the template, and so to every page that uses it/);
     expect(instructions).toMatch(/visitors of a published page see the change straight away/);
+    // A new page may be private: an agent told there was no publishing step
+    // said a post was live when no visitor could see it.
+    expect(instructions).not.toMatch(/no separate publishing step/);
+    expect(instructions).toMatch(/reviewState/);
+    expect(instructions).toMatch(/get_transitions/);
+    expect(instructions).toMatch(/"live"/);
+    expect(instructions).toMatch(/Publish only when the person has asked/);
     expect(instructions).toMatch(/search finds pages by their title, their summary and the text of their Text blocks/);
     // Never how to behave: that is the agent's and its host's, not the site's.
     expect(instructions).not.toMatch(/\b(Never|Do not|only when asked|tell the person|Talk the way)\b/);
@@ -170,7 +275,7 @@ test.describe('MCP server', () => {
     // placeholder, and stayed lost through every save after.
     test.setTimeout(240000);
     const USES = '/_test_data/template-test-page';
-    const slotOf = (page: any) => page.blocks.filter((b: any) => b.slotId === 'primary').map((b: any) => b.value?.md);
+    const slotOf = (page: any) => page.blocks.filter((b: any) => b.slotId === 'default').map((b: any) => b.value?.md);
     const read = (await call('get_page', { path: USES })).json();
     const before = slotOf(read);
     expect(before).toEqual(['User content - different from template default', 'Second user content block in placeholder']);
@@ -206,6 +311,129 @@ test.describe('MCP server', () => {
     expect(refused.isError).toBe(true);
     expect(refused.text).toMatch(/path not in content: \/_test_data\/no-such-page/);
     expect((await call('get_page', { path: PAGE })).json().version).toBe(read.version);
+  });
+
+  test('stage_media: a picture added to a page change, previewed, and uploaded beside the page when it is saved', async ({ urls }) => {
+    test.setTimeout(180000);
+    // Where the test front end sets deferImageUploads.
+    const DEFERRED = '/_test_data/deferred-images-page';
+    const viewed = (await call('view_page', { path: DEFERRED })).json();
+    const held = (await call('stage_media', { files: [{ picture: viewed.pictures[0], name: 'from-the-agent.png' }] })).json();
+    // Said plainly: staged here, not on the site, and for how long.
+    expect(held).toMatchObject({ staged: true, onSite: false });
+    expect(Date.parse(held.keptUntil) - Date.now()).toBeGreaterThan(110 * 60_000);
+    const [added] = held.files;
+    expect(added).toMatchObject({ media: expect.stringMatching(/^media:/), name: 'from-the-agent.png', type: expect.stringMatching(/^image\/(png|jpeg)$/) });
+    // If any file can't be had, none are staged.
+    const refused = await call('stage_media', { files: [{ picture: viewed.pictures[0] }, { picture: 'made-up' }] });
+    expect(refused.isError).toBe(true);
+    expect(refused.text).toMatch(/file 2 \(made-up\).*Nothing was staged/);
+
+    const read = (await call('get_page', { path: DEFERRED })).json();
+    const ops = [{ op: 'update', id: 'image', set: { url: added.media } }];
+
+    // A preview shows the new file: the front end is handed it as a data: URL.
+    const previewed = await client.callTool({
+      name: 'edit_blocks', arguments: { path: DEFERRED, expectedVersion: read.version, ops, dryRun: true, preview: 'desktop' },
+    }, undefined, CALL);
+    expect(previewed.isError, JSON.stringify(previewed.content).slice(0, 300)).toBeFalsy();
+    const [, picture] = previewed.content as any[];
+    expect(picture).toMatchObject(PICTURE);
+    // MCP_PREVIEW_PNG=<file> keeps the screenshot to look at.
+    if (process.env.MCP_PREVIEW_PNG) writeFileSync(process.env.MCP_PREVIEW_PNG, Buffer.from(picture.data, 'base64'));
+    expect((await call('get_page', { path: DEFERRED })).json().version, 'a preview saves nothing').toBe(read.version);
+    // A dry run without one shows the change, naming the file by the agent's id.
+    const dry = (await call('edit_blocks', { path: DEFERRED, expectedVersion: read.version, ops, dryRun: true })).json();
+    expect(JSON.stringify(dry.page.blocks.find((b: any) => b['@uid'] === 'image'))).toContain(added.media);
+    expect(JSON.stringify(dry.page)).not.toContain('inka-pending:');
+
+    const saved = (await call('edit_blocks', { path: DEFERRED, expectedVersion: read.version, ops })).json();
+    const item = saved.media[added.media];
+    expect(item, 'the save says which item the file became').toMatch(/uploaded-image-\d+$/);
+    const stored = await (await fetch(`${urls.mockApi}${DEFERRED}`, {
+      headers: { Accept: 'application/json', Authorization: `Bearer ${token}` },
+    })).json();
+    const block = JSON.stringify(stored.blocks.image);
+    expect(block).toContain(new URL(item).pathname);
+    expect(block).toContain('"image_scales"');
+    expect(block).not.toContain('media:');
+
+    // The id names that item from then on: used again, it is not uploaded again.
+    const again = (await call('edit_blocks', { path: DEFERRED, expectedVersion: saved.version, ops: [{ op: 'update', id: 'image', set: { url: added.media } }] })).json();
+    expect(again.media[added.media]).toBe(item);
+
+    // A file no one added is refused, and so is one in a new page, for now.
+    const unknown = await call('edit_blocks', { path: DEFERRED, expectedVersion: again.version, ops: [{ op: 'update', id: 'image', set: { url: 'media:made-up' } }] });
+    expect(unknown.text).toMatch(/add it again/);
+    const newPage = await call('create_page', { parent: '/_test_data', type: 'Document', title: 'With a file', blocks: [{ '@type': 'image', url: added.media }] });
+    expect(newPage.isError).toBe(true);
+    expect(newPage.text).toMatch(/create the page first/);
+  });
+
+  // Which content types there are, and which go where, is the site's: an agent
+  // reads them, as the editor's Add menu does, rather than being told (#663).
+  test('list_content_types: the types a section takes, as the site says', async () => {
+    const all = (await call('list_content_types', { path: '/_test_data' })).json();
+    expect(all.types.map((t: { id: string }) => t.id)).toEqual(expect.arrayContaining(['Document', 'Image', 'File']));
+    const media = (await call('list_content_types', { path: '/_test_data/media-only' })).json();
+    expect(media.types).toEqual([{ id: 'Image', title: 'Image' }, { id: 'File', title: 'File' }]);
+  });
+
+  test('create_page: an Image or a File item made from a staged file, as the add form makes one', async ({ urls }) => {
+    test.setTimeout(180000);
+    const viewed = (await call('view_page', { path: PAGE })).json();
+    const { files: [photo, report, spare] } = (await call('stage_media', { files: [
+      { picture: viewed.pictures[0], name: 'team.png' },
+      { picture: viewed.pictures[0], name: 'report.png' },
+      { picture: viewed.pictures[0], name: 'spare.png' },
+    ] })).json();
+    const stored = async (path: string) => (await fetch(`${urls.mockApi}${path}`, {
+      headers: { Accept: 'application/json', Authorization: `Bearer ${token}` },
+    })).json();
+
+    const image = (await call('create_page', { parent: '/_test_data', type: 'Image', title: 'Team photo', file: photo.media })).json();
+    expect(image.version).toBeTruthy();
+    expect(image.reviewState).toBeTruthy();
+    const madeImage = await stored(image.path);
+    expect(madeImage['@type']).toBe('Image');
+    expect(madeImage.title).toBe('Team photo');
+    expect(madeImage.image_scales.image[0]).toMatchObject({ filename: 'team.png', 'content-type': photo.type });
+    // The id names the item from then on.
+    expect(new URL(image.media[photo.media]).pathname).toBe(image.path);
+
+    const file = (await call('create_page', { parent: '/_test_data', type: 'File', title: 'Annual report', file: report.media })).json();
+    const madeFile = await stored(file.path);
+    expect(madeFile['@type']).toBe('File');
+    expect(madeFile.file).toMatchObject({ filename: 'report.png', 'content-type': report.type });
+
+    // A file already on the site is that item: a second one is not made of it.
+    const twice = await call('create_page', { parent: '/_test_data', type: 'Image', title: 'Again', file: photo.media });
+    expect(twice.isError).toBe(true);
+    expect(twice.text).toMatch(/is already on the site, as .*: use that item/);
+    // A type whose add form has no file to fill takes none.
+    const page = await call('create_page', { parent: '/_test_data', type: 'Document', title: 'A page', file: spare.media });
+    expect(page.isError).toBe(true);
+    expect(page.text).toMatch(/a Document has no file field/);
+  });
+
+  test("edit_blocks: a staged file in a page's own lead image is kept in the page, as the edit form keeps it", async ({ urls }) => {
+    test.setTimeout(180000);
+    const NEWS = '/_test_data/news-test-page';
+    const viewed = (await call('view_page', { path: NEWS })).json();
+    const { files: [lead] } = (await call('stage_media', { files: [{ picture: viewed.pictures[0], name: 'lead.png' }] })).json();
+    const read = (await call('get_page', { path: NEWS })).json();
+    const ops = [{ op: 'update', id: '_page', set: { preview_image: lead.media } }];
+
+    const dry = (await call('edit_blocks', { path: NEWS, expectedVersion: read.version, ops, dryRun: true })).json();
+    expect(dry.page.preview_image).toBe(lead.media);
+
+    (await call('edit_blocks', { path: NEWS, expectedVersion: read.version, ops })).json();
+    const stored = await (await fetch(`${urls.mockApi}${NEWS}`, {
+      headers: { Accept: 'application/json', Authorization: `Bearer ${token}` },
+    })).json();
+    expect(stored.preview_image).toMatchObject({ filename: 'lead.png', 'content-type': lead.type });
+    expect(JSON.stringify(stored)).not.toContain('media:');
+    expect(JSON.stringify(stored)).not.toContain('inka-pending:');
   });
 
   test('reads, dry-runs, saves, and refuses a stale version', async ({ urls }) => {

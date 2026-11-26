@@ -6,7 +6,7 @@ Read `docs/architecture.md` for the iframe ↔ admin bridge: Slate transforms, s
 
 Read `docs/architecture.md` ("Merging templates: every container is expanded, by whoever renders") and `docs/frontend-guide/templates.md` ("Expand every container") BEFORE changing anything that merges templates, renders containers, or walks a page's blocks.
 
-- The merge (`expandTemplates`/`expandTemplatesSync`) has no schema: it fills the regions of a template it APPLIES, never a template placed inside a plain container.
+- The merge (`expandTemplates`/`expandTemplatesSync`) has no schema and no `idFieldMap`: it expands one list per call. A container's children, a template's own or a plain container's, wait for that container's call.
 - Every renderer re-enters every container's children with the shared `templateState`: each frontend (the contract), AND the admin (`mergeTemplatesIntoPage` → `expandContainers`), because the admin merges the templates it edits itself.
 - Never remove the admin's re-entry as "redundant", and never render a container's children without passing them through the merge. A template can be anywhere a block can.
 - Test new template behaviour with the template placed at the top level AND inside a container.
@@ -83,8 +83,9 @@ pnpm exec playwright show-report
 ## Test Architecture
 
 The Playwright tests use:
-- **Mock API server** (`tests-playwright/fixtures/mock-api-server.cjs`) - Serves both mock Plone API and test frontend on port 8888
-- **Test frontend** (`tests-playwright/fixtures/test-frontend/`) - Simple HTML/JS frontend that loads the real Hydra bridge
+- **Mock API server** (`packages/mock-api/mock-api-server.js`) - Serves the mock Plone API (`HYDRA_MOCK_API_PORT`)
+- **Test frontend** (`tests-playwright/fixtures/test-frontend/`) - Simple HTML/JS frontend that loads the real Hydra bridge, served by Vite (`HYDRA_TEST_FRONTEND_PORT`), which also serves `mock-parent.html` from `@inka/testing`
+- **Test harness** (`packages/testing/`, `@inka/testing`) - AdminUIHelper and the other Playwright helpers, block discovery, the sanity suites and mock-parent
 - **Real Hydra bridge** (`packages/hydra-js/hydra.js`) - Production bridge code for iframe-Admin UI communication
 - **Admin UI** - Runs on port 3001 (auto-started by Playwright via `webServer` config)
 
@@ -113,7 +114,7 @@ The health endpoint (`core/packages/volto/razzle.config.js`) returns:
 
 List all AdminUIHelper methods:
 ```bash
-grep -E '^\s+(async\s+)?[a-zA-Z_]+\(' tests-playwright/helpers/AdminUIHelper.ts | grep -v 'if\s*(' | grep -v 'for\s*(' | sed 's/^\s*//' | awk -F'(' '{print $1}' | sed 's/async //' | sort -u
+grep -E '^\s+(async\s+)?[a-zA-Z_]+\(' packages/testing/playwright/AdminUIHelper.ts | grep -v 'if\s*(' | grep -v 'for\s*(' | sed 's/^\s*//' | awk -F'(' '{print $1}' | sed 's/async //' | sort -u
 ```
 
 ## Manual Development Server
@@ -124,8 +125,11 @@ To manually start the servers for development/testing:
 # Terminal 1: Start mock API server (port 8888)
 pnpm start:mock-api
 
-# Terminal 2: Start Volto Hydra (port 3001 SSR, port 3002 webpack)
+# Terminal 2: Start the admin (port 3001), built: run `pnpm build:test` first,
+# and again after admin code changes (start:test refuses an out-of-date build)
 pnpm start:test
+# ...or the webpack dev server (3001 SSR, 3002 webpack), for changing admin code:
+#   pnpm start:test:dev, and run the tests with ADMIN_DEV=1
 
 # Terminal 3 (optional): Start Nuxt frontend for Nuxt tests (port 3003)
 pnpm start:nuxt:test
@@ -137,7 +141,7 @@ Then access: http://localhost:3001/test-page/edit
 
 - **8888**: Mock API + test frontend (HTML/JS)
 - **3001**: Volto SSR server (navigate here)
-- **3002**: Webpack dev server (health check here)
+- **3002**: Webpack dev server, with ADMIN_DEV=1 (health check here)
 - **3003**: Nuxt frontend (for Nuxt-specific tests)
 
 ## Development Workflow
@@ -146,13 +150,17 @@ Then access: http://localhost:3001/test-page/edit
 
 **For changes in `packages/volto-hydra/`:**
 
-If you have Volto running manually:
-1. Make your code changes
-2. Volto auto-reloads via HMR (1-3 seconds)
+The tests run the BUILT admin by default (a webpack dev server holds 1.5–2 GB
+and grows the longer it runs). When changing the admin's own code, use the dev
+server instead:
+1. `pnpm start:test:dev`, and run tests with `ADMIN_DEV=1`
+2. Make your code changes; Volto auto-reloads via HMR (1-3 seconds)
 3. Run tests (Playwright will wait for compilation)
 
-If Volto is not running:
-1. Just run tests - Playwright will start Volto and wait for compilation
+Otherwise run `pnpm build:test` once, and again after the admin's code changes.
+Each build records what it was built from (packages/testing/admin-build-stamp.js);
+a test run refuses an admin built from anything else, so a stale one is never
+used quietly. Either admin stops itself after four idle hours.
 
 **For changes to `packages/hydra-js/hydra.js`:**
 - No Volto recompilation needed (loaded directly by frontend)

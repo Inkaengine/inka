@@ -21,7 +21,7 @@ subjects:
   - frontend
 title: Build a frontend
 blocks-matched: |
-  <block type="slate" value="${p,h*,ul,ol,blockquote,strong,em,a/slate}" plaintext="${p,h*,ul,ol,blockquote,strong,em,a/text}" />
+  <block type="slate" value="${p,h*,ul,ol,blockquote,strong,em,a/slate}" />
   <block type="title" _="${h1}" />
   <block type="codeExample">
     <region name="tabs" widget="object_list" idField="@id" typeField="@type">
@@ -31,7 +31,7 @@ blocks-matched: |
 blocks-tagged: |
   <block type="callout">
     <region name="items" widget="blocks_layout">
-      <block type="slate" value="${p,h*,ul,ol,blockquote,strong,em,a/slate}" plaintext="${p,h*,ul,ol,blockquote,strong,em,a/text}" />
+      <block type="slate" value="${p,h*,ul,ol,blockquote,strong,em,a/slate}" />
     </region>
   </block>
 ---
@@ -90,7 +90,7 @@ if (window.name.startsWith('hydra')) {
           blockSchema: {
             properties: {
               image: { widget: 'image' },
-              url: { widget: 'url' },
+              url: { widget: 'object_browser', mode: 'link', allowExternals: true },
               caption: { type: 'string' },
             }
           }
@@ -284,7 +284,7 @@ This gives you all visual editing features including inline text editing, drag a
 Get the speed of static generation while keeping visual editing. Deploy two versions of the same frontend:
 
 1. **Production** — deploy your frontend in SSG or SSR mode (fast, cacheable).
-2. **Editing** — deploy the same frontend in SPA mode to a separate URL (used only inside Inka).
+2. **Editing** — deploy the same frontend in SPA mode to a separate URL (used only inside Inka). In edit mode it [draws only from the editor's data](./advanced.md#lazy-load-the-bridge), site chrome included, so nothing there is server-rendered.
 3. **Inka** — only needs to run during editing, so scale-to-zero / serverless works. See [Deploy and secure Inka](../deploy-and-secure.md).
 4. **SSG rebuild** — for SSG, have your CMS trigger a rebuild when content changes (with Plone, use [collective.webhook](https://github.com/collective/collective.webhook)). SSR doesn't need this.
 

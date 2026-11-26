@@ -13,3 +13,14 @@
 .ui.basic.segment.content-area {
   padding: 0;
 }
+
+/* The block chooser is a panel of a set height, as Quanta draws it (490px),
+ * that scrolls inside. It opens fixed at the "+" that was pressed (View.jsx),
+ * so a chooser that grew past the window as sections unfold would leave its
+ * lower types out of reach. Phones keep their bottom sheet (mobile-tablet.css). */
+@media (min-width: 768px) {
+  .add-new-block-popup .blocks-chooser {
+    max-height: min(490px, calc(100vh - 16px));
+    overflow-y: auto;
+  }
+}

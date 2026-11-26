@@ -1,0 +1,1 @@
+Tests: a run names the assets it knows are missing with ABSENT_ASSETS (URL path globs); every other image and video must load. Inka CI names only the docs' generated screenshots and demo video. It used to skip the check for every image, which hid an example image whose bytes could not be decoded.

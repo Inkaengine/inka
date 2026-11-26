@@ -1,0 +1,317 @@
+/**
+ * The validator has the schemas. Every question about structure is answered by
+ * asking them — never by a hardcoded list of field names, and never by
+ * descending into whatever happens to have an `@type`.
+ *
+ * Each case here is a hole found by auditing for the opposite: a pass that
+ * walked `container.blocks` directly, or scanned a fixed list of field names,
+ * and so saw one storage and not the other.
+ */
+const { describe, it } = require('node:test');
+const assert = require('node:assert/strict');
+const {
+  checkIntegrity,
+  checkBlockSchemas,
+  fieldMapFromSchemas,
+} = require('./plone-content-validator.js');
+
+// A slider keeps its children in an object_list; a section keeps them in a
+// blocks_layout. The rules that follow must not be able to tell the difference.
+const SCHEMAS = {
+  slider: {
+    group: 'common',
+    blockSchema: {
+      // Items vary in kind, so the field declares which kinds and where each
+      // item says which it is — the arm of the rule that makes `card`'s own
+      // schema (and so its reference widget) the one its items are read with.
+      properties: {
+        slides: { widget: 'object_list', idField: '@id', allowedBlocks: ['slide', 'card'], typeField: '@type' },
+      },
+    },
+  },
+  slide: { group: 'common', blockSchema: { properties: { title: {} } } },
+  card: {
+    group: 'common',
+    blockSchema: { properties: { link: { widget: 'object_browser' }, title: {} } },
+  },
+  section: {
+    group: 'common',
+    blockSchema: { properties: { blocks: { widget: 'blocks_layout' } } },
+  },
+};
+const idFieldMap = { slider: { slides: '@id' } };
+
+const doc = (rel, uid, blocks) => ({
+  rel,
+  data: { '@id': `/${rel}`, UID: uid, blocks, blocks_layout: { items: Object.keys(blocks) } },
+});
+
+describe('the template slot rule reads both storages', () => {
+  const template = doc('templates/t', 'TUID', {
+    s: {
+      '@type': 'slider',
+      slotId: 'slider',
+      fixed: true,
+      slides: [{ '@id': 'tpl-1', '@type': 'slide', slotId: 'slide', fixed: true }],
+    },
+  });
+
+  it('reports a blocks_layout child of a template slot with no slotId', () => {
+    const inst = doc('page', 'PUID', {
+      s: {
+        '@type': 'section',
+        templateId: 'resolveuid/TUID',
+        slotId: 'slider',
+        blocks: { k: { '@type': 'slide', templateId: 'resolveuid/TUID' } },
+        blocks_layout: { items: ['k'] },
+      },
+    });
+    const r = checkIntegrity([template, inst], { idFieldMap, schemasFor: () => SCHEMAS });
+    assert.equal(r.errors.filter((e) => /missing slotId/.test(e)).length, 1, r.errors.join('\n'));
+  });
+
+  it('reports an object_list child of a template slot with no slotId', () => {
+    const inst = doc('page', 'PUID', {
+      s: {
+        '@type': 'slider',
+        templateId: 'resolveuid/TUID',
+        slotId: 'slider',
+        slides: [{ '@id': 'i-1', '@type': 'slide', templateId: 'resolveuid/TUID' }],
+      },
+    });
+    const r = checkIntegrity([template, inst], { idFieldMap, schemasFor: () => SCHEMAS });
+    assert.equal(r.errors.filter((e) => /missing slotId/.test(e)).length, 1, r.errors.join('\n'));
+  });
+});
+
+describe('a reference field is one the schema gives a reference widget', () => {
+  it('checks a broken reference in a field no name list contains', () => {
+    // `link` is in no LINK_FIELDS list, but its schema says object_browser.
+    const page = doc('page', 'PUID', {
+      c: { '@type': 'card', link: [{ '@id': 'resolveuid/deadbeefdeadbeefdeadbeefdeadbeef' }] },
+    });
+    const r = checkIntegrity([page], { idFieldMap, schemasFor: () => SCHEMAS });
+    assert.equal(r.stats.linksBroken, 1, `errors:\n${r.errors.join('\n')}`);
+  });
+
+  it('checks references inside an object_list child under its own field name', () => {
+    // Not `items`/`columns`/`column_items` — a slider's field is `slides`.
+    const page = doc('page', 'PUID', {
+      s: {
+        '@type': 'slider',
+        slides: [
+          { '@id': 'i-1', '@type': 'card', link: [{ '@id': 'resolveuid/deadbeefdeadbeefdeadbeefdeadbeef' }] },
+        ],
+      },
+    });
+    const r = checkIntegrity([page], { idFieldMap, schemasFor: () => SCHEMAS });
+    assert.equal(r.stats.linksBroken, 1, `errors:\n${r.errors.join('\n')}`);
+  });
+});
+
+describe('a link target is not a block', () => {
+  it('does not read the @type of a reference value as a block type', () => {
+    // What the restapi serializes into a link field: the TARGET's summary,
+    // carrying its content @type. It is not a child block.
+    const page = doc('page', 'PUID', {
+      c: {
+        '@type': 'card',
+        title: 'x',
+        link: [{ '@id': 'resolveuid/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', '@type': 'Document', Creator: 'admin' }],
+      },
+    });
+    const r = checkBlockSchemas([page], fieldMapFromSchemas(SCHEMAS), { idFieldMap });
+    assert.deepEqual(
+      r.warnings.filter((w) => /not in the field map/.test(w)),
+      [],
+      'a link target was counted as a block type',
+    );
+    assert.deepEqual(r.errors, [], r.errors.join('\n'));
+  });
+
+  it('still checks the fields of a real object_list child', () => {
+    const page = doc('page', 'PUID', {
+      s: { '@type': 'slider', slides: [{ '@id': 'i-1', '@type': 'slide', bogus: 1 }] },
+    });
+    const r = checkBlockSchemas([page], fieldMapFromSchemas(SCHEMAS), { idFieldMap });
+    assert.equal(r.errors.length, 1, r.errors.join('\n'));
+    assert.match(r.errors[0], /slide\.bogus/);
+  });
+});
+
+/**
+ * The shape fallback runs only where no schema exists, and it has to tell a
+ * reference from ordinary prose. `headline: "Listing: Default"` is a title,
+ * not a `mailto:` — a bare `scheme:` test reads it as one, and did: it failed
+ * every docs page in block-sanity.
+ */
+describe('the shape fallback does not read prose as a reference', () => {
+  const page = (blocks) => [{
+    rel: 'content/x',
+    data: { '@id': '/x', UID: 'x1', blocks, blocks_layout: { items: Object.keys(blocks) } },
+  }];
+
+  it('leaves a headline that merely contains a colon alone', () => {
+    const r = checkIntegrity(page({
+      l: { '@type': 'listing', headline: 'Listing: Default' },
+      g: { '@type': 'gridBlock', headline: 'Listing: Grid (Teaser)' },
+    }));
+    assert.deepEqual(r.errors, [], r.errors.join('\n'));
+    assert.equal(r.stats.linksBroken, 0);
+  });
+
+  it('still catches a broken reference with no schema to go on', () => {
+    const r = checkIntegrity(page({
+      t: { '@type': 'teaser', href: [{ '@id': 'resolveuid/deadbeefdeadbeefdeadbeefdeadbeef' }] },
+    }));
+    assert.equal(r.stats.linksBroken, 1, r.errors.join('\n'));
+  });
+
+  it('does not mistake an object_list item id for a reference', () => {
+    const r = checkIntegrity(page({
+      s: { '@type': 'slider', slides: [{ '@id': 'slide-1', title: 'x' }] },
+    }));
+    assert.deepEqual(r.errors, [], r.errors.join('\n'));
+  });
+});
+
+/**
+ * A block type the config does not declare at all is an error: the frontend
+ * declares every block it renders. A type that
+ * IS declared but whose schema has no properties is not that — a `title`
+ * block renders page metadata and has no fields to check.
+ */
+describe('a type with no schema is an error', () => {
+  const page = (blocks) => [{
+    rel: 'content/x',
+    data: { '@id': '/x', UID: 'x1', blocks, blocks_layout: { items: Object.keys(blocks) } },
+  }];
+
+  // The frontend declares every block it renders: one it doesn't is a block
+  // the editor can't edit and the site can't draw.
+  it('names the undeclared type in an error', () => {
+    const r = checkIntegrity(page({ m: { '@type': 'mystery', title: 'x' } }), {
+      schemasFor: () => SCHEMAS,
+    });
+    assert.equal(r.stats.unschemadTypes, 1);
+    assert.equal(r.errors.filter((e) => /mystery/.test(e)).length, 1, r.errors.join('\n'));
+  });
+
+  it('knows Inka\'s own text block without the frontend declaring it', () => {
+    const r = checkIntegrity(page({ t: { '@type': 'slate', value: [{ type: 'p', children: [{ text: 'x' }] }] } }), {
+      schemasFor: () => SCHEMAS,
+    });
+    assert.equal(r.stats.unschemadTypes, 0);
+    assert.deepEqual(r.errors, [], r.errors.join('\n'));
+  });
+
+  it('says nothing about a declared type whose schema has no fields', () => {
+    const r = checkIntegrity(page({ t: { '@type': 'bare' } }), {
+      schemasFor: () => ({ ...SCHEMAS, bare: { group: 'common', blockSchema: { properties: {} } } }),
+    });
+    assert.equal(r.stats.unschemadTypes, 0);
+    assert.deepEqual(r.warnings, [], r.warnings.join('\n'));
+  });
+});
+
+/**
+ * A key starting with `@` is never a schema field: the validator refuses a schema that
+ * names one (checkReservedFields). So on a block the only legitimate ones are its
+ * identity: `@type`, `@uid`, and `@id` on an item of a list keyed by `@id`. The check
+ * once skipped every `@` key as "the block's identity", and a stray `@id` on six NSW
+ * docs blocks went unreported from August until an export tripped over it.
+ */
+describe('an `@` key a block has no reason to carry is reported', () => {
+  const errorsFor = (blocks) => checkBlockSchemas([doc('page', 'PUID', blocks)], fieldMapFromSchemas(SCHEMAS), { idFieldMap }).errors;
+
+  it('an `@id` on a page block', () => {
+    const errors = errorsFor({ v: { '@type': 'slide', '@id': 'footer-vid-edit', title: 'T' } });
+    assert.equal(errors.length, 1, errors.join('\n'));
+    assert.match(errors[0], /slide\.@id/);
+  });
+
+  it('on a block of Inka\'s own, which no frontend schema checks: the rule needs none', () => {
+    const errors = errorsFor({ t: { '@type': 'slate', '@id': 'tbl-nar-1', value: [] } });
+    assert.match(errors.join('\n'), /slate\.@id/);
+  });
+
+  it('any other `@` key', () => {
+    const errors = errorsFor({ v: { '@type': 'slide', '@anchor': 'x', title: 'T' } });
+    assert.match(errors.join('\n'), /slide\.@anchor/);
+  });
+
+  it('on an item typed by another field, in a list keyed by another field', () => {
+    // A form's questions: typed by `field_type`, keyed by `field_id`.
+    const schemas = {
+      ...SCHEMAS,
+      form: { group: 'common', blockSchema: { properties: { subblocks: { widget: 'object_list', idField: 'field_id', typeField: 'field_type', allowedBlocks: ['text'] } } } },
+      text: { group: 'common', blockSchema: { properties: { label: {} } } },
+    };
+    const page = doc('page', 'PUID', { f: { '@type': 'form', subblocks: [{ field_id: 'q-1', '@id': 'q-1', field_type: 'text', label: 'Q' }] } });
+    const { errors } = checkBlockSchemas([page], fieldMapFromSchemas(schemas), { idFieldMap: { form: { subblocks: 'field_id' } } });
+    assert.match(errors.join("\n"), /text\.@id/);
+  });
+
+  it('not `@id` on an item of a list keyed by it, nor `@type` or `@uid`', () => {
+    const errors = errorsFor({
+      s: { '@type': 'slider', '@uid': 's', slides: [{ '@id': 'one', '@type': 'slide', title: 'T' }] },
+    });
+    assert.deepEqual(errors, []);
+  });
+});
+
+/**
+ * `id` was on the list of fields never checked, with no reason given: a stray `id` on 69
+ * NSW cards went unreported. A list keyed by `id` names it as its idField, which is
+ * identity already; anywhere else it's undeclared like any other field.
+ */
+describe('a stray `id` is reported', () => {
+  it('on a block', () => {
+    const { errors } = checkBlockSchemas([doc('page', 'PUID', { s: { '@type': 'slide', id: 'abc', title: 'T' } })], fieldMapFromSchemas(SCHEMAS), { idFieldMap });
+    assert.match(errors.join('\n'), /slide\.id/);
+  });
+
+  it('not on an item of a list keyed by it', () => {
+    const schemas = { ...SCHEMAS, slider: { group: 'common', blockSchema: { properties: { slides: { widget: 'object_list', idField: 'id', allowedBlocks: ['slide'], typeField: '@type' } } } } };
+    const page = doc('page', 'PUID', { s: { '@type': 'slider', slides: [{ id: 'one', '@type': 'slide', title: 'T' }] } });
+    const { errors } = checkBlockSchemas([page], fieldMapFromSchemas(schemas), { idFieldMap: { slider: { slides: 'id' } } });
+    assert.deepEqual(errors, []);
+  });
+});
+
+/**
+ * `plaintext` was Volto's copy of a Text block's words. Inka no longer derives or
+ * reads it, and the save removes it at any depth, so a stored one is an old copy
+ * nothing keeps up to date: the content check reports it like any undeclared field.
+ */
+describe('a stored `plaintext` is reported', () => {
+  it('on a text block', () => {
+    const value = [{ type: 'p', children: [{ text: 'Words' }] }];
+    const schemas = { ...SCHEMAS, slate: { group: 'common', blockSchema: { properties: { value: { widget: 'slate' } } } } };
+    const { errors } = checkBlockSchemas([doc('page', 'PUID', { t: { '@type': 'slate', value, plaintext: 'Words' } })], fieldMapFromSchemas(schemas), { idFieldMap });
+    assert.match(errors.join('\n'), /slate\.plaintext/);
+  });
+});
+
+/**
+ * A list item typed by another field (a form question's `field_type`) is checked
+ * like a block: block sanity reported the `id` the docs form's questions repeat
+ * from their `field_id`, and the content check passed it.
+ */
+describe('a list item typed by its own field is checked for undeclared fields', () => {
+  const schemas = {
+    ...SCHEMAS,
+    form: { group: 'common', blockSchema: { properties: { subblocks: { widget: 'object_list', idField: 'field_id', typeField: 'field_type' } } } },
+    text: { group: 'common', blockSchema: { properties: { label: {} } } },
+  };
+  const formPage = (question) => doc('page', 'PUID', { f: { '@type': 'form', subblocks: [question] } });
+  const check = (question) => checkBlockSchemas([formPage(question)], fieldMapFromSchemas(schemas), { idFieldMap: { form: { subblocks: 'field_id' } } }).errors;
+
+  it('a stray `id` on a question is reported', () => {
+    assert.match(check({ field_id: 'q1', field_type: 'text', id: 'q1', label: 'Name' }).join('\n'), /text\.id/);
+  });
+
+  it('a question with only its declared fields is not', () => {
+    assert.deepEqual(check({ field_id: 'q1', field_type: 'text', label: 'Name' }), []);
+  });
+});

@@ -21,6 +21,8 @@ export async function openAdmin(page, { adminUrl }) {
 
 /** The admin page a session waits on between calls: the site's contents, no editor. */
 const PARKED = '/contents';
+/** How long the admin must stay parked to count: a frame's last word takes one render to land. */
+const PARKED_FOR_MS = 250;
 
 /** Move the admin to `path` as its own links do, without loading it afresh. */
 async function goTo(page, path) {
@@ -79,10 +81,24 @@ export async function openForEdit(page, { path }) {
  * holds the page (a locked page can't be moved or deleted).
  */
 export async function park(page) {
-  await goTo(page, PARKED);
-  await page.waitForFunction(() => !window.__inkaAgent && !!window.__inkaSite, null, { timeout: READY_MS });
-  const held = locksOf(page);
   const deadline = Date.now() + READY_MS;
+  // Until it has stayed there. A front end's frame on the way out can still say
+  // where it is, and the admin follows it back (an Image's view, just made):
+  // leaving it there would hold up whatever the next call opens.
+  let parkedSince = null;
+  await goTo(page, PARKED);
+  while (parkedSince === null || Date.now() - parkedSince < PARKED_FOR_MS) {
+    const { there, parked } = await page.evaluate((path) => ({
+      there: window.location.pathname === path,
+      parked: !window.__inkaAgent && !!window.__inkaSite,
+    }), PARKED);
+    if (!there) await goTo(page, PARKED);
+    if (there && parked) parkedSince ??= Date.now();
+    else parkedSince = null;
+    if (Date.now() > deadline) throw new Error(`the admin did not stay on ${PARKED} within ${READY_MS / 1000}s (it is on ${new URL(page.url()).pathname})`);
+    await page.waitForTimeout(50);
+  }
+  const held = locksOf(page);
   while (held.size) {
     if (Date.now() > deadline) throw new Error(`the editor did not let go of ${[...held].join(', ')}`);
     await page.waitForTimeout(50);
@@ -155,7 +171,7 @@ function locksOf(page) {
  * CMS or the admin refuses (a required field, a type not allowed there) throws
  * with what the form says.
  */
-export async function createPage(page, { parent, type, title }) {
+export async function createPage(page, { parent, type, title, file }) {
   await goTo(page, `${parent.replace(/\/$/, '')}/add?type=${encodeURIComponent(type)}`);
   const created = page.waitForResponse(
     (r) => r.request().method() === 'POST' && r.status() === 201,
@@ -168,6 +184,7 @@ export async function createPage(page, { parent, type, title }) {
   const refused = errors.first().waitFor({ state: 'visible', timeout: READY_MS })
     .then(() => errors.allInnerTexts(), () => null);
   await page.locator('#field-title input, input#field-title, input[name="title"]').first().fill(title);
+  if (file) await chooseFile(page, type, file);
   await page.locator('#toolbar-save').click();
   const outcome = await Promise.race([created.then((response) => ({ response })), refused.then((said) => ({ said }))]);
   if (!outcome.response) {
@@ -175,10 +192,50 @@ export async function createPage(page, { parent, type, title }) {
     throw new Error(`create_page: the add form refused it: ${outcome.said.join(' / ')}`);
   }
   const response = outcome.response;
-  const path = new URL((await response.json())['@id']).pathname;
-  await page.waitForURL((url) => url.pathname === `${path}/edit`, { timeout: READY_MS });
+  const url = (await response.json())['@id'];
+  const path = new URL(url).pathname;
+  // An item that is a file has no blocks, and so no editor to go on to: the
+  // admin goes to its view. Wait for that, or a move made next (back to the
+  // parked page) is undone when the admin's own arrives.
+  if (file) {
+    await page.waitForURL((at) => at.pathname === path, { timeout: READY_MS });
+    return { path, url };
+  }
+  await page.waitForURL((at) => at.pathname === `${path}/edit`, { timeout: READY_MS });
   await waitForAgent(page);
-  return path;
+  return { path, url };
+}
+
+/**
+ * Choose `file` (`{ name, type, data }`, data base64) in the add form's one
+ * required file field (an Image's image, a File's file), as an editor does,
+ * and wait until the field has read it.
+ */
+async function chooseFile(page, type, file) {
+  // A file field's input comes with its drop area, which loads on its own
+  // (loadable react-dropzone) after the form: wait for every required field's.
+  const unready = () => [...document.querySelectorAll('.field.required')]
+    .filter((field) => !field.querySelector('input, textarea, select'))
+    .map((field) => field.className);
+  try {
+    await page.waitForFunction(
+      () => document.querySelectorAll('.field.required').length > 0
+        && [...document.querySelectorAll('.field.required')].every((field) => field.querySelector('input, textarea, select')),
+      null,
+      { timeout: READY_MS },
+    );
+  } catch (error) {
+    if (error.name !== 'TimeoutError') throw error;
+    throw new Error(`create_page: the add form's required fields never drew their inputs (at ${page.url()}): ${JSON.stringify(await page.evaluate(unready))}`, { cause: error });
+  }
+  const inputs = page.locator('.field.required input[type="file"]');
+  const count = await inputs.count();
+  if (count !== 1) {
+    throw new Error(`create_page: a ${type} has ${count ? 'more than one' : 'no'} file field to take a file`);
+  }
+  const field = (await inputs.getAttribute('id')).replace(/^field-/, '');
+  await inputs.setInputFiles({ name: file.name, mimeType: file.type, buffer: Buffer.from(file.data, 'base64') });
+  await page.locator(`.field-wrapper-${field} .field-file-name`).filter({ hasText: file.name }).waitFor({ timeout: READY_MS });
 }
 
 /**
@@ -228,9 +285,13 @@ export function agentOn(page) {
     getBlockSchemas: () => call('getBlockSchemas'),
     insert: (op) => call('insert', op),
     update: (op) => call('update', op),
+    getBlock: (id) => call('getBlock', id),
+    replace: (op) => call('replace', op),
     remove: (id) => call('remove', id),
     move: (op) => call('move', op),
     save: (op) => call('save', op),
+    holdFile: (file) => call('holdFile', file),
+    blockPathMapOf: (draft) => call('blockPathMapOf', draft),
     unlockTemplateOf: (id) => call('unlockTemplateOf', id),
     lockTemplates: () => call('lockTemplates'),
   };
@@ -249,10 +310,23 @@ export function siteOn(page) {
   return {
     search: (query) => call('search', query),
     get: (path) => call('get', path),
+    addableTypes: (path) => call('addableTypes', path),
     exists: (path) => call('exists', path),
     status: (path) => call('status', path),
     move: (op) => call('move', op),
+    order: (op) => call('order', op),
+    copy: (op) => call('copy', op),
     rename: (op) => call('rename', op),
     remove: (path) => call('remove', path),
+    linksInto: (path) => call('linksInto', path),
+    history: (path) => call('history', path),
+    revert: (op) => call('revert', op),
+    historyVersion: (op) => call('historyVersion', op),
+    state: (path) => call('state', path),
+    stateForms: (path) => call('stateForms', path),
+    transition: (op) => call('transition', op),
+    draftOf: (path) => call('draftOf', path),
+    pagesWithDrafts: () => call('pagesWithDrafts'),
+    adminUrl: (path) => call('adminUrl', path),
   };
 }

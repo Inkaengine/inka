@@ -16,7 +16,6 @@
   "blocks": {
     "htp-block-1": {
       "@type": "slate",
-      "plaintext": "History paragraph 1 with several distinctive words",
       "value": [
         {
           "type": "p",
@@ -30,7 +29,6 @@
     },
     "htp-block-2": {
       "@type": "slate",
-      "plaintext": "History paragraph 2 with several distinctive words",
       "value": [
         {
           "type": "p",
@@ -44,7 +42,6 @@
     },
     "htp-block-3": {
       "@type": "slate",
-      "plaintext": "History paragraph 3 with several distinctive words",
       "value": [
         {
           "type": "p",
@@ -58,7 +55,6 @@
     },
     "htp-block-4": {
       "@type": "slate",
-      "plaintext": "History paragraph 4 with several distinctive words",
       "value": [
         {
           "type": "p",
@@ -72,7 +68,6 @@
     },
     "htp-block-5": {
       "@type": "slate",
-      "plaintext": "History paragraph 5 with several distinctive words",
       "value": [
         {
           "type": "p",

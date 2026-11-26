@@ -69,3 +69,4 @@ tests-adapters/fixtures/wp-plugins/
 # in tests-adapters/fixtures/strapi-app/src.
 tests-adapters/fixtures/strapi-app/app/
 
+/packages/content-validator/volto-validation.cjs

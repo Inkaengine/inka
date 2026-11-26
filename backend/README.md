@@ -18,9 +18,9 @@ Settled against the mock API first, then implemented here:
 
 | What | Where |
 | --- | --- |
-| Response shape | `tests-playwright/fixtures/templates-component.test.cjs` |
-| The merge actually consuming it | `tests-playwright/fixtures/templates-component-merge.test.cjs` |
-| Reference implementation | `@templates` in `tests-playwright/fixtures/mock-plone-api.cjs` |
+| Response shape | `packages/mock-api/templates-component.test.js` |
+| The merge actually consuming it | `packages/mock-api/templates-component-merge.test.js` |
+| Reference implementation | `@templates` in `packages/mock-api/mock-plone-api.js` |
 
 ```json
 {
@@ -45,11 +45,9 @@ Three rules the mock encodes, each of which the addon must reproduce:
 3. **Name a missing template, don't throw.** One unresolvable id must not fail the page
    read; it appears in an `errors` array and the rest still arrive.
 
-The response carries **templates only**. The `idFieldMap` the merge needs (which
-`object_list` field a block keys by `field_id` rather than `@id`) is a fact about the
-**frontend's** block schemas, which Plone never sees. Frontends derive it from their own
-block config with `buildIdFieldMap(blocksConfig)` from `@hydra-js/hydra.js`, as the admin
-does.
+The response carries **templates only**. Which `object_list` field a block keys by
+`field_id` rather than `@id` is a fact about the **frontend's** block schemas, which Plone
+never sees. A frontend's block code names it when it passes the list to the merge.
 
 ## Running the backend
 
@@ -197,5 +195,5 @@ and the page's own text sits in the slot between them.
 | Command | What it checks |
 | --- | --- |
 | `cd backend/inkaengine.inka && make test` | The addon against the contract, including permissions (private templates are reported, not served). Needs `node` and this repo: its fixtures are exported from the mock at test time. |
-| `node --test tests-playwright/fixtures/templates-component*.test.cjs` | The mock's `@templates`, and the real merge consuming it. |
+| `node --test packages/mock-api/templates-component*.test.cjs` | The mock's `@templates`, and the real merge consuming it. |
 | `make hydra-test ARGS="tests-playwright/integration/template*.spec.ts --project=admin-nuxt"` | Template editing through the Nuxt frontend. Two BlockChooser tests are flaky on Nuxt; they were before this change too. |

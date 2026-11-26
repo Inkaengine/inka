@@ -10,8 +10,8 @@ import App from './App.jsx';
 // Expose hydra.js helpers globally for doc example components
 window._expandListingBlocks = expandListingBlocks;
 window._ploneFetchItems = ploneFetchItems;
-window._API_URL = __HYDRA_API_URL__; // from HYDRA_MOCK_API_PORT (vite.config.js)
-window._contentPath = (url) => contentPath(url, window._API_URL);
+// __HYDRA_API_URL__: from HYDRA_MOCK_API_PORT (vite.config.js)
+window._contentPath = (url) => contentPath(url, __HYDRA_API_URL__);
 window._expandTemplatesSync = expandTemplatesSync;
 
 const root = createRoot(document.getElementById('root'));

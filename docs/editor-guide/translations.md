@@ -22,7 +22,7 @@ rights: ""
 subjects: []
 title: Translations
 blocks-matched: |
-  <block type="slate" value="${p,h*,ul,ol,blockquote,strong,em,a/slate}" plaintext="${p,h*,ul,ol,blockquote,strong,em,a/text}" />
+  <block type="slate" value="${p,h*,ul,ol,blockquote,strong,em,a/slate}" />
   <block type="title" _="${h1}" />
   <block type="image" description="${p?/textarea}" url="${img/src}" alt="${img?/alt}" title="${img?/title}" align="center" size="l" />
 ---
@@ -47,7 +47,7 @@ Open **Manage translations** from the toolbar's **More** menu. It lists every la
 
 There are two ways a page gets a translation:
 
-- **Translate it.** In **Manage translations**, use the translate link next to a language that has none yet. Inka creates the translation in that language's tree, linked to the original, with a copy of the original's blocks to translate from, and opens it in the editor. Folders and images can be translated too; a translated image gets a file of its own.
+- **Translate it.** In **Manage translations**, use the translate link next to a language that has none yet. Inka creates the translation in that language's tree, linked to the original, and opens it in the editor with a copy of the original's blocks to translate from. The copy is saved when you save the page. Folders and images can be translated too; a translated image gets a file of its own.
 - **Link an existing page.** When both pages were written separately, use **Link** next to the language and pick the page. The two become translations of each other, both ways. **Unlink** separates them again.
 
 ## Fields shared between languages
@@ -67,6 +67,7 @@ While editing a page that has a translation, the editor offers a button for each
 The other language is for reading only:
 
 - Selecting it shows its fields in the sidebar, read only.
+- The sidebar belongs to whichever page you last clicked or typed in, including when you move between them with Tab. Scrolling, or the other page following your selection, never takes it.
 - Selecting a block in the page you are editing shows the same block in the other language, so you do not have to find it yourself.
 - A block can be inspected in the other language but not changed there.
 - If a block has no counterpart in the other language, Inka says so. That happens when the two pages were linked rather than translated (so no block was copied from another), for a block added after the translation was made, and when the original block has since been deleted.

@@ -1,0 +1,47 @@
+{
+  "title": "News Item",
+  "description": "A news item",
+  "properties": {
+    "title": {
+      "title": "Title",
+      "type": "string"
+    },
+    "description": {
+      "title": "Summary",
+      "type": "string",
+      "widget": "textarea"
+    },
+    "preview_image": {
+      "title": "Preview image",
+      "description": "Insert an image that will be used in listing and teaser blocks.",
+      "type": "object",
+      "factory": "Image",
+      "widget": "file"
+    },
+    "blocks": {
+      "title": "Blocks",
+      "type": "object"
+    },
+    "blocks_layout": {
+      "title": "Blocks Layout",
+      "type": "object"
+    }
+  },
+  "required": [
+    "title"
+  ],
+  "fieldsets": [
+    {
+      "id": "default",
+      "title": "Default",
+      "fields": [
+        "title",
+        "description",
+        "preview_image"
+      ]
+    }
+  ],
+  "layouts": [
+    "newsitem_view"
+  ]
+}

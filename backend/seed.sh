@@ -32,7 +32,8 @@ WORK="$(mktemp -d)"
 MOCK_PID=""
 
 cleanup() {
-  [ -n "$MOCK_PID" ] && kill "$MOCK_PID" 2>/dev/null || true
+  # The whole group: pnpm does not pass the signal on to the server it started.
+  [ -n "$MOCK_PID" ] && kill -- -"$MOCK_PID" 2>/dev/null || true
   rm -rf "$WORK"
 }
 trap cleanup EXIT
@@ -58,9 +59,12 @@ if curl -sf -o /dev/null -H 'Accept: application/json' -H "Authorization: Bearer
 fi
 
 echo "==> Exporting the shared fixtures + docs from the mock API (port $SEED_MOCK_PORT)"
-PORT="$SEED_MOCK_PORT" CONTENT_MOUNTS="/docs:docs,/:tests-playwright/fixtures/site-root" \
-  node "$ROOT/tests-playwright/fixtures/mock-api-server.cjs" > "$WORK/mock.log" 2>&1 &
+# In a process group of its own (set -m), which cleanup stops as a whole.
+set -m
+PORT="$SEED_MOCK_PORT" CONTENT_MOUNTS="/docs:docs,/:tests-playwright/fixtures/site-root" CONTENT_SCHEMAS="tests-playwright/fixtures/shared-block-schemas.js" \
+  pnpm --dir "$ROOT" exec inka-mock-api > "$WORK/mock.log" 2>&1 &
 MOCK_PID=$!
+set +m
 for _ in $(seq 1 60); do
   curl -sf -o /dev/null "http://localhost:$SEED_MOCK_PORT/health" && break
   kill -0 "$MOCK_PID" 2>/dev/null || { echo "Mock API exited:" >&2; tail -20 "$WORK/mock.log" >&2; exit 1; }

@@ -24,7 +24,7 @@ subjects:
   - editing
 title: How Inka Works
 blocks-matched: |
-  <block type="slate" value="${p,h*,ul,ol,blockquote,strong,em,a/slate}" plaintext="${p,h*,ul,ol,blockquote,strong,em,a/text}" />
+  <block type="slate" value="${p,h*,ul,ol,blockquote,strong,em,a/slate}" />
   <block type="title" _="${h1}" />
   <block type="separator" _="${hr}" styles={"align":"full"} />
   <block type="codeExample">
@@ -142,6 +142,7 @@ During editing the frontend is loaded inside an iframe owned by Inka's admin UI.
 
 - **Admin → frontend**: form-data updates, selection changes, route changes.
 - **Frontend → admin**: which block was clicked (selection), which slate node holds the cursor, where blocks live in the rendered DOM, slate transform requests so the admin can compute the new value.
+- **Focus**: the frontend never moves the keyboard into its page by itself: not as it loads, not when it selects a block on its own or because the admin selected one (from the sidebar, say). It moves focus within its page only when the page already has it. It reports when the author moves into it, by a click or Tab (`CANVAS_FOCUSED`, once per move), because the admin sees nothing when focus enters an iframe. The admin decides when the page should take the keyboard: as it loads, if nothing else has focus, and for a block the admin added. With focus in the admin outside a field (after choosing a block in the sidebar, say), the admin answers the block shortcuts copy, cut and paste itself, since the page never hears those keys.
 
 This split lets the frontend stay 100% headless when not in admin (just renders content), while the admin gets full visual editing without the frontend having to know any React, any block-form widgets, or any sidebar UI.
 
@@ -200,13 +201,13 @@ This section is for people working on Inka itself. You don't need it to build a 
 
 A template can be placed anywhere a block can: at the top of a page, in a page's footer region, or inside any container — a grid, a column, an accordion panel, a slider. Nobody knows in advance where an editor will put one. So wherever blocks are rendered, every container's children are expanded.
 
-**The merge does not know your containers.** `expandTemplates` / `expandTemplatesSync` have no block schema. When they apply a template they fill that template's own regions, at every depth. But a template placed inside a *plain* container — one that is not part of a template being applied — is left exactly as stored until that container's children are themselves passed through the merge.
+**The merge does not know your containers.** `expandTemplates` / `expandTemplatesSync` have no block schema, and each call expands one list. A container's children, whether it is a template's own or a plain one, are left as they are until that container passes them through the merge.
 
 **So the renderer re-enters every container.** That is the frontend contract (see [Templates](./frontend-guide/templates.md#expand-every-container)): each container passes its children — every `blocks_layout` region and every object_list field — through the merge, sharing one `templateState` for the whole render. Content this render already expanded is recognised by its instance id and passed through, so re-entering a template's own regions does not apply it twice.
 
-**The admin is a renderer too, and keeps the same contract.** It merges templates itself, because it edits them: the page it hands the iframe, the blocks you unlock, and what "Change on all pages" saves all come from its own merge. `mergeTemplatesIntoPage` runs the merge on each page blocks field and then re-enters every container of the result, at every depth (`expandContainers`, reading regions through the helpers' `getChildFields` / `getChildBlockEntries` / `setChildBlockEntries`). Without that, a template inside a container is never merged in the editor: it shows its stale stored copy, and unlocking, committing and resetting cannot find it.
+**The admin is a renderer too, and keeps the same contract.** It merges templates itself, because it edits them: the page it hands the iframe, the blocks you unlock, and what "Change on all pages" saves all come from its own merge. `mergeTemplatesIntoPage` runs the merge on each page blocks field and then re-enters every container of the result, at every depth (`expandContainers`, reading regions through the helpers' `getChildFields` / `getChildBlockEntries` / `setChildBlockEntries`). With no block code to name them, it takes id fields from the schema (`idFieldMap`). That map is the admin's: the public merge has none. Without that, a template inside a container is never merged in the editor: it shows its stale stored copy, and unlocking, committing and resetting cannot find it.
 
-This re-entry was removed once (2026-07, "use only the public merge — remove redundant re-entry") on the belief that the merge already fills every nested region. It fills only the regions of a template it applies. **Do not remove the admin's re-entry, and do not ship a frontend container that renders its children without passing them through the merge.** The tests that guard this place the same template at the top level and inside a container (`template-edit-mode.spec.ts`, "wherever the instance sits").
+This re-entry was removed once (2026-07, "use only the public merge — remove redundant re-entry") on the belief that the merge already fills every nested region. It doesn't. **Do not remove the admin's re-entry, and do not ship a frontend container that renders its children without passing them through the merge.** The tests that guard this place the same template at the top level and inside a container (`template-edit-mode.spec.ts`, "wherever the instance sits").
 
 ### Template membership (edit-side slot assignment)
 
@@ -214,7 +215,7 @@ A block's template membership — `templateId`, `templateInstanceId`, `slotId`, 
 
 **One rule, one implementation.** Every way an author places a block — **adding** it, **pasting** it, **moving** it (drag and drop, cut and paste) — gives it its membership the same way: `applyMembershipWhereLanded` in `blockSync.js`, reached through `settleBlockStructure` after the block is inserted. The insert itself (`insertBlockInContainer`) only inserts. Change the rule there and here together.
 
-1. **It keeps its membership** when it is a template's own fixed block staying in its template, or when it moves *inside* the template being edited. In template edit mode the `slotId` is **explicit** — there's a `slotId` field, and the author renames slots rather than changing them by dragging — so a move that stays inside the template keeps its `slotId` (save/lock validation, not the drag, is what refuses an invalid arrangement). Fixed template blocks are only movable in template edit mode, and their slot and `fixed` *are* the template.
+1. **It keeps its membership** when it is a template's own fixed block staying in its template, or when it moves *inside* the template being edited. In template edit mode the `slotId` is **explicit** — there's a `slotId` field, and the author renames slots rather than changing them by dragging — so a move that stays inside the template keeps its `slotId` (the lock's check, not the drag, is what refuses an invalid arrangement). Fixed template blocks are only movable in template edit mode, and their slot and `fixed` *are* the template.
 2. **Otherwise where it came from is discarded.** A block from another template — the page's layout, another snippet — lands exactly as a block with no template at all would. A paste is a new block, so it never keeps a template block's identity.
 3. **The add rules for where it landed decide** (`getTemplateInfoFromNeighbors`, via `applyBlockDefaultsWithContext`). They inspect the immediate neighbours and ask whether a slot *faces the gap*, in this order:
 
@@ -223,7 +224,7 @@ A block's template membership — `templateId`, `templateInstanceId`, `slotId`, 
    - otherwise, if the **container itself is a template instance** (e.g. a `columns` block carrying a `templateId`), the block joins that instance with a **freshly generated `slotId`** — the only time a slot is invented. The author can rename it.
 
    If none apply, the position is **outside every template** — plain page content. A block joining a slot is a slot member, never fixed. Inside a template *container* it is template content: `fixed` and `readOnly` like the block it lands beside, else like the container.
-4. **Its contents go with it.** Every descendant takes the block's membership **and its `slotId`** — every block of a template has a slot, nested ones included ([Templates](./frontend-guide/templates.md)). The exception is a **nested template instance** of its own (a snippet placed inside the block): its blocks keep their own template, instance and slots. Descendants are walked through the container API, so `blocks_layout` and `object_list` regions alike.
+4. **Its contents go with it.** Every descendant takes the block's membership — its template, instance, `fixed` and `readOnly` — and a slot, but **never the block's own**: a slot is one place at every depth, and a block sharing its slot with a block inside it is found by the merge as content of its own slot. Each region of the block is a slot of its own, named from the block's slot and the region (`regionSlotId`: `primary-items`); open blocks in it share that slot, and a fixed one, matched by its slot, gets one of its own (`primary-items-1`). Every block of a template has a slot, nested ones included ([Templates](./frontend-guide/templates.md)). The exception is a **nested template instance** of its own (a snippet placed inside the block): its blocks keep their own template, instance and slots. Descendants are walked through the container API, so `blocks_layout` and `object_list` regions alike.
 
 The caller passes the block's membership **as it was before the insert** (`sourceById`): that is how a placed block's own children are told apart from a nested snippet, and how rule 1 knows where the block came from. A paste passes the instance it was copied from (never `fixed`); an add passes nothing.
 
@@ -233,7 +234,7 @@ Three details make it hold:
 - **Write back against the original.** The update guard compares the result to the *stored* block, not the stripped copy, or a block whose recompute is a structural no-op keeps its stale membership.
 - **`templateEditModeRef` for the mode check.** The current set of unlocked instances is read from a ref, not an effect-closure value, so the gate sees the live edit-mode state.
 
-**Seeding is not placement.** Blocks the editor creates on its own — an empty placeholder for an empty slot, a forced region's default empty, a new container's default children — take their slot from what they fill (`inheritTemplateMembership` in `blockPath.js`), not from this rule.
+**Seeding is not placement.** Blocks the editor creates on its own — an empty placeholder for an empty slot, a forced region's default empty, a new container's default children — take their slot from what they fill (`inheritTemplateMembership` in `blockPath.js`), not from this rule. An empty region of a **locked** (`readOnly`) block is seeded with an `empty` placeholder whatever its default type, locked with the block and in its template: a real block there could not be reached to fill in, would be validated as the page's own, and — since only an `empty` is stripped on save — would be stored into the template although no author added it. Unlocking the template gives the placeholder a "+".
 
 In normal mode the net effect matches the merge's own placement rules (a top/bottom slot outside a fixed anchor): dropping a block past a **free** edge flows it into that slot; dropping it past a **both-anchored** edge exits it to the surrounding page region. The drag scan that decides the drop position lives in `hydra.js` and, on a distance tie between coincident edges, prefers the deeper (inner) edge so a reorder inside a container isn't ejected to the outer level.
 

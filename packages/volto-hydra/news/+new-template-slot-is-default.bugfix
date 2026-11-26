@@ -1,0 +1,1 @@
+A template made from a block in the editor names its slot `default` rather than `primary`, so its content is a layout's main content when the page switches layouts.
