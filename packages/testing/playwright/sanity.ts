@@ -30,7 +30,7 @@
  */
 import { test as playwrightTest, type FrameLocator } from '@playwright/test';
 import { test as base, expect } from './fixtures';
-import { AdminUIHelper } from './AdminUIHelper';
+import { AdminUIHelper, previewFrame } from './AdminUIHelper';
 import { verifyBlockRendering, revealBlock, checkEveryBlockOnPage, blocksToCheck, blockUidsShownAsText } from './BlockVerificationHelper';
 import { verifyPageIntegrity } from './PageIntegrityHelper';
 import { drainFieldCoverage } from '../field-coverage';
@@ -459,7 +459,7 @@ export function defineBlockSanityTests(options: SanityOptions): void {
         // "locked with nothing able to unlock it" a legible failure instead of a
         // silent mismatch.
         if (block.needsUnlock) {
-          const frame = page.frames().find((f) => f !== page.mainFrame())!;
+          const frame = await previewFrame(page);
 
           // A block whose CONTENTS are generated is not authored inline, and
           // unlocking its template instance must not make them editable: the
@@ -706,7 +706,7 @@ export function defineBlockSanityTests(options: SanityOptions): void {
         // page.frames(), not getIframe(): the latter is a FrameLocator, which
         // finds elements but cannot evaluate — the bridge is a window global, not
         // a DOM node.
-        const frame = page.frames().find((f) => f !== page.mainFrame())!;
+        const frame = await previewFrame(page);
         const formData = await frame.evaluate(
           () => (window as any).__hydraBridge?.formData ?? null,
         );

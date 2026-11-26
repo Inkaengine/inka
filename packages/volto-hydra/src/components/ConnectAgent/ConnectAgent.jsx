@@ -17,7 +17,7 @@
  * fail on every call. Renewing asks the site; refused, Volto drops the token
  * and the person signs in again, as if they had not been.
  */
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import { loginRenew } from '@plone/volto/actions/userSession/userSession';
 import { Redirect, useLocation } from 'react-router-dom';
@@ -34,12 +34,27 @@ const ConnectAgent = () => {
   const token = useSelector((state) => state.userSession.token);
   const { redirect_uri: redirectUri, state, client } = qs.parse(location.search);
   const [accepted, setAccepted] = useState(false);
+  const asked = useRef(false);
   useEffect(() => {
-    if (!token || accepted) return;
+    if (!token || asked.current) return;
+    asked.current = true;
     // A refusal needs nothing here: Volto's reducer drops the token, and the
     // page sends the person to sign in.
     dispatch(loginRenew()).then(() => setAccepted(true), () => {});
-  }, [dispatch, token, accepted]);
+    // ONCE, and not again when the answer changes the token.
+    //
+    // A successful renewal returns a FRESH token — plone.restapi mints one, and
+    // so does the mock — which Volto stores, which changes `token`, which ran
+    // this effect again, which renewed again. Measured: renew:start 9WrehPlc ->
+    // renew:ok -ru1P-NE -> renew:start -ru1P-NE -> renew:ok TYdPMNIc. The only
+    // thing stopping it was `accepted` winning a race against the next render,
+    // which it does on a quiet machine and does not reliably do on a loaded
+    // one — two attempts at making this page ask the site were reverted for
+    // failures that looked like the ASKING was broken, when it was this.
+    //
+    // Asking is a one-off per visit, so a ref says so plainly. `accepted` stays
+    // what it is: the answer, and what the page renders on.
+  }, [dispatch, token]);
 
   if (!token) {
     return <Redirect to={`/login?return_url=${encodeURIComponent(`${location.pathname}${location.search}`)}`} />;

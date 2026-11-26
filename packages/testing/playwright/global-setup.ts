@@ -59,7 +59,15 @@ export async function fetchBlocksConfig(
     const page = await browser.newPage();
     const url = `${mockParentUrl}?api_path=${encodeURIComponent(`${apiUrl}/`)}&frontend=${encodeURIComponent(frontendUrl)}`;
     await page.goto(url, { timeout: 60000, waitUntil: 'load' });
-    for (let i = 0; i < 75; i++) {
+    // 225 × 200ms = 45s, not 15s.
+    //
+    // A dev server that has just started compiles on the first request, and the
+    // INIT that carries the block schemas cannot arrive before that finishes.
+    // At 15s a cold vite in CI reported zero schemas, every frontend was skipped
+    // and the whole job aborted with "No frontend yielded schemas" — while the
+    // server was up and perfectly healthy. The wait is only paid when something
+    // is wrong; a warm frontend answers in well under a second.
+    for (let i = 0; i < 225; i++) {
       const result = await page.evaluate(() => {
         const mp = (window as any).mockParent;
         const c = mp?.getBlocksConfig?.();
@@ -189,20 +197,29 @@ export async function discoverPerFrontend(
   const perFrontend: Record<string, number> = {};
   let blocksConfig: Record<string, any> = {};
   let frontendKeys: string[] = [];
+  // Every target's outcome, including the ones passed over: an unreachable
+  // frontend used to be skipped in total silence, so a job with none of its
+  // frontends running looked identical to one whose frontend answered nothing.
+  const outcomes: string[] = [];
   for (const [project, url] of targets) {
-    if (!(await isUp(url))) continue;
+    if (!(await isUp(url))) {
+      outcomes.push(`${project} (${url}): not serving`);
+      continue;
+    }
     const { blocksConfig: cfg, frontendKeys: keys, styleMenuClasses, pageSchema, slateOffer } = await fetchRegistry(url);
     if (Object.keys(cfg).length === 0) {
+      outcomes.push(`${project} (${url}): serving, but sent no schemas`);
       console.warn(`[SETUP] ${project} (${url}) returned no schemas — skipped`);
       continue;
     }
+    outcomes.push(`${project} (${url}): ${Object.keys(cfg).length} schemas`);
     const found = await discover(cfg, keys, styleMenuClasses, pageSchema, slateOffer);
     for (const b of found) blocks.push({ ...b, frontend: project });
     perFrontend[project] = found.length;
     blocksConfig = cfg;      // last one wins for the single-config uses below
     frontendKeys = keys;
   }
-  return { blocks, perFrontend, blocksConfig, frontendKeys };
+  return { blocks, perFrontend, blocksConfig, frontendKeys, outcomes };
 }
 
 /**
@@ -238,7 +255,24 @@ export async function discoverForFrontends(options: DiscoveryOptions): Promise<v
   // scanning it twice doubles the slowest part of setup and emits a second,
   // identical set of cases. Named projects are considered first so a frontend
   // is tagged with its project name rather than the anonymous '(env)'.
-  const normUrl = (u: string) => u.replace(/\/+$/, '');
+  // By PORT, not by spelling. A harness addresses its test frontend as
+  // 127.0.0.1 while FRONTEND_URL is usually localhost, so the same server was
+  // discovered twice — two browser launches and, when it was failing, two 45s
+  // waits.
+  const normUrl = (u: string) => {
+    try {
+      const parsed = new URL(u);
+      const port = parsed.port || (parsed.protocol === 'https:' ? '443' : '80');
+      const host = ['localhost', '127.0.0.1', '[::1]', '0.0.0.0'].includes(
+        parsed.hostname,
+      )
+        ? 'local'
+        : parsed.hostname;
+      return `${host}:${port}${parsed.pathname.replace(/\/+$/, '')}`;
+    } catch {
+      return u.replace(/\/+$/, '');
+    }
+  };
   const candidates: Array<[string, string]> = Object.entries(options.frontends);
   // '(env)' is last on purpose: it is the fallback name for a frontend no
   // project claims, so it only gets used when FRONTEND_URL really is a server
@@ -253,7 +287,7 @@ export async function discoverForFrontends(options: DiscoveryOptions): Promise<v
     targets.push([project, url]);
   }
 
-  const { blocks, perFrontend, blocksConfig, frontendKeys } = await discoverPerFrontend(targets, {
+  const { blocks, perFrontend, blocksConfig, frontendKeys, outcomes } = await discoverPerFrontend(targets, {
     reachable,
     fetchRegistry: (url) => fetchBlocksConfig(mockParent, url, schemaApi),
     discover: (cfg, keys, menu, page, offer) => discoverBlocks(discoverApi, maxPages, cfg, keys, menu, page, offer),
@@ -262,6 +296,10 @@ export async function discoverForFrontends(options: DiscoveryOptions): Promise<v
     throw new Error(
       '[SETUP] No frontend yielded schemas. Discovery would be type-only, and ' +
       'every schema-dependent check would pass by measuring nothing.\n' +
+      `  Tried:\n    ${outcomes.join('\n    ')}\n` +
+      '  A frontend that is "serving, but sent no schemas" was reached and did ' +
+      'not deliver an INIT within 45s — usually a dev server still compiling, ' +
+      'or a bridge that failed to register.\n' +
       '  Start at least one frontend and set MOCK_PARENT_URL so globalSetup ' +
       'can read its INIT.',
     );

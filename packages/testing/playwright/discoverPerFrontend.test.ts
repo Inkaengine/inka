@@ -82,4 +82,27 @@ describe('discoverPerFrontend', () => {
     expect(result.blocks).toEqual([{ type: 'slate', frontend: 'nuxt' }, { type: 'image', frontend: 'nuxt' }]);
     expect(result.perFrontend).toEqual({ nuxt: 2 });
   });
+  /**
+   * A job whose frontends were all down used to look exactly like a job whose
+   * frontend answered nothing: discovery skipped them in silence and the only
+   * output was "No frontend yielded schemas", which names neither what was
+   * tried nor how far each one got.
+   */
+  test('records what happened to every target, including the ones it passed over', async () => {
+    const result = await discoverPerFrontend(
+      [['nuxt', 'http://nuxt'], ['down', 'http://down'], ['empty', 'http://empty']],
+      {
+        reachable: async (url) => url !== 'http://down',
+        fetchRegistry: async (url) => (url === 'http://empty'
+          ? { blocksConfig: {}, frontendKeys: [], styleMenuClasses: [], pageSchema: { properties: {} }, slateOffer: {} }
+          : registry(['lead'])),
+        discover: async () => [{ type: 'slate' }],
+      },
+    );
+    expect(result.outcomes).toEqual([
+      'nuxt (http://nuxt): 11 schemas',
+      'down (http://down): not serving',
+      'empty (http://empty): serving, but sent no schemas',
+    ]);
+  });
 });

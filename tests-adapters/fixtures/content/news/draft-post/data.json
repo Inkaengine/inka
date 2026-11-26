@@ -1,0 +1,13 @@
+{
+  "@id": "/news/draft-post",
+  "@type": "Document",
+  "UID": "seed-news-draft-post",
+  "id": "draft-post",
+  "title": "Draft Post",
+  "review_state": "private",
+  "is_folderish": false,
+  "blocks": {},
+  "blocks_layout": {
+    "items": []
+  }
+}

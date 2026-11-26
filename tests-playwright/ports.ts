@@ -37,6 +37,39 @@ export const { PORTS, URLS, PORT_ENV, allPorts } = definePorts({
   svelteQs: 13,
   /** Quick Start: dedicated Astro starter (docs/quickstart/astro). */
   astroQs: 14,
+
+  // The three-CMS journey's real backends.
+  /** Mock Drupal JSON:API, for the three-CMS journey. */
+  mockDrupal: { offset: 15, host: '127.0.0.1' },
+  /** WordPress Playground, for the three-CMS journey. */
+  wordpress: { offset: 16, host: '127.0.0.1' },
+  /**
+   * Strapi, for the journey.
+   *
+   * A DIFFERENT instance from the contract suite's, exactly as the journey's
+   * WordPress is: the two suites seed the same paths to different states, so
+   * sharing one would make each suite's fixtures the other's flake.
+   *
+   * Addressed as 127.0.0.1 for the reason given on `testFrontend` in the
+   * harness: a CMS that refuses `localhost` has to be talked to by its
+   * address, and the CMS mocks already are.
+   */
+  strapi: { offset: 17, host: '127.0.0.1' },
+  /**
+   * A Plone mock serving the CANONICAL seed, for journey specs that need the
+   * same fixtures as WordPress and Drupal. Separate from the docs-content mock
+   * on mockApi, which the other Plone journey project keeps using.
+   */
+  ploneSeeded: { offset: 18, host: '127.0.0.1' },
+
+  // The contract suite's own CMSes, seeded from tests-adapters/fixtures/seed.json.
+  // Separate instances from the journey's, on separate ports, because the two
+  // suites seed the same paths to different states — sharing one would make
+  // each suite's fixtures the other's flake.
+  contractPlone: 19,
+  contractWordpress: 20,
+  contractStrapi: 21,
+  contractDrupal: 22,
 });
 
 export type PortName = keyof typeof PORTS;

@@ -98,6 +98,8 @@ const ALLOWED: Record<string, string> = {
     'vocabulary term urls as the widget receives them',
   'tests-playwright/fixtures/nuxt-starter-config.test.cjs':
     'pins the env it passes IN, to assert what nuxt.config derives from it',
+  'packages/testing/ports.test.ts':
+    'sets the base and asserts the addresses derived from it: HOST included, since localhost and 127.0.0.1 are the same server and not the same origin',
 
   // The one place a port number is meant to be written: where CI says where
   // this run's block starts. Everything else derives from it.

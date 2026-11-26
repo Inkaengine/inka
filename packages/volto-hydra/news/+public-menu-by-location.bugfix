@@ -1,0 +1,1 @@
+A visitor's read of a WordPress menu asks for the menu at a theme LOCATION. It read every menu item on the site, including from menus nobody had located — which WordPress treats as not published. `publicReader.menu({ location: 'primary' })`.

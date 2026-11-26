@@ -93,7 +93,15 @@ describe('export idempotency — prototype set is readability only, never struct
     const page = readPage(file);
     if (!page) continue;
     const rel = file.slice(DOCS.length + 1);
-    it(`round-trips losslessly under own + empty prototypes: ${rel}`, () => {
+    it(`round-trips losslessly under own + empty prototypes: ${rel}`, async () => {
+      // Let the worker drain its event loop before a body that will block it for
+      // seconds. vitest reports each finished test to the main thread over birpc,
+      // which times out after 1s — and the worker cannot process the REPLY while
+      // it is inside a synchronous round-trip. The result is a run where every
+      // assertion passes and the exit code is still 1, on
+      // `Timeout calling "onTaskUpdate"`. One macrotask here is enough: the
+      // previous test's report is flushed before this one starts computing.
+      await new Promise((resolve) => setTimeout(resolve, 0));
       const B = matchBlocks(page.protos, page.body);
       expect(idempotentUnder(page.protos, B), 'own prototypes').toBe(true);
       expect(idempotentUnder([], B), 'empty prototypes (data-json baseline)').toBe(true);

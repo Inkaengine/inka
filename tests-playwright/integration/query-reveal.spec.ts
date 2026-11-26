@@ -35,7 +35,7 @@ test.describe('Query reveal', () => {
     await expect(iframe.locator('[data-block-uid="quick-answer-block"]')).toHaveCount(0);
 
     await page.evaluate((uid) => {
-      (document.querySelector('iframe') as HTMLIFrameElement).contentWindow!.postMessage(
+      (document.querySelector('#previewIframe') as HTMLIFrameElement).contentWindow!.postMessage(
         { type: 'SELECT_BLOCK', uid }, '*');
     }, 'quick-answer-block');
 
@@ -55,7 +55,7 @@ test.describe('Query reveal', () => {
     await expect(iframe.locator('.search-form')).toBeVisible({ timeout: 15000 });
 
     await page.evaluate((uid) => {
-      (document.querySelector('iframe') as HTMLIFrameElement).contentWindow!.postMessage(
+      (document.querySelector('#previewIframe') as HTMLIFrameElement).contentWindow!.postMessage(
         { type: 'SELECT_BLOCK', uid }, '*');
     }, 'quick-answer-block');
 

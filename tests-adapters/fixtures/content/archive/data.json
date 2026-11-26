@@ -1,0 +1,9 @@
+{
+  "@id": "/archive",
+  "@type": "Document",
+  "UID": "seed-archive",
+  "id": "archive",
+  "title": "Archive",
+  "review_state": "published",
+  "is_folderish": true
+}

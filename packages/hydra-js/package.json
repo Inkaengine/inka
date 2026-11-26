@@ -5,6 +5,7 @@
   "private": true,
   "exports": {
     ".": "./hydra.src.js",
+    "./bridgeRpc": "./bridgeRpc.js",
     "./mergeFrontendBlock.js": "./mergeFrontendBlock.js"
   },
   "scripts": {

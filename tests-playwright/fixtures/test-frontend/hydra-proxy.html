@@ -1,0 +1,216 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Hydra proxy</title>
+  <style>
+    body { margin: 0; font: 14px/1.5 system-ui, sans-serif; }
+    .signin { display: grid; place-items: center; min-height: 100vh; gap: 12px; }
+    /* An author `display` beats the UA's [hidden] { display: none }, so setting
+       panel.hidden had no visible effect at all — the sign-in stayed on screen
+       after a successful login. */
+    .signin[hidden] { display: none; }
+    button { font: inherit; padding: 8px 16px; cursor: pointer; }
+    .who { color: #555; }
+  </style>
+</head>
+<body>
+  <!--
+    The PROXY frame: a frontend page whose only job is to host the adapter and,
+    when nobody is signed in, to run the sign-in.
+
+    No router, no rendering of content, nothing that can navigate it. The admin
+    mounts it once at boot and keeps it for the session, so the CMS connection
+    no longer depends on what the editor is looking at.
+
+    It owns the sign-in because the credential must never pass through the
+    admin. The user's click lands HERE, which is what gives this frame the user
+    activation it needs to open a popup — activation is per-frame, so a click in
+    the admin would not do.
+  -->
+  <div class="signin" hidden id="signin">
+    <div>Not signed in to <span id="cms"></span></div>
+    <button id="go" type="button">Sign in</button>
+    <div class="who" id="status"></div>
+  </div>
+
+  <script type="module">
+    import { connectProxy } from '/hydra.js';
+    import { PloneAdapter } from '/plone-adapter.js';
+    import { WordPressAdapter } from '/wordpress-adapter.js';
+    import { DrupalAdapter } from '/drupal-adapter.js';
+    import { StrapiAdapter } from '/strapi-adapter.js';
+
+    const params = new URLSearchParams(window.location.search);
+    const which = params.get('adapter') || 'plone';
+    // The frontend owns its adapter, so it has to know its own CMS. This used
+    // to fall back to window.location.origin, which is the FRONTEND's origin —
+    // meaningless as a CMS base, and it made registration ask Vite for
+    // /++api++/@users/admin and take a 404. Nothing passes ?cms=, so that
+    // fallback was the live path for every project that does not set one.
+    //
+    // The journeys survived it because they hand the admin an explicit API path
+    // and the adapter picks it up from the announcement — but registration runs
+    // BEFORE that, so whoami went out against the wrong origin regardless.
+    // window._apiOrigin is injected by vite.config.js as a head script, which is
+    // how the rest of the fixture learns its API too. It replaced a
+    // transformIndexHtml token substitution: vite extracts an inline
+    // `type="module"` into an html-proxy before a default-order transform runs,
+    // so the token reached the module verbatim.
+    const cmsBaseUrl = params.get('cms') || window._apiOrigin;
+    if (!cmsBaseUrl) {
+      throw new Error(
+        '[proxy] no CMS base URL: pass ?cms= or let vite inject window._apiOrigin. ' +
+          'Refusing to guess, because guessing means asking the FRONTEND for ' +
+          'content and reading a 404 as "not found".',
+      );
+    }
+    const token = params.get('access_token');
+
+    // Scoped per adapter AND per CMS: one browser may edit several sites, and a
+    // credential is only ever valid for the one it was issued by.
+    const storeKey = `hydra_credentials:${which}:${cmsBaseUrl}`;
+    const stored = (() => {
+      try {
+        return JSON.parse(localStorage.getItem(storeKey) || 'null');
+      } catch {
+        return null; // corrupt entry is the same as none
+      }
+    })();
+
+    function buildAdapter(credentials) {
+      switch (which) {
+        case 'wordpress':
+          return new WordPressAdapter({ cmsBaseUrl, credentials });
+        case 'drupal':
+          return new DrupalAdapter({
+            cmsBaseUrl,
+            credentials: credentials ?? { username: 'admin', password: 'admin' },
+          });
+        case 'strapi': {
+          // An API token, not a session: Strapi has nothing to log in to over
+          // the content API, so there is no credential for the sign-in panel
+          // to collect and the frontend is handed one the way it is handed its
+          // CMS url.
+          //
+          // Refused rather than defaulted. An anonymous Strapi still serves
+          // published pages, so a missing token would look like a working
+          // editor right up to the first save.
+          const apiToken = params.get('token');
+          if (!apiToken) {
+            throw new Error(
+              "[proxy] adapter=strapi needs ?token=: Strapi's content API has " +
+                'no login, and reading as a visitor would pass for working ' +
+                'until something had to be written.',
+            );
+          }
+          return new StrapiAdapter({ cmsBaseUrl, token: apiToken });
+        }
+        case 'plone':
+          return new PloneAdapter({ cmsBaseUrl, getAuthToken: () => token });
+        default:
+          throw new Error(`Unknown adapter '${which}'`);
+      }
+    }
+
+    const adapter = buildAdapter(stored);
+
+    // The proxy wrote the credential, so the proxy removes it.
+    //
+    // auth.logout ends the adapter's IN-MEMORY session; the copy in
+    // localStorage would revive it on the very next load, so the logout would
+    // look right and change nothing — an editor on a shared machine clicks
+    // logout and the session that matters is still there. Wrapped here rather
+    // than inside the adapter because the storage key is the proxy's choice:
+    // it is scoped per adapter AND per CMS, which the adapter knows nothing
+    // about.
+    const dispatchToAdapter = adapter.dispatch.bind(adapter);
+    adapter.dispatch = async (intent, args) => {
+      const result = await dispatchToAdapter(intent, args);
+      if (intent === 'auth.logout') localStorage.removeItem(storeKey);
+      return result;
+    };
+
+    const bridge = connectProxy(adapter, { cmsBaseUrl });
+
+    // --- sign-in -----------------------------------------------------------
+    document.getElementById('cms').textContent = cmsBaseUrl;
+    const panel = document.getElementById('signin');
+    const status = document.getElementById('status');
+
+    // The registration already asked the CMS who the user is; reuse that answer
+    // rather than spending a second round trip on the same question.
+    const authed = await bridge.ready
+      .then((u) => Boolean(u))
+      .catch((e) => { console.log('[PROXY] whoami failed:', e?.code, e?.message); return false; });
+    console.log('[PROXY] authed =', authed);
+
+    // Ask WHERE to send the user BEFORE the click, not during it.
+    //
+    // window.open must be called synchronously from the gesture: awaiting
+    // anything first spends the transient user activation and the browser
+    // silently blocks the popup — which looked exactly like a popup blocker.
+    const callback = new URL('/hydra-auth-callback.html', window.location.origin).href;
+    let authUrl = null;
+    if (!authed) {
+      try {
+        authUrl = (
+          await adapter.dispatch('auth.begin', { appName: 'Hydra', successUrl: callback })
+        ).url;
+        console.log('[PROXY] authUrl =', authUrl);
+      } catch (e) {
+        console.log('[PROXY] auth.begin failed:', e?.code, e?.message);
+      }
+    }
+
+    // Reveal ONLY once the button works.
+    //
+    // Showing it as soon as whoami answered left a window where it was visible
+    // but had no click handler yet — the handler is attached after auth.begin
+    // resolves, and against a CMS costing ~1.1s per request that gap is wide.
+    // A click landing in it did nothing at all, which read as a blocked popup.
+    document.getElementById('go').addEventListener('click', () => {
+      status.textContent = 'Waiting for the CMS…';
+
+      // Opened from THIS frame, so the popup's opener is this frame and the
+      // credential comes straight back here. Top-level, because CMS login pages
+      // forbid framing (X-Frame-Options / frame-ancestors) — and because a user
+      // typing a password should see an address bar.
+      console.log('[PROXY] click handler ran, authUrl =', authUrl);
+      const popup = window.open(authUrl, 'hydra-auth', 'width=900,height=760');
+      console.log('[PROXY] window.open returned', popup ? 'a window' : 'null');
+      if (!popup) {
+        status.textContent = 'The browser blocked the sign-in window.';
+        return;
+      }
+
+      const onMessage = async (event) => {
+        console.log('[PROXY] message from', event.origin, 'type', event.data?.type);
+        if (event.origin !== window.location.origin) return;
+        if (event.data?.type !== 'HYDRA_AUTH_CALLBACK') return;
+        console.log('[PROXY] callback accepted');
+        window.removeEventListener('message', onMessage);
+        try {
+          const user = await adapter.dispatch('auth.complete', {
+            params: event.data.params,
+          });
+          localStorage.setItem(storeKey, JSON.stringify(adapter.credentials));
+          console.log('[PROXY] auth.complete ->', user?.username ?? JSON.stringify(user));
+          status.textContent = `Signed in as ${user?.username ?? 'user'}`;
+          panel.hidden = true;
+          // Tell the admin about the new user WITHOUT registering again: the
+          // handshake already happened, only the user changed.
+          bridge.announceUser(user);
+        } catch (err) {
+          console.log('[PROXY] auth.complete failed:', err?.code, err?.message);
+          status.textContent = `Sign-in failed: ${err?.message ?? err}`;
+        }
+      };
+      window.addEventListener('message', onMessage);
+    });
+
+    panel.hidden = authed;
+    console.log('[PROXY] panel hidden =', panel.hidden);
+  </script>
+</body>
+</html>

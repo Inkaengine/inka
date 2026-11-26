@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8" /><title>Signing in…</title></head>
+<body>
+  <p>Signing in…</p>
+  <!--
+    Where the CMS sends the user back to after they authorise this application.
+
+    Served from the PROXY's origin, and it hands the credential straight to the
+    window that opened it — the proxy frame. The admin is deliberately not in
+    this path: it would be carrying a secret it cannot even interpret, and a
+    redirect through the admin would put that secret in its URL, and therefore
+    in browser history and any server logs.
+  -->
+  <script type="module">
+    const params = Object.fromEntries(new URLSearchParams(window.location.search));
+
+    console.log('[CALLBACK] loaded, param keys =', Object.keys(params).join(','), 'opener =', !!window.opener);
+    if (window.opener) {
+      // Same origin as the proxy frame that opened us, so this is a direct
+      // hand-off with no third party in between.
+      window.opener.postMessage(
+        { type: 'HYDRA_AUTH_CALLBACK', params },
+        window.location.origin,
+      );
+      console.log('[CALLBACK] posted to', window.location.origin);
+      window.close();
+    } else {
+      document.body.textContent =
+        'This page is opened by Hydra during sign-in and cannot be used on its own.';
+    }
+  </script>
+</body>
+</html>

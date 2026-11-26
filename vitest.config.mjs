@@ -92,11 +92,6 @@ function redirectUpstreamSuitesToShadows() {
   };
 }
 
-/** Tests of a server that runs on Node, which need Node's environment (the node-servers project below). */
-const NODE_SERVER_TESTS = [
-  'packages/inka-mcp/http.test.mjs',
-];
-
 export default defineConfig({
   plugins: [redirectUpstreamSuitesToShadows()],
   resolve: {
@@ -107,17 +102,15 @@ export default defineConfig({
     include: [
       'packages/volto-hydra/**/*.{test,spec}.{js,jsx,ts,tsx}',
       // Upstream's own suites, run against our shadows via shadowAliases.
+      // jsdom, like the addon's: these are Volto's helpers.
       'core/packages/volto/src/helpers/Url/Url.test.js',
       'core/packages/volto-slate/src/utils/blocks.test.js',
-      // any docs-tree unit tests
-      'docs/**/*.{test,spec}.mjs',
-      // blockmd: the prototype engine and the slate <-> markdown core
-      'packages/blockmd/**/*.{test,spec}.mjs',
-      // The pure data helpers (buildQuerystringSearchBody etc.) — server-safe,
-      // no DOM, so their unit tests live alongside them here.
-      'packages/helpers/**/*.{test,spec}.{js,jsx,ts,tsx}',
-      // The MCP server: the agent page format and the tools.
-      'packages/inka-mcp/**/*.{test,spec}.mjs',
+      // The playwright suites' own helpers, tested directly rather than
+      // inferred from a green e2e run. They build real DOM fixtures —
+      // selectablePoint picks a click target, measureStylesInPage reads
+      // computed styles — so they need jsdom as much as the addon does.
+      // `.test.` only: the specs themselves are `.spec.ts`.
+      'tests-playwright/helpers/**/*.test.{js,ts}',
       // Repo checks at the suite root. `.test.` only, so the `.spec.ts`
       // playwright specs at this level are never collected.
       'tests-playwright/*.test.{js,ts}',
@@ -138,12 +131,22 @@ export default defineConfig({
       // invoke addon applyConfig chains.
       path.resolve(__dirname, 'vitest-setup-hydra.js'),
     ],
+    // Two projects, because these are two different kinds of test and jsdom is
+    // not free. The addon's component tests need a DOM and Volto's config
+    // registry; the block/markdown engine, the adapters and the pure helpers
+    // are data in, data out, and paying for jsdom plus Volto's setup on every
+    // one of them cost more than the tests themselves.
+    //
+    // Measured on the docs corpus round-trip, the slowest file in the suite:
+    // ~156s under jsdom, ~78s under node for exactly the same assertions. The
+    // rest of its cost is the engine's own — verify-on-emit is O(n²) per page
+    // by design — and that is not this config's business; paying for a DOM
+    // none of it touches was.
     projects: [
       {
         extends: true,
         test: {
           name: 'hydra',
-          exclude: NODE_SERVER_TESTS,
           // For core's files, which we can't change: Volto's setup imports
           // @testing-library/jest-dom, which calls the global expect, and
           // upstream's suites above use describe/it/expect unimported. Our own
@@ -151,11 +154,41 @@ export default defineConfig({
           globals: true,
         },
       },
-      // Servers that run on Node, tested on Node: jsdom's globals (its
-      // AbortController among them) are not Node's, and Node's own fetch
-      // refuses them, so a server under test there fails where it never
-      // would. Volto's setup files need a window, so these go without.
-      { test: { name: 'node-servers', include: NODE_SERVER_TESTS, environment: 'node' } },
+      // Data in, data out, on Node — and servers that run on Node must be
+      // tested there whatever they cost: jsdom's globals (its AbortController
+      // among them) are not Node's, and Node's own fetch refuses them, so a
+      // server under test there fails where it never would.
+      //
+      // No setupFiles: none of these import @plone/*, and Volto's
+      // test-setup-globals.js assigns to `window` on load, which is the one
+      // thing a node environment does not have. This project does not
+      // `extend`, which is what keeps that setup off it.
+      {
+        resolve: { alias: ploneAliases },
+        test: {
+          name: 'node',
+          globals: true,
+          environment: 'node',
+          root: __dirname,
+          include: [
+            // any docs-tree unit tests
+            'docs/**/*.{test,spec}.mjs',
+            // blockmd: the prototype engine and the slate <-> markdown core
+            'packages/blockmd/**/*.{test,spec}.mjs',
+            // The pure data helpers (buildQuerystringSearchBody etc.) —
+            // server-safe, no DOM.
+            'packages/helpers/**/*.{test,spec}.{js,jsx,ts,tsx}',
+            // The CMS adapters' own unit tests (no CMS needed). They had
+            // per-package jest configs that no CI step ever invoked, so they
+            // never ran there.
+            'packages/hydra-adapters-*/**/*.test.js',
+            // The MCP server: the agent page format, the tools, and its HTTP
+            // server — all of it on Node, for the reason above.
+            'packages/inka-mcp/**/*.{test,spec}.mjs',
+          ],
+          exclude: ['**/node_modules/**', 'packages/hydra-js/**'],
+        },
+      },
     ],
   },
 });

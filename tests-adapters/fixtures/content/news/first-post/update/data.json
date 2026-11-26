@@ -1,0 +1,29 @@
+{
+  "@id": "/news/first-post/update",
+  "@type": "Document",
+  "UID": "seed-news-first-post-update",
+  "id": "update",
+  "title": "First Post Update",
+  "review_state": "published",
+  "is_folderish": false,
+  "blocks": {
+    "b1": {
+      "@type": "slate",
+      "value": [
+        {
+          "type": "p",
+          "children": [
+            {
+              "text": "A follow-up, three levels deep."
+            }
+          ]
+        }
+      ]
+    }
+  },
+  "blocks_layout": {
+    "items": [
+      "b1"
+    ]
+  }
+}

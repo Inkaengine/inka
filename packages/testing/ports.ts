@@ -57,6 +57,38 @@ export const HARNESS_OFFSETS = {
 
 export type HarnessPortName = keyof typeof HARNESS_OFFSETS;
 
+/**
+ * The host a server is ADDRESSED by, where it is not `localhost`.
+ *
+ * `localhost` and `127.0.0.1` are the same server and not the same origin, and
+ * some of what these ports talk to cares which. A WordPress install refuses
+ * `localhost` as an application-password `success_url` — its SSRF guard
+ * rejects the host, and authorize-application.php 500s rather than declining
+ * cleanly — and the sign-in flow redirects back to the frontend's own origin.
+ * The CMS mocks already answer on 127.0.0.1.
+ *
+ * This belongs to the block rather than to each caller: the harness's helpers
+ * build `${harnessUrls().testFrontend}/mock-parent.html` themselves, so a
+ * suite that fixed the host in a URLS map of its own would leave one server
+ * answering on two origins and postMessage checks comparing them.
+ */
+const HARNESS_HOSTS: Partial<Record<HarnessPortName, string>> = {
+  testFrontend: '127.0.0.1',
+};
+
+const LOCALHOST = 'localhost';
+
+/** A suite's server: an offset in the block, and the host it answers on. */
+export interface PortSpec {
+  offset: number;
+  host?: string;
+}
+
+const specOf = (value: number | PortSpec): Required<PortSpec> =>
+  typeof value === 'number'
+    ? { offset: value, host: LOCALHOST }
+    : { offset: value.offset, host: value.host ?? LOCALHOST };
+
 const integer = (envName: string, raw: string): number => {
   const n = Number(raw);
   if (!Number.isInteger(n) || n <= 0) {
@@ -90,7 +122,7 @@ const portOf = (name: string, offset: number): number => {
 export interface PortBlock<Name extends string> {
   /** Every port in the block, by name. */
   PORTS: Readonly<Record<Name, number>>;
-  /** `http://localhost:N` for every port, by name. */
+  /** `http://<host>:N` for every port, by name (localhost unless said otherwise). */
   URLS: Readonly<Record<Name, string>>;
   /** Every variable the block reads, so a launcher can export the whole block. */
   PORT_ENV: Readonly<Record<Name, string>>;
@@ -105,27 +137,35 @@ export interface PortBlock<Name extends string> {
  * (5 and up). The block is computed when this is called, so it throws then if
  * nothing says where the block starts.
  */
-export function definePorts<Extra extends Record<string, number>>(
+export function definePorts<Extra extends Record<string, number | PortSpec>>(
   extra: Extra,
 ): PortBlock<HarnessPortName | Extract<keyof Extra, string>> {
   type Name = HarnessPortName | Extract<keyof Extra, string>;
   const offsets: Record<string, number> = { ...HARNESS_OFFSETS };
-  for (const [name, offset] of Object.entries(extra)) {
+  const hosts: Record<string, string> = Object.fromEntries(
+    (Object.keys(HARNESS_OFFSETS) as HarnessPortName[]).map((n) => [
+      n,
+      HARNESS_HOSTS[n] ?? LOCALHOST,
+    ]),
+  );
+  for (const [name, value] of Object.entries(extra)) {
     if (name in HARNESS_OFFSETS) {
       throw new Error(`Port "${name}" is the harness's own; give your server another name`);
     }
+    const { offset, host } = specOf(value);
     const taken = Object.entries(offsets).find(([, o]) => o === offset);
     if (taken) {
       throw new Error(`Ports "${name}" and "${taken[0]}" both have offset ${offset}`);
     }
     offsets[name] = offset;
+    hosts[name] = host;
   }
   const names = Object.keys(offsets) as Name[];
   const allPorts = () =>
     Object.fromEntries(names.map((n) => [n, portOf(n, offsets[n])])) as Record<Name, number>;
   const PORTS = allPorts();
   const URLS = Object.fromEntries(
-    names.map((n) => [n, `http://localhost:${PORTS[n]}`]),
+    names.map((n) => [n, `http://${hosts[n]}:${PORTS[n]}`]),
   ) as Record<Name, string>;
   const PORT_ENV = Object.fromEntries(names.map((n) => [n, portEnvName(n)])) as Record<Name, string>;
   return { PORTS, URLS, PORT_ENV, allPorts };

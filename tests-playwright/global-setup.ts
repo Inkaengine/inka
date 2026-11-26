@@ -12,6 +12,7 @@ import {
 } from '@inka/testing/playwright/global-setup';
 import { PORTS, URLS } from './ports';
 import { FRONTEND_URLS, SANITY_PROJECTS, DISCOVERY_DIR } from './frontends';
+import { editorFrontendUrl } from './journey/frontends';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 /**
@@ -42,11 +43,77 @@ const STORAGE_FRONTENDS: Record<string, string> = {
   f7: `${URLS.f7}/#!`,
 };
 
+/**
+ * The journey projects' frontends, from journey/frontends.ts.
+ *
+ * Declared there rather than here because a second caller needs the same
+ * answer: the public-site spec loads the SAME CMS with NO credential, and two
+ * copies of "which CMS does journey-drupal read" is exactly the drift the
+ * comment above warns about.
+ */
+const JOURNEY_PROJECTS = [
+  'journey-plone',
+  'journey-plone-seeded',
+  'journey-drupal',
+  'journey-wordpress',
+  'journey-strapi',
+];
+
+/** Where the journey's Strapi writes the API token it provisions on boot. */
+const STRAPI_TOKEN_FILE = path.resolve(
+  __dirname,
+  '../tests-adapters/fixtures/strapi-app/app/.hydra-journey-token',
+);
+
+/**
+ * Put the journey's Strapi into the seeded state, ONCE per run.
+ *
+ * Every other journey backend arrives seeded: the Plone and Drupal mocks serve
+ * the canonical set by construction, and WordPress is seeded per spec by
+ * seedFor because it boots empty. Strapi boots empty too, but only the specs
+ * that call seedFor would fix that — and back-navigation does not (it was
+ * written when WordPress was the only CMS that needed it) and runs first
+ * alphabetically. In CI it therefore met an empty Strapi: "Not found: /news".
+ *
+ * Here rather than in that spec, because the guarantee belongs to the RUN: no
+ * spec should have to know whether an earlier one happened to seed.
+ *
+ * Skipped when Strapi is not answering, which means this run did not ask for
+ * it. Any other failure is raised: a journey against an unseeded CMS reports
+ * missing content as broken behaviour.
+ */
+async function seedJourneyStrapi(): Promise<void> {
+  if (!fs.existsSync(STRAPI_TOKEN_FILE)) return;
+  const up = await fetch(`${URLS.strapi}/api/pages`)
+    .then((r) => r.ok)
+    .catch(() => false);
+  if (!up) return;
+  const { seedStrapi } = await import('../tests-adapters/fixtures/seed-strapi');
+  await seedStrapi({
+    baseUrl: URLS.strapi,
+    token: fs.readFileSync(STRAPI_TOKEN_FILE, 'utf8').trim(),
+  });
+  // eslint-disable-next-line no-console
+  console.log('[SETUP] seeded the journey Strapi');
+}
+
 export const GENERATED_DIR = path.resolve(__dirname, '.generated');
 
 function writeStorageStates(): void {
   fs.mkdirSync(GENERATED_DIR, { recursive: true });
-  for (const [name, frontendUrl] of Object.entries(STORAGE_FRONTENDS)) {
+  const frontends = {
+    ...STORAGE_FRONTENDS,
+    // The editor's URL per journey project: the journeys pick their CMS through
+    // the FRONTEND's ?adapter= and ?cms=, so the saved frontend is the only
+    // thing that makes a journey Drupal rather than Plone. Strapi's rides on the
+    // URL and only exists once its bootstrap has written the token, which is why
+    // these are built HERE, after the servers are up, rather than at module
+    // scope.
+    ...Object.fromEntries(
+      JOURNEY_PROJECTS.map((name) => [name, editorFrontendUrl(name)]),
+    ),
+  };
+  for (const [name, frontendUrl] of Object.entries(frontends)) {
     const state = {
       cookies: [
         {
@@ -68,6 +135,10 @@ function writeStorageStates(): void {
 async function globalSetup() {
   // Before anything else: the storageStates have to name the ports THIS run uses.
   writeStorageStates();
+
+  // A seeded CMS before the first spec, so no spec depends on another having
+  // run. A no-op unless this run started Strapi.
+  await seedJourneyStrapi();
 
   // Run block discovery if configured (before health checks — SKIP_VOLTO_CHECK
   // causes early return but discovery still needs to run for bridge tests)

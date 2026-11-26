@@ -282,9 +282,19 @@ class Add extends Component {
    */
   render() {
     if (this.props.schemaRequest.loaded) {
-      // HYDRA: force the flat (non-visual) Add form. Hydra owns block editing
-      // through the bridge/iframe; Volto's in-page visual mode would compete
-      // for control of selection and rendering.
+      // HYDRA: the Add route has no preview, so the form's fields render
+      // inline.
+      //
+      // This was briefly `true`, to make the route render Hydra's <Iframe> and
+      // so host an adapter that getSchema could reach over the bridge.
+      // AdapterHost supplies that on every route now (see App.jsx), and
+      // flipping the branch had a cost the deadlock hid: the visual branch
+      // moves every field out of the form and into the Sidebar portal, so the
+      // add form silently changed shape — `#page-add #field-title` no longer
+      // exists — for a reason that no longer applies.
+      //
+      // There is nothing to preview before the document exists, which is why
+      // Inka creates and then edits.
       const visual = false;
       const blocksFieldname = getBlocksFieldname(this.props.schema.properties);
       const blocksLayoutFieldname = getBlocksLayoutFieldname(
