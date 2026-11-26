@@ -2549,3 +2549,29 @@ describe('a row or cell setting a Markdown table cannot hold rides on the tag, b
     expect(matchBlocks(protos, emitBlocks(protos, [block]))).toEqual([block]);
   });
 });
+
+describe("a block inside a list is lifted out of it, as Volto's editor does", () => {
+  // A list holds only list items and sub-lists (volto-slate's list rule, which
+  // its editor now applies). Content saved before that can hold a paragraph
+  // directly in a list; it is written as the fixed editor would leave it: the
+  // list split there, the block after it, and an empty one (which renders
+  // nothing) gone.
+  const protos = parsePrototypes('<block is="slate" value="${p,h*,ul,ol,a/slate}" />');
+  const li = (text) => ({ type: 'li', children: [{ text }] });
+
+  it('splits the list at a block inside it, and keeps that block', () => {
+    // Three top-level nodes are more than one Text block's Markdown can hold, so
+    // the split value is kept whole rather than lost.
+    const block = { '@type': 'slate', value: [{ type: 'ul', children: [li('one'), { type: 'h2', children: [{ text: 'Two' }] }, li('three')] }] };
+    expect(matchBlocks(protos, emitBlocks(protos, [block]))).toEqual([{ '@type': 'slate', value: [
+      { type: 'ul', children: [li('one')] },
+      { type: 'h2', children: [{ text: 'Two' }] },
+      { type: 'ul', children: [li('three')] },
+    ] }]);
+  });
+
+  it('drops an empty paragraph inside a list', () => {
+    const block = { '@type': 'slate', value: [{ type: 'ul', children: [li('one'), li('two'), { type: 'p', children: [{ text: '' }] }] }] };
+    expect(emitBlocks(protos, [block])).toBe('- one\n- two');
+  });
+});

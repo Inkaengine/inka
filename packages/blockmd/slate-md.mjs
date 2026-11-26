@@ -173,6 +173,35 @@ function groupElements(nodes) {
 }
 
 /**
+ * A value with every list holding only list items and sub-lists: volto-slate's
+ * own list rule, which its editor applies (Inka's fixed normalizeNode). Content
+ * saved before that may hold a block directly in a list; it is lifted out as
+ * the editor would: the list split there and the block after it. An empty
+ * paragraph lifted out renders nothing and has no Markdown, so it goes.
+ */
+const LIST_CHILD = new Set(['li', 'ul', 'ol']);
+const isEmptyParagraph = (n) => n?.type === 'p' && (n.children ?? []).every((c) => c.text === '' && Object.keys(c).length === 1);
+
+export function withListsOfItems(value) {
+  if (!Array.isArray(value)) return value;
+  return value.flatMap((node) => {
+    if (!node || typeof node !== 'object' || !Array.isArray(node.children)) return [node];
+    const children = withListsOfItems(node.children);
+    if (node.type !== 'ul' && node.type !== 'ol') return [{ ...node, children }];
+    const out = [];
+    let run = [];
+    const flush = () => { if (run.length) out.push({ ...node, children: run }); run = []; };
+    for (const child of children) {
+      if (LIST_CHILD.has(child?.type)) { run.push(child); continue; }
+      flush();
+      if (!isEmptyParagraph(child)) out.push(child);
+    }
+    flush();
+    return out;
+  });
+}
+
+/**
  * A value without the snapshots its text links keep of what they point at.
  *
  * The link editor stores the picked item's catalog metadata beside a link's

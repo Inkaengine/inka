@@ -21,7 +21,7 @@ import YAML from 'yaml';
 import { getAtPath, ensureMutablePath } from '@volto-hydra/helpers';
 import { joined } from '@volto-hydra/helpers/blockText.js';
 import { tagOf, mdParser, mdSerializer, blockToSlate, slateToMd, fmtTagAttrs, cleanAttrStr, normaliseTables, tableToMd, gridTableToMd, NoCellForm, NoFit, slateBlockToMdast, isBrTag,
-         mdastToHtml, htmlToMd, htmlRichtext, isFlatDict, boundAttr, attrName, withoutLinkSnapshots } from './slate-md.mjs';
+         mdastToHtml, htmlToMd, htmlRichtext, isFlatDict, boundAttr, attrName, withoutLinkSnapshots, withListsOfItems } from './slate-md.mjs';
 
 // ${node[n]/part} -- node kind, optional match-index, optional accessor part.
 // No `/part` means match-only: consume the node, capture nothing (separator,
@@ -1566,8 +1566,19 @@ function emitSegments(prototypes, blocks, depth = 2) {
  */
 function withoutDerivedFields(value) {
   // Also without a text link's item snapshot, which loading puts back
-  // (slate-md's withoutLinkSnapshots).
-  return withoutPlaintext(withoutLinkSnapshots(value));
+  // (slate-md's withoutLinkSnapshots), and with lists holding only list items,
+  // as Volto's editor leaves them (slate-md's withListsOfItems).
+  return withoutPlaintext(withRichTextNormalized(withoutLinkSnapshots(value)));
+}
+
+/** Every rich-text value in a block tree, with its lists holding only items. */
+function withRichTextNormalized(value) {
+  if (Array.isArray(value)) {
+    const richText = value.length > 0 && value.every((n) => n && typeof n === 'object' && Array.isArray(n.children) && typeof n.type === 'string');
+    return richText ? withListsOfItems(value) : value.map(withRichTextNormalized);
+  }
+  if (!value || typeof value !== 'object') return value;
+  return Object.fromEntries(Object.entries(value).map(([k, v]) => [k, withRichTextNormalized(v)]));
 }
 
 function withoutPlaintext(value) {
