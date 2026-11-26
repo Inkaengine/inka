@@ -22,6 +22,11 @@
       "hash": "d0f6104afb52c223c1392fdc76e1b81ec7e0a0f65f1f6f947a2f6023f1737167",
       "why": "Makes the sidebar's editor-shortcut listing collapsible, collapsed by default, to cut sidebar clutter. Content is otherwise upstream's. Same treatment as MarkdownIntroduction."
     },
+    "@plone/volto-slate/editor/extensions/normalizeNode.js": {
+      "upstream": "core/packages/volto-slate/src/editor/extensions/normalizeNode.js",
+      "hash": "d85dc333d7434b2bb51185475aaf88eea2369ed9b6bebe51cc29e934de82839c",
+      "why": "The list rule (only ol/ul/li inside a list) never fired: upstream's condition also required the list's own type to be outside the allowed types, which a ul/ol never is. So a list item given a block format (toggleFormatAsListItem, which relies on this to split the list) stayed inside the list as a heading or paragraph. Retire when upstream drops the second condition."
+    },
     "@plone/volto-slate/editor/plugins/Markdown/extensions.js": {
       "upstream": "core/packages/volto-slate/src/editor/plugins/Markdown/extensions.js",
       "hash": "58d6878852a802c683791a02e75e4cd97253bd65cf002d24e2aa939a328b726c",
