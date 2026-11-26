@@ -36,7 +36,34 @@ export function htmlRichtext(html) {
 // Grid tables (`+---+` row separators) carry cells whose content is blocks (a
 // list, several paragraphs) -- what a GFM cell, one line of inline content,
 // cannot. They are read into the same table shape a GFM table is.
-export const mdParser = unified().use(remarkParse).use(remarkGfm).use(remarkDefinitionList).use(remarkGridTables);
+const gfmParser = unified().use(remarkParse).use(remarkGfm).use(remarkDefinitionList).use(remarkGridTables);
+
+/**
+ * GFM turns a bare `www.` domain or URL in text into a link (an "autolink
+ * literal"), both while parsing and in a find-and-replace over the finished
+ * text, which catches even an escaped one. Text naming a site ("www.nsw.gov.au")
+ * is text, and the writer writes every real link explicitly, as `[text](url)` or
+ * `<url>`; so a bare one goes back to being its text. It is told apart by its
+ * source: the find-and-replace's links have none, and the parser's are exactly
+ * their visible text, where a written link's source has its brackets.
+ */
+function withoutLiteralAutolinks(node, source) {
+  if (!node.children) return node;
+  node.children = node.children.map((child) => {
+    if (child.type !== 'link') return withoutLiteralAutolinks(child, source);
+    const text = child.children.map((c) => c.value ?? '').join('');
+    const { start, end } = child.position ?? {};
+    const bare = !child.position || source.slice(start.offset, end.offset) === text;
+    return bare ? { type: 'text', value: text } : withoutLiteralAutolinks(child, source);
+  });
+  return node;
+}
+
+/** The Markdown reader: GFM, definition lists and grid tables, with bare
+ *  addresses left as text. */
+export const mdParser = {
+  parse: (markdown) => withoutLiteralAutolinks(gfmParser.parse(markdown), String(markdown)),
+};
 /**
  * mdast-util-to-markdown escapes EVERY `_` in phrasing content, because one can
  * open emphasis. In CommonMark one cannot when it sits between two word

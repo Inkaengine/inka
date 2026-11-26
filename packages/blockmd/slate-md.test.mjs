@@ -110,6 +110,25 @@ describe('slate <-> markdown round-trip', () => {
     });
   });
 
+  // GFM turns a bare `www.` domain or URL in text into a link. Text that names
+  // a site ("www.nsw.gov.au") is text, and the writer writes every real link as
+  // `[text](url)` or `<url>`, so a bare one is never read as a link.
+  describe('a bare address in text stays text', () => {
+    it('a www. domain', () => {
+      roundTrips([{ type: 'p', children: [{ text: 'Go to www.nsw.gov.au for more.' }] }]);
+    });
+    it('a URL', () => {
+      roundTrips([{ type: 'p', children: [{ text: 'See https://example.org/page today.' }] }]);
+    });
+    it('while a written link is still a link', () => {
+      expect(mdToSlate('[NSW](https://www.nsw.gov.au) and <https://example.org>')).toEqual([{ type: 'p', children: [
+        { type: 'link', data: { url: 'https://www.nsw.gov.au' }, children: [{ text: 'NSW' }] },
+        { text: ' and ' },
+        { type: 'link', data: { url: 'https://example.org' }, children: [{ text: 'https://example.org' }] },
+      ] }]);
+    });
+  });
+
   // Markdown has no syntax for some inline elements (superscript, subscript):
   // they are written as the HTML element of the same name, which Markdown
   // allows inline, rather than dropped (which ran "mc" and "2" together).
