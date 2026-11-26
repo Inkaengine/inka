@@ -44,7 +44,11 @@ WORKDIR /app
 # What the bundle leaves external: Playwright's library, at the version of the
 # image's browser, and the Sentry SDK (SENTRY_DSN; unset reports nothing, and
 # http.mjs then never imports it).
-RUN corepack enable && pnpm init >/dev/null && pnpm add playwright@${PLAYWRIGHT} ${SENTRY}
+# corepack is installed first: the Node in the Playwright image no longer ships
+# it (from playwright:v1.65.1-noble), and `corepack enable` failed with "not
+# found", so the image stopped building for every consumer.
+RUN npm install -g corepack@latest && corepack enable \
+    && pnpm init >/dev/null && pnpm add playwright@${PLAYWRIGHT} ${SENTRY}
 
 # The bundled server. Inka's own is dist/inka-mcp-http.mjs; a consumer bundles
 # its own entry somewhere else and says so. Either way it is run as server.mjs,
