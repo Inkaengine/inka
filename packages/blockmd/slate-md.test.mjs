@@ -59,17 +59,80 @@ describe('slate <-> markdown round-trip', () => {
     });
   });
 
-  it('round-trips a nested list (a list item containing a sub-list)', () => {
-    roundTrips([{ type: 'ul', children: [
-      { type: 'li', children: [
-        { text: 'Parent item' },
-        { type: 'ul', children: [
-          { type: 'li', children: [{ text: 'Child one' }] },
-          { type: 'li', children: [{ text: 'Child two' }] },
-        ] },
+  // Volto's editor indents a list item by making its sub-list a SIBLING inside
+  // the parent list (`<ul><li>a</li><ul><li>b</li></ul></ul>`; see volto-slate's
+  // indentListItems), so that is the shape an indented Markdown list reads as.
+  describe('a sub-list is written indented under its item, and read as Volto stores it', () => {
+    const volto = [{ type: 'ul', children: [
+      { type: 'li', children: [{ text: 'Parent item' }] },
+      { type: 'ul', children: [
+        { type: 'li', children: [{ text: 'Child one' }] },
+        { type: 'li', children: [{ text: 'Child two' }] },
       ] },
       { type: 'li', children: [{ text: 'Second parent' }] },
-    ] }]);
+    ] }];
+
+    it('round-trips Volto\'s sibling sub-list', () => {
+      roundTrips(volto);
+    });
+
+    it('writes it indented under the item before it', () => {
+      expect(slateToMd(volto)).toBe('- Parent item\n  - Child one\n  - Child two\n- Second parent');
+    });
+
+    it('reads an indented Markdown list as the sibling sub-list', () => {
+      expect(mdToSlate('- Parent item\n  - Child one\n  - Child two\n- Second parent')).toEqual(volto);
+    });
+
+    it('round-trips a numbered sub-list too', () => {
+      roundTrips([{ type: 'ol', children: [
+        { type: 'li', children: [{ text: 'Research methods' }] },
+        { type: 'ol', children: [{ type: 'li', children: [{ text: 'User interviews' }] }] },
+        { type: 'li', children: [{ text: 'Prototyping' }] },
+      ] }]);
+    });
+
+    it('round-trips a sub-list with no item before it', () => {
+      roundTrips([{ type: 'ul', children: [
+        { type: 'ul', children: [{ type: 'li', children: [{ text: 'Indented first' }] }] },
+        { type: 'li', children: [{ text: 'Then an item' }] },
+      ] }]);
+    });
+
+    it('keeps a sub-list inside its item when the item goes on after it', () => {
+      roundTrips([{ type: 'ol', children: [
+        { type: 'li', children: [
+          { text: 'Step.' },
+          { type: 'ul', children: [{ type: 'li', children: [{ text: 'a' }] }] },
+          { text: 'A note after the list.' },
+        ] },
+      ] }]);
+    });
+  });
+
+  // Markdown has no syntax for some inline elements (superscript, subscript):
+  // they are written as the HTML element of the same name, which Markdown
+  // allows inline, rather than dropped (which ran "mc" and "2" together).
+  describe('an inline element Markdown has no syntax for is inline HTML', () => {
+    const value = [{ type: 'p', children: [
+      { text: 'e = mc' },
+      { type: 'sup', children: [{ text: '2' }] },
+      { text: ' and H' },
+      { type: 'sub', children: [{ text: '2' }] },
+      { text: 'O.' },
+    ] }];
+    it('writes it as its tag', () => {
+      expect(slateToMd(value)).toBe('e = mc<sup>2</sup> and H<sub>2</sub>O.');
+    });
+    it('round-trips it', () => {
+      roundTrips(value);
+    });
+    it('round-trips one holding formatting', () => {
+      roundTrips([{ type: 'p', children: [
+        { text: 'x' },
+        { type: 'sup', children: [{ type: 'strong', children: [{ text: 'n' }] }] },
+      ] }]);
+    });
   });
 
   it('round-trips a list item with a strong lead-in and a code span', () => {

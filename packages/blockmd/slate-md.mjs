@@ -114,8 +114,40 @@ function applyStyleMarks(node, marks) {
  */
 export const isBrTag = (html) => /^<br\s*\/?>$/i.test((html || '').trim());
 
+/**
+ * An inline element Markdown has no syntax for (`<sup>`, `<sub>`) arrives as
+ * separate open and close `html` nodes around its content; gather each balanced
+ * pair into one element node. `<mark>` (a style mark) and `<br>` keep their own
+ * readings, and a tag with no matching close is left as it is.
+ */
+const ELEMENT_OPEN = /^<([a-z][a-z0-9]*)>$/;
+const elementOpen = (n) => {
+  const m = n.type === 'html' && ELEMENT_OPEN.exec((n.value || '').trim());
+  return m && m[1] !== 'mark' && m[1] !== 'br' ? m[1] : null;
+};
+const isElementClose = (n, tag) => n.type === 'html' && (n.value || '').trim() === `</${tag}>`;
+
+function groupElements(nodes) {
+  const out = [];
+  for (let i = 0; i < nodes.length; i++) {
+    const tag = elementOpen(nodes[i]);
+    if (!tag) { out.push(nodes[i]); continue; }
+    let depth = 1;
+    let j = i + 1;
+    for (; j < nodes.length; j++) {
+      if (elementOpen(nodes[j]) === tag) depth += 1;
+      else if (isElementClose(nodes[j], tag) && --depth === 0) break;
+    }
+    if (j >= nodes.length) { out.push(nodes[i]); continue; }
+    out.push({ type: 'inlineElement', tag, children: groupElements(nodes.slice(i + 1, j)) });
+    i = j;
+  }
+  return out;
+}
+
 /** mdast inline nodes -> slate children. */
 export function inlineToSlate(nodes) {
+  nodes = groupElements(nodes || []);
   const out = [];
   // Active inline marks from `<mark name="X">` … `</mark>` (a balanced stack).
   const marks = [];
@@ -172,6 +204,9 @@ export function inlineToSlate(nodes) {
       case 'break':
         pushBreak();
         break;
+      case 'inlineElement':
+        out.push(stamp({ type: n.tag, children: inlineToSlate(n.children) }));
+        break;
       default:
         if (n.children) out.push(...inlineToSlate(n.children).map(stamp));
         else if (n.value != null) out.push(stamp({ text: String(n.value) }));
@@ -192,19 +227,30 @@ export function inlineToSlate(nodes) {
 }
 
 function listToSlate(node) {
-  const items = (node.children || []).map((li) => {
+  const items = [];
+  for (const li of node.children || []) {
+    // Sub-lists that END an item are Volto's: its editor indents an item by
+    // making the sub-list a sibling inside the parent list (volto-slate's
+    // indentListItems). One with more of the item after it stays inside, the
+    // only shape that can hold that.
+    const all = li.children || [];
+    let end = all.length;
+    while (end > 0 && all[end - 1].type === 'list') end -= 1;
+    const own = all.slice(0, end);
     // A list item's children are usually a single paragraph, stored as its
     // inline text. A paragraph straight after another one stays a paragraph
     // (the writer's `p` child, listItemChildren): read as text too, it would
     // join the one before into a single run, and the break between them, and
     // the space, would be lost.
-    const kids = (li.children || []).flatMap((c, i, all) => {
+    const kids = own.flatMap((c, i) => {
       if (c.type !== 'paragraph') return blockToSlate(c);
-      if (all[i - 1]?.type === 'paragraph') return blockToSlate(c);
+      if (own[i - 1]?.type === 'paragraph') return blockToSlate(c);
       return inlineToSlate(c.children);
     });
-    return { type: 'li', children: kids.length ? kids : [{ text: '' }] };
-  });
+    // An item that is only a sub-list is a sub-list with no item above it.
+    if (kids.length || end === all.length) items.push({ type: 'li', children: kids.length ? kids : [{ text: '' }] });
+    for (const sub of all.slice(end)) items.push(listToSlate(sub));
+  }
   return { type: node.ordered ? 'ol' : 'ul', children: items };
 }
 
@@ -314,7 +360,14 @@ function slateInlineToMdast(nodes) {
         out.push({ type: 'link', url: n.data?.url ?? n.url ?? '',
                    children: slateInlineToMdast(n.children) }); break;
       default:
-        out.push(...slateInlineToMdast(n.children));
+        // An element Markdown has no syntax for (sup, sub) is its HTML tag,
+        // which inline Markdown allows; one carrying more than its type and
+        // children can't be written so, and fails its round trip instead.
+        if (/^[a-z][a-z0-9]*$/.test(n.type || '') && Object.keys(n).every((k) => k === 'type' || k === 'children')) {
+          out.push({ type: 'html', value: `<${n.type}>` }, ...slateInlineToMdast(n.children), { type: 'html', value: `</${n.type}>` });
+        } else {
+          out.push(...slateInlineToMdast(n.children));
+        }
     }
   }
   return out;
@@ -359,19 +412,28 @@ export function slateBlockToMdast(n, shift = 0) {
              children: slateInlineToMdast(n.children) };
   }
   if (t === 'ul' || t === 'ol') {
-    return {
-      type: 'list', ordered: t === 'ol', spread: false,
-      children: (n.children || []).map((li) => {
-        const children = listItemChildren(li.children || [], shift);
-        // Blank lines between an item's parts are needed only for a paragraph
-        // that FOLLOWS a block child: written tight, it would be read back as a
-        // lazy continuation of the sub-list's last item instead of its own
-        // paragraph. An item that is a paragraph followed by sub-lists stays
-        // tight, which is how such items are written throughout the docs.
-        const spread = children.some((c, i) => i > 0 && c.type === 'paragraph');
-        return { type: 'listItem', spread, children };
-      }),
-    };
+    const items = [];
+    for (const child of n.children || []) {
+      // Volto's sub-list sits beside its item in the parent list; Markdown
+      // writes it indented under that item (and under an item of its own when
+      // nothing comes before it).
+      if (child.type === 'ul' || child.type === 'ol') {
+        const sub = slateBlockToMdast(child, shift);
+        const prev = items[items.length - 1];
+        if (prev) prev.children.push(sub);
+        else items.push({ type: 'listItem', spread: false, children: [sub] });
+        continue;
+      }
+      const children = listItemChildren(child.children || [], shift);
+      // Blank lines between an item's parts are needed only for a paragraph
+      // that FOLLOWS a block child: written tight, it would be read back as a
+      // lazy continuation of the sub-list's last item instead of its own
+      // paragraph. An item that is a paragraph followed by sub-lists stays
+      // tight, which is how such items are written throughout the docs.
+      const spread = children.some((c, i) => i > 0 && c.type === 'paragraph');
+      items.push({ type: 'listItem', spread, children });
+    }
+    return { type: 'list', ordered: t === 'ol', spread: false, children: items };
   }
   if (t === 'blockquote') {
     // Slate stores a blockquote's text as INLINE children directly; markdown
