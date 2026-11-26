@@ -392,8 +392,13 @@ export function oversizedImages(images) {
  *
  * Each says what the SOURCE loads for the same file (`key`: the path before
  * `/@@images/`), so the finding carries the other half of the comparison.
+ *
+ * `stretch` is how many times wider than its copy an approved exception lets
+ * an image be drawn before it counts as stretched: one that widens a column
+ * on ours only, after the browser chose the copy for the narrower one. 1 (the
+ * default) excuses nothing.
  */
-export function imageFindings(ours, source) {
+export function imageFindings(ours, source, { stretch = 1 } = {}) {
   const sourceByKey = new Map(source.map((s) => [s.key, s]));
   return ours
     .filter((img) => img.broken || img.drawn.w > 0)
@@ -415,7 +420,7 @@ export function imageFindings(ours, source) {
             `(${Math.round(img.natural.w / img.drawn.w)}x) ${img.src}${beside}`,
           oversized: true,
         }];
-      if (img.natural.w < img.drawn.w - 1 && img.largest > img.natural.w)
+      if (img.natural.w * stretch < img.drawn.w - 1 && img.largest > img.natural.w)
         return [{
           name,
           verdict:
