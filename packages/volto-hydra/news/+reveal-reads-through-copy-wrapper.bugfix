@@ -1,0 +1,1 @@
+A rich-text field a block can fill from a link (the admin wraps it to copy from the link) can be marked optionalOnCanvas: reveal reads its type through the wrapper instead of refusing it as a field the page can't edit. @djay
