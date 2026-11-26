@@ -2515,3 +2515,37 @@ describe("a text link's item snapshot is derived, like a Text block's plaintext"
     expect(matchBlocks(protos, 'Read the [annual report](/report.pdf).')).toEqual([link({ url: '/report.pdf' })]);
   });
 });
+
+describe('a row or cell setting a Markdown table cannot hold rides on the tag, by position', () => {
+  // A cell's width has no place in a Markdown table. Rather than write the whole
+  // table as data, the tag carries it with the cell's path (`table.rows.0.cells.1.width`),
+  // so the table stays a table.
+  const protos = parsePrototypes([
+    '<block is="table">',
+    '  <region name="table.rows" idField="key">',
+    '    <block is="row" _="${tr}">',
+    '      <region name="cells" idField="key" typeField="@type">',
+    '        <block is="headerCell" value="${th/slate}" />',
+    '        <block is="dataCell" value="${td/slate}" />',
+    '      </region>',
+    '    </block>',
+    '  </region>',
+    '</block>',
+  ].join('\n'), { explicit: true });
+  const cell = (type, text, extra = {}) => ({ '@type': type, value: [{ type: 'p', children: [{ text }] }], ...extra });
+  const block = { '@type': 'table', table: { rows: [
+    { cells: [cell('headerCell', 'Name'), cell('headerCell', 'Role', { width: 40 })] },
+    { cells: [cell('dataCell', 'Ada'), cell('dataCell', 'Engineer')] },
+  ] } };
+
+  it('writes a Markdown table with the width on the tag', () => {
+    const md = emitBlocks(protos, [block]);
+    expect(md).toContain(':table.rows.0.cells.1.width="40"');
+    expect(md).toContain('| Name | Role |');
+    expect(md).not.toContain(':table=');
+  });
+
+  it('reads the width back onto that cell', () => {
+    expect(matchBlocks(protos, emitBlocks(protos, [block]))).toEqual([block]);
+  });
+});

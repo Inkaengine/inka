@@ -792,7 +792,15 @@ function decodeTag(protos, attrs, inner, depth) {
   if (container) {
     const block = { '@type': type };
     for (const [k, v] of Object.entries(container.fields)) if (!parseRef(v)) setAt(block, k.split('.'), v);
-    for (const [k, v] of Object.entries(override)) setAt(block, k.split('.'), v); // dotted (table.celled) supported
+    // Dotted (table.celled). A path INTO a region's items (`table.rows.0.cells.1.width`,
+    // a setting a Markdown table can't hold) applies once that region is read.
+    const intoRegion = (path) => container.regions.some((r) => r.path.every((seg, i) => path[i] === seg)
+      && /^\d+$/.test(path[r.path.length] ?? ''));
+    const later = [];
+    for (const [k, v] of Object.entries(override)) {
+      const path = k.split('.');
+      if (intoRegion(path)) later.push([path, v]); else setAt(block, path, v);
+    }
     // Consume the container's own scalar refs from the body front (a grid
     // `headline="${h}"`), optionally -- absent leading heading = no headline --
     // then the region gets the remainder.
@@ -838,6 +846,7 @@ function decodeTag(protos, attrs, inner, depth) {
       const content = region.name in explicit ? explicit[region.name] : bodyRest;
       setAt(block, region.path, decodeRegion(protos, region, content, depth));
     }
+    for (const [path, v] of later) setAt(block, path, v);
     return block;
   }
 
@@ -1171,7 +1180,7 @@ const MDAST_OF_KIND = { tr: 'tableRow', th: 'tableHeaderCell', td: 'tableCell' }
  * field's nodes or its content region's blocks. A field the rule has no place for can't be written, so
  * this throws and verify-on-emit keeps the block's data form.
  */
-function emitItemNode(protos, region, item, at, depth) {
+function emitItemNode(protos, region, item, at, depth, path = null, lifted = null) {
   const proto = structuralProtoOf(region, item, at);
   const kind = itemKind(proto);
   if (!MDAST_OF_KIND[kind]) throw new NoFit(`item "${proto.type}" is not a table row or cell`);
@@ -1182,11 +1191,14 @@ function emitItemNode(protos, region, item, at, depth) {
     const def = proto.fields[k];
     const ref = def === undefined ? null : parseRef(def);
     if (ref?.part === 'slate') node.children = v.map((b) => slateBlockToMdast(b));
+    // A plain setting the node can't hold (a cell's width) rides on the
+    // container's tag by its position, so the table stays a table.
+    else if (!ref && lifted && path && (def === undefined || !deepEqual(def, v))) lifted[`${path}.${k}`] = v;
     else if (ref || def === undefined || !deepEqual(def, v)) throw new NoFit(`a ${kind} has no place for field "${k}"`);
   }
   for (const r of proto.regions) {
     const items = getAtPath(item, r.path) ?? [];
-    if (isStructural(r)) node.children.push(...items.map((it, cellIndex) => emitItemNode(protos, r, it, { rowIndex: at.rowIndex, cellIndex }, depth)));
+    if (isStructural(r)) node.children.push(...items.map((it, cellIndex) => emitItemNode(protos, r, it, { rowIndex: at.rowIndex, cellIndex }, depth, path && `${path}.${r.name}.${cellIndex}`, lifted)));
     else node.children.push(...emitContent(protos, r, items, depth));
   }
   return node;
@@ -1236,7 +1248,9 @@ function emitContainer(protos, proto, block, depth) {
   // `hoist`: fields a run of a region's blocks share (a template's membership on
   // every block in its slot) are written once, in a `<fields>` wrapper, as a page's
   // own blocks are (emitPage).
-  const render = (wrap, tableForm, hoist = false) => proto.regions
+  // Row and cell settings a Markdown table can't hold, by position (emitItemNode).
+  let lifted = {};
+  const render = (wrap, tableForm, hoist = false) => (lifted = {}, proto.regions)
     .filter((region) => getAtPath(block, region.path) !== undefined)
     .map((region) => {
       const body = renderRegion(region, wrap, tableForm, hoist);
@@ -1253,7 +1267,7 @@ function emitContainer(protos, proto, block, depth) {
     }
     // Items that are table rows (`${tr}`) are a markdown table.
     if (region.protos.every((p) => itemKind(p) === 'tr')) {
-      const table = { type: 'table', children: val.map((item, rowIndex) => emitItemNode(protos, region, item, { rowIndex, cellIndex: 0 }, depth)) };
+      const table = { type: 'table', children: val.map((item, rowIndex) => emitItemNode(protos, region, item, { rowIndex, cellIndex: 0 }, depth, `${region.name}.${rowIndex}`, lifted)) };
       // `plain`: every cell one line of inline content; `grid`: cells of any
       // blocks; `html`: a pipe table whose cells write their blocks as inline
       // <p>/<hN>. A form a cell can't take throws NoCellForm.
@@ -1262,7 +1276,8 @@ function emitContainer(protos, proto, block, depth) {
     }
     return val.map((item) => emitItem(protos, region.protos[0], item, depth)).join('\n\n');
   };
-  const tag = (body) => `<block is="${block['@type']}"${emitOverrides(proto, block, variantKeys(protos, proto))}>\n\n${[head, body].filter(Boolean).join('\n\n')}\n\n</block>`;
+  const liftedAttrs = () => Object.entries(lifted).map(([k, v]) => ` ${boundAttr(k, v)}`).join('');
+  const tag = (body) => `<block is="${block['@type']}"${emitOverrides(proto, block, variantKeys(protos, proto))}${liftedAttrs()}>\n\n${[head, body].filter(Boolean).join('\n\n')}\n\n</block>`;
   // A table is written in the first form that reads back the same: a plain
   // GFM table, else a grid table, else a GFM table with HTML in its cells. A
   // container with no table tries once.
