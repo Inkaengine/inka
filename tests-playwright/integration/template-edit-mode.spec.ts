@@ -111,7 +111,7 @@ test.describe('Template Creation', () => {
   //
   // Expected behaviour: on save after make-template, a POST hits the
   // template's parent folder with the admin's RAZZLE_TEMPLATE_TYPE (Template
-  // here, playwright.config.ts) as its @type and the block payload.
+  // here, playwright.config.mts) as its @type and the block payload.
   // The folder path comes from the sidebar's 'folder' field, NOT from a
   // hard-coded '/templates/' prefix in the bridge (so consumers can host
   // templates anywhere in the content tree).

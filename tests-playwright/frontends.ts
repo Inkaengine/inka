@@ -1,6 +1,6 @@
 /**
  * The frontends Inka's suites drive, and the scope of the block-sanity
- * contract over them. No Playwright imports: playwright.config.ts reads this
+ * contract over them. No Playwright imports: playwright.config.mts reads this
  * too, for the coverage reporter.
  */
 import * as path from 'node:path';
