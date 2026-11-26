@@ -385,6 +385,42 @@ describe('a required block field left empty', () => {
   });
 });
 
+// A listing mapping a site's own catalog column: the save holds the column to
+// what its field on the site's content types holds, the page's own type first.
+describe("a mapping of a site's own catalog column", () => {
+  const listingConfig = {
+    listing: {
+      blockSchema: {
+        properties: {
+          variation: { title: 'Item type', widget: 'blockTypeSelect', filterConvertibleFrom: '@default' },
+          fieldMapping: {
+            title: 'Field mapping',
+            widget: 'field_mapping',
+            sourceFields: { getURL: { title: 'URL', type: 'string' } },
+            vocabulary: { '@id': 'plone.app.vocabularies.MetadataFields' },
+          },
+        },
+        required: [],
+      },
+    },
+    teaser: { blockSchema: { properties: { tags: { title: 'Tags', type: 'array' } }, required: [] } },
+  };
+  const page = {
+    '@type': 'Document',
+    blocks: { l: { '@type': 'listing', variation: 'teaser', fieldMapping: { Topic: { field: 'tags', type: 'array' } } } },
+    blocks_layout: { items: ['l'] },
+  };
+  const run = (contentTypes) =>
+    validateBlocksAgainstSchemas(page, { blocksConfig: listingConfig, intl: { formatMessage }, formatMessage, contentTypes });
+
+  test('saves a list column mapped onto a list', () => {
+    expect(run({ Document: { properties: { Topic: { type: 'array', items: { type: 'string' } } } } }).blocksErrors).toEqual({});
+  });
+
+  test('refuses it when the content types hold the column as text', () => {
+    expect(Object.keys(run({ Document: { properties: { Topic: { type: 'string' } } } }).blocksErrors)).toEqual(['l']);
+  });
+});
 // Plone's block deserializer calls `.startswith` on every truthy `@id` in every
 // block, so a link whose `@id` isn't a string ends the whole save with a 500
 // ("'dict' object has no attribute 'startswith'") naming no block. A production
@@ -483,19 +519,6 @@ describe("a list item whose id isn't a string", () => {
             widget: 'object_list',
             idField: 'key',
             schema: { fieldsets: [{ id: 'default', title: 'Default', fields: ['label'] }], properties: { label: { title: 'Label', type: 'string' } }, required: [] },
-// A listing mapping a site's own catalog column: the save holds the column to
-// what its field on the site's content types holds, the page's own type first.
-describe("a mapping of a site's own catalog column", () => {
-  const listingConfig = {
-    listing: {
-      blockSchema: {
-        properties: {
-          variation: { title: 'Item type', widget: 'blockTypeSelect', filterConvertibleFrom: '@default' },
-          fieldMapping: {
-            title: 'Field mapping',
-            widget: 'field_mapping',
-            sourceFields: { getURL: { title: 'URL', type: 'string' } },
-            vocabulary: { '@id': 'plone.app.vocabularies.MetadataFields' },
           },
         },
         required: [],
@@ -517,21 +540,5 @@ describe("a mapping of a site's own catalog column", () => {
 
   test('string ids are fine', () => {
     expect(run([{ key: 'k1', label: 'One' }]).blocksErrors).toEqual({});
-    teaser: { blockSchema: { properties: { tags: { title: 'Tags', type: 'array' } }, required: [] } },
-  };
-  const page = {
-    '@type': 'Document',
-    blocks: { l: { '@type': 'listing', variation: 'teaser', fieldMapping: { Topic: { field: 'tags', type: 'array' } } } },
-    blocks_layout: { items: ['l'] },
-  };
-  const run = (contentTypes) =>
-    validateBlocksAgainstSchemas(page, { blocksConfig: listingConfig, intl: { formatMessage }, formatMessage, contentTypes });
-
-  test('saves a list column mapped onto a list', () => {
-    expect(run({ Document: { properties: { Topic: { type: 'array', items: { type: 'string' } } } } }).blocksErrors).toEqual({});
-  });
-
-  test('refuses it when the content types hold the column as text', () => {
-    expect(Object.keys(run({ Document: { properties: { Topic: { type: 'string' } } } }).blocksErrors)).toEqual(['l']);
   });
 });
