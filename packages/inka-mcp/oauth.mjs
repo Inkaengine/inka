@@ -20,7 +20,7 @@
  */
 import {
   InvalidGrantError, InvalidTokenError,
-} from '@modelcontextprotocol/sdk/server/auth/errors.js';
+} from '@modelcontextprotocol/server-legacy/auth';
 import { createHash } from 'node:crypto';
 import { Unsealable } from './sealed.mjs';
 import { SignedOut } from './signIn.mjs';
@@ -58,6 +58,9 @@ export function oauthProvider({ box, codes, adminUrl, callbackUrl, renew, log })
   const codeForClient = (data, client) => {
     if (data.client !== binding(client.client_id)) throw new InvalidGrantError('this was issued to another client');
   };
+  /** Plone tokens the site has refused (see signedOut). */
+  const refused = new Set();
+
   /** Access and refresh tokens holding `ploneToken`, for `client`. */
   const tokensFor = (client, ploneToken) => {
     const ploneLeft = expiresAt(ploneToken).getTime() - Date.now();
@@ -119,14 +122,23 @@ export function oauthProvider({ box, codes, adminUrl, callbackUrl, renew, log })
         return back.href;
       }
       if (!token) throw new InvalidGrantError('the connect page sent no token');
-      subjectOf(token);
+      // Renewed, which asks the site whether it still accepts the token: a
+      // page can hand on one it no longer does (a deploy reset the site), and
+      // every call made with it would fail. Renewed, it also lasts its full time.
+      let accepted;
+      try {
+        accepted = await renew(token);
+      } catch (error) {
+        if (!(error instanceof SignedOut)) throw error;
+        throw new InvalidGrantError(`the site no longer accepts ${subjectOf(token)}'s sign-in (${error.message}); sign in to the site again`);
+      }
       back.searchParams.set('code', await codes.issue({
         client: binding(pending.client_id),
         redirect: binding(pending.redirect_uri),
         code_challenge: pending.code_challenge,
-        plone: token,
+        plone: accepted,
       }));
-      log(`sign-in allowed for ${subjectOf(token)}; sending the browser to ${back.origin}${back.pathname}`);
+      log(`sign-in allowed for ${subjectOf(accepted)}; sending the browser to ${back.origin}${back.pathname}`);
       return back.href;
     },
 
@@ -170,8 +182,21 @@ export function oauthProvider({ box, codes, adminUrl, callbackUrl, renew, log })
       }
     },
 
+    /**
+     * The site refused `ploneToken` (a tool found it signed out: a deploy reset
+     * the site). Its access tokens are refused from now on, so the client
+     * refreshes, and the refresh, which the site refuses too, has it ask the
+     * person to sign in again. Kept in memory: after a restart, the next tool
+     * call finds it again.
+     */
+    signedOut(ploneToken) {
+      refused.add(ploneToken);
+      log(`the site refused ${subjectOf(ploneToken)}'s sign-in; their access tokens are refused until they sign in again`);
+    },
+
     async verifyAccessToken(token) {
       const data = open('access', token, InvalidTokenError);
+      if (refused.has(data.plone)) throw new InvalidTokenError('the site signed this out; sign in again');
       return {
         token,
         clientId: data.client_id,

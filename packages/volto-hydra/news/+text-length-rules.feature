@@ -1,0 +1,1 @@
+A field rule can measure text: `<field>@chars` and `<field>@words` are its length in characters and in words. On a region they measure everything in it, at any depth, so a design system's "an intro of 170 characters at most" can be advice on a region of paragraphs.

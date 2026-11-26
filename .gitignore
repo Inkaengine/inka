@@ -60,3 +60,4 @@ tests-playwright/.generated/
 # Generated Sphinx/myst source — `pnpm gen:myst` emits it OUTSIDE docs/ (the
 # source tree stays loader-shaped <block> markdown); a throwaway build artifact.
 _myst-build/
+/packages/content-validator/volto-validation.cjs

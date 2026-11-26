@@ -19,6 +19,23 @@ const EXPIRY_MARGIN_MS = 5 * 60 * 1000;
 
 export class SignedOut extends Error {}
 
+/**
+ * `view` (the admin as the tools use it, for one user) telling `onSignedOut`
+ * when a call finds the site no longer accepts the sign-in (SignedOut), before
+ * the call fails, so whoever holds it stops using it.
+ */
+export function watchSignOut(view, onSignedOut) {
+  const watched = (call) => async (...args) => {
+    try {
+      return await call(...args);
+    } catch (error) {
+      if (error instanceof SignedOut) onSignedOut();
+      throw error;
+    }
+  };
+  return Object.fromEntries(Object.entries(view).map(([name, call]) => [name, watched(call)]));
+}
+
 /** How long to wait before renewing `token`: half the time it has left. */
 export function renewDelay(token, now = Date.now()) {
   return Math.max(0, (expiresAt(token).getTime() - now) / 2);

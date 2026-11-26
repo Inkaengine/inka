@@ -10,7 +10,8 @@
  */
 import { chromium } from 'playwright';
 import { pagePool } from './pagePool.mjs';
-import { openAdmin, openForEdit, createPage, park, agentOn, siteOn } from './adminDriver.mjs';
+import { openAdmin, openForEdit, createPage, park, agentOn, siteOn, EditorRefused } from './adminDriver.mjs';
+import { renewThrough, SignedOut } from './signIn.mjs';
 import { frontendUrlOf, previewDraft } from './preview.mjs';
 
 /** The browser work behind the pool's slots (see pagePool's `slots`). */
@@ -52,6 +53,21 @@ export function browserSlots({ adminUrl, frontendUrl, onAdminLoad = () => {} }) 
 }
 
 /**
+ * Why the site refused `user` the editor of `path` (EditorRefused), as an error
+ * to throw: SignedOut if it no longer accepts their token (`renew` it to ask),
+ * which has them asked to sign in again; else they may not edit the page.
+ */
+export async function refusalOf(renew, user, path) {
+  try {
+    await renew(user.token);
+  } catch (error) {
+    if (!(error instanceof SignedOut)) throw error;
+    return new SignedOut(`the site no longer accepts ${user.id}'s sign-in (${error.message}): sign in again`);
+  }
+  return new Error(`${user.id} may not edit ${path}`);
+}
+
+/**
  * The admin for the MCP tools: `size` pages shared by every user.
  * `forUser(currentUser)` gives the tools' view of it for one user, where
  * `currentUser()` resolves to { id, token } (the token as renewed now).
@@ -60,21 +76,30 @@ export function adminPool({ adminUrl, frontendUrl, size, waitMs, maxIdleMs }) {
   let adminLoads = 0;
   const slots = browserSlots({ adminUrl, frontendUrl, onAdminLoad: () => { adminLoads++; } });
   const pool = pagePool({ size, slots, waitMs, maxIdleMs });
-  const as = async (currentUser, work) => pool.use(await currentUser(), (slot) => work(slot.page));
+  const as = async (currentUser, work) => {
+    const user = await currentUser();
+    return pool.use(user, (slot) => work(slot.page, user));
+  };
   return {
     forUser(currentUser) {
       return {
         withEditor(path, work) {
-          return as(currentUser, async (page) => {
-            await openForEdit(page, { path });
+          return as(currentUser, async (page, user) => {
+            try {
+              await openForEdit(page, { path });
+            } catch (error) {
+              if (!(error instanceof EditorRefused)) throw error;
+              throw await refusalOf((token) => renewThrough(adminUrl, token), user, path);
+            }
             return work(agentOn(page), {
               // The site-wide API is on every admin page, the editor's included.
               site: siteOn(page),
               // Render a draft of this page as a visitor sees it, in its own page
-              // (with `focus`, just that block of it).
-              render: async (draft, viewport, focus) => {
+              // (with `focus`, just that block of it), its picture in `maxChars`.
+              render: async (draft, viewport, { maxChars, focus }) => {
                 const renderedOn = await frontendUrlOf(page);
-                const rendered = await previewDraft(page.context(), { frontendUrl: renderedOn, path, draft, viewport, focus });
+                const blockPathMap = await agentOn(page).blockPathMapOf(draft);
+                const rendered = await previewDraft(page.context(), { frontendUrl: renderedOn, draft, blockPathMap, viewport, focus, maxChars });
                 return { ...rendered, renderedOn: new URL(renderedOn).origin };
               },
             });
@@ -84,11 +109,15 @@ export function adminPool({ adminUrl, frontendUrl, size, waitMs, maxIdleMs }) {
         withSite(work) {
           return as(currentUser, (page) => work(siteOn(page)));
         },
-        /** Add a page through the admin's add form, then work in its editor. */
-        withNewPage({ parent, type, title }, work) {
+        /**
+         * Add a page through the admin's add form, then work in its editor:
+         * `created` is its `{ path, url }`. An item that is a file (`file`)
+         * has no editor, and no agent.
+         */
+        withNewPage({ parent, type, title, file }, work) {
           return as(currentUser, async (page) => {
-            await createPage(page, { parent, type, title });
-            return work(agentOn(page));
+            const created = await createPage(page, { parent, type, title, file });
+            return work(file ? null : agentOn(page), { site: siteOn(page), created });
           });
         },
       };

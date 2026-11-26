@@ -1,5 +1,5 @@
 <template>
-  <component :is="block.tag || 'h2'" :data-block-uid="block['@uid']" data-edit-text="heading">
+  <component :is="block.tag" :data-block-uid="block['@uid']" data-edit-text="heading">
     {{ block.heading }}
   </component>
 </template>

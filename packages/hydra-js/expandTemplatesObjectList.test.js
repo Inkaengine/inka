@@ -1,3 +1,4 @@
+import { describe, test, expect, beforeEach } from 'vitest';
 import { expandTemplatesSync } from '@volto-hydra/helpers';
 
 describe('expandTemplatesSync: object_list arrays in template blocks', () => {
@@ -192,6 +193,41 @@ describe('expandTemplatesSync: object_list items must carry their id', () => {
     const keyed = [{ '@type': 'row', key: 'r1' }, { '@type': 'row', key: 'r2' }];
     const out = expandTemplatesSync(keyed, { templateState: {}, templates: {}, idField: 'key', editMode: false });
     expect(out.map((r) => r['@uid'])).toEqual(['r1', 'r2']);
+  });
+});
+
+describe('expandTemplatesSync: an object_list call names its idField', () => {
+  // Nothing guesses a list's key: only the block's code knows it.
+  const rows = [
+    { '@type': 'row', field_id: 'a' },
+    { '@type': 'row', field_id: 'b' },
+  ];
+
+  test.each([false, true])('a call without one throws, naming the option to pass (editMode=%s)', (editMode) => {
+    expect(() => expandTemplatesSync(rows, { templateState: {}, templates: {}, editMode })).toThrow(
+      /no idField says which field.*none is guessed/s,
+    );
+  });
+
+  test('items keyed by @id say so, and get it as their @uid', () => {
+    const out = expandTemplatesSync([{ '@type': 'row', '@id': 'r1' }], {
+      templateState: {}, templates: {}, idField: '@id', editMode: false,
+    });
+    expect(out.map((r) => r['@uid'])).toEqual(['r1']);
+  });
+
+  test('a repeated @id throws', () => {
+    const dup = [{ '@type': 'row', '@id': 'r1' }, { '@type': 'row', '@id': 'r1' }];
+    expect(() => expandTemplatesSync(dup, { templateState: {}, templates: {}, idField: '@id', editMode: false })).toThrow(
+      /repeats "@id" "r1"/,
+    );
+  });
+
+  test('a list of block ids needs none', () => {
+    const out = expandTemplatesSync(['x'], {
+      blocks: { x: { '@type': 'slate' } }, templateState: {}, templates: {}, editMode: false,
+    });
+    expect(out.map((b) => b['@uid'])).toEqual(['x']);
   });
 });
 

@@ -1,0 +1,1 @@
+The content validator reports a block schema field named for a key Inka keeps on every block: template membership (`fixed`, `slotId`, `templateId`, `templateInstanceId`, `readOnly`, `nextSlotId`, `prevSlotId`), which the merge reads, and Inka's bookkeeping (`searchableText`, `plaintext`, `_pullFrom`, `_customFields`, `_linkableAnchors`, any `@` key).

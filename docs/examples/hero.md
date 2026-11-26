@@ -21,7 +21,7 @@ subjects:
   - media
 title: Hero Block
 blocks-matched: |
-  <block type="slate" value="${p,h*,ul,ol,blockquote,strong,em,a/slate}" plaintext="${p,h*,ul,ol,blockquote,strong,em,a/text}" />
+  <block type="slate" value="${p,h*,ul,ol,blockquote,strong,em,a/slate}" />
   <block type="title" _="${h1}" />
   <block type="codeExample">
     <region name="tabs" widget="object_list" idField="@id" typeField="@type">
@@ -45,7 +45,7 @@ across multiple lines**
 
 We build tools that make content editing delightful.
 
-[Get Started](/docs/frontend-guide/build-a-frontend)
+[Get Started](../frontend-guide/build-a-frontend.md)
 
 ![](<data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 width=%27800%27 height=%27400%27%3E%3Crect width=%27100%25%27 height=%27100%25%27 fill=%27%234a90d9%27/%3E%3Ctext x=%2750%25%27 y=%2750%25%27 fill=%27white%27 text-anchor=%27middle%27 font-size=%2724%27%3EHero Image%3C/text%3E%3C/svg%3E>)
 

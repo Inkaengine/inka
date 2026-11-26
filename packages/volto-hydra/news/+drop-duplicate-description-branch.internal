@@ -1,0 +1,1 @@
+Mock API: the Description criterion has one branch again. #694 and #695 added the same handling within minutes of each other; the second was unreachable and still called `matchTitleIndex`, which #694 had renamed, so any reordering of those branches would have thrown. @djay

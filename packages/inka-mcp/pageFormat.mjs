@@ -10,13 +10,14 @@
  * child list is named after its region: `blocks` for the usual `items` region,
  * the region's own name otherwise (columns' `columns`). Rich text is
  * `{"md": "…"}`; coming in, a field the schema marks as rich text (widget slate)
- * may also be a plain markdown string. Derived fields (a slate block's
- * `plaintext`) are left out going out and recomputed coming in.
+ * may also be a plain markdown string. A block's search text (`searchableText`,
+ * and a Text block's older `plaintext`) is left out: the editor's save writes it.
  *
  * This is the format agents got right most often in the format experiment, and
  * the one the edit_blocks operations address blocks in.
  */
-import { slateToMd, mdToSlate, plaintextOf } from '../../lib/slate-md.mjs';
+import { slateToMd, mdToSlate } from '@inka/blockmd/slate-md.mjs';
+import { isObjectListRegion, regionIdField } from '@volto-hydra/helpers/regionWidgets.js';
 
 /** A Slate value: an array of element nodes with `children`. */
 const isSlate = (v) => Array.isArray(v) && v.length > 0
@@ -45,6 +46,12 @@ export function schemaFacts(blocksConfig) {
   return {
     isRegion: (type, field) => field === 'blocks' || props(type)[field]?.widget === 'blocks_layout',
     isRich: (type, field) => props(type)[field]?.widget === 'slate',
+    // The field each item of a list of objects is known by (the editor's rule,
+    // regionWidgets.js), or null for a field that is no such list.
+    objectListIdField: (type, field) => {
+      const def = props(type)[field];
+      return isObjectListRegion(def) ? regionIdField(def, `block "${type}" field "${field}"`) : null;
+    },
   };
 }
 
@@ -86,9 +93,8 @@ function layoutList(container, key) {
 
 /** One stored block, with its uid, in the agent format. */
 export function toAgentBlock(uid, block) {
-  const out = { '@uid': uid, ...simplify(block) };
-  if (isSlate(block.value)) delete out.plaintext;
-  return out;
+  const { searchableText: _s, plaintext: _p, ...fields } = block;
+  return { '@uid': uid, ...simplify(fields) };
 }
 
 function simplify(v) {
@@ -140,9 +146,7 @@ function restoreBlock(b, facts, mintId) {
     throw new Error(`not a block (needs "@type"): ${JSON.stringify(b)?.slice(0, 120)}`);
   }
   const { '@uid': _uid, ...fields } = b;
-  const out = restoreFields(fields, b['@type'], facts, mintId);
-  if (isSlate(out.value)) out.plaintext = plaintextOf(out.value);
-  return out;
+  return restoreFields(fields, b['@type'], facts, mintId);
 }
 
 function restoreFields(obj, type, facts, mintId) {
@@ -154,6 +158,15 @@ function restoreFields(obj, type, facts, mintId) {
       const r = restoreList(v, facts, mintId);
       Object.assign(blocks, r.blocks);
       layout[k === 'blocks' ? 'items' : k] = r.items;
+    } else if (Array.isArray(v) && type && facts.objectListIdField(type, k)) {
+      // Each item needs its id: the front end's template merge refuses an
+      // item without one (an agent's new slides were a 500 in the preview).
+      const idField = facts.objectListIdField(type, k);
+      out[k] = v.map((item) => {
+        const restored = restoreValue(item, facts, mintId, true);
+        if (restored && typeof restored === 'object' && !(idField in restored)) restored[idField] = mintId();
+        return restored;
+      });
     } else if (type && facts.isRich(type, k) && typeof v === 'string') {
       out[k] = mdToSlate(v);
     } else {

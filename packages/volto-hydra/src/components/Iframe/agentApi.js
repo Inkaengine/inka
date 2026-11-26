@@ -24,27 +24,66 @@
  */
 import { PAGE_BLOCK_UID } from '@volto-hydra/hydra-js';
 import {
+  buildBlockPathMap,
   getBlockById,
   getBlockTypeSchema,
   getAllContainerFields,
   getContainerRegionDescriptors,
   resolveRegionConstraints,
   resolveObjectListConstraints,
+  stripBlockPathMapForPostMessage,
   stripEmptyBlocks,
 } from '../../utils/blockPath';
 import { stripFixedInsideSlots } from '@volto-hydra/helpers';
 import { getDefaultBlockType } from '../../utils/injectedVoltoConfig';
-import { getPageAllowedBlocksFromRestricted } from '../../../../hydra-js/buildBlockPathMap.js';
+import { getPageAllowedBlocksFromRestricted } from '@volto-hydra/helpers/buildBlockPathMap.js';
+import {
+  collectFieldRules,
+  describeFieldRules,
+} from '@volto-hydra/helpers/fieldRules.js';
+import config from '@plone/volto/registry';
+import { getParentUrl } from '@plone/volto/helpers/Url/Url';
 import { lockedBy } from '../AgentSite/lockedBy';
+import { checkAllowed, holdImage, onImagesUploaded } from '../../utils/pendingImages';
+import {
+  getTargetMapping,
+  getSourceField,
+  targetDestinations,
+} from '../../utils/copyFromTargetMapping';
 
-// The schema facts an agent needs, as plain data (see plain()).
-const FIELD_FACTS = ['title', 'description', 'widget', 'type', 'choices', 'default', 'maxLength', 'allowedBlocks'];
+// The schema facts an agent needs, as plain data (see plain()). A list's
+// `idField` says which field its items' ids are kept in, and `subBlocks: false`
+// says it is a plain list rather than a region: without them a list's items
+// cannot be told apart.
+const FIELD_FACTS = ['title', 'description', 'widget', 'type', 'factory', 'choices', 'default', 'maxLength', 'allowedBlocks', 'idField', 'subBlocks'];
 
-function schemaFacts(schema) {
+/**
+ * Which of a block type's fields a LINK owns, and which link: `{ title: 'href' }`.
+ *
+ * An agent has neither of the channels that make this visible to a person — the
+ * sidebar's link toggle and the code behind it — so a field whose value a link
+ * can replace has to SAY so here. Without it an agent writes a teaser's title,
+ * the next page open pulls the target's over it, and nothing in the surface
+ * explained that it would (inka#595).
+ */
+function pullDestinations(blockConfig) {
+  const mapping = getTargetMapping(blockConfig);
+  if (!mapping) return {};
+  const sourceField = getSourceField(blockConfig);
+  if (!sourceField) return {};
+  const out = {};
+  for (const dest of targetDestinations(mapping)) out[dest] = sourceField;
+  return out;
+}
+
+function schemaFacts(schema, pullsFrom = {}) {
   return {
     required: schema?.required ?? [],
     properties: Object.fromEntries(
-      Object.entries(schema?.properties ?? {}).map(([field, def]) => [field, fieldFacts(def)]),
+      Object.entries(schema?.properties ?? {}).map(([field, def]) => [
+        field,
+        { ...fieldFacts(def), ...(pullsFrom[field] && { pullsFrom: pullsFrom[field] }) },
+      ]),
     ),
   };
 }
@@ -68,6 +107,10 @@ function plain(v) {
 }
 
 function fieldFacts(def) {
+  // A pull destination's widget is swapped to the copy-from-target wrapper,
+  // which is admin machinery. Report the field's REAL widget; `pullsFrom` is
+  // what tells an agent the field is owned by a link.
+  if (def?.widget === 'copyFromTargetField' && def.baseWidget) def = def.baseWidget;
   const out = {};
   for (const key of FIELD_FACTS) {
     const value = plain(def?.[key]);
@@ -165,7 +208,18 @@ export function registerAgentApi(live) {
         // The page is a block of its content type (see getBlockSchemas).
         blockPathMap: { ...blockPathMap, [PAGE_BLOCK_UID]: { ...blockPathMap[PAGE_BLOCK_UID], blockType: formData['@type'] } },
         lockedBy: lockedBy(contentLock, sessionToken),
+        // The site's API, which the CMS writes its own links on.
+        apiPath: config.settings.apiPath,
       };
+    },
+
+    /**
+     * The block map a front end needs beside `draft` to be handed it through
+     * its bridge, as the compare view's panes are. What a preview sends.
+     */
+    blockPathMapOf(draft) {
+      const { blocksConfig, intl } = live.current;
+      return stripBlockPathMapForPostMessage(buildBlockPathMap(draft, blocksConfig, intl));
     },
 
     /**
@@ -222,7 +276,24 @@ export function registerAgentApi(live) {
           // and examples of it filled in (stored blocks).
           ...(blocksConfig[type].guidance !== undefined && { guidance: plainOrThrow(blocksConfig[type].guidance, type, 'guidance') }),
           ...(blocksConfig[type].examples !== undefined && { examples: plainOrThrow(blocksConfig[type].examples, type, 'examples') }),
-          blockSchema: schemaFacts(schema),
+          blockSchema: schemaFacts(schema, pullDestinations(blocksConfig[type])),
+          // The schema above is resolved ONCE, against no data, so a rule that
+          // depends on the data cannot show in it: a field that appears only
+          // when another is set is simply missing, and a rule that refuses or
+          // advises on a value is invisible until it fires. The editor carries
+          // that in code and in UI labels, which an agent has no access to
+          // (inka#595), so the conditional part is said here.
+          // A condition or message that cannot cross postMessage throws rather
+          // than vanishing: a rule an agent is not told about is one it will
+          // trip over.
+          ...(() => {
+            const rules = describeFieldRules(
+              collectFieldRules(blocksConfig[type].schemaEnhancer),
+            );
+            return Object.keys(rules).length > 0
+              ? { fieldRules: plainOrThrow(rules, type, 'fieldRules') }
+              : {};
+          })(),
           regions: getContainerRegionDescriptors(type, blocksConfig, intl).map((d) => {
             const fieldDef = fieldAt(schema, d.regionPath ?? [], d.region);
             const rc = d.isObjectList
@@ -273,6 +344,26 @@ export function registerAgentApi(live) {
       await commit('update', () => live.current.onChangeBlock(id, { ...blockData(id), ...fields }));
     },
 
+    /** A block as the editor holds it (stored shape, its own blocks included). */
+    getBlock(id) {
+      requireBlock('getBlock', id);
+      return blockData(id);
+    },
+
+    /**
+     * Make a block exactly `block`, through the sidebar's own handler: a field
+     * it does not have is gone. The MCP works out the block an agent's change
+     * makes (inka-mcp/patchBlock.mjs) and hands it over whole, since a merge
+     * here could not take a field away.
+     */
+    async replace({ id, block }) {
+      requireBlock('replace', id);
+      if (block?.['@type'] !== blockData(id)?.['@type']) {
+        throw new Error(`replace: "${id}" is a ${blockData(id)?.['@type']}, not a ${block?.['@type']}`);
+      }
+      await commit('replace', () => live.current.onChangeBlock(id, block));
+    },
+
     /** Delete a block, as the editor's delete does. */
     async remove(id) {
       requireBlock('remove', id);
@@ -281,8 +372,8 @@ export function registerAgentApi(live) {
 
     /**
      * Unlock the template a block belongs to, as its lock icon does: its
-     * locked blocks become editable, and lockTemplates saves them to the
-     * template. Resolves to the template instance id, or null for a block that
+     * locked blocks become editable; lockTemplates checks them, and the
+     * page save writes them to the template. Resolves to the template instance id, or null for a block that
      * belongs to no template.
      */
     async unlockTemplateOf(id) {
@@ -299,21 +390,22 @@ export function registerAgentApi(live) {
 
     /**
      * Lock every unlocked template with "Change on all pages", as the lock's
-     * dialog does: each is saved to its template document now, so every page
-     * using it changes. Resolves to the templates saved.
+     * dialog does: each is checked and kept, and the page save that follows
+     * writes it, so every page using it changes. Resolves to the templates
+     * locked that way.
      */
     async lockTemplates() {
       const saved = [];
       for (const instanceId of [...live.current.templateEditMode]) {
         delete live.current.templateCommitOutcomes[instanceId];
         if (!live.current.commitTemplateEdit(instanceId)) {
-          throw new Error(`lockTemplates: the template's structure is not valid, so it was not saved (${instanceId})`);
+          throw new Error(`lockTemplates: the template's structure is not valid, so it was not locked (${instanceId})`);
         }
         await until(() => !live.current.templateEditMode.includes(instanceId) && !live.current.committingTemplate,
-          SAVE_LIMIT_MS, `lockTemplates: the template (${instanceId}) did not finish saving`);
+          SAVE_LIMIT_MS, `lockTemplates: the template (${instanceId}) did not finish locking`);
         const outcome = live.current.templateCommitOutcomes[instanceId];
-        if (!outcome) throw new Error(`lockTemplates: the template (${instanceId}) was locked but not saved: the editor had not loaded it`);
-        if (outcome.error) throw new Error(`lockTemplates: ${outcome.templateId} was not saved: ${outcome.error}`);
+        if (!outcome) throw new Error(`lockTemplates: the template (${instanceId}) was locked without its changes: the editor had not loaded it`);
+        if (outcome.error) throw new Error(`lockTemplates: ${outcome.templateId} was not locked: ${outcome.error}`);
         saved.push(outcome.templateId);
       }
       return saved;
@@ -337,8 +429,43 @@ export function registerAgentApi(live) {
     },
 
     /**
+     * Hold a file an agent adds (an image, or any other file) until the page
+     * is saved, as the editor holds one dropped on it: the page names it by
+     * the reference this resolves to, and Save uploads it (pendingImages.js)
+     * into the folder the image widget would, the page itself when it holds
+     * items, otherwise beside it. `data` is the file's bytes, base64.
+     *
+     * Only for a front end that sets deferImageUploads: it has promised to
+     * render a held image it is handed, which an agent's preview relies on.
+     */
+    async holdFile({ name, type, data }) {
+      if (!config.settings.deferImageUploads) {
+        throw new Error(
+          "holdFile: this site's front end doesn't show images held until the page is saved "
+          + '(deferImageUploads), so a file can\'t be added with a page change',
+        );
+      }
+      if (!name || !type || !data) throw new Error('holdFile: needs { name, type, data }');
+      const { is_folderish: isFolderish } = properties();
+      if (typeof isFolderish !== 'boolean') throw new Error('holdFile: the page does not say whether it holds items (is_folderish)');
+      const path = contentPath();
+      const folder = isFolderish ? path : getParentUrl(path);
+      const file = new File([Uint8Array.from(atob(data), (c) => c.charCodeAt(0))], name, { type });
+      await checkAllowed(file, folder, async (at) => {
+        const res = await fetch(`/++api++${at.replace(/\/$/, '')}/@types`, {
+          headers: { Accept: 'application/json', ...authHeaders() },
+        });
+        if (!res.ok) throw new Error(`holdFile: reading what ${at} takes answered ${res.status}`);
+        return res.json();
+      });
+      return holdImage(file, folder);
+    },
+
+    /**
      * Save, if the page is still at `expectedVersion`; otherwise refuse — the
-     * agent reads it again and reapplies. Resolves to the new version.
+     * agent reads it again and reapplies. Resolves to the new version, and
+     * `uploaded`: the URL of the item each held file the page used became,
+     * by its reference (holdFile).
      */
     async save({ expectedVersion }) {
       if (!expectedVersion) throw new Error('save: expectedVersion is required');
@@ -353,6 +480,8 @@ export function registerAgentApi(live) {
       // editor when it saves; when the CMS refuses, the refusal is the
       // update's error, and says why.
       const before = live.current.contentUpdate;
+      const uploaded = {};
+      const stopHearing = onImagesUploaded((became) => Object.assign(uploaded, became));
       document.dispatchEvent(new KeyboardEvent('keydown', {
         key: 's', ctrlKey: true, bubbles: true, cancelable: true,
       }));
@@ -360,15 +489,19 @@ export function registerAgentApi(live) {
         const update = live.current.contentUpdate;
         return update !== before && update?.error ? update.error : null;
       };
-      await until(
-        () => !/\/edit\/?$/.test(window.location.pathname) || refusal(),
-        SAVE_LIMIT_MS, 'save: the editor did not save',
-      );
+      try {
+        await until(
+          () => !/\/edit\/?$/.test(window.location.pathname) || refusal(),
+          SAVE_LIMIT_MS, 'save: the editor did not save',
+        );
+      } finally {
+        stopHearing();
+      }
       const refused = refusal();
       if (refused) {
         throw new Error(`save: the CMS refused it: ${refused.response?.body?.error?.message ?? refused.message}`);
       }
-      return { version: await readVersion(path) };
+      return { version: await readVersion(path), uploaded };
     },
   };
 

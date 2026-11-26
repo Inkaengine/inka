@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test';
 
-import { wordsWithNowhereToGo } from '../helpers/elementless';
+import { wordsWithNowhereToGo } from '@inka/testing/elementless';
 
 /**
  * A container may draw no element of its own — the editor finds it through its

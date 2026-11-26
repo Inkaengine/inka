@@ -1,4 +1,5 @@
-import { mergeTemplatesIntoPage, mergeInstanceIntoTemplate } from './mergeTemplates.js';
+import { test, expect } from 'vitest';
+import { mergeTemplatesIntoPage, mergeInstanceIntoTemplate } from '@volto-hydra/helpers/mergeTemplates.js';
 
 /**
  * Committing a forced template on a page whose OTHER blocks fields force

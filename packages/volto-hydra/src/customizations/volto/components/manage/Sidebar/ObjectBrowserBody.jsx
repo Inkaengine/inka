@@ -19,6 +19,16 @@ import { validateFileUploadSize } from '@plone/volto/helpers/FormValidation/Form
 import { buildAnchorTree } from '@volto-hydra/hydra-js';
 import { collectAnchorsFromContent } from '../../../../../utils/linkableAnchors';
 import { buildUploadPayload } from '../../../../../utils/uploadPayload';
+import Api from '@plone/volto/helpers/Api/Api';
+import { toast } from 'react-toastify';
+import Toast from '@plone/volto/components/manage/Toast/Toast';
+import {
+  checkAllowed,
+  heldImagesIn,
+  holdImage,
+  NotAllowedThere,
+} from '../../../../../utils/pendingImages';
+import { checkAddable } from '../../../../../utils/addableTypes';
 import Icon from '@plone/volto/components/theme/Icon/Icon';
 import { flattenToAppURL, isInternalURL } from '@plone/volto/helpers/Url/Url';
 import config from '@plone/volto/registry';
@@ -107,6 +117,7 @@ class ObjectBrowserBody extends Component {
     contextURL: PropTypes.string,
     searchableTypes: PropTypes.arrayOf(PropTypes.string),
     onlyFolderishSelectable: PropTypes.bool,
+    addableType: PropTypes.string,
   };
 
   /**
@@ -123,6 +134,7 @@ class ObjectBrowserBody extends Component {
     searchableTypes: null,
     maximumSelectionSize: null,
     onlyFolderishSelectable: false,
+    addableType: null,
   };
 
   /**
@@ -440,6 +452,16 @@ class ObjectBrowserBody extends Component {
     });
   };
 
+  // The current folder's listing, with the images held for it until the page
+  // is saved (pendingImages.js) first: they will be Images here once saved.
+  listing = () => {
+    const results =
+      this.props.searchSubrequests[`${this.props.block}-${this.props.mode}`];
+    const held = heldImagesIn(flattenToAppURL(this.state.currentFolder));
+    if (!held.length || !results) return results;
+    return { ...results, items: [...held, ...(results.items || [])] };
+  };
+
   // Re-run the search that populates the current folder listing.
   refreshListing = () => {
     this.props.searchContent(
@@ -460,6 +482,24 @@ class ObjectBrowserBody extends Component {
   handleUpload = (file) => {
     if (!file) return;
     if (!validateFileUploadSize(file, this.props.intl.formatMessage)) return;
+    // A front end that defers uploads (settings.deferImageUploads) gets the
+    // image held until the page is saved, listed in this folder meanwhile
+    // (heldImagesIn), and picked as an uploaded one would be.
+    if (config.settings.deferImageUploads && file.type.startsWith('image/')) {
+      const folder = flattenToAppURL(this.state.currentFolder);
+      checkAllowed(file, folder, (path) => new Api().get(`${path}/@types`))
+        .then(() => {
+          const ref = holdImage(file, folder);
+          this.handleSelectItem(
+            heldImagesIn(folder).find((item) => item['@id'] === ref),
+          );
+        })
+        .catch((error) => {
+          if (!(error instanceof NotAllowedThere)) throw error;
+          toast.error(<Toast error title="Can't add this image" content={error.message} />);
+        });
+      return;
+    }
     this.setState({ uploading: true });
     readAsDataURL(file).then((dataUrl) => {
       const payload = buildUploadPayload(file, dataUrl);
@@ -607,6 +647,29 @@ class ObjectBrowserBody extends Component {
   // can click a folder name to navigate into it AND independently select
   // the folder via its control (upstream couples these into one click).
   handleSelectItem = (item) => {
+    const { addableType } = this.props;
+    // A field that says which content type will be put in what it picks (a
+    // template's save location) takes only folders the site lets this user
+    // add that type to: their @types, not a type named in code.
+    if (addableType) {
+      const folder = flattenToAppURL(item['@id']);
+      checkAddable(
+        addableType,
+        folder,
+        (path) => new Api().get(`${path}/@types`),
+        (title, where) => `A ${title} can’t be saved in ${where}.`,
+      )
+        .then(() => this.selectItem(item))
+        .catch((error) => {
+          if (!(error instanceof NotAllowedThere)) throw error;
+          toast.error(<Toast error title="Can't save here" content={error.message} />);
+        });
+      return;
+    }
+    this.selectItem(item);
+  };
+
+  selectItem = (item) => {
     const { mode, maximumSelectionSize, data } = this.props;
 
     if (mode === 'multiple') {
@@ -905,11 +968,7 @@ class ObjectBrowserBody extends Component {
                 </Segment>
               ) : (
               <ObjectBrowserNav
-                currentSearchResults={
-                  this.props.searchSubrequests[
-                    `${this.props.block}-${this.props.mode}`
-                  ]
-                }
+                currentSearchResults={this.listing()}
           selected={
             this.props.mode === 'multiple'
               ? this.props.data

@@ -5,6 +5,10 @@ import FormatDropdown from './FormatDropdown';
 import config from '@plone/volto/registry';
 import { Icon } from '@plone/volto/components';
 import { PAGE_BLOCK_UID } from '@volto-hydra/hydra-js';
+import { blockActionTargets } from '../../utils/blockActionTargets';
+import showSVG from '@plone/volto/icons/show.svg';
+import hideSVG from '@plone/volto/icons/hide.svg';
+import { revealFieldsLabel } from './OptionalFieldsToggle';
 
 /**
  * Dropdown Menu for Block Actions
@@ -45,7 +49,6 @@ const DropdownMenu = ({
   canUnwrap = false, // True when selected block is a container whose children can live in the parent
   onUnwrap, // Handler for unwrap: () => void
   isFixed = false, // Template blocks that can't be moved/deleted
-  isReadonly = false, // Template blocks that can't be edited
   isInTemplate = false, // Whether block is already part of a template
   onMakeTemplate, // Handler for "Make Template" action
   isTemplateInstance = false, // This block is a top-level template instance (host)
@@ -54,6 +57,9 @@ const DropdownMenu = ({
   multiSelectedUids, // Array of multi-selected block UIDs (for copy/cut/delete)
   hasClipboard = false, // Whether blocksClipboard has content to paste
   pasteAllowed = true, // Whether clipboard types are allowed in target container
+  revealableFields = [], // Empty fields marked optionalOnCanvas, which "Show empty fields" reveals
+  revealed = false, // Whether they are showing
+  onToggleReveal, // Show/hide them: () => void
 }) => {
   const menuRef = useRef(null);
 
@@ -429,6 +435,26 @@ const DropdownMenu = ({
           <div style={{ height: '1px', background: 'rgba(0, 0, 0, 0.1)', margin: '0 10px' }} />
         </>
       )}
+      {/* Show / Hide empty fields — the same as the toolbar's eye button, here too
+          because the toolbar drops that button first when it runs out of room. */}
+      {onToggleReveal && (revealableFields.length > 0 || revealed) && (
+        <div
+          className="volto-hydra-dropdown-item reveal-fields-item"
+          role="button"
+          aria-pressed={revealed}
+          style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '10px', cursor: 'pointer', fontSize: '15px', fontWeight: '500' }}
+          onMouseEnter={(e) => (e.currentTarget.style.background = '#f0f0f0')}
+          onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+          onClick={() => {
+            onClose();
+            onToggleReveal();
+          }}
+        >
+          <Icon name={revealed ? hideSVG : showSVG} size="18px" />
+          {revealFieldsLabel(revealableFields, revealed)}
+        </div>
+      )}
+
       {/* Copy / Cut / Paste actions */}
       {selectedBlock && selectedBlock !== PAGE_BLOCK_UID && (
         <>
@@ -440,7 +466,7 @@ const DropdownMenu = ({
             onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
             onClick={() => {
               onClose();
-              const uids = multiSelectedUids?.length > 1 ? multiSelectedUids : [selectedBlock];
+              const uids = blockActionTargets(selectedBlock, multiSelectedUids);
               document.dispatchEvent(new CustomEvent('hydra-copy-blocks', {
                 detail: { blockIds: uids, action: 'copy' },
               }));
@@ -456,7 +482,7 @@ const DropdownMenu = ({
             onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
             onClick={() => {
               onClose();
-              const uids = multiSelectedUids?.length > 1 ? multiSelectedUids : [selectedBlock];
+              const uids = blockActionTargets(selectedBlock, multiSelectedUids);
               document.dispatchEvent(new CustomEvent('hydra-copy-blocks', {
                 detail: { blockIds: uids, action: 'cut' },
               }));

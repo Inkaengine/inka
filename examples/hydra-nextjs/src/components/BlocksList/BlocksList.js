@@ -6,7 +6,7 @@ import SlateBlock, { SlateInline } from "@/components/SlateBlock";
 import CodeExampleBlock from "@/components/CodeExampleBlock/CodeExampleBlock";
 import CookieConsentBlock from "@/components/CookieConsentBlock/CookieConsentBlock";
 import { expandTemplatesSync, expandListingBlocks, ploneFetchItems, staticBlocks, contentPath } from "#utils/helpers";
-import { isEditMode } from "#utils/hydra";
+import { isEditMode, getAuthHeaders } from "#utils/hydra";
 import SwiperSlider from "@/components/SwiperSlider";
 import { pageFromPath } from "#utils/paging";
 
@@ -209,6 +209,19 @@ function formatDate(dateStr, showTime) {
     opts.minute = "2-digit";
   }
   return new Date(dateStr).toLocaleDateString(undefined, opts);
+}
+
+/**
+ * The address a link field holds. A link field stores one shape, a list of
+ * links, `[{ "@id": url }]`, for a page on the site and an outside address
+ * alike; unset or empty is no link. Anything else is refused, not guessed at.
+ */
+function linkUrl(value) {
+  if (value == null || (Array.isArray(value) && value.length === 0)) return "";
+  if (!Array.isArray(value) || typeof value[0]?.["@id"] !== "string") {
+    throw new Error(`a link is stored as [{"@id": url}], got ${JSON.stringify(value)}`);
+  }
+  return value[0]["@id"];
 }
 
 /**
@@ -673,9 +686,12 @@ function FormBlock({ id, block, data, apiUrl, contextPath }) {
       }));
 
     const cp = contextPath || "/";
+    // Sending the editor's token lets an author try a form on a page that
+    // isn't published yet: Plone refuses an anonymous submission there. A
+    // public visitor has no token, so getAuthHeaders() adds nothing for them.
     const response = await fetch(`${apiUrl}${cp}/@submit-form`, {
       method: "POST",
-      headers: { "Content-Type": "application/json", Accept: "application/json" },
+      headers: { "Content-Type": "application/json", ...getAuthHeaders() },
       body: JSON.stringify({
         block_id: id,
         data: submitData,
@@ -1546,7 +1562,7 @@ function Block({ block, id, data, apiUrl, contextPath, inListing = false }) {
 
     // ── Heading ──
     case "heading": {
-      const Tag = block.tag || "h2";
+      const Tag = block.tag;
       return (
         <Tag data-block-uid={id} data-edit-text="heading">
           {block.heading || ""}
@@ -1626,19 +1642,31 @@ function Block({ block, id, data, apiUrl, contextPath, inListing = false }) {
       // to the nextjs origin (:3007) and 404s — the backend serves it, so prepend
       // the API base for a root-relative URL, exactly as imageProps does. An
       // absolute URL (a YouTube link) is left untouched.
-      const rawVideoUrl = block.url || "";
+      const rawVideoUrl = linkUrl(block.url);
       const videoUrl = rawVideoUrl.startsWith("/") ? `${apiUrl}${rawVideoUrl}` : rawVideoUrl;
       const ytId = getYouTubeId(videoUrl);
+      // The preview image shows before the video plays: the <video>'s poster,
+      // or for YouTube a picture linked to the video. Empty means absent.
+      const preview = block.preview_image ? imageProps(block.preview_image, apiUrl).url : null;
       return (
-        <div data-block-uid={id} className="video-block">
-          {ytId ? (
+        <div data-block-uid={id} data-edit-link="url" className="video-block">
+          {ytId && preview ? (
+            <a href={`https://www.youtube.com/watch?v=${ytId}`} data-edit-link="url">
+              <img data-edit-media="preview_image" src={preview} alt="Play video" style={{ width: "100%" }} />
+            </a>
+          ) : ytId ? (
             <iframe
               src={`https://www.youtube.com/embed/${ytId}`}
               allowFullScreen
               style={{ width: "100%", aspectRatio: "16/9", border: "none" }}
             />
           ) : videoUrl ? (
-            <video src={videoUrl} controls style={{ width: "100%" }} />
+            <video
+              src={videoUrl}
+              controls
+              style={{ width: "100%" }}
+              {...(preview ? { poster: preview, "data-edit-media": "preview_image" } : {})}
+            />
           ) : (
             <p>No video URL set</p>
           )}
@@ -1651,9 +1679,9 @@ function Block({ block, id, data, apiUrl, contextPath, inListing = false }) {
       return (
         <div data-block-uid={id} className="maps-block">
           {block.title && <h3 data-edit-text="title">{block.title}</h3>}
-          {block.url ? (
+          {linkUrl(block.url) ? (
             <iframe
-              src={block.url}
+              src={linkUrl(block.url)}
               data-edit-link="url"
               title={block.title || "Map"}
               allowFullScreen
@@ -1675,10 +1703,12 @@ function Block({ block, id, data, apiUrl, contextPath, inListing = false }) {
         const b = data?.blocks?.[bid];
         if (!b) continue;
         if (b["@type"] === "heading" && b.heading) {
-          tocEntries.push({ id: bid, level: parseInt((b.tag || "h2").slice(1)), text: b.heading });
+          tocEntries.push({ id: bid, level: parseInt(b.tag.slice(1)), text: b.heading });
         } else if (b["@type"] === "slate" && b.value?.[0]?.type?.match(/^h[1-6]$/)) {
           const level = parseInt(b.value[0].type.slice(1));
-          const text = b.plaintext || b.value[0].children?.map(c => c.text).join("") || "";
+          // The heading's own words: inline ones (bold, a link) hold theirs in children.
+          const words = (nodes) => nodes.map((n) => (typeof n.text === "string" ? n.text : words(n.children))).join("");
+          const text = words(b.value[0].children);
           if (text.trim()) tocEntries.push({ id: bid, level, text });
         }
       }
@@ -1770,13 +1800,13 @@ function Block({ block, id, data, apiUrl, contextPath, inListing = false }) {
         <div data-block-uid={id} className="social-links">
           <span>Follow us:</span>
           {links.map((link, i) => {
-            const info = getSocialInfo(link.url);
+            const info = getSocialInfo(linkUrl(link.url));
             return (
               <a
                 key={link["@uid"] || i}
                 data-block-uid={link["@uid"]}
                 data-block-add="right"
-                href={link.url}
+                href={linkUrl(link.url)}
                 target="_blank"
                 rel="noopener noreferrer"
                 data-edit-link="url"

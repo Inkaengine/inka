@@ -1,0 +1,1 @@
+Switching a page's layout hides the content of a slot the new layout doesn't have, such as a sidebar, instead of moving it into the main content, and says how many blocks it hid. Switching back shows it again, and saving drops it. Before, each switch back and forth could add another copy of the layout's blocks to the page.

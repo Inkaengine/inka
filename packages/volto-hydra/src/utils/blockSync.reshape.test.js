@@ -10,7 +10,7 @@ vi.mock('../context/index.js', () => ({
 }));
 
 import { convertBlockType, reshapeContainerBlock } from './blockSync.js';
-import { buildBlockPathMap } from '../../../hydra-js/buildBlockPathMap.js';
+import { buildBlockPathMap } from '@volto-hydra/helpers/buildBlockPathMap.js';
 
 // -----------------------------------------------------------------------------
 // Container↔container "reshape" conversion.
@@ -329,5 +329,90 @@ describe('single value ↔ region', () => {
     expect(() =>
       convertBlockType(value, 'calloutBox', blocksConfig, '@type', intl),
     ).toThrow(/not allowed in region/);
+  });
+});
+
+// -----------------------------------------------------------------------------
+// A container whose items' type is synced (`itemTypeField`) converted into
+// another such container. The type field is an ordinary same-named field, so
+// the conversion would carry the OLD item type across, and the new region
+// would then refuse its own items. The converted container takes a type its
+// new region allows (its type field's default), and a listing among its items
+// lists that type.
+// -----------------------------------------------------------------------------
+
+const syncedConfig = {
+  tile: {
+    title: 'Tile',
+    fieldMappings: { '@default': { title: 'title' }, panel: { title: 'title' } },
+    blockSchema: { properties: { title: { type: 'string' } } },
+  },
+  panel: {
+    title: 'Panel',
+    fieldMappings: { '@default': { title: 'title' }, tile: { title: 'title' } },
+    blockSchema: { properties: { title: { type: 'string' } } },
+  },
+  feed: {
+    title: 'Feed',
+    // A listing: its own item type, named by its recipe.
+    schemaEnhancer: { inheritSchemaFrom: { typeField: 'variation' } },
+    blockSchema: { properties: { variation: { widget: 'blockTypeSelect' } } },
+  },
+  tiles: {
+    title: 'Tiles',
+    fieldMappings: { panels: { items: 'items' } },
+    blockSchema: {
+      properties: {
+        items: {
+          widget: 'blocks_layout',
+          allowedBlocks: ['tile', 'feed'],
+          itemTypeField: 'variation',
+          defaultBlockType: 'tile',
+        },
+        variation: { widget: 'blockTypeSelect', blocksField: 'items', default: 'tile' },
+      },
+    },
+  },
+  panels: {
+    title: 'Panels',
+    fieldMappings: { tiles: { items: 'items' } },
+    blockSchema: {
+      properties: {
+        items: {
+          widget: 'blocks_layout',
+          allowedBlocks: ['panel', 'feed'],
+          itemTypeField: 'variation',
+          defaultBlockType: 'panel',
+        },
+        variation: { widget: 'blockTypeSelect', blocksField: 'items', default: 'panel' },
+      },
+    },
+  },
+};
+
+describe('reshapeContainerBlock — a container with a synced item type', () => {
+  test('tiles → panels: the container takes the new item type, its items and listing follow', () => {
+    const formData = {
+      '@type': 'Document',
+      blocks: {
+        c1: {
+          '@type': 'tiles',
+          variation: 'tile',
+          blocks: {
+            t1: { '@type': 'tile', title: 'One' },
+            f1: { '@type': 'feed', variation: 'tile' },
+          },
+          blocks_layout: { items: ['t1', 'f1'] },
+        },
+      },
+      blocks_layout: { items: ['c1'] },
+    };
+    const bpm = buildBlockPathMap(formData, syncedConfig, intl);
+    const out = reshapeContainerBlock(formData, bpm, 'c1', 'panels', syncedConfig, intl).blocks.c1;
+
+    expect(out['@type']).toBe('panels');
+    expect(out.variation).toBe('panel');
+    expect(out.blocks.t1).toEqual({ '@type': 'panel', title: 'One' });
+    expect(out.blocks.f1.variation).toBe('panel');
   });
 });

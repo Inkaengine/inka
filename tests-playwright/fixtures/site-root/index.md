@@ -76,21 +76,11 @@ Compliance or engagement is a false choice. You decide where the dial sits for e
 
 <block type="gridBlock">
 
-**Visual Editing**
+**Visual Editing.** True WYSIWYG with drag-and-drop blocks. No special frontend framework required — just HTML attributes.
 
-True WYSIWYG with drag-and-drop blocks. No special frontend framework required — just HTML attributes.
+**Multi frontend, multi backend.** Use React, Vue, Nuxt, Next.js, or any stack. Switch between frontends mid-edit for omni-channel delivery. Your frontend is independent code you own. Upgrade the CMS without rewriting your site; switch frameworks and get the same editing experience.
 
-**Multi frontend, multi backend**
-
-Use React, Vue, Nuxt, Next.js, or any stack. Switch between frontends mid-edit for omni-channel delivery.
-
-Use React, Vue, Nuxt, Next.js or any stack, and switch channels mid-edit.
-
-Your frontend is independent code you own. Upgrade the CMS without rewriting your site; switch frameworks and get the same editing experience.
-
-**Open Source**
-
-Secure, scalable Plone backend. Host anywhere, control your costs and security.
+**Open Source.** Secure, scalable Plone backend. Host anywhere, control your costs and security.
 
 </block>
 
@@ -105,7 +95,7 @@ Secure, scalable Plone backend. Host anywhere, control your costs and security.
   <div v-for="id in page?.blocks_layout?.items" :key="id"
        :data-block-uid="editing ? id : undefined">
     <!-- data-edit-link: click to edit link URL in sidebar -->
-    <a :href="page.blocks[id].link"
+    <a :href="page.blocks[id].link?.[0]?.['@id']"
        :data-edit-link="editing ? 'link' : undefined">
       <!-- data-edit-media: click to pick/upload image in sidebar -->
       <img :src="page.blocks[id].image"
@@ -139,7 +129,7 @@ onMounted(async () => {
           image: { widget: 'image' },
           title: { type: 'string' },
           description: { type: 'string' },
-          link: { widget: 'url' },
+          link: { widget: 'object_browser', mode: 'link', allowExternals: true },
         }}}
       },
       // Receive live updates as editor changes content
@@ -159,9 +149,11 @@ onMounted(async () => {
 // app/[...slug]/page.jsx
 'use client'
 import { useState, useEffect } from 'react'
+import { useParams } from 'next/navigation'
 import { initBridge } from 'hydra-js'
 
-export default function Page({ params }) {
+export default function Page() {
+  const params = useParams()
   const [page, setPage] = useState(null)
   const [editing, setEditing] = useState(false)
 
@@ -176,7 +168,7 @@ export default function Page({ params }) {
             image: { widget: 'image' },
             title: { type: 'string' },
             description: { type: 'string' },
-            link: { widget: 'url' },
+            link: { widget: 'object_browser', mode: 'link', allowExternals: true },
           }}}
         },
         // Receive live updates as editor changes content
@@ -196,7 +188,7 @@ export default function Page({ params }) {
       // data-block-uid: makes block selectable, draggable, and editable
       <div key={id} data-block-uid={editing ? id : undefined}>
         {/* data-edit-link: click to edit link URL in sidebar */}
-        <a href={block.link}
+        <a href={block.link?.[0]?.['@id']}
            data-edit-link={editing ? 'link' : undefined}>
           {/* data-edit-media: click to pick/upload image in sidebar */}
           <img src={block.image}
@@ -237,7 +229,7 @@ export default function Page({ params }) {
             image: { widget: 'image' },
             title: { type: 'string' },
             description: { type: 'string' },
-            link: { widget: 'url' },
+            link: { widget: 'object_browser', mode: 'link', allowExternals: true },
           }}}
         },
         // Receive live updates as editor changes content
@@ -255,7 +247,7 @@ export default function Page({ params }) {
     <!-- data-block-uid: makes block selectable, draggable, and editable -->
     <div data-block-uid={editing ? id : undefined}>
       <!-- data-edit-link: click to edit link URL in sidebar -->
-      <a href={page.blocks[id].link}
+      <a href={page.blocks[id].link?.[0]?.['@id']}
          data-edit-link={editing ? 'link' : undefined}>
         <!-- data-edit-media: click to pick/upload image in sidebar -->
         <img src={page.blocks[id].image}
@@ -293,7 +285,7 @@ export default function Page({ params }) {
           image: { widget: 'image' },
           title: { type: 'string' },
           description: { type: 'string' },
-          link: { widget: 'url' },
+          link: { widget: 'object_browser', mode: 'link', allowExternals: true },
         }}}
       },
       // Receive live updates as editor changes content
@@ -312,7 +304,7 @@ export default function Page({ params }) {
         <!-- data-block-uid: makes block selectable, draggable, and editable -->
         <div ${editing ? `data-block-uid="${id}"` : ''}>
           <!-- data-edit-link: click to edit link URL in sidebar -->
-          <a href="${b.link}"
+          <a href="${b.link?.[0]?.['@id']}"
              ${editing ? 'data-edit-link="link"' : ''}>
             <!-- data-edit-media: click to pick/upload image in sidebar -->
             <img src="${b.image}"
@@ -353,7 +345,7 @@ export default function Page({ params }) {
               image: { widget: 'image' },
               title: { type: 'string' },
               description: { type: 'string' },
-              link: { widget: 'url' },
+              link: { widget: 'object_browser', mode: 'link', allowExternals: true },
             }}}
           },
           // Server-render mode (Storyblok-style): the bridge POSTs each
@@ -411,9 +403,7 @@ Frontend freedom makes it easy to create beautiful and fast experiences
 
 </block>
 
-<block type="gridBlock">
-
-<block type="slate" data-json='{"value":[{"children":[{"text":""},{"children":[{"text":""}],"type":"strong"},{"text":"You can use this site to test Inka Edit."}],"type":"p"}]}' />
+You can use this site to test Inka Edit.
 
 **Disclaimer**: This instance is reset every night, so all changes will be lost afterwards.
 
@@ -427,8 +417,6 @@ This site uses some recommended **add-ons**:
 
 - Some blocks that are suitable to be used with volto-light-theme.
 - [volto-form-block](https://github.com/collective/volto-form-block)
-
-</block>
 
 ---
 

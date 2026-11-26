@@ -5,14 +5,14 @@
  * a page of its own (freshPage): locking a shared fixture page would refuse
  * the saves of every other test editing it at the same time.
  */
-import { randomUUID } from 'node:crypto';
+import { mintToken } from '@inka/mock-api/tokens';
 import { expect } from '@playwright/test';
+import { randomUUID } from 'node:crypto';
 import { URLS } from '../ports';
 
-/** A token for `user`, as the mock reads one (its `sub`). */
+/** A token for `user`, one the mock site issued (mock-tokens.js). */
 export function tokenFor(user: string): string {
-  const part = (o: object) => Buffer.from(JSON.stringify(o)).toString('base64url');
-  return `${part({ alg: 'HS256', typ: 'JWT' })}.${part({ sub: user, exp: 4102444800 })}.fake-signature-${randomUUID()}`;
+  return mintToken(user);
 }
 
 /** A page of the test's own, in the session of `token`: a title and one paragraph (`para`). */

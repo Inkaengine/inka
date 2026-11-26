@@ -698,12 +698,14 @@ test.describe('Page Creation', () => {
     // Capture the POST 201 response from createContent so we can navigate
     // to the new item by its server-assigned @id.
     let createdAtId: string | null = null;
+    let createdWith: Record<string, unknown> = {};
     page.on('response', async (resp) => {
       if (resp.request().method() !== 'POST' || resp.status() !== 201) return;
       try {
         const body = await resp.json();
         if (body && body['@type'] === tc.typeId && body['@id']) {
           createdAtId = body['@id'];
+          createdWith = JSON.parse(resp.request().postData() || '{}');
         }
       } catch {
         /* not JSON */
@@ -724,6 +726,11 @@ test.describe('Page Creation', () => {
     await page.locator('#toolbar-save, button:has-text("Save")').click();
 
     await expect.poll(() => createdAtId, { timeout: 10000 }).toBeTruthy();
+
+    // The page is created as it was added: with no blocks. An empty page is
+    // the editor's to fill when it is opened (below), the same way it
+    // handles any empty region; the add form puts nothing in it (#661).
+    expect(createdWith.blocks ?? {}).toEqual({});
 
     // Type-aware redirect from the Hydra Add shadow:
     //   - Document (has volto.blocks behavior) → /<newpath>/edit
@@ -755,9 +762,9 @@ test.describe('Page Creation', () => {
       const iframeBody = page.frameLocator('#previewIframe').locator('body');
       await expect(iframeBody, 'iframe must not show 404 for the new content').not.toContainText('404', { timeout: 5000 });
 
-      // New document renders at least one block (Volto auto-creates an
-      // empty slate on new pages). Visible proves the round trip
-      // actually rendered the new content.
+      // New document renders at least one block: created empty, it is
+      // filled by the editor as any empty page is. Visible proves the round
+      // trip actually rendered the new content.
       const iframe = helper.getIframe();
       const anyBlock = iframe.locator('[data-block-uid]').first();
       await expect(anyBlock).toBeVisible({ timeout: 10000 });

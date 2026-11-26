@@ -31,7 +31,7 @@ import * as path from 'path';
 import { fileURLToPath } from 'url';
 import { test, expect, PORTS, URLS } from '../fixtures';
 import { AdminUIHelper } from '../helpers/AdminUIHelper';
-import { glance, holdOn, readFor } from '../helpers/demoPacing';
+import { glance, holdOn, readFor } from '@inka/testing/playwright/demoPacing';
 
 const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url));
 const DEMO_PATH = '/demo-video-page';

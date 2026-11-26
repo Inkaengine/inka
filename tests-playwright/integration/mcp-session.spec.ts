@@ -4,12 +4,18 @@
  * afresh for every call, and left between calls on a page with no editor, so
  * nothing a call did is held: no unsaved dry run, no lock.
  */
+import { mintToken } from '@inka/mock-api/tokens';
 import { randomUUID } from 'node:crypto';
-import { test, expect } from '../fixtures';
-import { TEST_AUTH_TOKEN } from '../helpers/AdminUIHelper';
-import { freshPage, whileEditing } from '../helpers/otherUser';
+import { draftCheck } from '../../packages/inka-mcp/checkDraft.mjs';
 import { headlessAdmin } from '../../packages/inka-mcp/server.mjs';
-import { getPage, editPage, search, movePage } from '../../packages/inka-mcp/tools.mjs';
+import {
+  editPage,
+  getPage,
+  movePage,
+  search,
+} from '../../packages/inka-mcp/tools.mjs';
+import { expect, test } from '../fixtures';
+import { freshPage, whileEditing } from '../helpers/otherUser';
 
 const PAGE = '/_test_data/test-page';
 const OTHER = '/_test_data/accordion-test-page';
@@ -20,7 +26,7 @@ test.describe('MCP headless admin session', () => {
   let admin: ReturnType<typeof headlessAdmin>;
 
   test.beforeEach(({ urls }) => {
-    token = `${TEST_AUTH_TOKEN}-${randomUUID()}`;
+    token = mintToken('admin');
     admin = headlessAdmin({ adminUrl: urls.voltoSsr, auth: { token: async () => token } });
   });
 
@@ -49,6 +55,21 @@ test.describe('MCP headless admin session', () => {
     expect((await admin.withEditor(PAGE, getPage)).path).toBe(PAGE);
   });
 
+  test('a sign-in the site no longer accepts says so, at once: sign in again', async ({ urls }) => {
+    // A deploy reset the site, which stopped accepting the tokens it had
+    // issued: the editor's first read was refused (401) and the call waited
+    // out its minute for an editor that could not open.
+    test.setTimeout(60000);
+    expect((await admin.withEditor(PAGE, getPage)).path).toBe(PAGE);
+    const revoked = await fetch(`${urls.mockApi}/@mock-revoke-token`, {
+      method: 'POST', headers: { Authorization: `Bearer ${token}` },
+    });
+    expect(revoked.status).toBe(204);
+    const started = Date.now();
+    await expect(admin.withEditor(PAGE, getPage)).rejects.toThrow(/sign in again/);
+    expect(Date.now() - started, 'refused without waiting out the editor').toBeLessThan(15000);
+  });
+
   test('an editor call lets go of its page: no lock left behind', async ({ urls }) => {
     test.setTimeout(60000);
     // A page of its own: locks are seen by every session, and other tests edit the fixtures.
@@ -63,7 +84,7 @@ test.describe('MCP headless admin session', () => {
   test("a dry run's changes are gone by the next call", async () => {
     test.setTimeout(60000);
     const before = await admin.withEditor(PAGE, getPage);
-    await admin.withEditor(PAGE, (agent) => editPage(agent, {
+    await admin.withEditor(PAGE, (agent, { site }) => editPage(agent, { check: draftCheck(agent, site),
       ops: [{ op: 'add', after: 'block-1-uuid', blocks: [{ '@type': 'slate', value: 'Not kept' }] }],
       expectedVersion: before.version, dryRun: true, mintId: randomUUID,
     }));
@@ -86,9 +107,9 @@ test.describe('MCP headless admin session', () => {
 
       const ops = [{ op: 'add', after: 'para', blocks: [{ '@type': 'slate', value: 'Not now' }] }];
       // A dry run saves nothing, so it may go ahead, and says who holds the page.
-      const dry = await admin.withEditor(own, (agent) => editPage(agent, { ops, expectedVersion: read.version, dryRun: true, mintId: randomUUID }));
+      const dry = await admin.withEditor(own, (agent, { site }) => editPage(agent, { check: draftCheck(agent, site), ops, expectedVersion: read.version, dryRun: true, mintId: randomUUID }));
       expect(dry.lockedBy.user).toBe('jane');
-      await expect(admin.withEditor(own, (agent) => editPage(agent, { ops, expectedVersion: read.version, mintId: randomUUID })))
+      await expect(admin.withEditor(own, (agent, { site }) => editPage(agent, { check: draftCheck(agent, site), ops, expectedVersion: read.version, mintId: randomUUID })))
         .rejects.toThrow(/being edited by jane since/);
       await expect(admin.withSite((site) => movePage(site, { path: own, target: '/_test_data/container-test-page', expectedVersion: read.version })))
         .rejects.toThrow(/being edited by jane since/);

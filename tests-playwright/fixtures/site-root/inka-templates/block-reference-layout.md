@@ -44,7 +44,7 @@ blocks-matched: |
 
 </block>
 
-<block type="slate" slotId="schema-desc" data-json='{"value":[{"type":"p","children":[{"text":"Pass this object inside the "},{"type":"code","children":[{"text":"blocks"}]},{"text":" option when calling "},{"type":"code","children":[{"text":"initBridge()"}]},{"text":" to register this block type with the admin UI. See "},{"type":"a","data":{"url":"/docs/live-preview"},"children":[{"text":"Custom Blocks"}]},{"text":" for the full setup guide."}]}]}' />
+<block type="slate" slotId="schema-desc" data-json='{"value":[{"type":"p","children":[{"text":"Pass this object inside the "},{"type":"code","children":[{"text":"blocks"}]},{"text":" option when calling "},{"type":"code","children":[{"text":"initBridge()"}]},{"text":" to register this block type with the admin UI. See "},{"type":"link","data":{"url":"/docs/frontend-guide/custom-blocks"},"children":[{"text":"Custom Blocks"}]},{"text":" for the full setup guide."}]}]}' />
 
 </fields>
 

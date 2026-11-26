@@ -252,36 +252,30 @@ test.describe('Page Metadata Editing', () => {
     const outline = page.locator('.volto-hydra-block-outline');
     await expect(outline).toBeVisible({ timeout: 5000 });
 
-    // Get initial outline position
-    const initialOutlineBox = await outline.boundingBox();
-    expect(initialOutlineBox).toBeTruthy();
-
-    // Get initial preview image position relative to iframe
-    const initialImageBox = await previewImage.boundingBox();
-    expect(initialImageBox).toBeTruthy();
+    // Where the outline sits relative to the image, once both have settled
+    // (selecting can scroll the image into view).
+    const placing = async () => {
+      const [outlineBox, imageBox] = [await outline.boundingBox(), await previewImage.boundingBox()];
+      expect(outlineBox).toBeTruthy();
+      expect(imageBox).toBeTruthy();
+      return { offset: outlineBox!.y - imageBox!.y, imageY: imageBox!.y };
+    };
+    await helper.waitForPositionStable(outline);
+    await helper.waitForPositionStable(previewImage);
+    const before = await placing();
 
     // Scroll down in the iframe
     await iframe.locator('body').evaluate((body) => {
       body.ownerDocument.defaultView?.scrollBy(0, 100);
     });
 
-    // Wait for scroll to complete and outline to update
-    await page.waitForTimeout(300);
-
-    // Get new positions after scroll
-    const newOutlineBox = await outline.boundingBox();
-    const newImageBox = await previewImage.boundingBox();
-
-    expect(newOutlineBox).toBeTruthy();
-    expect(newImageBox).toBeTruthy();
-
-    // The outline should have moved with the image (both should move up by ~100px)
-    // Allow some tolerance for timing
-    const outlineMovement = initialOutlineBox!.y - newOutlineBox!.y;
-    const imageMovement = initialImageBox!.y - newImageBox!.y;
-
-    // Both should have moved approximately the same amount
-    expect(Math.abs(outlineMovement - imageMovement)).toBeLessThan(10);
+    // The image moves up with the scroll, and the outline follows it: hidden
+    // while the page scrolls, it comes back where the image now is.
+    await expect(async () => {
+      const after = await placing();
+      expect(before.imageY - after.imageY).toBeGreaterThan(50);
+      expect(Math.abs(after.offset - before.offset)).toBeLessThan(10);
+    }).toPass({ timeout: 5000 });
   });
 
   // Regression for PRETAGOVSITE-K.
@@ -303,11 +297,9 @@ test.describe('Page Metadata Editing', () => {
     const helper = new AdminUIHelper(page);
     await helper.login();
 
-    // The defect is this exception, not a broken editor: the bridge re-posts
-    // INIT with backoff (_retryInitUntilAcknowledged), so a retry eventually
-    // lands after the schema and editing works. What is left behind is an
-    // uncaught error per lost INIT — PRETAGOVSITE-K — plus seconds of backoff,
-    // and a genuinely dead editor if the schema outlasts the retry budget.
+    // The bridge posts INIT once, so an INIT that lands before the schema has
+    // to be held and answered when the schema arrives — dropped, the editor
+    // never connects. It used to throw (PRETAGOVSITE-K) and lean on a retry.
     const pageErrors: string[] = [];
     page.on('pageerror', (e) => pageErrors.push(e.message));
 

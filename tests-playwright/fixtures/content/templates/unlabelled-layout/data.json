@@ -21,8 +21,7 @@
             }
           ]
         }
-      ],
-      "plaintext": "Template Header - From Template"
+      ]
     },
     "grid-block": {
       "@type": "gridBlock",
@@ -46,11 +45,14 @@
                 }
               ]
             }
-          ],
-          "plaintext": "Template Grid Cell 1"
+          ]
         },
         "tpl-grid-cell-2": {
           "@type": "slate",
+          "fixed": true,
+          "readOnly": true,
+          "templateInstanceId": "test-layout-def-instance",
+          "slotId": "grid-cell-2",
           "value": [
             {
               "type": "p",
@@ -60,8 +62,7 @@
                 }
               ]
             }
-          ],
-          "plaintext": "Template Grid Cell 2"
+          ]
         }
       },
       "blocks_layout": {
@@ -76,7 +77,7 @@
       "fixed": false,
       "readOnly": false,
       "templateInstanceId": "test-layout-def-instance",
-      "slotId": "primary",
+      "slotId": "default",
       "value": [
         {
           "type": "p",
@@ -86,8 +87,7 @@
             }
           ]
         }
-      ],
-      "plaintext": "Default placeholder content"
+      ]
     },
     "slider-block": {
       "@type": "slider",
@@ -131,8 +131,7 @@
             }
           ]
         }
-      ],
-      "plaintext": "Template Footer - From Template"
+      ]
     }
   },
   "blocks_layout": {

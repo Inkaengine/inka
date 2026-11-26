@@ -8,6 +8,7 @@ import {
   withAllBlocksReadOnly,
   getChildFields,
   setChildBlockEntries,
+  topTemplateInstanceOf,
 } from '@volto-hydra/helpers';
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { isEqual } from 'lodash';
@@ -18,14 +19,20 @@ import { Node } from 'slate';
 import {
   applyBlockDefaults,
 } from '@plone/volto/helpers';
-import { validateAndLog, validateTemplatePlaceholders } from '../../utils/formDataValidation';
+import { validateAndLog, validateTemplatePlaceholders } from '@volto-hydra/helpers/formDataValidation.js';
+import { reportBlockErrors } from '../../utils/reportBlockErrors';
 import { toast } from 'react-toastify';
 import { getIframeUrlCookieName } from '../../utils/cookieNames';
 import rememberedFrontendUrl from '../../utils/getRememberedFrontendUrl';
 import { PAGE_BLOCK_UID } from '@volto-hydra/hydra-js';
-import { isObjectListRegion } from '../../../../hydra-js/regionWidgets.js';
-import { mergeFrontendBlock } from '../../../../hydra-js/mergeFrontendBlock.js';
+import { blockActionTargets } from '../../utils/blockActionTargets';
+import { isObjectListRegion } from '@volto-hydra/helpers/regionWidgets.js';
+import { INKA_BLOCK_TYPES, undeclaredBlockProblems } from '@volto-hydra/helpers/inkaBlocks.js';
+import { mergeFrontendBlock } from '@volto-hydra/hydra-js/mergeFrontendBlock.js';
 import { registerAgentApi } from './agentApi';
+import { lockedBy } from '../AgentSite/lockedBy';
+import { validateBlocksAgainstSchemas } from '../../utils/validateBlocks';
+import { loadContentTypeSchemas } from '../../utils/contentTypeSchemas';
 import {
   isSlateFieldType,
   formDataContentEqual,
@@ -66,7 +73,7 @@ function restoreInstance(current, snapshot, instanceId, idFieldMap) {
       );
     }
     for (const field of fields) {
-      const key = `${path}/${field.region}`;
+      const key = `${path}/${[...(field.regionPath || []), field.region].join('/')}`;
       const restored = (saved.regions[key] || []).map((id) => ({ id, block: saved.blocks[id] }));
       const next = [];
       let spliced = false;
@@ -186,7 +193,7 @@ function splitMultiNodeSlateBlocks(formData, blockPathMap, blocksConfig, uuidGen
   for (const [blockId, pathInfo] of Object.entries(blockPathMap)) {
     if (blockId.startsWith('_')) continue;
     const blockType = pathInfo.blockType;
-    if (!blockType || blockType === 'title' || blockType === 'description') continue;
+    if (!blockType) continue;
 
     const block = getBlockById(result, blockPathMap, blockId);
     if (!block) continue;
@@ -319,6 +326,8 @@ function isSelectionValidForValue(selection, slateValue) {
 }
 import './styles.css';
 import { useIntl } from 'react-intl';
+import { withoutUndeclaredFields } from '../../utils/withoutUndeclaredFields';
+import { assertCanAddTo } from '../../utils/templateFolderPermission';
 import config from '@plone/volto/registry';
 import { BlockChooser, Icon, Toast } from '@plone/volto/components';
 import { Menu, Dimmer, Loader, Confirm } from 'semantic-ui-react';
@@ -326,23 +335,26 @@ import { createPortal, flushSync } from 'react-dom';
 import { usePopper } from 'react-popper';
 import { useSelector, useDispatch } from 'react-redux';
 import { getURlsFromEnv } from '../../utils/getSavedURLs';
+import { newTemplateSettings } from '../../utils/newTemplateSettings';
 import { setSidebarTab } from '@plone/volto/actions';
 import blockSVG from '@plone/volto/icons/block.svg';
 import columnAfterSVG from '@plone/volto/icons/column-after.svg';
 import rowAfterSVG from '@plone/volto/icons/row-after.svg';
 import { setAllowedBlocksList } from '../../utils/allowedBlockList';
-import toggleMark from '../../utils/toggleMark';
 import slateTransforms from '../../utils/slateTransforms';
 // Note: Editor, Transforms, toggleInlineFormat, toggleBlock were removed
 // as applyFormat was replaced by SLATE_TRANSFORM_REQUEST handling
 import OpenObjectBrowser from './OpenObjectBrowser';
 import SyncedSlateToolbar from '../Toolbar/SyncedSlateToolbar';
 import { getBlockTypeSchema } from '../../utils/blockPath';
-import { removeReplacedPlaceholder, buildBlockPathMap, buildIdFieldMap, stripBlockPathMapForPostMessage, getBlockByPath, getBlockById, updateBlockById, getChildBlockIds, getContainerFieldConfig, getSelectAfterDelete, insertBlockInContainer, deleteBlockFromContainer, mutateBlockInContainer, ensureEmptyBlockIfEmpty, ensureAllContainersHaveBlocks, initializeContainerBlock, moveBlockBetweenContainers, reorderBlocksInContainer, getAllContainerFields, insertTableColumn, deleteTableColumn, removeTemplateInstance, getContainerItems, getResolvedSchema, getCommonAncestor, wrapBlocksInContainer, unwrapContainer, getEmptyBlockType, getContainerRegionDescriptors } from '../../utils/blockPath';
+import { copyTranslationBlocks } from '../../utils/copyTranslationBlocks';
+import { removeReplacedPlaceholder, buildBlockPathMap, buildIdFieldMap, stripBlockPathMapForPostMessage, getBlockByPath, getBlockById, updateBlockById, getChildBlockIds, getContainerFieldConfig, getSelectAfterDelete, insertBlockInContainer, deleteBlockFromContainer, mutateBlockInContainer, ensureEmptyBlockIfEmpty, ensureAllContainersHaveBlocks, initializeContainerBlock, moveBlockBetweenContainers, reorderBlocksInContainer, getAllContainerFields, insertTableColumn, deleteTableColumn, removeTemplateInstance, getContainerItems, getResolvedSchema, getCommonAncestor, wrapBlocksInContainer, unwrapContainer, wrapRoute, unwrapRoute, getEmptyBlockType, getContainerRegionDescriptors, inheritTemplateMembershipDeep, freshNestedInstances } from '../../utils/blockPath';
 import { mergeAnchorsIntoContent } from '../../utils/linkableAnchors';
+import { heldImages, onImageHeld } from '../../utils/pendingImages';
+import { withImageMetadata } from '../../utils/imageMetadata';
 import { installStyleMenuPreviewCss } from '../../utils/styleMenuPreviewCss';
 import { adoptTemplate, canContainAll, getBlockAddability, getChildBlockEntries, setBlockType, clearBlockType } from '@volto-hydra/helpers';
-import { mergeTemplatesIntoPage, instanceContent, mergeInstanceIntoTemplate } from '../../utils/mergeTemplates.mjs';
+import { mergeTemplatesIntoPage, instanceContent, mergeInstanceIntoTemplate, removedSlots } from '@volto-hydra/helpers/mergeTemplates.js';
 import {
   applySchemaDefaultsToFormData,
   previewSchemaDefaultConversions,
@@ -350,6 +362,7 @@ import {
   applyBlockDefaultsWithContext,
   applyMembershipWhereLanded,
   settleBlockStructure,
+  emptiedByMove,
   deleteBlocks,
   canInsertBesideBlock,
   createSchemaEnhancerFromRecipe,
@@ -360,22 +373,29 @@ import {
   getConvertibleTypes,
   getConversionMap,
   convertBlockType,
-  reshapeContainerBlock,
-  validateFieldMappings,
+  convertBlockInPlace as convertBlockInPlaceIn,
+  getConvertTargets,
+  fieldMappingProblems,
+  reservedFieldProblems,
+  validateFieldRulesPlacement,
   reportDisallowedSlateNodes,
   completeFrontendSchema,
 } from '../../utils/blockSync';
 import {
   installCopyFromTargetEnhancers,
-  markEditedLinkedFieldsCustom,
-  getUrlField,
+  unpullEditedFields,
+  linkFields,
+  getSourceField,
+  linkPickedFields,
   pullLinkedFields,
   pullAllLinkedFields,
 } from '../../utils/copyFromTarget';
 import { flattenToAppURL, isInternalURL } from '@plone/volto/helpers/Url/Url';
 import { searchContent } from '@plone/volto/actions/search/search';
+import PageLayoutsSection from '../Sidebar/PageLayoutsSection';
 import ChildBlocksWidget from '../Sidebar/ChildBlocksWidget';
 import ParentBlocksWidget from '../Sidebar/ParentBlocksWidget';
+import { expandSidebar } from '../Sidebar/expandSidebar';
 
 /**
  * NoPreview component for frontend-defined blocks.
@@ -394,32 +414,11 @@ const templateNote = (block) => (block?.templateId
 const NoPreview = () => null;
 
 /**
- * Block types that keep their admin Edit component in the sidebar even though a
- * schema is declared for them.
- *
- * `slate`: hydra's own schema carries the `value` field block-sync and the
- * shadowed text editor depend on, which no frontend can know to send.
- *
- * `title` / `description` / `leadimage`: windows onto the PAGE's fields, not
- * blocks with data of their own — the page metadata form already edits those.
- * Their schema is still what gives the canvas its placeholder. Routing them to
- * the schema form costs the page field itself: the leadimage's own schema
- * describes only `align`, so `/preview_image` — the thing it renders — stopped
- * being reachable and clicking the image raised no toolbar.
- */
-const SCHEMA_KEEPS_ADMIN_FORM = new Set([
-  'slate',
-  'title',
-  'description',
-  'leadimage',
-]);
-
-/**
  * Validate frontend configuration passed to initBridge.
  * Collects all validation errors and throws a single error with all issues.
  *
  * @param {Object} options - Options from FRONTEND_INIT message
- * @param {string[]} options.allowedBlocks - Page-level allowed block types
+ * @param {Object} options.pageSchema - The page's regions, as `{ properties }`
  * @param {Object} options.voltoConfig - Frontend's custom config
  * @param {Object} mergedBlocksConfig - Full merged blocks configuration
  * @throws {Error} If any validation errors are found
@@ -427,8 +426,20 @@ const SCHEMA_KEEPS_ADMIN_FORM = new Set([
 const validateFrontendConfig = (options, mergedBlocksConfig) => {
   const errors = [];
 
-  // Future validations can be added here as needed
-  // Frontend developers control what's allowed where via allowedBlocks
+  // fieldMappings must make sense against the schemas they name: a mapping onto
+  // a field that doesn't exist, onto an id, or with a conversion the field
+  // can't hold is refused here, when the config arrives, not found later as
+  // missing links on a published page or a save the CMS crashes on.
+  //
+  // And every block a region may hold must be one the frontend declares (or
+  // Inka's own): a name nobody declares is a block nothing can offer or draw.
+  for (const problem of [
+    ...reservedFieldProblems(mergedBlocksConfig),
+    ...fieldMappingProblems(mergedBlocksConfig),
+    ...undeclaredBlockProblems(mergedBlocksConfig, options.pageSchema),
+  ]) {
+    errors.push(`${problem.rule}: ${problem.message}`);
+  }
 
   if (errors.length > 0) {
     throw new Error(`[HYDRA] initBridge config error:\n- ${errors.join('\n- ')}`);
@@ -452,10 +463,9 @@ const extractBlockFieldTypes = (intl, contentTypeSchema = null) => {
     return blockFieldTypes;
   }
 
-  // Hardcode known block types that don't have schemas
-  // Slate blocks always have a 'value' field that is a slate field
+  // Inka's text block: its schema is a factory (`schema`, not `blockSchema`),
+  // and its `value` is the slate field.
   blockFieldTypes.slate = { value: 'array:slate' };
-  blockFieldTypes.detachedSlate = { value: 'array:slate' };
 
   // Extract page-level field types from content type schema
   // These are accessed via /fieldName syntax (e.g., /title, /description)
@@ -480,13 +490,6 @@ const extractBlockFieldTypes = (intl, contentTypeSchema = null) => {
       const schema = typeof blockConfig.blockSchema === 'function'
         ? blockConfig.blockSchema({ ...config, formData: {}, intl })
         : blockConfig.blockSchema;
-
-      // Debug: Log hero block schema processing
-      if (blockType === 'hero') {
-        logExtract('Processing hero block, blockConfig.blockSchema:', blockConfig.blockSchema);
-        logExtract('Hero schema after resolution:', schema);
-        logExtract('Hero schema.properties:', schema?.properties);
-      }
 
       if (!schema?.properties) {
         return;
@@ -539,10 +542,6 @@ const extractBlockFieldTypes = (intl, contentTypeSchema = null) => {
       };
       registerFieldTypes(blockType, schema.properties);
 
-      // Debug: Log what was added for hero
-      if (blockType === 'hero') {
-        logExtract('Hero blockFieldTypes after processing:', blockFieldTypes['hero']);
-      }
     } catch (error) {
       console.warn(`[VIEW] Error extracting field types for block type "${blockType}":`, error);
       // Continue with other block types
@@ -551,7 +550,6 @@ const extractBlockFieldTypes = (intl, contentTypeSchema = null) => {
 
   // Debug: Final state check
   logExtract('Final blockFieldTypes keys:', Object.keys(blockFieldTypes));
-  logExtract('Final blockFieldTypes.hero:', blockFieldTypes['hero']);
 
   return blockFieldTypes;
 };
@@ -754,6 +752,63 @@ function recurseUpdateVoltoConfig(newConfig) {
 // This prevents unnecessary iframe reloads when React Router remounts the View component
 let persistedIframe = { frontendUrl: null, path: null, isEdit: null, src: null };
 
+/**
+ * Send a canvas each image held until the page is saved (pendingImages.js),
+ * before the data that names them: the file goes as a Blob, a handle to the
+ * same bytes rather than a copy, and hydra.js swaps a blob: URL of it in for
+ * its reference when it hands the page to the front end.
+ */
+function sendHeldImages(target, origin) {
+  for (const [ref, image] of heldImages()) {
+    target.postMessage({ type: 'PENDING_IMAGE', ref, blob: image.file }, origin);
+  }
+}
+
+
+const slugifyId = (s) =>
+  String(s || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+
+// Rewrite every templateId / templateInstanceId equal to oldId, immutably
+// (page data is frozen): a node is copied only when something under it changed.
+const rewriteTemplateRefs = (node, oldId, newId) => {
+  if (Array.isArray(node)) {
+    let changed = false;
+    const arr = node.map((n) => {
+      const nn = rewriteTemplateRefs(n, oldId, newId);
+      if (nn !== n) changed = true;
+      return nn;
+    });
+    return changed ? arr : node;
+  }
+  if (!node || typeof node !== 'object') return node;
+  let changed = false;
+  const out = {};
+  for (const [k, v] of Object.entries(node)) {
+    const nv = rewriteTemplateRefs(v, oldId, newId);
+    out[k] = nv;
+    if (nv !== v) changed = true;
+  }
+  if (out.templateId === oldId) { out.templateId = newId; changed = true; }
+  if (out.templateInstanceId === oldId) { out.templateInstanceId = newId; changed = true; }
+  return changed ? out : node;
+};
+
+/**
+ * The page being edited takes the keyboard as it loads, so keys reach it
+ * without a click first — when nothing else has focus. The author may already
+ * be in the sidebar or in a field of the admin, and the page can't see that, so
+ * the bridge doesn't focus itself: the admin does, from here.
+ */
+function focusEditingPageIfIdle() {
+  const iframe = document.getElementById('previewIframe');
+  const active = document.activeElement;
+  if (iframe && (!active || active === document.body)) iframe.focus();
+}
+
 const Iframe = (props) => {
   if (typeof window !== 'undefined' && window._formatT0) {
     console.log('[VIEW-TIMING] Iframe render +' + (performance.now() - window._formatT0).toFixed(0) + 'ms');
@@ -776,6 +831,9 @@ const Iframe = (props) => {
     schema, // Content type schema for page-level field types
     saveTemplatesRef, // Ref that Form.jsx uses to trigger template save
     flushEditsRef, // Ref that Form.jsx awaits before validating a save
+    // Called with the page as the editor has loaded it (defaults filled in,
+    // templates merged, empty regions seeded) before the author touches it.
+    onEditorLoaded,
     multiSelected = [], // Array of block UIDs in multi-selection
     blocksErrors = {}, // blockId → { field: [messages] } from a refused save
     onSetMultiSelected, // Callback to set multi-selection in Redux
@@ -814,6 +872,9 @@ const Iframe = (props) => {
   // (`action` 'before' when "+" redirects to the top of a layout's default slot)
   const [pendingAdd, setPendingAdd] = useState(null);
   const [pendingDelete, setPendingDelete] = useState(null);
+  // A frontend's own add button in an empty placeholder was clicked (ADD_BLOCK):
+  // { uid, rect } — filled once that empty is the selected block.
+  const [pendingFill, setPendingFill] = useState(null);
   const [popperElement, setPopperElement] = useState(null);
   const [referenceElement, setReferenceElement] = useState(null);
   const [blockUI, setBlockUI] = useState(null); // { blockUid, rect, focusedFieldName }
@@ -828,6 +889,12 @@ const Iframe = (props) => {
   // @type changed, we surface it here and wait for a confirm.
   //   { conversions: [{ blockId, from, to }], onConfirm: () => void }
   const [convertConfirm, setConvertConfirm] = useState(null);
+  // "Remove these slots?" before a commit drops a slot pages may use (inka#708):
+  // { slots, templateId, resolve(yes) }.
+  const [slotRemovalConfirm, setSlotRemovalConfirm] = useState(null);
+  // Blocks a template's lock (or a new template's first save) refused, shown
+  // the way a refused page save shows its blocks: blockId → errors.
+  const [templateBlocksErrors, setTemplateBlocksErrors] = useState({});
   const multiSelectedRef = useRef(multiSelected);
   multiSelectedRef.current = multiSelected;
   // The multi-selection hydra.js last reported or was sent, so the sync below
@@ -857,24 +924,64 @@ const Iframe = (props) => {
   // Selection and toolbarRequestDone are now part of iframeSyncState.
   // Transforms are handled via SLATE_TRANSFORM_REQUEST and the toolbar's transformAction.
 
-  const { styles, attributes } = usePopper(referenceElement, popperElement, {
+  // The chooser opens where the editor asked for it and stays there. Its anchor
+  // is fixed when it opens: the "+" that was pressed (pressedAddRef), or, for a
+  // chooser no "+" opened (convert, wrap, a paste or drop that needs a type), the
+  // top edge of the block it acts on. Its height is held at what it opened with,
+  // so filtering — which only shortens the list — can't make it re-place itself
+  // (it used to measure against the whole canvas, fall back to pinning its bottom
+  // edge, and drop as the list got shorter).
+  const pressedAddRef = useRef(null);
+  const [chooserAnchor, setChooserAnchor] = useState(null);
+  const [chooserHeight, setChooserHeight] = useState(null);
+  const isRtl =
+    typeof document !== 'undefined' && document.documentElement.dir === 'rtl';
+  const chooserReference = useMemo(
+    () => chooserAnchor && { getBoundingClientRect: () => chooserAnchor },
+    [chooserAnchor],
+  );
+  const { styles, attributes } = usePopper(chooserReference, popperElement, {
     strategy: 'fixed',
-    placement: 'bottom',
+    // The corner it opens from: top-left, or top-right in a right-to-left admin.
+    placement: isRtl ? 'bottom-end' : 'bottom-start',
     modifiers: [
-      {
-        name: 'offset',
-        options: {
-          offset: [550, -300],
-        },
-      },
-      {
-        name: 'flip',
-        options: {
-          fallbackPlacements: ['right-end', 'top-start'],
-        },
-      },
+      { name: 'offset', options: { offset: [0, 4] } },
+      { name: 'flip', options: { fallbackPlacements: [isRtl ? 'top-end' : 'top-start'] } },
+      // Room neither below nor above (a "+" low on a short window): slide it
+      // up or down until all of it is on screen, over its anchor if need be.
+      { name: 'preventOverflow', options: { altAxis: true, tether: false, padding: 8 } },
     ],
   });
+
+  const chooserOpen = !!(addNewBlockOpened || chooser);
+  useEffect(() => {
+    if (!chooserOpen) {
+      // Closed (or a "+" press added its one allowed type without asking).
+      if (chooserAnchor) setChooserAnchor(null);
+      if (chooserHeight !== null) setChooserHeight(null);
+      return;
+    }
+    if (chooserAnchor) return;
+    // Nothing on screen opened it (no "+", no canvas drop): it opens at the top
+    // edge of the selected block (the first of a multi-selection being
+    // wrapped), or at the top of the canvas when nothing is selected (a drop
+    // from the sidebar's block list).
+    const frame = referenceElement.getBoundingClientRect();
+    const rect =
+      blockUI?.rect || Object.values(blockUI?.multiSelectRects || {})[0];
+    setChooserAnchor(
+      rect
+        ? new DOMRect(frame.left + rect.left, frame.top + rect.top, rect.width, 0)
+        : new DOMRect(frame.left, frame.top, frame.width, 0),
+    );
+  }, [chooserOpen, chooserAnchor]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Hold the height it opened with (see above).
+  useEffect(() => {
+    if (chooserOpen && popperElement && chooserHeight === null) {
+      setChooserHeight(popperElement.offsetHeight);
+    }
+  }, [chooserOpen, popperElement, chooserHeight]);
 
   // Frontend URL: from Redux store, cookie, or env default
   const urlFromEnv = getURlsFromEnv();
@@ -1042,12 +1149,15 @@ const Iframe = (props) => {
 
   // What the pane is given: the compared page with every block read-only, so
   // it can be read and inspected but not changed. Read-only is a property of a
-  // block, so "a page nobody may edit" needs no new kind of frame.
+  // block, so "a page nobody may edit" needs no new kind of frame. The page is
+  // a block too: a field is locked by the block that owns it, so the page's
+  // own fields (its title, drawn inside a block) need the page locked as well.
   const compareReadOnlyContent = useMemo(
     () =>
       compareContent
         ? {
             ...compareContent,
+            readOnly: true,
             blocks: withAllBlocksReadOnly(
               compareContent.blocks,
               buildIdFieldMap(config.blocks.blocksConfig, intl),
@@ -1140,6 +1250,31 @@ const Iframe = (props) => {
     templateEditMode: [], // v2: array of unlocked template instance ids (multiple at once)
   }));
 
+  // Undo/redo asked for by the page (SLATE_UNDO_REQUEST / SLATE_REDO_REQUEST),
+  // run once everything the page sent before them has committed. A synthetic
+  // Ctrl+Z / Ctrl+Y reaches Volto's undo manager (UndoToolbar's hotkeys).
+  // After this commit's effects, not among them: UndoToolbar saves the form's
+  // state in an effect of its own, and run before it, an undo had that save
+  // record the state it had just left as a new edit, which dropped the redo.
+  useEffect(() => {
+    const steps = iframeSyncState.pendingHistorySteps;
+    if (!steps?.length) return;
+    setIframeSyncState((prev) => ({
+      ...prev,
+      pendingHistorySteps: prev.pendingHistorySteps.slice(steps.length),
+    }));
+    setTimeout(() => {
+      for (const step of steps) {
+        document.dispatchEvent(new KeyboardEvent('keydown', {
+          key: step === 'undo' ? 'z' : 'y',
+          ctrlKey: true,
+          bubbles: true,
+          cancelable: true,
+        }));
+      }
+    }, 0);
+  }, [iframeSyncState.pendingHistorySteps]);
+
   // Keep the latest-ref current as of this render (see templateEditModeRef).
   templateEditModeRef.current = iframeSyncState.templateEditMode || [];
 
@@ -1182,26 +1317,26 @@ const Iframe = (props) => {
   const [committingTemplate, setCommittingTemplate] = useState(false);
   const templateSnapshotsRef = useRef({});
 
-  // Notify toolbar whether paste is allowed for the current selection + clipboard.
+  // Whether what is on the clipboard may be pasted after a block: every type in
+  // it must be one the block's container allows.
+  const pasteAllowedAfter = (blockId) => {
+    const clipData = blocksClipboard?.cut || blocksClipboard?.copy || [];
+    const containerConfig = getContainerFieldConfig(
+      blockId, iframeSyncState.blockPathMap, properties, config.blocks.blocksConfig, intl,
+    );
+    const allowedTypes = containerConfig?.allowedBlocks;
+    if (!(allowedTypes?.length > 0)) return true;
+    return clipData.every(([, blockData]) => allowedTypes.includes(blockData?.['@type']));
+  };
+
+  // Tell the page's BlocksToolbar whether paste is allowed for the selection.
   useEffect(() => {
     const bpm = iframeSyncState?.blockPathMap;
     if (!bpm || !selectedBlock) return;
     const clipData = blocksClipboard?.cut || blocksClipboard?.copy || [];
     if (clipData.length === 0) return;
-
-    const blocksConfig = config.blocks.blocksConfig;
-    const containerConfig = getContainerFieldConfig(selectedBlock, bpm, properties, blocksConfig, intl);
-    const allowedTypes = containerConfig?.allowedBlocks;
-
-    let allowed = true;
-    if (allowedTypes?.length > 0) {
-      allowed = clipData.every(([, blockData]) =>
-        allowedTypes.includes(blockData?.['@type']),
-      );
-    }
-
     document.dispatchEvent(new CustomEvent('hydra-paste-state', {
-      detail: { allowed },
+      detail: { allowed: pasteAllowedAfter(selectedBlock) },
     }));
   }, [selectedBlock, blocksClipboard, iframeSyncState?.blockPathMap, properties, intl]);
 
@@ -1267,7 +1402,14 @@ const Iframe = (props) => {
               : [uuid(), cloneBlocks(blockData)]
             : [blockId, blockData];
         })
-        .filter(Boolean);
+        .filter(Boolean)
+        // A copy is a new block, and so is a template nested in it: another
+        // instance of it, not the same one in two places (inka#708).
+        .map(([newId, blockData]) =>
+          mode === 'copy'
+            ? [newId, freshNestedInstances(blockData, buildIdFieldMap(blocksConfig, intl), uuid)]
+            : [newId, blockData],
+        );
 
       if (cloneWithIds.length === 0) return;
 
@@ -1405,7 +1547,40 @@ const Iframe = (props) => {
       );
     };
 
+    // Block shortcuts with focus in the admin. Choosing a block in the sidebar
+    // leaves focus there, where the page's own shortcuts (hydra.js) never hear
+    // the keys. Outside a field, the admin answers copy, cut and paste for the
+    // selected blocks itself, as the block menu does.
+    const handleBlockShortcut = (e) => {
+      if (!(e.ctrlKey || e.metaKey) || e.altKey || e.shiftKey) return;
+      const key = e.key.toLowerCase();
+      if (key !== 'c' && key !== 'x' && key !== 'v') return;
+      if (!selectedBlock || selectedBlock === PAGE_BLOCK_UID) return;
+      // In a field, a dialog or the page, the keys are theirs.
+      const active = document.activeElement;
+      if (active?.tagName === 'IFRAME') return;
+      if (
+        active?.closest?.(
+          'input, textarea, select, [contenteditable="true"], [role="dialog"], .ui.modal',
+        )
+      ) {
+        return;
+      }
+      // Text selected in the admin: copying that text.
+      if (key !== 'v' && !window.getSelection()?.isCollapsed) return;
+
+      e.preventDefault();
+      const blockIds = blockActionTargets(selectedBlock, multiSelectedRef.current);
+      if (key === 'v') {
+        handlePaste({ detail: { afterBlockId: blockIds[blockIds.length - 1], keepClipboard: false } });
+        return;
+      }
+      handleCopy({ detail: { blockIds, action: key === 'c' ? 'copy' : 'cut' } });
+      if (key === 'x') handleDelete({ detail: { blockIds } });
+    };
+
     document.addEventListener('hydra-copy-blocks', handleCopy);
+    document.addEventListener('keydown', handleBlockShortcut);
     document.addEventListener('hydra-delete-blocks', handleDelete);
     document.addEventListener('hydra-paste-blocks', handlePaste);
     document.addEventListener('hydra-exit-selection-mode', handleExitSelectionMode);
@@ -1413,6 +1588,7 @@ const Iframe = (props) => {
     document.addEventListener('hydra-move-block', handleMoveBlock);
     return () => {
       document.removeEventListener('hydra-copy-blocks', handleCopy);
+      document.removeEventListener('keydown', handleBlockShortcut);
       document.removeEventListener('hydra-delete-blocks', handleDelete);
       document.removeEventListener('hydra-paste-blocks', handlePaste);
       document.removeEventListener('hydra-exit-selection-mode', handleExitSelectionMode);
@@ -1422,11 +1598,45 @@ const Iframe = (props) => {
     // NOTE: templateEditMode must be a dep — these handlers (handleDelete) gate
     // on it via isBlockReadonly; without it the listener closure keeps a
     // stale edit mode and refuses to mutate template blocks while editing.
-  }, [blocksClipboard, properties, iframeSyncState?.blockPathMap, iframeSyncState?.templateEditMode, onChangeFormData, dispatch, intl]);
+  }, [blocksClipboard, properties, iframeSyncState?.blockPathMap, iframeSyncState?.templateEditMode, onChangeFormData, dispatch, intl, selectedBlock]);
 
   // Template cache: stores loaded template documents keyed by templateId
   // Used for comparison on save to detect template changes
   const templateCacheRef = useRef({});
+  // Each template as the site has it (its blocks and their layout, as JSON):
+  // set when it is loaded from the site and when it is written. A template is
+  // written only when it differs from this, so a save writes what the author
+  // changed and nothing else (inka#705).
+  const templateStoredRef = useRef({});
+  // The templates this editor has unlocked, and so locked on the site, as
+  // opening a page to edit locks the page: instance id → template id. Released
+  // by the save that commits it, by locking it again unchanged or with Reset,
+  // and by leaving the editor (inka#705).
+  const heldTemplateLocksRef = useRef({});
+  const releaseTemplateLock = (instanceId) => {
+    const templateId = heldTemplateLocksRef.current[instanceId];
+    if (!templateId) return;
+    delete heldTemplateLocksRef.current[instanceId];
+    new Api().del(`${templateId}/@lock`, { data: {} }).catch((error) => {
+      console.error(`[HYDRA] Couldn't unlock template ${templateId}:`, error);
+    });
+  };
+  // A lock that writes nothing (Reset, or locking unchanged) lets the site lock
+  // go only when there's nothing left for the page save to write: an earlier
+  // "Change on all pages" since the last save keeps it held until that save.
+  const releaseTemplateLockIfWritten = (instanceId) => {
+    const templateId = heldTemplateLocksRef.current[instanceId];
+    const template = templateId && templateCacheRef.current[templateId];
+    if (template && templateStoredRef.current[templateId] !==
+        JSON.stringify({ blocks: template.blocks, blocks_layout: template.blocks_layout })) return;
+    releaseTemplateLock(instanceId);
+  };
+  useEffect(() => () => {
+    for (const instanceId of Object.keys(heldTemplateLocksRef.current)) releaseTemplateLock(instanceId);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  const rememberStored = (templateId, template) => {
+    templateStoredRef.current[templateId] = JSON.stringify({ blocks: template?.blocks, blocks_layout: template?.blocks_layout });
+  };
 
   // Pending template edit exit - stores { requestId, prevInstanceId, mode } when
   // waiting for flush before a lock-commit reverse-merge.
@@ -1477,7 +1687,8 @@ const Iframe = (props) => {
     }));
     postTemplateEditMode(next);
     delete templateSnapshotsRef.current[instanceId];
-  }, [iframeSyncState.templateEditMode, postTemplateEditMode]);
+    releaseTemplateLockIfWritten(instanceId);
+  }, [iframeSyncState.templateEditMode, postTemplateEditMode]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Persist ONE template document from the cache: POST a brand-new template
   // (_isNew) into its parent folder, else PATCH the existing one. Shared by the
@@ -1486,61 +1697,120 @@ const Iframe = (props) => {
   const persistTemplateDoc = useCallback(async (api, templateId) => {
     const template = templateCacheRef.current[templateId];
     if (!template) return;
+    // Written only when it changed: a page save offers every template the page
+    // uses, and writing one the author never changed rewrote it from this
+    // editor's copy, over anyone else's later change (inka#705).
+    // A new template (Make template) is not on the site yet, so it differs.
+    if (templateStoredRef.current[templateId] ===
+        JSON.stringify({ blocks: template.blocks, blocks_layout: template.blocks_layout })) return;
+    // Each block holds what its schema declares, as on the page's own save
+    // (a conversion's leftovers stay in the editor's copy, for the way back).
+    const { blocks, blocks_layout } = withoutUndeclaredFields(
+      { blocks: template.blocks, blocks_layout: template.blocks_layout },
+      { blocksConfig: config.blocks.blocksConfig, intl },
+    );
     try {
       if (template._isNew) {
-        // New template: POST to parent folder so Plone creates the Document and
+        // New template: POST to parent folder so Plone creates it (as the type
+        // Make template gave it, newTemplateSettings) and
         // populates server-side fields (UID, created, …). The id goes in the body
         // so Plone keeps our slug instead of deriving one from the title.
         const lastSlash = templateId.lastIndexOf('/');
         const parentFolder = lastSlash > 0 ? templateId.slice(0, lastSlash) : '/';
         const id = templateId.slice(lastSlash + 1);
         // Creating a template needs "Add portal content" on the chosen folder.
-        let targetFolder = null;
-        try {
-          targetFolder = await api.get(parentFolder);
-        } catch {
-          // Couldn't read permissions — let the backend 403 be the authority.
-        }
-        if (targetFolder?.can_add === false) {
-          const err = new Error(
-            `You don't have permission to add templates in "${parentFolder}" (requires “Add portal content”).`,
-          );
-          err.isPermissionError = true;
-          throw err;
-        }
+        await assertCanAddTo(api, parentFolder);
         await api.post(parentFolder, {
           data: {
-            '@type': 'Document',
+            '@type': template['@type'],
             id,
             title: template.title || id,
-            blocks: template.blocks,
-            blocks_layout: template.blocks_layout,
+            blocks,
+            blocks_layout,
           },
         });
         // Mutate in place so the cached reference stays valid; next save PATCHes.
         delete template._isNew;
+        rememberStored(templateId, template);
       } else {
         await api.patch(templateId, {
-          data: {
-            blocks: template.blocks,
-            blocks_layout: template.blocks_layout,
-          },
+          data: { blocks, blocks_layout },
         });
+        rememberStored(templateId, template);
       }
     } catch (error) {
-      console.error(`[HYDRA] Failed to save template ${templateId}:`, error);
-      // A permission failure must block, not silently drop the template.
-      if (error?.isPermissionError) throw error;
+      // The page save stops: a template edit that wasn't written must not be
+      // dropped while the page saves as if it had been.
+      error.templateId = templateId;
+      throw error;
     }
-  }, []);
+  }, [intl]);
 
   // Resolve each object_list field's idField ONCE from the schema (a form's subblocks are keyed
-  // by field_id, not @id) and pass it to every merge — so the merge stamps item ids into the
-  // right field instead of minting a bogus @id. A frontend passes this same shape as a hint.
-  const idFieldMap = useMemo(
-    () => buildIdFieldMap(config.blocks.blocksConfig, intl),
-    [intl],
-  );
+  // by field_id, not @id) and pass it to every walk of the containers, which names each list's
+  // id field to the merge as a frontend's block code does.
+  // Built each render: the frontend's schemas reach config.blocks.blocksConfig over the
+  // bridge, after this component mounts. Memoized on what it holds, so its identity only
+  // changes when they do.
+  const builtIdFieldMap = buildIdFieldMap(config.blocks.blocksConfig, intl);
+  const builtIdFieldMapKey = JSON.stringify(builtIdFieldMap);
+  const idFieldMap = useMemo(() => builtIdFieldMap, [builtIdFieldMapKey]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // A template's slots are checked when it is saved: on its lock, and for a new
+  // template on the page save that creates it. A page can't be saved with an
+  // existing template unlocked, so the page save checks no other (a page saved
+  // under older slot rules still saves). Only the template being saved is
+  // checked: another one on the page is not this author's to fix now. A
+  // refusal names the blocks at fault the way a refused page save does, and
+  // the errors mark them in the sidebar and their Slot ID. Returns whether it
+  // refused.
+  // Give a new template the id its Short name asks for (else one from its
+  // Template Name), moving it in the cache. Returns the id it now has.
+  const finalizeNewTemplateId = (oldId) => {
+    const templateCache = templateCacheRef.current;
+    const tpl = templateCache[oldId];
+    const lastSlash = oldId.lastIndexOf('/');
+    const parent = lastSlash > 0 ? oldId.slice(0, lastSlash) : '';
+    const desiredSlug = slugifyId(tpl.id) || slugifyId(tpl.title) || oldId.slice(lastSlash + 1);
+    const newId = `${parent}/${desiredSlug}`;
+    if (newId === oldId) return oldId;
+    templateCache[newId] = {
+      ...tpl,
+      '@id': newId,
+      id: desiredSlug,
+      blocks: rewriteTemplateRefs(tpl.blocks, oldId, newId),
+    };
+    delete templateCache[oldId];
+    return newId;
+  };
+
+  const templateIdOfInstance = (formData, instanceId) =>
+    Object.values(instanceContent(formData, instanceId, idFieldMap).blocks)
+      .find((block) => block.templateId)?.templateId;
+
+  const refuseInvalidTemplate = (formData, isOurs, title) => {
+    const blockPathMap = buildBlockPathMap(formData, config.blocks.blocksConfig, intl);
+    const { blocksErrors } = validateTemplatePlaceholders(formData, idFieldMap);
+    const ours = Object.fromEntries(
+      Object.entries(blocksErrors).filter(([blockId]) =>
+        isOurs(getBlockById(formData, blockPathMap, blockId) || {}),
+      ),
+    );
+    setTemplateBlocksErrors(ours);
+    if (Object.keys(ours).length === 0) return false;
+    reportBlockErrors({
+      blocksErrors: ours,
+      formData,
+      blockPathMap,
+      blocksConfig: config.blocks.blocksConfig,
+      title,
+      goToBlock: (blockId) => {
+        onSelectBlock(blockId);
+        dispatch(setSidebarTab(1));
+      },
+    });
+    return true;
+  };
 
 
 
@@ -1587,30 +1857,14 @@ const Iframe = (props) => {
     if (!saveTemplatesRef) return;
 
     saveTemplatesRef.current = async (formData, currentPath) => {
-      // v2: the page save is GATED while an EXISTING template is unlocked —
-      // committing it affects every page that uses it, so that must be a deliberate
-      // lock action, not a page save. A brand-new (_isNew) template has no other
-      // pages yet, so it still persists on page save (preserving the make-template
-      // flow). Raise the "lock your templates first" modal and abort otherwise.
-      const findTemplateId = (instanceId) => {
-        for (const block of Object.values(formData?.blocks || {})) {
-          if (block.templateInstanceId === instanceId && block.templateId) {
-            return block.templateId;
-          }
-        }
-        return null;
-      };
-      // Read the latest-ref, not this effect closure's captured templateEditMode:
-      // the ref is refreshed during the same render that flips the toggle to locked,
-      // so a Ctrl+S fired the instant that lands sees the up-to-date set (no stale gate).
-      const blockingUnlocked = (templateEditModeRef.current || []).filter(
-        (iid) => {
-          const tid = findTemplateId(iid);
-          const tpl = tid && templateCacheRef.current[tid];
-          return tpl && !tpl._isNew;
-        },
-      );
-      if (blockingUnlocked.length > 0) {
+      // The page save is GATED while any template is unlocked: a template is
+      // saved by locking it, which checks it ("Change on all pages", or for a
+      // new one from Make template, creating it). Raise the "lock your templates
+      // first" modal and abort. Read the latest-ref, not this effect closure's
+      // captured templateEditMode: the ref is refreshed during the same render
+      // that flips the toggle to locked, so a Ctrl+S fired the instant that
+      // lands sees the up-to-date set (no stale gate).
+      if ((templateEditModeRef.current || []).length > 0) {
         setTemplateModal({ kind: 'saveGate' });
         return { blocked: true };
       }
@@ -1618,90 +1872,32 @@ const Iframe = (props) => {
       // Flush any pending inline edit text from the iframe before saving.
       await flushIframeEdits();
 
-      const templateCache = templateCacheRef.current;
-
-      // Finalize the id/filename for any not-yet-saved template BEFORE we compute the
-      // ids to save: choose its id from the Short name (or a slug of the Template
-      // Name), then rewrite EVERY reference to the placeholder id — the template's own
-      // blocks + its cache key, AND the page's blocks. The page's blocks are frozen
-      // (Redux), so this rewrites immutably and returns the new page data for the page
-      // save (see Form.jsx); otherwise the page would reference a template id that was
-      // never created (404 on reload).
-      const slugifyId = (s) =>
-        String(s || '')
-          .trim()
-          .toLowerCase()
-          .replace(/[^a-z0-9]+/g, '-')
-          .replace(/^-+|-+$/g, '');
-      const rewriteTemplateRefs = (node, oldId, newId) => {
-        if (Array.isArray(node)) {
-          let changed = false;
-          const arr = node.map((n) => {
-            const nn = rewriteTemplateRefs(n, oldId, newId);
-            if (nn !== n) changed = true;
-            return nn;
-          });
-          return changed ? arr : node;
-        }
-        if (!node || typeof node !== 'object') return node;
-        let changed = false;
-        const out = {};
-        for (const [k, v] of Object.entries(node)) {
-          const nv = rewriteTemplateRefs(v, oldId, newId);
-          out[k] = nv;
-          if (nv !== v) changed = true;
-        }
-        if (out.templateId === oldId) { out.templateId = newId; changed = true; }
-        if (out.templateInstanceId === oldId) { out.templateInstanceId = newId; changed = true; }
-        return changed ? out : node;
-      };
-
-      let pageFormData = formData;
-      for (const oldId of Object.keys(templateCache)) {
-        const tpl = templateCache[oldId];
-        if (!tpl?._isNew) continue;
-        const lastSlash = oldId.lastIndexOf('/');
-        const parent = lastSlash > 0 ? oldId.slice(0, lastSlash) : '';
-        const currentSlug = oldId.slice(lastSlash + 1);
-        // Short name → else derive from the Template Name → else keep the placeholder.
-        const desiredSlug = slugifyId(tpl.id) || slugifyId(tpl.title) || currentSlug;
-        const newId = `${parent}/${desiredSlug}`;
-        if (!desiredSlug || newId === oldId) continue;
-        templateCache[newId] = {
-          ...tpl,
-          '@id': newId,
-          id: desiredSlug,
-          blocks: rewriteTemplateRefs(tpl.blocks, oldId, newId),
-        };
-        delete templateCache[oldId];
-        pageFormData = rewriteTemplateRefs(pageFormData, oldId, newId);
-      }
-
-      const templateIds = getUniqueTemplateIds(pageFormData).filter(
-        id => id !== currentPath && templateCache[id]
-      );
-
-      if (templateIds.length === 0) {
-        // Only hand back page data when an id was actually rewritten; otherwise
-        // return nothing so Form.jsx uses its own (post-flush) state — which holds
-        // the just-flushed inline edits this pre-flush `formData` param lacks.
-        return pageFormData !== formData ? pageFormData : undefined;
-      }
-
-      // Use Volto's Api helper which handles auth and URL formatting
+      // Write every template whose copy here differs from what the site has
+      // (persistTemplateDoc): edited and locked ("Change on all pages"), or new
+      // from Make template, wherever its instance sits on the page. The rest are
+      // left alone (inka#705).
+      const templateIds = Object.keys(templateCacheRef.current).filter((id) => id !== currentPath);
       const api = new Api();
-
-      await Promise.all(
-        templateIds.map((templateId) => persistTemplateDoc(api, templateId)),
-      );
-
-      // Hand the page data back to Form.jsx ONLY when an id was rewritten, so the page
-      // save writes the finalized references. Otherwise return nothing so Form uses its
-      // own post-flush state (which holds just-flushed inline edits this pre-flush
-      // `formData` param lacks).
-      return pageFormData !== formData ? pageFormData : undefined;
+      try {
+        await Promise.all(
+          templateIds.map((templateId) => persistTemplateDoc(api, templateId)),
+        );
+      } catch (error) {
+        toast.error(
+          <Toast
+            error
+            title="Couldn't save template"
+            content={`${error.templateId}: ${error.message || 'it could not be saved'}. The page was not saved.`}
+          />,
+        );
+        return { blocked: true };
+      }
+      // Written: release the templates this editor locked on the site.
+      for (const instanceId of Object.keys(heldTemplateLocksRef.current)) {
+        releaseTemplateLock(instanceId);
+      }
     };
-  }, [saveTemplatesRef, flushIframeEdits, persistTemplateDoc, iframeSyncState.templateEditMode]);
+  }, [saveTemplatesRef, flushIframeEdits, persistTemplateDoc, iframeSyncState.templateEditMode, idFieldMap]);
 
   // v2 lock ("Change on all pages" or "Reset changes"): both act only after the
   // iframe flushes pending inline edits, so neither works on stale data and no
@@ -1720,7 +1916,9 @@ const Iframe = (props) => {
     const formData = iframeSyncState.formData;
 
     // Drop this instance from the unlocked set + tell the iframe.
-    const finish = () => {
+    // A commit keeps the template locked on the site until the page save writes
+    // it; a reset has nothing to write, so it releases it now.
+    const finish = ({ keepSiteLock = false } = {}) => {
       const next = (iframeSyncState.templateEditMode || []).filter((id) => id !== prevInstanceId);
       setIframeSyncState((prev) => ({
         ...prev,
@@ -1728,6 +1926,7 @@ const Iframe = (props) => {
       }));
       postTemplateEditMode(next);
       delete templateSnapshotsRef.current[prevInstanceId];
+      if (!keepSiteLock) releaseTemplateLockIfWritten(prevInstanceId);
       setCommittingTemplate(false); // commit round-trip done — drop the saving overlay
     };
 
@@ -1756,12 +1955,54 @@ const Iframe = (props) => {
 
     if (templateId && templateCacheRef.current[templateId]) {
       const template = templateCacheRef.current[templateId];
+      let keepUnlocked = false;
       mergeInstanceIntoTemplate(template, formData, prevInstanceId, { idFieldMap, uuidGenerator: uuid })
         .then(async ({ merged: updatedTemplate }) => {
-          templateCacheRef.current[templateId] = updatedTemplate;
-          // "Change on all pages": persist the template document immediately.
-          await persistTemplateDoc(new Api(), templateId);
-          templateCommitOutcomeRef.current[prevInstanceId] = { templateId, error: null };
+          // Checked as a page save checks a page (Form.jsx): a template its own
+          // blocks' rules refuse would be refused on every page using it. A
+          // commit was checked for slot grouping only (inka#705). Not saved,
+          // and left unlocked for the author to fix.
+          const check = validateBlocksAgainstSchemas(updatedTemplate, {
+            blocksConfig: config.blocks.blocksConfig, intl, formatMessage: intl.formatMessage,
+            contentTypes: await loadContentTypeSchemas(),
+          });
+          const reasons = Object.entries(check.blocksErrors).flatMap(([blockId, errors]) => {
+            const type = getBlockById(updatedTemplate, check.blockPathMap, blockId)?.['@type'];
+            const name = config.blocks.blocksConfig?.[type]?.title || type;
+            return Object.entries(errors).map(([field, error]) => `${name}: ${check.fieldTitles?.[blockId]?.[field] || field}: ${
+              Array.isArray(error) ? error.join(', ') : error?.message || error}`);
+          });
+          if (reasons.length) {
+            keepUnlocked = true;
+            toast.error(<Toast error title="This template can't be saved" content={reasons.join('; ')} />);
+            return;
+          }
+          // A slot the new version no longer has may hold content on pages
+          // using the template, which the merge would then have nowhere to put.
+          // Nothing records which pages use which slots, so ask (inka#708).
+          // A new template is used by no page yet, so there is nothing to ask.
+          const removed = template._isNew ? [] : removedSlots(template, updatedTemplate, idFieldMap);
+          if (removed.length) {
+            const yes = await new Promise((resolve) =>
+              setSlotRemovalConfirm({ slots: removed, templateId, resolve }),
+            );
+            if (!yes) {
+              keepUnlocked = true;
+              return;
+            }
+          }
+          templateCacheRef.current[templateId] = template._isNew
+            ? { ...updatedTemplate, _isNew: true }
+            : updatedTemplate;
+          // A new template (Make template) is created at the id its Short name
+          // gives it, and the page's references follow it there.
+          const savedId = template._isNew ? finalizeNewTemplateId(templateId) : templateId;
+          if (savedId !== templateId) {
+            onChangeFormData(rewriteTemplateRefs(formData, templateId, savedId));
+          }
+          // Nothing is written now: the page save writes every template that
+          // changed (saveTemplatesRef), and releases its lock on the site.
+          templateCommitOutcomeRef.current[prevInstanceId] = { templateId: savedId, error: null };
         })
         .catch((e) => {
           templateCommitOutcomeRef.current[prevInstanceId] = {
@@ -1775,7 +2016,7 @@ const Iframe = (props) => {
             />,
           );
         })
-        .finally(finish);
+        .finally(() => (keepUnlocked ? setCommittingTemplate(false) : finish({ keepSiteLock: true })));
     } else {
       finish();
     }
@@ -1788,10 +2029,9 @@ const Iframe = (props) => {
   // Pending INIT: the iframe's INIT is a one-shot postMessage, and the content
   // type schema is an async prop. When INIT wins that race there is nothing to
   // register the page's own fields from, so the payload is kept here and
-  // replayed by the effect below once `schema` arrives. It used to throw
-  // instead — the bridge's retry (_retryInitUntilAcknowledged) papered over it
-  // at the cost of an uncaught error per lost INIT and seconds of backoff, and
-  // a dead editor outright if the schema outlasted the retry budget.
+  // replayed by the effect below once `schema` arrives. The bridge posts INIT
+  // once and never again, so an INIT dropped here is an editor that never
+  // connects.
   const pendingInitRef = useRef(null);
 
   // The live message handler, so the replay effect calls the current closure
@@ -2042,10 +2282,12 @@ const Iframe = (props) => {
     const firstBlockId = blocksToMove[0];
     const sourceParentId = currentBlockPathMap[firstBlockId]?.parentId || null;
 
-    // Get source container config BEFORE the move (needed for ensureEmptyBlockIfEmpty)
-    const sourceContainerConfig = sourceParentId !== targetParentId && sourceParentId
+    // The region the blocks come out of, and the first one as it was there,
+    // BEFORE the move: what it leaves behind is decided after (emptiedByMove).
+    const sourceContainerConfig = sourceParentId
       ? getContainerFieldConfig(firstBlockId, currentBlockPathMap, currentFormData, blocksConfig, intl)
       : null;
+    const firstBlockAsItWas = getBlockById(currentFormData, currentBlockPathMap, firstBlockId);
 
     // Resolve each block against the target container's allowedBlocks:
     // native fit, or convertible (auto when one target type; a single-block
@@ -2070,6 +2312,18 @@ const Iframe = (props) => {
         }
         if (options.length > 1 && singleDrag) {
           // Ask-first: show the chooser; commitChooser converts + moves atomically.
+          // It opens where the block was dropped, when the drop was on the canvas.
+          if (data.dropRect) {
+            const frame = referenceElement.getBoundingClientRect();
+            setChooserAnchor(
+              new DOMRect(
+                frame.left + data.dropRect.left,
+                frame.top + data.dropRect.top,
+                data.dropRect.width,
+                data.dropRect.height,
+              ),
+            );
+          }
           setChooser({
             kind: 'convert',
             blockId: bid,
@@ -2150,16 +2404,20 @@ const Iframe = (props) => {
       // THEN a re-seed of the region it came out of. settleBlockStructure
       // fixes that order in one place so the drag path and the chooser's
       // ask-first drop cannot disagree about it again.
+      const movedPathMap = buildBlockPathMap(newFormData, config.blocks.blocksConfig, intl);
       const settledMove = settleBlockStructure(
         newFormData,
-        buildBlockPathMap(newFormData, config.blocks.blocksConfig, intl),
+        movedPathMap,
         {
           landed: blocksToMove,
           replacedPlaceholders: replaceTargetId ? [replaceTargetId] : [],
-          emptiedContainers:
-            sourceParentId !== targetParentId && sourceContainerConfig
-              ? [sourceContainerConfig]
-              : [],
+          // The region the blocks left — another container's, or another
+          // region of the same one — with the slot they held there.
+          emptiedContainers: emptiedByMove(
+            sourceContainerConfig,
+            getContainerFieldConfig(firstBlockId, movedPathMap, newFormData, blocksConfig, intl),
+            firstBlockAsItWas,
+          ),
         },
         {
           blocksConfig,
@@ -2320,7 +2578,23 @@ const Iframe = (props) => {
       }
       // 'inside' adds to a specific region (default 'items'); the descriptor's
       // region flows into insertBlockInContainer via the funnel.
-      containerConfig = { parentId: blockId, fieldName, isObjectList, region: addRegion || 'items' };
+      // A list region carries its idField: its items are read and written by it.
+      const region = addRegion || 'items';
+      const listIdField = isObjectList
+        ? getContainerRegionDescriptors(
+            blockPathMap[blockId]?.blockType,
+            mergedBlocksConfig,
+            intl,
+            getBlockById(formData, blockPathMap, blockId),
+          ).find((d) => d.region === region)?.idField
+        : undefined;
+      containerConfig = {
+        parentId: blockId,
+        fieldName,
+        isObjectList,
+        region,
+        ...(isObjectList ? { idField: listIdField } : {}),
+      };
     } else {
       containerConfig = getContainerFieldConfig(blockId, blockPathMap, formData, mergedBlocksConfig, intl);
       // For before/after, get isObjectList from containerConfig
@@ -2390,8 +2664,11 @@ const Iframe = (props) => {
     if (customBlockData) {
       blockData = customBlockData;
     } else if (isObjectList) {
-      // object_list items: typeField defaults to '@type' — no special casing needed
-      const idField = containerConfig?.idField || fieldDef?.idField || '@id';
+      // object_list items: typeField defaults to '@type' — no special casing needed.
+      // The id goes in the list's own idField, which the container config
+      // carries (add-inside reads it from the region; before/after from the
+      // sibling's entry); none is assumed.
+      const { idField } = containerConfig;
       const typeFieldName = (action === 'inside' ? fieldDef?.typeField : blockPathMap[blockId]?.typeField) || '@type';
 
       let effectiveType;
@@ -2503,17 +2780,18 @@ const Iframe = (props) => {
     // Determine which block to select
     let selectBlockId = newBlockId;
     if (selectChildIndex != null && blockData) {
-      // Find the first array field in the block and get the child at selectChildIndex
-      // This is used when adding a row from a cell - we want to select the corresponding cell
-      for (const [, fieldValue] of Object.entries(blockData)) {
-        if (Array.isArray(fieldValue) && fieldValue[selectChildIndex]) {
-          const childItem = fieldValue[selectChildIndex];
-          // Get the ID field - typically 'key' or '@id'
-          const childId = childItem?.key || childItem?.['@id'];
-          if (childId) {
-            selectBlockId = childId;
-            break;
-          }
+      // Adding a row from a cell selects the matching cell: the child at
+      // selectChildIndex of the new block's first list region, read by that
+      // region's idField (a table's cells are keyed by `key`; none is assumed).
+      const childMap = buildBlockPathMap(newFormData, mergedBlocksConfig, intl);
+      for (const [field, fieldValue] of Object.entries(blockData)) {
+        if (!Array.isArray(fieldValue) || !fieldValue[selectChildIndex]) continue;
+        const region = Object.values(childMap).find(
+          (entry) => entry.parentId === newBlockId && entry.region === field && entry.isObjectListItem,
+        );
+        if (region) {
+          selectBlockId = fieldValue[selectChildIndex][region.idField];
+          break;
         }
       }
     }
@@ -2794,6 +3072,7 @@ const Iframe = (props) => {
               intl,
             );
             const toolbarButtons = config.settings.slate?.toolbarButtons || [];
+            sendHeldImages(event.source, event.origin);
             event.source.postMessage(
               {
                 type: 'INITIAL_DATA',
@@ -2836,7 +3115,10 @@ const Iframe = (props) => {
           break;
 
         case 'ADD_BLOCK':
-          setAddNewBlockOpened(true);
+          // From a frontend's own add button in an empty placeholder
+          // (data-block-add="button"): fill that empty, as the admin's '+' on
+          // it would. The bridge selects it first; the fill waits for that.
+          setPendingFill({ uid: event.data.blockUid, rect: event.data.rect });
           break;
 
         case 'DELETE_BLOCK':
@@ -2971,13 +3253,13 @@ const Iframe = (props) => {
 
           if (isNewEdit) {
             // New edit from iframe - update everything.
-            // Copy-from-target: turn any LINKED field edited inline CUSTOM, by the
-            // same value-compare used for image/link edits — the inline message
-            // carries the whole formData with no clue which field changed. Applied
-            // synchronously (part of THIS update) so it doesn't re-render mid-type
-            // and move the cursor.
+            // Copy-from-target: a field edited inline is CLAIMED by the author and
+            // leaves `_pullFrom`, by the same value-compare used for image/link
+            // edits — the inline message carries the whole formData with no clue
+            // which field changed. Applied synchronously (part of THIS update) so
+            // it doesn't re-render mid-type and move the cursor.
             inlineEditCounterRef.current += 1;
-            let editedData = markEditedLinkedFieldsCustom(
+            let editedData = unpullEditedFields(
               event.data.data,
               properties,
               config.blocks.blocksConfig,
@@ -3075,40 +3357,6 @@ const Iframe = (props) => {
           
           break;
 
-        case 'TOGGLE_MARK': {
-          // console.log('TOGGLE_BOLD', event.data.html);
-
-          const deserializedHTMLData = toggleMark(event.data.html);
-          // console.log('deserializedHTMLData', deserializedHTMLData);
-          onChangeFormData({
-            ...form,
-            blocks: {
-              ...form.blocks,
-              [selectedBlock]: {
-                ...form.blocks[selectedBlock],
-                value: deserializedHTMLData,
-              },
-            },
-          });
-          event.source.postMessage(
-            {
-              type: 'TOGGLE_MARK_DONE',
-              data: {
-                ...form,
-                blocks: {
-                  ...form.blocks,
-                  [selectedBlock]: {
-                    ...form.blocks[selectedBlock],
-                    value: deserializedHTMLData,
-                  },
-                },
-              },
-            },
-            event.origin,
-          );
-          break;
-        }
-
         case 'SLATE_TRANSFORM_REQUEST':
           window._formatT0 = performance.now();
           console.log('[VIEW-TIMING] SLATE_TRANSFORM_REQUEST received');
@@ -3162,7 +3410,24 @@ const Iframe = (props) => {
                   config.blocks.blocksConfig, intl,
                 );
 
-                if (slateTransforms.isCurrentListItemEmpty(fieldValue, enterSelection)) {
+                // Empty indented item: out a level, as Word and Google Docs do.
+                const outdented = slateTransforms.isCurrentListItemEmpty(fieldValue, enterSelection)
+                  ? slateTransforms.outdentEmptyListItem(fieldValue, enterSelection)
+                  : null;
+                if (outdented) {
+                  const updatedBlock = { ...currentBlock, [enterFieldName]: outdented.newValue };
+                  const mutatedFormData = mutateBlockInContainer(
+                    formToUseForEnter, enterBlockPathMap, enterBlockId, updatedBlock, containerConfig,
+                  );
+                  const newBpm = buildBlockPathMap(mutatedFormData, config.blocks.blocksConfig, intl);
+                  setIframeSyncState(prev => ({
+                    ...prev,
+                    formData: mutatedFormData,
+                    blockPathMap: newBpm,
+                    selection: outdented.newSelection,
+                    toolbarRequestDone: enterRequestId,
+                  }));
+                } else if (slateTransforms.isCurrentListItemEmpty(fieldValue, enterSelection)) {
                   // Empty list item: remove it and create new empty block after
                   const { newValue } = slateTransforms.removeEmptyListItem(fieldValue, enterSelection);
                   const updatedBlock = { ...currentBlock, [enterFieldName]: newValue };
@@ -3514,27 +3779,20 @@ const Iframe = (props) => {
           }
           break;
 
-        case 'SLATE_UNDO_REQUEST': {
-          // Dispatch a synthetic Ctrl+Z event to trigger Volto's global undo manager
-          const undoEvent = new KeyboardEvent('keydown', {
-            key: 'z',
-            ctrlKey: true,
-            bubbles: true,
-            cancelable: true,
-          });
-          document.dispatchEvent(undoEvent);
-          break;
-        }
-
+        case 'SLATE_UNDO_REQUEST':
         case 'SLATE_REDO_REQUEST': {
-          // Dispatch a synthetic Ctrl+Y event to trigger Volto's global undo manager
-          const redoEvent = new KeyboardEvent('keydown', {
-            key: 'y',
-            ctrlKey: true,
-            bubbles: true,
-            cancelable: true,
-          });
-          document.dispatchEvent(redoEvent);
+          // Queued, not done here: the page sends its last typing just before
+          // this, and that edit must be committed (in Volto's undo history and
+          // in this state) before the undo runs. Done here, the undo found the
+          // typing not yet recorded and changed nothing, and the typing then
+          // landed on top (inka#555). Queued in this same state, after the
+          // edit's update, so the pendingHistorySteps effect sees it only once the edit has
+          // committed too.
+          const step = type === 'SLATE_UNDO_REQUEST' ? 'undo' : 'redo';
+          setIframeSyncState((prev) => ({
+            ...prev,
+            pendingHistorySteps: [...(prev.pendingHistorySteps || []), step],
+          }));
           break;
         }
 
@@ -3630,31 +3888,10 @@ const Iframe = (props) => {
             log('BLOCK_SELECTED ignored: not in edit mode', event.data.blockUid, 'src:', event.data.src);
             break;
           }
-          // Back to the page being edited when the editor is WORKING IN it —
-          // and only then. This page also RE-ANNOUNCES its existing selection
-          // on a re-render, on scroll and on resize, and those must not snatch
-          // the sidebar back from the compared language.
-          //
-          // This used to ask whether the compare pane held focus. It never
-          // can: that pane's iframe takes no pointer events (the click lands
-          // on the wrapper, which is how the pane gets selected), so nothing
-          // inside it is ever `document.activeElement` and the guard was
-          // always true. Any re-announcement from this pane then took the
-          // sidebar back, a beat after the editor clicked the other one —
-          // which is why it only failed sometimes.
-          //
-          // Evidence of working in this pane instead: it has focus, or it is
-          // announcing a DIFFERENT block from the one already selected.
-          const editPaneHasFocus =
-            typeof document !== 'undefined' &&
-            document.activeElement?.id === 'previewIframe';
-          const isRepeatOfCurrentSelection =
-            event.data.blockUid === selectedBlock ||
-            event.data.src === 'scrollHandler' ||
-            event.data.src === 'resizeHandler';
-          if (editPaneHasFocus || !isRepeatOfCurrentSelection) {
-            setSelectedPane('edit');
-          }
+          // A selection never moves the sidebar between the panes: focus
+          // does (CANVAS_FOCUSED). This page also re-announces its
+          // selection on a re-render, a scroll or a resize, and selects a
+          // block by itself as it settles.
           // Update block UI state and selection atomically
           // Selection is included in BLOCK_SELECTED to prevent race conditions
 
@@ -3852,6 +4089,21 @@ const Iframe = (props) => {
           // Don't call onSelectBlock(null) - keep the block selected in Redux
           break;
 
+        case 'CANVAS_FOCUSED': {
+          // The author moved into the page being edited — clicked or tabbed
+          // into it. It takes the sidebar back from the other language.
+          setSelectedPane('edit');
+          // And it is a click (or key) outside whatever the admin has open (a
+          // link or image box, a toolbar menu), which this document never
+          // sees. Their click-outside handlers listen for
+          // mousedown, so give them one. On body, not document: Volto's
+          // handleClickOutside calls e.target.closest.
+          document.body.dispatchEvent(
+            new MouseEvent('mousedown', { bubbles: true, cancelable: true, view: window }),
+          );
+          break;
+        }
+
         case 'MOUSE_ACTIVITY':
           // Throttled mousemove from iframe — reset toolbar fade timer
           setMouseActivityCounter(c => c + 1);
@@ -3928,21 +4180,19 @@ const Iframe = (props) => {
               // `disableCustomSidebarEditForm: false` — for a block whose admin
               // Edit does something a JSON schema cannot express.
               //
-              // `slate` is exempt: hydra's own slate schema carries the `value`
-              // field that block-sync and the shadowed text editor depend on,
-              // which no frontend can know to send (see index.js).
+              // Inka's own blocks are exempt: hydra's slate schema carries the
+              // `value` field that block-sync and the shadowed text editor depend
+              // on, which no frontend can know to send (see index.js).
               //
-              // `title` and `description` are exempt for a different reason:
-              // they are not blocks with data, they are windows onto the PAGE's
-              // own fields, and the page metadata form already edits those. A
-              // schema-driven block form for them renders a second, always-empty
-              // `#field-title` beside the metadata form's — a duplicate DOM id,
-              // and an input whose writes land in block data nothing reads.
-              // Their schema still stands: it is where the canvas placeholder
-              // ("Type the title…") comes from.
+              // A block that is a window onto the PAGE's own fields (a title, a
+              // description, a lead image) sends `false`: the page metadata form
+              // already edits those, and a schema form beside it renders a
+              // second, always-empty `#field-title` (a duplicate DOM id, writes
+              // landing in block data nothing reads). Its schema still stands:
+              // it is where the canvas placeholder comes from.
               if (
                 blockConfig.blockSchema &&
-                !SCHEMA_KEEPS_ADMIN_FORM.has(blockType) &&
+                !INKA_BLOCK_TYPES.includes(blockType) &&
                 blockConfig.disableCustomSidebarEditForm === undefined
               ) {
                 blockConfig.disableCustomSidebarEditForm = true;
@@ -3951,14 +4201,14 @@ const Iframe = (props) => {
               // inner schemas — on every INIT, overrides included (see
               // completeFrontendSchema).
               completeFrontendSchema(blockConfig?.blockSchema);
-              // Validate fieldMappings: warn about invalid @default keys
-              validateFieldMappings(blockType, blockConfig);
+              // And fieldRules written in a schema, where nothing reads them.
+              validateFieldRulesPlacement(blockType, blockConfig);
             });
             // Each frontend entry applied to the admin's own (mergeFrontendBlock —
             // the mock parent applies the same rule): a key the frontend sends
             // replaces the admin's, a schema included; keys it doesn't send keep
             // the admin's; an enhancer chains. An admin enhancer that is a
-            // function (e.g. listing's fieldMapping/b_size logic) comes back to be
+            // function (an add-on's, on Inka's text block) comes back to be
             // chained with the frontend's recipe in step 1b.
             processBlockIcons(blocksConfig);
             const savedEnhancers = {};
@@ -3998,8 +4248,8 @@ const Iframe = (props) => {
 
             // 1b. Create schemaEnhancers from frontend recipes
             // When the frontend sends a recipe (e.g., { inheritSchemaFrom: {...} }),
-            // chain it with any existing function enhancer from admin plugins (e.g., listing's
-            // fieldMapping/b_size removal) rather than replacing it.
+            // chain it with any existing function enhancer from admin plugins
+            // rather than replacing it.
             const recipeKeys = ['inheritSchemaFrom', 'fieldRules'];
             for (const blockType of Object.keys(blocksConfig)) {
               const recipe = config.blocks.blocksConfig[blockType].schemaEnhancer;
@@ -4160,8 +4410,12 @@ const Iframe = (props) => {
               fieldDef.allowedBlocks.forEach(blockType => allAllowedBlocks.add(blockType));
             }
           }
+          // Every config check runs on every frontend, whatever its page allows.
+          validateFrontendConfig(
+            { pageSchema: { properties: pageBlocksFieldsDef } },
+            config.blocks.blocksConfig,
+          );
           if (allAllowedBlocks.size > 0) {
-            validateFrontendConfig({ allowedBlocks: [...allAllowedBlocks] }, config.blocks.blocksConfig);
             Object.keys(config.blocks.blocksConfig).forEach((blockType) => {
               const blockConfig = config.blocks.blocksConfig[blockType];
               if (blockConfig && !allAllowedBlocks.has(blockType)) {
@@ -4344,6 +4598,14 @@ const Iframe = (props) => {
             // Store prepared formData with empty blocks already added
             formData: formWithDefaults,
             blockPathMap: initialBlockPathMap,
+            // A translation just created by Add has none of the original's
+            // blocks: its editor copies them in, now that the frontend has said
+            // what they are (copyTranslationBlocks). Add sends the original in
+            // the navigation to this editor and only there, so editing the
+            // translation later never copies over the translator's work. (Not
+            // "the page has no blocks": the Add form seeds an empty text block
+            // into a page with none, and saves it.)
+            copyTranslationFrom: history.location.state?.copyTranslationFrom || null,
           };
           // Trigger the sync effect to fetch templates (if any) and merge
           setTemplateSyncTrigger(prev => prev + 1);
@@ -4537,10 +4799,26 @@ const Iframe = (props) => {
       return;
     }
 
+    // A new translation: the original's blocks, copied in before the
+    // template merge (see INIT, copyTranslationFrom). Its blocks replace the
+    // page's own; any template they bring in is loaded by the merge.
+    const withTranslationCopy = async (formData, copyFrom, api) => {
+      if (!copyFrom) return formData;
+      const original = await api.get(copyFrom);
+      const { blocks, items } = copyTranslationBlocks(
+        original, config.blocks.blocksConfig, intl, uuid,
+      );
+      return {
+        ...formData,
+        blocks,
+        blocks_layout: { ...formData.blocks_layout, items },
+      };
+    };
+
     // INITIAL_DATA sending - consolidated to this ONE place
     // Handles: no templates, templates loading, templates already cached
     if (pendingInitialDataRef.current) {
-      const { source, origin, formData: preparedFormData, blockPathMap: preparedBlockPathMap } = pendingInitialDataRef.current;
+      const { source, origin, formData: preparedFormData, blockPathMap: preparedBlockPathMap, copyTranslationFrom } = pendingInitialDataRef.current;
       const templateIds = getUniqueTemplateIds(preparedFormData);
       const unloadedTemplates = templateIds.filter(id => templateCacheRef.current[id] === undefined);
 
@@ -4568,11 +4846,14 @@ const Iframe = (props) => {
             // A template is the id it was referenced by (adoptTemplate).
             const template = adoptTemplate(await api.get(templateId), templateId);
             templateCacheRef.current[templateId] = template;
+            rememberStored(templateId, template);
             return template;
           };
 
+          const pageFormData = await withTranslationCopy(preparedFormData, copyTranslationFrom, api);
+
           // Merge templates with forced layouts
-          const { merged: mergedFormData } = await mergeTemplatesIntoPage(preparedFormData, {
+          const { merged: mergedFormData } = await mergeTemplatesIntoPage(pageFormData, {
             loadTemplate,
             preloadedTemplates: templateCacheRef.current,
             pageBlocksFields,
@@ -4613,7 +4894,9 @@ const Iframe = (props) => {
           // next Redux-sourced FORM_DATA sync. Edit-only seeds are stripped on
           // save by stripEmptyBlocks, so they never persist.
           onChangeFormData(formDataToSend);
+          onEditorLoaded(formDataToSend);
 
+          sendHeldImages(source, origin);
           source.postMessage({
             type: 'INITIAL_DATA',
             data: formDataToSend,
@@ -4623,6 +4906,7 @@ const Iframe = (props) => {
             slateConfig: { hotkeys: config.settings.slate?.hotkeys || {}, toolbarButtons },
           }, origin);
           pendingInitialDataRef.current = null;
+          focusEditingPageIfIdle();
         })().catch(err => {
           log('[INITIAL_DATA] ERROR in forced-layout merge:', err.message, err.stack);
           console.error('[INITIAL_DATA] Error (forced-layout):', err);
@@ -4653,11 +4937,13 @@ const Iframe = (props) => {
           return;
         }
 
-        const { source, origin, formData: baseFormData } = pendingInitialDataRef.current;
+        const { source, origin, formData: preparedFormData, copyTranslationFrom } = pendingInitialDataRef.current;
+        const baseFormData = await withTranslationCopy(preparedFormData, copyTranslationFrom, api);
         const toolbarButtons = config.settings.slate?.toolbarButtons || [];
 
         // Update template cache
         templateCacheRef.current = { ...templateCacheRef.current, ...newTemplates };
+        for (const [id, template] of Object.entries(newTemplates)) if (template) rememberStored(id, template);
 
         // Create loadTemplate that uses cache and falls back to API
         const loadTemplate = async (templateId) => {
@@ -4667,6 +4953,7 @@ const Iframe = (props) => {
           // Load from API and cache
           const template = adoptTemplate(await api.get(templateId), templateId);
           templateCacheRef.current[templateId] = template;
+          rememberStored(templateId, template);
           return template;
         };
 
@@ -4713,6 +5000,7 @@ const Iframe = (props) => {
         }
 
         // Send INITIAL_DATA
+        sendHeldImages(source, origin);
         source.postMessage({
           type: 'INITIAL_DATA',
           data: formDataToSend,
@@ -4722,6 +5010,7 @@ const Iframe = (props) => {
           slateConfig: { hotkeys: config.settings.slate?.hotkeys || {}, toolbarButtons },
         }, origin);
         pendingInitialDataRef.current = null;
+        focusEditingPageIfIdle();
 
         // Update Redux with the SAME data sent to the iframe (including seeded
         // empty placeholders). Committing the pre-seed mergedFormData instead
@@ -4730,6 +5019,7 @@ const Iframe = (props) => {
         // next Redux-sourced FORM_DATA sync. Edit-only seeds are stripped on save
         // by stripEmptyBlocks, so they never persist.
         onChangeFormData(formDataToSend);
+        onEditorLoaded(formDataToSend);
       })().catch(err => {
         log('[INITIAL_DATA] ERROR in template loading/merge:', err.message, err.stack);
         console.error('[INITIAL_DATA] Error:', err);
@@ -4846,6 +5136,21 @@ const Iframe = (props) => {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [properties, iframeSyncState.toolbarRequestDone, templateSyncTrigger]);
 
+  // Each image held from now on goes to the canvas once, ahead of the
+  // FORM_DATA that names it (postMessage keeps their order). A canvas not yet
+  // loaded gets them all with its INITIAL_DATA (sendHeldImages).
+  useEffect(
+    () =>
+      onImageHeld((ref, image) => {
+        if (!iframeOriginRef.current) return;
+        document.getElementById('previewIframe')?.contentWindow?.postMessage(
+          { type: 'PENDING_IMAGE', ref, blob: image.file },
+          iframeOriginRef.current,
+        );
+      }),
+    [],
+  );
+
   const sidebarFocusEventListenerRef = useRef(null);
 
   useEffect(() => {
@@ -4896,8 +5201,10 @@ const Iframe = (props) => {
     );
   }, [selectedBlock, iframeSyncState.blockPathMap, iframeSyncState.formData, intl]);
 
-  // Filter allowedBlocks by parent's variation if inheritSchemaFrom with blocksField is configured
-  // This ensures new blocks match the parent's item type selection (container use case)
+  // Filter allowedBlocks by parent's variation if its inheritSchemaFrom recipe
+  // names a typeField whose picker has a blocksField (declared on the type
+  // field, where the picker reads it). This ensures new blocks match the
+  // parent's item type selection (container use case)
   const filterByParentVariation = useCallback((rawAllowedBlocks, parentBlockData, parentType) => {
     if (!rawAllowedBlocks || !parentBlockData || !parentType) {
       return rawAllowedBlocks;
@@ -4909,7 +5216,10 @@ const Iframe = (props) => {
       ? schemaEnhancer.config
       : schemaEnhancer?.inheritSchemaFrom;
     const typeField = schemaEnhancerConfig?.typeField;
-    const blocksField = schemaEnhancerConfig?.blocksField;
+    const blocksField =
+      typeField &&
+      getBlockTypeSchema(parentType, intl, config.blocks.blocksConfig)?.properties?.[typeField]
+        ?.blocksField;
 
     // Only filter when blocksField is set and not '..' (container use case)
     // Listing use case (blocksField: '..') doesn't need BlockChooser filtering
@@ -4923,7 +5233,7 @@ const Iframe = (props) => {
       return [variationValue];
     }
     return rawAllowedBlocks;
-  }, []);
+  }, [intl]);
 
   // Iframe add: adds AFTER the selected block (as sibling)
   // Uses parentContainerConfig.allowedBlocks, or page-level allowedBlocks
@@ -5200,39 +5510,62 @@ const Iframe = (props) => {
     }
   }, [iframeAllowedBlocks, selectedBlock, insertAndSelectBlock, iframeSyncState.blockPathMap, properties, blocksConfig, intl, onChangeFormData]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Convert a block to newType IN PLACE (container-aware), returning new formData.
-  // Container blocks (any region with children) go through reshapeContainerBlock
-  // — it carries their children over AND cascade-converts each cell to a type the
-  // target region allows (pathMap-aware). A childless block converts its own fields.
-  // Shared by the chooser commit and the auto-convert-on-drop/paste paths.
-  const convertBlockInPlace = (props, bpm, blockId, newType) => {
-    const blockData = getBlockById(props, bpm, blockId);
-    if (!blockData) return props;
-    const hasChildren = getContainerRegionDescriptors(
-      blockData['@type'], blocksConfig, intl, blockData,
-    ).some((d) => getChildBlockEntries(blockData, d).length > 0);
-    if (hasChildren) {
-      return reshapeContainerBlock(props, bpm, blockId, newType, blocksConfig, intl);
+  // Fill an empty from the frontend's own add button once it is selected: the
+  // same gesture as the '+' (handleIframeAdd), with the chooser anchored at the
+  // frontend's button.
+  useEffect(() => {
+    if (!pendingFill || selectedBlock !== pendingFill.uid) return;
+    const { rect } = pendingFill;
+    setPendingFill(null);
+    if (rect && referenceElement) {
+      const frame = referenceElement.getBoundingClientRect();
+      setChooserAnchor(new DOMRect(frame.left + rect.left, frame.top + rect.top, rect.width, rect.height));
     }
-    const typeFieldName = bpm?.[blockId]?.typeField || '@type';
-    let newBlockData = convertBlockType(blockData, newType, blocksConfig, typeFieldName, intl);
-    // Converting a TEMPLATE-MEMBER block keeps it template content — carry its
-    // membership over. convertBlockType builds a fresh block from the type's
-    // fields, so without this, filling a locked empty (in template-edit-mode)
-    // would drop templateId/templateInstanceId/fixed/readOnly and the new block
-    // would become per-page (and lose its lock). No-op for normal page blocks.
-    for (const k of ['templateId', 'templateInstanceId', 'slotId', 'fixed', 'readOnly']) {
-      if (blockData[k] !== undefined) newBlockData = { ...newBlockData, [k]: blockData[k] };
-    }
-    // An object_list item is found by its idField, which is not one of its
-    // type's fields, so a conversion with no field mapping (filling an empty
-    // placeholder) drops it: the item then has no id and cannot be rendered,
-    // selected or edited. It is the same item, typed in place — keep its id.
-    const idField = bpm?.[blockId]?.isObjectListItem ? bpm[blockId].idField : null;
-    if (idField && blockData[idField] !== undefined) {
-      newBlockData = { ...newBlockData, [idField]: blockData[idField] };
-    }
-    return updateBlockById(props, bpm, blockId, newBlockData);
+    handleIframeAdd();
+  }, [pendingFill, selectedBlock, handleIframeAdd, referenceElement]);
+
+  // Convert a block to newType IN PLACE (see convertBlockInPlace in blockSync):
+  // shared by the chooser commit and the auto-convert-on-drop/paste paths.
+  const convertBlockInPlace = (props, bpm, blockId, newType) =>
+    convertBlockInPlaceIn(props, bpm, blockId, newType, blocksConfig, intl);
+
+  // Save a conversion the editor asked for: run the `@type` rules in case the
+  // new type re-types it or a sibling, then hand the page on. No confirm here —
+  // the pick was the ask.
+  const commitConverted = (updatedProperties, doneTag = 'convert-block') => {
+    const settled = applySchemaDefaultsToFormData(
+      updatedProperties, buildBlockPathMap(updatedProperties, blocksConfig, intl), blocksConfig, intl,
+    );
+    onChangeFormData(settled);
+    setIframeSyncState(prev => ({
+      ...prev,
+      formData: settled,
+      blockPathMap: buildBlockPathMap(settled, blocksConfig, intl),
+      toolbarRequestDone: `${doneTag}-${Date.now()}`,
+    }));
+  };
+
+  // The types a block can be changed to where it stands — the one list the
+  // toolbar's "Convert to…" and the sidebar's controls all offer.
+  const convertTargetsFor = (blockId) => {
+    const bpm = iframeSyncState.blockPathMap;
+    const blockData = blockId ? getBlockById(properties, bpm, blockId) : null;
+    if (!blockData) return [];
+    return getConvertTargets(
+      blockData, blocksConfig, bpm?.[blockId]?.allowedSiblingTypes, intl,
+      bpm?.[blockId]?.typeField || '@type',
+    );
+  };
+
+  // Change a block's type because the editor asked to — from the toolbar's
+  // "Convert to…", the sidebar header's type dropdown or the sidebar's block
+  // menu. One conversion for all of them, done straight away: one change, so
+  // one undo. Nothing is lost — a value the new type has no field for stays on
+  // the block, and converting back brings it back.
+  const requestConvert = (blockId, newType) => {
+    commitConverted(
+      convertBlockInPlace(properties, iframeSyncState.blockPathMap, blockId, newType),
+    );
   };
 
   // Commits a chooser action (wrap or convert) once the user picks a target type.
@@ -5271,6 +5604,8 @@ const Iframe = (props) => {
           blockPathMap: buildBlockPathMap(updatedProperties, blocksConfig, intl),
           toolbarRequestDone: `paste-convert-${Date.now()}`,
         }));
+      } else if (chooser.kind === 'convert' && !chooser.pendingMove) {
+        requestConvert(chooser.blockId, newType);
       } else if (chooser.kind === 'convert') {
         const blockData = getBlockById(properties, bpm, chooser.blockId);
         if (blockData) {
@@ -5310,19 +5645,7 @@ const Iframe = (props) => {
             );
             updatedProperties = settledDrop.formData;
           }
-          // The pick placed the block; run `@type` rules in case its new position
-          // re-types it or a sibling. No second confirm — the pick was the ask.
-          updatedProperties = applySchemaDefaultsToFormData(
-            updatedProperties, buildBlockPathMap(updatedProperties, blocksConfig, intl), blocksConfig, intl,
-          );
-          onChangeFormData(updatedProperties);
-          const newBlockPathMap = buildBlockPathMap(updatedProperties, blocksConfig, intl);
-          setIframeSyncState(prev => ({
-            ...prev,
-            formData: updatedProperties,
-            blockPathMap: newBlockPathMap,
-            toolbarRequestDone: `convert-block-${Date.now()}`,
-          }));
+          commitConverted(updatedProperties);
         }
       }
     } catch (err) {
@@ -5348,13 +5671,6 @@ const Iframe = (props) => {
   // fresh, add the instance to the unlocked set, and tell the iframe. Does NOT
   // lock the rest of the page.
   const enterTemplateEdit = async (instanceId) => {
-    // Snapshot the current page so "Reset changes" can revert only this template's
-    // blocks later, leaving page edits intact.
-    templateSnapshotsRef.current[instanceId] = properties;
-
-    // Re-fetch the template fresh into the cache — templateCacheRef persists across
-    // page navigations, so without this we'd commit a stale copy. Skip for a
-    // not-yet-saved template (_isNew): a GET would 404 / return a stub and clobber it.
     let editTemplateId = null;
     for (const block of Object.values(iframeSyncState.formData?.blocks || {})) {
       if (block.templateInstanceId === instanceId && block.templateId) {
@@ -5362,12 +5678,43 @@ const Iframe = (props) => {
         break;
       }
     }
-    if (editTemplateId && !templateCacheRef.current[editTemplateId]?._isNew) {
+
+    // Lock the template on the site, as opening a page to edit locks the page.
+    // Someone else has it unlocked: it stays locked here, and the author is told
+    // who. A new template isn't on the site yet, so there's nothing to lock.
+    // One this editor still holds (locked here since, but the page not saved
+    // yet) keeps both its lock and its copy here: that copy has the edits.
+    const stillHeld = !!heldTemplateLocksRef.current[instanceId];
+    if (editTemplateId && !stillHeld && !templateCacheRef.current[editTemplateId]?._isNew) {
+      const lock = await new Api().post(`${editTemplateId}/@lock`, { data: {} });
+      const holder = lockedBy(lock, sessionToken);
+      if (holder) {
+        toast.error(
+          <Toast
+            error
+            title="Someone else is changing this template"
+            content={`${holder.user} has it unlocked. It can be changed once they are done.`}
+          />,
+        );
+        return;
+      }
+      heldTemplateLocksRef.current[instanceId] = editTemplateId;
+    }
+
+    // Snapshot the current page so "Reset changes" can revert only this template's
+    // blocks later, leaving page edits intact.
+    templateSnapshotsRef.current[instanceId] = properties;
+
+    // Re-fetch the template fresh into the cache — templateCacheRef persists across
+    // page navigations, so without this we'd commit a stale copy. Skip for a
+    // not-yet-saved template (_isNew): a GET would 404 / return a stub and clobber it.
+    if (editTemplateId && !stillHeld && !templateCacheRef.current[editTemplateId]?._isNew) {
       try {
         templateCacheRef.current[editTemplateId] = adoptTemplate(
           await new Api().get(editTemplateId),
           editTemplateId,
         );
+        rememberStored(editTemplateId, templateCacheRef.current[editTemplateId]);
       } catch {
         // Offline / 404 — keep whatever's cached rather than dropping it.
       }
@@ -5385,16 +5732,13 @@ const Iframe = (props) => {
   // inline edits; the flush-complete effect reverse-merges into the template and
   // saves the template document, then drops this instance from the unlocked set.
   const commitTemplateEdit = (instanceId) => {
-    const validation = validateTemplatePlaceholders(iframeSyncState.formData);
-    if (!validation.valid) {
-      const firstError = Object.values(validation.blocksErrors)[0]?._layout;
-      toast.error(
-        <Toast
-          error
-          title={firstError?.title || 'Invalid Template Structure'}
-          content={firstError?.message || 'Please fix the template structure before locking.'}
-        />,
-      );
+    if (
+      refuseInvalidTemplate(
+        iframeSyncState.formData,
+        (block) => block.templateInstanceId === instanceId,
+        "This template can't be saved",
+      )
+    ) {
       return false; // keep it unlocked so the user can fix it
     }
     const requestId = `tpl-commit-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
@@ -5502,6 +5846,400 @@ const Iframe = (props) => {
   };
   agentLiveRef.current.onChangeBlock = onChangeBlock;
 
+  // The block actions (table rows and columns) a block's ⋯ menu and its
+  // toolbar buttons offer, for any block: the Quanta toolbar and the sidebar
+  // both run them here.
+  const handleBlockAction = (actionId, blockId) => {
+    // Generic action handler - dispatches based on action type
+    const pathInfo = iframeSyncState.blockPathMap?.[blockId];
+
+    if (actionId === 'deleteColumn' && pathInfo?.parentAddMode === 'table') {
+      const cellIndex = pathInfo.path[pathInfo.path.length - 1];
+      const newFormData = deleteTableColumn(properties, iframeSyncState.blockPathMap, blockId);
+      if (newFormData) {
+        // Determine what to select after deletion BEFORE triggering re-render
+        let selectBlockId = pathInfo.parentId;
+
+        if (cellIndex > 0) {
+          // Find the cell in the previous column (same row)
+          const newBlockPathMap = buildBlockPathMap(newFormData, blocksConfig, intl);
+          const rowBlock = getBlockByPath(newFormData, newBlockPathMap[pathInfo.parentId]?.path);
+          if (rowBlock?.cells?.[cellIndex - 1]) {
+            selectBlockId = rowBlock.cells[cellIndex - 1].key;
+          }
+        }
+
+        // Set pending selection BEFORE form update to prevent sidebar from rendering deleted block
+        flushSync(() => {
+          setIframeSyncState((prev) => ({
+            ...prev,
+            pendingSelectBlockUid: selectBlockId,
+          }));
+        });
+
+        // Clear current selection and update form
+        onSelectBlock(null);
+        onChangeFormData(newFormData);
+      }
+    } else if (actionId === 'deleteRow') {
+      // Delete row - works from row itself OR from a cell (deletes parent row)
+      let rowId = blockId;
+      let rowPathInfo = pathInfo;
+      let cellIndex = null;
+
+      // If called from a cell, find the parent row and track cell index
+      if (pathInfo?.parentAddMode === 'table') {
+        cellIndex = pathInfo.path[pathInfo.path.length - 1];
+        rowId = pathInfo.parentId;
+        rowPathInfo = iframeSyncState.blockPathMap?.[rowId];
+      }
+
+      if (rowPathInfo?.addMode === 'table') {
+        const containerConfig = getContainerFieldConfig(rowId, iframeSyncState.blockPathMap, properties, blocksConfig, intl);
+        const rowIndex = rowPathInfo.path[rowPathInfo.path.length - 1];
+
+        // A row delete is a delete: deleteBlocks removes it and settles what
+        // that disturbed (re-seeding the table if it took the last row),
+        // and brings the lock backstop with it — a row of locked template
+        // chrome is not the author's to remove from a page.
+        const { formData: newFormData, deleted: deletedRows } = deleteBlocks(
+          properties,
+          iframeSyncState.blockPathMap,
+          [rowId],
+          { blocksConfig, intl, uuidGenerator: uuid, templateEditMode: iframeSyncState.templateEditMode, metadata },
+        );
+        if (deletedRows.length > 0) {
+
+          // Determine what to select after deletion BEFORE triggering re-render
+          // If called from a cell, select corresponding cell in previous row
+          // Otherwise, select the parent table
+          let selectBlockId = rowPathInfo.parentId;
+
+          if (cellIndex != null && rowIndex > 0) {
+            // Find the previous row and its corresponding cell
+            const newBlockPathMap = buildBlockPathMap(newFormData, blocksConfig, intl);
+            const tableBlock = getBlockByPath(newFormData, newBlockPathMap[rowPathInfo.parentId]?.path);
+            const dataPath = [...(containerConfig.regionPath || []), containerConfig.region || 'rows'];
+            let rows = tableBlock;
+            for (const key of dataPath) {
+              rows = rows?.[key];
+            }
+            const prevRow = rows?.[rowIndex - 1];
+            if (prevRow?.cells?.[cellIndex]) {
+              selectBlockId = prevRow.cells[cellIndex].key;
+            }
+          }
+
+          // Set pending selection BEFORE form update to prevent sidebar from rendering deleted block
+          flushSync(() => {
+            setIframeSyncState((prev) => ({
+              ...prev,
+              pendingSelectBlockUid: selectBlockId,
+            }));
+          });
+
+          // Clear current selection and update form
+          onSelectBlock(null);
+          onChangeFormData(newFormData);
+        }
+      }
+    } else if (actionId === 'addRowBefore' || actionId === 'addRowAfter') {
+      // Add row uses existing insertAndSelectBlock with 'before' or 'after'
+      // If called from a cell, use the parent row and track cell index for selection
+      const action = actionId === 'addRowBefore' ? 'before' : 'after';
+      let targetBlock = blockId;
+      let selectChildIndex = null;
+      if (pathInfo?.parentAddMode === 'table') {
+        // We're in a cell - find its index so we can select corresponding cell in new row
+        // Cell index is the last element in the path
+        selectChildIndex = pathInfo.path[pathInfo.path.length - 1];
+        targetBlock = pathInfo.parentId;
+      }
+      insertAndSelectBlock(targetBlock, null, action, null, { selectChildIndex });
+    } else if (actionId === 'addColumnBefore' || actionId === 'addColumnAfter') {
+      // Add column uses insertAndSelectBlock which detects table mode
+      const action = actionId === 'addColumnBefore' ? 'before' : 'after';
+      insertAndSelectBlock(blockId, null, action);
+    }
+  };
+
+  // "Wrap in container…" for a selection of blocks: offered when they share a
+  // parent and some container can hold them all.
+  const wrapPropsFor = (blockIds) => {
+    if (blockIds.length < 1) return {};
+    const bpm = iframeSyncState.blockPathMap;
+    const firstCC = getContainerFieldConfig(blockIds[0], bpm, properties, blocksConfig, intl);
+    if (!firstCC || firstCC.isObjectList) return {};
+    for (const id of blockIds.slice(1)) {
+      const cc = getContainerFieldConfig(id, bpm, properties, blocksConfig, intl);
+      if (!cc || cc.parentId !== firstCC.parentId || cc.region !== firstCC.region) {
+        return {};
+      }
+    }
+    const selectedTypes = blockIds.map((id) => {
+      const data = getBlockById(properties, bpm, id);
+      return data?.['@type'];
+    }).filter(Boolean);
+    const parentPath = firstCC.parentId === PAGE_BLOCK_UID
+      ? [] : bpm[firstCC.parentId]?.path;
+    const parentBlock = getBlockByPath(properties, parentPath);
+    const parentItems = parentBlock ? getContainerItems(parentBlock, firstCC) : [];
+    const itemsAfter = parentItems.length - blockIds.length + 1;
+    const parentAllows = (t) => !firstCC.allowedBlocks || firstCC.allowedBlocks.includes(t);
+
+    const eligibleTypes = [];
+    for (const [type, cfg] of Object.entries(blocksConfig || {})) {
+      if (!cfg?.blockSchema) continue;
+      // A container's child field may be blocks_layout (section, columns) OR an
+      // object_list (a slider's `slides`). One descriptor covers both, so a slider is
+      // now offered as a wrap target too. A container whose field takes the
+      // selection only through its default child (a grid of columns) is offered
+      // too: the wrap adds that child around the blocks.
+      let route;
+      try { route = wrapRoute(type, selectedTypes, blocksConfig, intl); } catch { continue; }
+      if (!route) continue;
+      if (!parentAllows(type)) continue;
+      if (firstCC.maxLength != null && itemsAfter > firstCC.maxLength) continue;
+      eligibleTypes.push(type);
+    }
+    if (eligibleTypes.length === 0) return {};
+    return {
+      canWrap: true,
+      onOpenWrapChooser: () => setChooser({
+        kind: 'wrap', blockIds, allowedBlocks: eligibleTypes,
+      }),
+    };
+  };
+
+  // "Unwrap container" for a block that holds blocks.
+  const unwrapPropsFor = (blockId) => {
+    // Unwrap action props — only render for blocks that ARE containers.
+    // For leaf blocks (slate, image, etc.) omit onUnwrap so the menu
+    // item doesn't render.
+    const bpm = iframeSyncState.blockPathMap;
+    if (!blockId || !bpm?.[blockId]) return {};
+    const block = getBlockById(properties, bpm, blockId);
+    if (!block) return {};
+    // Read children from ALL regions + funnel, so a slider (children in `slides`) and a
+    // multi-region/mixed container are unwrappable the same as a section.
+    const childEntries = getContainerRegionDescriptors(
+      block['@type'],
+      blocksConfig,
+      intl,
+      block,
+    ).flatMap((d) => getChildBlockEntries(block, d));
+    if (childEntries.length === 0) return {}; // not a container with children
+
+    // Which container unwrapping this block removes, and whether through its
+    // default children (a grid's columns; a grid's only column unwraps the grid).
+    // Symmetric with wrap: works for object_list parents too.
+    const route = unwrapRoute(properties, bpm, blockId, blocksConfig, intl);
+
+    return {
+      canUnwrap: !!route,
+      onUnwrap: () => {
+        try {
+          const { formData: newFormData, promotedIds } = unwrapContainer(
+            properties, bpm, route.containerId, blocksConfig, intl, { through: route.through },
+          );
+          onChangeFormData(newFormData);
+          if (promotedIds.length > 0 && onSelectBlock) {
+            onSelectBlock(promotedIds[0]);
+          }
+        } catch (err) {
+          log('unwrapContainer failed:', err);
+        }
+      },
+    };
+  };
+
+  // "Make Template": the block becomes a new template, unlocked for editing.
+  const makeTemplate = (blockId) => {
+    // Create a new template from the selected block
+    const blockData = getBlockById(properties, iframeSyncState.blockPathMap, blockId);
+    if (!blockData) return;
+
+    // Generate a unique template ID and instance ID. The folder it
+    // starts in and its content type are the deployment's settings
+    // (newTemplateSettings); the user can save it elsewhere via the
+    // sidebar 'folder' field after creation.
+    let settings;
+    try {
+      settings = newTemplateSettings();
+    } catch (e) {
+      toast.error(<Toast error title="Couldn't make a template" content={e.message} />);
+      return;
+    }
+    const templateCount = Object.values(properties.blocks || {})
+      .filter(b => b.templateInstanceId === b.templateId)
+      .length;
+    const defaultName = `untitled-template-${templateCount + 1}`;
+    const newTemplateId = `${settings.folder}/${defaultName}`;
+    const newInstanceId = newTemplateId; // For new template, templateInstanceId === templateId
+
+    // Add template fields to the block, and to everything inside it:
+    // the merge takes a template's blocks by their templateId, so an
+    // unlabelled child is dropped from the template and from every
+    // published page (inka#231).
+    const updatedBlock = inheritTemplateMembershipDeep({
+      ...blockData,
+      templateId: newTemplateId,
+      templateInstanceId: newInstanceId,
+      slotId: 'default', // a layout's main content slot is always 'default'
+    }, idFieldMap);
+
+    // Update the block in formData
+    const updatedProperties = updateBlockById(
+      properties,
+      iframeSyncState.blockPathMap,
+      blockId,
+      updatedBlock
+    );
+
+    // Create a template document structure in cache. _isNew flags
+    // this for the save flow to POST (create on the backend) the
+    // first time, then PATCH on subsequent saves. Without _isNew,
+    // saveTemplatesRef would PATCH-only and 404 on a real Plone.
+    templateCacheRef.current[newTemplateId] = {
+      '@id': newTemplateId,
+      '@type': settings.type,
+      'title': defaultName,
+      'blocks': {
+        [blockId]: updatedBlock,
+      },
+      'blocks_layout': { items: [blockId] },
+      _isNew: true,
+    };
+
+    // Update Redux
+    onChangeFormData(updatedProperties);
+
+    // Rebuild blockPathMap
+    const newBlockPathMap = buildBlockPathMap(updatedProperties, blocksConfig, intl);
+
+    // Snapshot for Reset, and enter edit mode for the just-created
+    // template instance (no unlock warning — the user explicitly made it).
+    templateSnapshotsRef.current[newInstanceId] = updatedProperties;
+    const nextEdit = [
+      ...new Set([...(iframeSyncState.templateEditMode || []), newInstanceId]),
+    ];
+
+    // Find the template instance ID in the new pathMap
+    // (it will be created as a virtual container)
+    setIframeSyncState(prev => ({
+      ...prev,
+      formData: updatedProperties,
+      blockPathMap: newBlockPathMap,
+      toolbarRequestDone: `make-template-${Date.now()}`,
+      pendingSelectBlockUid: newInstanceId, // Select the template instance
+      templateEditMode: [
+        ...new Set([...(prev.templateEditMode || []), newInstanceId]),
+      ], // v2: add to the unlocked set
+    }));
+    postTemplateEditMode(nextEdit);
+  };
+
+  // Show or hide a block's empty optional fields on the canvas (#296, #765).
+  // Hydra owns which blocks are revealed — it's edit state that must never reach
+  // formData — so the admin sends the intent and reads the result back off
+  // BLOCK_SELECTED (blockUI.revealableFields / blockUI.revealed).
+  const toggleOptionalFields = (blockId) => {
+    document.getElementById('previewIframe')?.contentWindow?.postMessage(
+      { type: 'TOGGLE_OPTIONAL_FIELDS', blockUid: blockId },
+      iframeOriginRef.current,
+    );
+  };
+
+  // Take the author to a template: select it, so the sidebar shows its section
+  // (what it is, what unlocking it does, and the Unlock button).
+  const openTemplate = (instanceId) => {
+    onSelectBlock(instanceId);
+    expandSidebar();
+  };
+
+  // A block's ⋯ menu: what it offers and what each item does. The Quanta
+  // toolbar and the block's sidebar header both draw their menu from this, so
+  // the two are the same menu; each adds only what belongs to where it opens
+  // (the toolbar its overflowing format buttons and Settings, which opens the
+  // sidebar).
+  const blockMenuProps = (blockId) => {
+    const bpm = iframeSyncState.blockPathMap;
+    const pathInfo = bpm?.[blockId];
+    const block = pathInfo?.isTemplateInstance
+      ? pathInfo.blockData
+      : getBlockById(properties, bpm, blockId);
+    // The top-level template this block belongs to (or is): "Edit template"
+    // takes the author there; once it is unlocked, "Save template" locks it.
+    const instanceId = topTemplateInstanceOf(bpm, blockId);
+    const canEditTemplate = instanceId
+      ? templateCacheRef.current?.[bpm[instanceId].templateId]?.can_edit ?? true
+      : false;
+    const editingTemplate = !!instanceId
+      && (iframeSyncState.templateEditMode || []).includes(instanceId);
+    // A block that can't be edited here can't be changed to another type either.
+    const convertibleTypes =
+      blockId === PAGE_BLOCK_UID || isBlockReadonly(block, iframeSyncState.templateEditMode)
+        ? []
+        : convertTargetsFor(blockId);
+    // Copy, cut and wrap act on the whole selection when the block is part of
+    // it; otherwise wrap acts on the block itself (a lone Button goes into a
+    // section), unless it can't be changed here, as for Convert to….
+    const selection = multiSelected?.includes(blockId)
+      ? multiSelected
+      : blockId === PAGE_BLOCK_UID ||
+          isBlockReadonly(block, iframeSyncState.templateEditMode)
+        ? []
+        : [blockId];
+    return {
+      selectedBlock: blockId,
+      onDeleteBlock,
+      onSelectBlock,
+      parentId: pathInfo?.parentId,
+      tableActions: pathInfo?.actions,
+      onTableAction: (actionId) => handleBlockAction(actionId, blockId),
+      addMode: pathInfo?.addMode,
+      parentAddMode: pathInfo?.parentAddMode,
+      // Which way the block adds (a table's cells add columns) is what the page
+      // reports for the block it has selected.
+      addDirection: blockId === selectedBlock ? blockUI?.addDirection : undefined,
+      convertibleTypes,
+      onOpenConvertChooser: () => setChooser({
+        kind: 'convert',
+        blockId,
+        allowedBlocks: convertibleTypes.map((t) => t.type),
+      }),
+      ...wrapPropsFor(selection),
+      ...unwrapPropsFor(blockId),
+      // `fixed` keeps a template's block on the PAGE; the template's author,
+      // once it is unlocked, may remove it.
+      isFixed: !!pathInfo?.isFixed && !editingTemplate,
+      isInTemplate: !!block?.templateId,
+      onMakeTemplate: () => makeTemplate(blockId),
+      isTemplateInstance: canEditTemplate,
+      isEditingTemplate: editingTemplate,
+      // Locked: a block of the template opens it; the template itself, already
+      // open, is unlocked (with its warning). Unlocked: it is saved and locked.
+      onToggleTemplateEdit: canEditTemplate
+        ? () => (editingTemplate || instanceId === blockId
+          ? handleToggleTemplateEditMode(instanceId)
+          : openTemplate(instanceId))
+        : null,
+      multiSelectedUids: selection.length > 1 ? selection : null,
+      hasClipboard: !!(blocksClipboard?.cut || blocksClipboard?.copy),
+      pasteAllowed: pasteAllowedAfter(blockId),
+      // Show/Hide empty fields: what the page reports for the block it has
+      // selected, so only there. Never on a block that can't be edited.
+      ...(blockId === selectedBlock && blockId !== PAGE_BLOCK_UID
+        && !isBlockReadonly(block, iframeSyncState.templateEditMode)
+        ? {
+            revealableFields: blockUI?.revealableFields || [],
+            revealed: !!blockUI?.revealed,
+            onToggleReveal: () => toggleOptionalFields(blockId),
+          }
+        : {}),
+    };
+  };
+
   // Entry point for the sidebar "Edit template" toggle AND the Quanta toolbar lock
   // icon. Unlocking warns first; locking asks what to do with the edits. The actual
   // enter/commit/reset run from the modal's buttons.
@@ -5518,7 +6256,11 @@ const Iframe = (props) => {
     // during the unlock session, lock silently (no prompt, no save); otherwise show
     // the Change/Reset/Cancel modal.
     await flushIframeEdits();
-    if (isInstanceUnchanged(instanceId, propertiesRef.current)) {
+    // A new template (Make template) is on no other page yet: locking it creates
+    // it, so there is nothing to ask and an unchanged one must still be saved.
+    if (templateCacheRef.current[templateIdOfInstance(propertiesRef.current, instanceId)]?._isNew) {
+      commitTemplateEdit(instanceId);
+    } else if (isInstanceUnchanged(instanceId, propertiesRef.current)) {
       exitTemplateEditNoSave(instanceId);
     } else {
       setTemplateModal({ kind: 'lock', instanceId });
@@ -5663,7 +6405,11 @@ const Iframe = (props) => {
           <div
             ref={setPopperElement}
             className="add-new-block-popup"
-            style={styles.popper}
+            style={
+              chooserHeight === null
+                ? styles.popper
+                : { ...styles.popper, minHeight: `${chooserHeight}px` }
+            }
             {...attributes.popper}
           >
             {chooser ? (
@@ -5770,6 +6516,40 @@ const Iframe = (props) => {
           const cb = convertConfirm?.onConfirm;
           setConvertConfirm(null);
           if (cb) cb();
+        }}
+      />
+      {/* "Remove these slots?" — a commit that drops a slot pages may use. */}
+      <Confirm
+        open={!!slotRemovalConfirm}
+        header={
+          slotRemovalConfirm?.slots.length === 1 ? 'Remove a slot?' : 'Remove slots?'
+        }
+        content={
+          slotRemovalConfirm ? (
+            <div className="content" data-testid="slot-removal-confirm">
+              <p>
+                This change removes{' '}
+                {slotRemovalConfirm.slots.map((slotId, i) => (
+                  <React.Fragment key={slotId}>
+                    {i > 0 && ', '}
+                    <strong>{slotId}</strong>
+                  </React.Fragment>
+                ))}{' '}
+                from {slotRemovalConfirm.templateId}. Pages using it may have content
+                there, which would have nowhere to go. Inka can't tell which pages.
+              </p>
+            </div>
+          ) : null
+        }
+        confirmButton="Remove"
+        cancelButton="Keep editing"
+        onCancel={() => {
+          slotRemovalConfirm?.resolve(false);
+          setSlotRemovalConfirm(null);
+        }}
+        onConfirm={() => {
+          slotRemovalConfirm?.resolve(true);
+          setSlotRemovalConfirm(null);
         }}
       />
       {/* Slash menu — appears under the field in the iframe where "/" was typed */}
@@ -5890,8 +6670,12 @@ const Iframe = (props) => {
               it. Read-only — no bridge, no editing chrome — beside the draft,
               which is the pane the editor works in. */}
           {comparePreviewUrl && (
-            // The pane is inert (its iframe takes no pointer events), so a
-            // click lands here — which is how it gets selected.
+            // The sidebar belongs to the pane the author moved into last:
+            // focus arriving in this wrapper (a click, or Tab onto it) or in
+            // its page (CANVAS_FOCUSED, onCanvasFocus) gives it the sidebar,
+            // and the page being edited reporting focus takes it back. Focus
+            // going anywhere else — the sidebar itself — leaves it where it
+            // is. No page takes focus by itself, so focus is the author's.
             <div
               className={
                 selectedPane === 'compare'
@@ -5902,8 +6686,8 @@ const Iframe = (props) => {
               // counterpart of the one selected next door, or nothing when the
               // selected block was added after the copy.
               data-showing-block={counterpartOfSelected || ''}
+              onFocus={() => setSelectedPane('compare')}
               onClick={() => setSelectedPane('compare')}
-              onKeyDown={(e) => e.key === 'Enter' && setSelectedPane('compare')}
               role="button"
               tabIndex={0}
               aria-pressed={selectedPane === 'compare'}
@@ -5923,19 +6707,14 @@ const Iframe = (props) => {
                 // the copy has no counterpart, and nothing lights up: that is
                 // itself worth seeing, because the block is new.
                 showBlock={counterpartOfSelected}
+                // Which of its blocks to show the fields of. A selection
+                // there never takes control: the pane also answers the
+                // admin, which selects the counterpart of the block selected
+                // next door, and re-announces on a resize or a re-render.
                 onSelectBlock={(uid) => {
-                  // Only when the editor is actually IN that pane. The pane
-                  // also echoes back the selection we drive into it from the
-                  // page being edited, and that must not take the sidebar.
-                  if (
-                    typeof document !== 'undefined' &&
-                    document.activeElement?.id !== 'translationSourceIframe'
-                  ) {
-                    return;
-                  }
-                  setSelectedPane('compare');
                   setCompareSelectedBlock(uid);
                 }}
+                onCanvasFocus={() => setSelectedPane('compare')}
               />
             </div>
           )}
@@ -6209,119 +6988,7 @@ const Iframe = (props) => {
             parentId={iframeSyncState.blockPathMap?.[selectedBlock]?.parentId}
             maxToolbarWidth={referenceElement?.getBoundingClientRect()?.width || 400}
             blockActions={iframeSyncState.blockPathMap?.[selectedBlock]?.actions}
-            onBlockAction={(actionId) => {
-              // Generic action handler - dispatches based on action type
-              const pathInfo = iframeSyncState.blockPathMap?.[selectedBlock];
-
-              if (actionId === 'deleteColumn' && pathInfo?.parentAddMode === 'table') {
-                const cellIndex = pathInfo.path[pathInfo.path.length - 1];
-                const newFormData = deleteTableColumn(properties, iframeSyncState.blockPathMap, selectedBlock);
-                if (newFormData) {
-                  // Determine what to select after deletion BEFORE triggering re-render
-                  let selectBlockId = pathInfo.parentId;
-
-                  if (cellIndex > 0) {
-                    // Find the cell in the previous column (same row)
-                    const newBlockPathMap = buildBlockPathMap(newFormData, blocksConfig, intl);
-                    const rowBlock = getBlockByPath(newFormData, newBlockPathMap[pathInfo.parentId]?.path);
-                    if (rowBlock?.cells?.[cellIndex - 1]) {
-                      selectBlockId = rowBlock.cells[cellIndex - 1].key;
-                    }
-                  }
-
-                  // Set pending selection BEFORE form update to prevent sidebar from rendering deleted block
-                  flushSync(() => {
-                    setIframeSyncState((prev) => ({
-                      ...prev,
-                      pendingSelectBlockUid: selectBlockId,
-                    }));
-                  });
-
-                  // Clear current selection and update form
-                  onSelectBlock(null);
-                  onChangeFormData(newFormData);
-                }
-              } else if (actionId === 'deleteRow') {
-                // Delete row - works from row itself OR from a cell (deletes parent row)
-                let rowId = selectedBlock;
-                let rowPathInfo = pathInfo;
-                let cellIndex = null;
-
-                // If called from a cell, find the parent row and track cell index
-                if (pathInfo?.parentAddMode === 'table') {
-                  cellIndex = pathInfo.path[pathInfo.path.length - 1];
-                  rowId = pathInfo.parentId;
-                  rowPathInfo = iframeSyncState.blockPathMap?.[rowId];
-                }
-
-                if (rowPathInfo?.addMode === 'table') {
-                  const containerConfig = getContainerFieldConfig(rowId, iframeSyncState.blockPathMap, properties, blocksConfig, intl);
-                  const rowIndex = rowPathInfo.path[rowPathInfo.path.length - 1];
-
-                  // A row delete is a delete: deleteBlocks removes it and settles what
-                  // that disturbed (re-seeding the table if it took the last row),
-                  // and brings the lock backstop with it — a row of locked template
-                  // chrome is not the author's to remove from a page.
-                  const { formData: newFormData, deleted: deletedRows } = deleteBlocks(
-                    properties,
-                    iframeSyncState.blockPathMap,
-                    [rowId],
-                    { blocksConfig, intl, uuidGenerator: uuid, templateEditMode: iframeSyncState.templateEditMode, metadata },
-                  );
-                  if (deletedRows.length > 0) {
-
-                    // Determine what to select after deletion BEFORE triggering re-render
-                    // If called from a cell, select corresponding cell in previous row
-                    // Otherwise, select the parent table
-                    let selectBlockId = rowPathInfo.parentId;
-
-                    if (cellIndex != null && rowIndex > 0) {
-                      // Find the previous row and its corresponding cell
-                      const newBlockPathMap = buildBlockPathMap(newFormData, blocksConfig, intl);
-                      const tableBlock = getBlockByPath(newFormData, newBlockPathMap[rowPathInfo.parentId]?.path);
-                      const dataPath = [...(containerConfig.regionPath || []), containerConfig.region || 'rows'];
-                      let rows = tableBlock;
-                      for (const key of dataPath) {
-                        rows = rows?.[key];
-                      }
-                      const prevRow = rows?.[rowIndex - 1];
-                      if (prevRow?.cells?.[cellIndex]) {
-                        selectBlockId = prevRow.cells[cellIndex].key;
-                      }
-                    }
-
-                    // Set pending selection BEFORE form update to prevent sidebar from rendering deleted block
-                    flushSync(() => {
-                      setIframeSyncState((prev) => ({
-                        ...prev,
-                        pendingSelectBlockUid: selectBlockId,
-                      }));
-                    });
-
-                    // Clear current selection and update form
-                    onSelectBlock(null);
-                    onChangeFormData(newFormData);
-                  }
-                }
-              } else if (actionId === 'addRowBefore' || actionId === 'addRowAfter') {
-                // Add row uses existing insertAndSelectBlock with 'before' or 'after'
-                // If called from a cell, use the parent row and track cell index for selection
-                const action = actionId === 'addRowBefore' ? 'before' : 'after';
-                let targetBlock = selectedBlock;
-                let selectChildIndex = null;
-                if (pathInfo?.parentAddMode === 'table') {
-                  // We're in a cell - find its index so we can select corresponding cell in new row
-                  // Cell index is the last element in the path
-                  selectChildIndex = pathInfo.path[pathInfo.path.length - 1];
-                  targetBlock = pathInfo.parentId;
-                }
-                insertAndSelectBlock(targetBlock, null, action, null, { selectChildIndex });
-              } else if (actionId === 'addColumnBefore' || actionId === 'addColumnAfter') {
-                // Add column uses insertAndSelectBlock which detects table mode
-                const action = actionId === 'addColumnBefore' ? 'before' : 'after';
-                insertAndSelectBlock(selectedBlock, null, action);
-              }
-            }}
+            onBlockAction={(actionId) => handleBlockAction(actionId, selectedBlock)}
             onFieldLinkChange={(fieldName, url, metadata) => {
               let updatedProperties;
 
@@ -6372,21 +7039,27 @@ const Iframe = (props) => {
                 if (!block) return;
 
                 const blockCfg = config.blocks.blocksConfig[block['@type']];
-                const isUrlField = blockCfg && getUrlField(blockCfg) === fieldName;
+                // Any link-typed field stores a snapshot and resolves a typed URL;
+                // only the DECLARED source hands fields over to the link below.
+                const isUrlField = blockCfg && linkFields(blockCfg).includes(fieldName);
+                const isSourceField = blockCfg && getSourceField(blockCfg) === fieldName;
 
                 // Store a link `value` (object_browser array shape) and its metadata,
                 // pull every linked field from the (now full) snapshot, flip edited
                 // fields custom, then push FORM_DATA. Shared by pick / typed / fetched.
                 const applyLinkValue = (value, extraMeta) => {
                   let updatedBlock = setFieldValue(block, fieldName, value);
-                  const meta = extraMeta || metadata;
-                  if (meta?.image_scales) {
-                    updatedBlock = { ...updatedBlock, image_field: meta.image_field, image_scales: meta.image_scales };
+                  updatedBlock = withImageMetadata(updatedBlock, value, extraMeta || metadata);
+                  // A fresh pick hands this link the mapped fields that are still
+                  // EMPTY, which is what makes them track it (nothing is pulled
+                  // unless the block says so). Same helper the sidebar uses.
+                  if (isSourceField) {
+                    updatedBlock = linkPickedFields(blockCfg, updatedBlock);
                   }
                   // No pull here — storing the link (full snapshot) is enough; the
-                  // copy-from-target widget's reactive pull fills the mapped fields.
+                  // copy-from-target widget's reactive pull fills the fields it owns.
                   let up = updateBlockById(properties, iframeSyncState.blockPathMap, selectedBlock, updatedBlock);
-                  up = markEditedLinkedFieldsCustom(up, properties, config.blocks.blocksConfig);
+                  up = unpullEditedFields(up, properties, config.blocks.blocksConfig);
                   finalizeLink(up);
                 };
 
@@ -6425,275 +7098,10 @@ const Iframe = (props) => {
               // Set pending state to trigger object browser via OpenObjectBrowser component
               setPendingFieldMedia({ fieldName, blockUid });
             }}
-            convertibleTypes={(() => {
-              const bpm = iframeSyncState.blockPathMap;
-              const blockData = getBlockById(properties, bpm, selectedBlock);
-              const typeFieldName = bpm?.[selectedBlock]?.typeField || '@type';
-              const blockType = blockData?.[typeFieldName];
-              const allowedTypes = bpm?.[selectedBlock]?.allowedSiblingTypes;
-              const contentTargets = getConvertibleTypes(blockType, blocksConfig, allowedTypes);
-
-              // Container-to-container conversions: source is a container with children.
-              // For each OTHER container whose child field accepts all of source's
-              // children, offer it as a target. The existing getConvertibleTypes
-              // doesn't cover this because it relies on fieldMappings, which are
-              // content-level.
-              // Child types across ALL regions (blocks_layout + object_list), not just default.
-              const childEntries = blockType
-                ? getContainerRegionDescriptors(blockData['@type'], blocksConfig, intl, blockData).flatMap((d) =>
-                    getChildBlockEntries(blockData, d),
-                  )
-                : [];
-              if (childEntries.length === 0) return contentTargets;
-
-              const childTypes = childEntries
-                .map((e) => e.block?.['@type'])
-                .filter(Boolean);
-              const containerTargets = [];
-              const existingTypes = new Set(contentTargets.map(t => t.type));
-              for (const [type, cfg] of Object.entries(blocksConfig || {})) {
-                if (!cfg?.blockSchema) continue;
-                if (type === blockType) continue;
-                if (existingTypes.has(type)) continue;
-                let schema;
-                try {
-                  schema = typeof cfg.blockSchema === 'function'
-                    ? cfg.blockSchema({ blocksConfig, intl }) : cfg.blockSchema;
-                } catch { continue; }
-                const props = schema?.properties || {};
-                let tgtChildField = null;
-                for (const [fn, field] of Object.entries(props)) {
-                  if (field?.widget === 'blocks_layout') { tgtChildField = { region: fn, ...field }; break; }
-                }
-                if (!tgtChildField) continue;
-                if (!canContainAll(tgtChildField, childTypes, 0)) continue;
-                // Also respect parent's allowedBlocks — new container type must be allowed in its place.
-                if (allowedTypes && !allowedTypes.includes(type)) continue;
-                containerTargets.push({ type, title: cfg.title || type });
-              }
-              return [...contentTargets, ...containerTargets];
-            })()}
-            onOpenConvertChooser={() => {
-              // Open BlockChooser overlay seeded with convertibleTypes for the
-              // currently selected block. commitChooser handles the actual
-              // mutation when the user picks a target.
-              const bpm = iframeSyncState.blockPathMap;
-              const blockData = getBlockById(properties, bpm, selectedBlock);
-              const typeFieldName = bpm?.[selectedBlock]?.typeField || '@type';
-              const blockType = blockData?.[typeFieldName];
-              const allowedTypes = bpm?.[selectedBlock]?.allowedSiblingTypes;
-              const contentTargets = getConvertibleTypes(blockType, blocksConfig, allowedTypes);
-
-              // Child types across ALL regions (blocks_layout + object_list), not just default.
-              const childEntries = blockType
-                ? getContainerRegionDescriptors(blockData['@type'], blocksConfig, intl, blockData).flatMap((d) =>
-                    getChildBlockEntries(blockData, d),
-                  )
-                : [];
-              const containerTargets = [];
-              if (childEntries.length > 0) {
-                const childTypes = childEntries
-                  .map((e) => e.block?.['@type']).filter(Boolean);
-                const existing = new Set(contentTargets.map(t => t.type));
-                for (const [type, cfg] of Object.entries(blocksConfig || {})) {
-                  if (!cfg?.blockSchema || type === blockType || existing.has(type)) continue;
-                  let schema;
-                  try {
-                    schema = typeof cfg.blockSchema === 'function'
-                      ? cfg.blockSchema({ blocksConfig, intl }) : cfg.blockSchema;
-                  } catch { continue; }
-                  let tgt = null;
-                  for (const [fn, field] of Object.entries(schema?.properties || {})) {
-                    if (field?.widget === 'blocks_layout') { tgt = { region: fn, ...field }; break; }
-                  }
-                  if (!tgt) continue;
-                  if (!canContainAll(tgt, childTypes, 0)) continue;
-                  if (allowedTypes && !allowedTypes.includes(type)) continue;
-                  containerTargets.push({ type });
-                }
-              }
-              const allTargets = [
-                ...contentTargets.map(t => t.type),
-                ...containerTargets.map(t => t.type),
-              ];
-              setChooser({ kind: 'convert', blockId: selectedBlock, allowedBlocks: allTargets });
-            }}
-            {...(() => {
-              // Wrap action props — only when there's a multi-selection that
-              // shares a parent and at least one compatible container exists.
-              const blockIds = multiSelected || [];
-              if (blockIds.length < 1) return {};
-              const bpm = iframeSyncState.blockPathMap;
-              const firstCC = getContainerFieldConfig(blockIds[0], bpm, properties, blocksConfig, intl);
-              if (!firstCC || firstCC.isObjectList) return {};
-              for (const id of blockIds.slice(1)) {
-                const cc = getContainerFieldConfig(id, bpm, properties, blocksConfig, intl);
-                if (!cc || cc.parentId !== firstCC.parentId || cc.region !== firstCC.region) {
-                  return {};
-                }
-              }
-              const selectedTypes = blockIds.map((id) => {
-                const data = getBlockById(properties, bpm, id);
-                return data?.['@type'];
-              }).filter(Boolean);
-              const parentPath = firstCC.parentId === PAGE_BLOCK_UID
-                ? [] : bpm[firstCC.parentId]?.path;
-              const parentBlock = getBlockByPath(properties, parentPath);
-              const parentItems = parentBlock ? getContainerItems(parentBlock, firstCC) : [];
-              const itemsAfter = parentItems.length - blockIds.length + 1;
-              const parentAllows = (t) => !firstCC.allowedBlocks || firstCC.allowedBlocks.includes(t);
-
-              const eligibleTypes = [];
-              for (const [type, cfg] of Object.entries(blocksConfig || {})) {
-                if (!cfg?.blockSchema) continue;
-                // A container's child field may be blocks_layout (section, columns) OR an
-                // object_list (a slider's `slides`). One descriptor covers both, so a slider is
-                // now offered as a wrap target too.
-                let childField;
-                try { childField = getContainerRegionDescriptors(type, blocksConfig, intl)[0] || null; } catch { continue; }
-                if (!childField) continue;
-                if (!canContainAll(childField, selectedTypes, 0)) continue;
-                if (!parentAllows(type)) continue;
-                if (firstCC.maxLength != null && itemsAfter > firstCC.maxLength) continue;
-                eligibleTypes.push(type);
-              }
-              if (eligibleTypes.length === 0) return {};
-              return {
-                canWrap: true,
-                onOpenWrapChooser: () => setChooser({
-                  kind: 'wrap', blockIds, allowedBlocks: eligibleTypes,
-                }),
-              };
-            })()}
-            {...(() => {
-              // Unwrap action props — only render for blocks that ARE containers.
-              // For leaf blocks (slate, image, etc.) omit onUnwrap so the menu
-              // item doesn't render.
-              const bpm = iframeSyncState.blockPathMap;
-              if (!selectedBlock || !bpm?.[selectedBlock]) return {};
-              const block = getBlockById(properties, bpm, selectedBlock);
-              if (!block) return {};
-              // Read children from ALL regions + funnel, so a slider (children in `slides`) and a
-              // multi-region/mixed container are unwrappable the same as a section.
-              const childEntries = getContainerRegionDescriptors(
-                block['@type'],
-                blocksConfig,
-                intl,
-                block,
-              ).flatMap((d) => getChildBlockEntries(block, d));
-              if (childEntries.length === 0) return {}; // not a container with children
-
-              const childTypes = childEntries
-                .map((e) => e.block?.['@type'])
-                .filter(Boolean);
-              const parentCC = getContainerFieldConfig(selectedBlock, bpm, properties, blocksConfig, intl);
-              let canUnwrap = false;
-              // Symmetric with wrap: works for object_list parents too. getContainerItems +
-              // canContainAll + unwrapContainer are all storage-agnostic (funnel), so the
-              // old `!parentCC.isObjectList` gate was the last blocks_layout-only assumption.
-              if (parentCC) {
-                const parentPath = parentCC.parentId === PAGE_BLOCK_UID ? [] : bpm[parentCC.parentId]?.path;
-                const parentBlock = getBlockByPath(properties, parentPath);
-                const currentCount = parentBlock ? (getContainerItems(parentBlock, parentCC).length - 1) : 0;
-                canUnwrap = canContainAll(parentCC, childTypes, currentCount);
-              }
-
-              return {
-                canUnwrap,
-                onUnwrap: () => {
-                  try {
-                    const { formData: newFormData, promotedIds } = unwrapContainer(
-                      properties, bpm, selectedBlock, blocksConfig, intl,
-                    );
-                    onChangeFormData(newFormData);
-                    if (promotedIds.length > 0 && onSelectBlock) {
-                      onSelectBlock(promotedIds[0]);
-                    }
-                  } catch (err) {
-                    log('unwrapContainer failed:', err);
-                  }
-                },
-              };
-            })()}
+            menuProps={selectedBlock ? blockMenuProps(selectedBlock) : null}
             templateEditMode={iframeSyncState.templateEditMode}
             templatePermissions={templateCacheRef.current}
             onToggleTemplateEditMode={handleToggleTemplateEditMode}
-            onMakeTemplate={() => {
-              // Create a new template from the selected block
-              const blockData = getBlockById(properties, iframeSyncState.blockPathMap, selectedBlock);
-              if (!blockData) return;
-
-              // Generate a unique template ID and instance ID. Parent folder
-              // comes from config (default '/templates') so consumers can
-              // host templates anywhere in the content tree without forking
-              // the bridge. The user can also retarget the save location
-              // via the sidebar 'folder' field after creation.
-              const templateCount = Object.values(properties.blocks || {})
-                .filter(b => b.templateInstanceId === b.templateId)
-                .length;
-              const defaultName = `untitled-template-${templateCount + 1}`;
-              const templatesFolder = config.settings.templatesPath || '/templates';
-              const newTemplateId = `${templatesFolder.replace(/\/$/, '')}/${defaultName}`;
-              const newInstanceId = newTemplateId; // For new template, templateInstanceId === templateId
-
-              // Add template fields to the block
-              const updatedBlock = {
-                ...blockData,
-                templateId: newTemplateId,
-                templateInstanceId: newInstanceId,
-                slotId: 'primary', // Default slot name
-              };
-
-              // Update the block in formData
-              const updatedProperties = updateBlockById(
-                properties,
-                iframeSyncState.blockPathMap,
-                selectedBlock,
-                updatedBlock
-              );
-
-              // Create a template document structure in cache. _isNew flags
-              // this for the save flow to POST (create on the backend) the
-              // first time, then PATCH on subsequent saves. Without _isNew,
-              // saveTemplatesRef would PATCH-only and 404 on a real Plone.
-              templateCacheRef.current[newTemplateId] = {
-                '@id': newTemplateId,
-                '@type': 'Document',
-                'title': defaultName,
-                'blocks': {
-                  [selectedBlock]: updatedBlock,
-                },
-                'blocks_layout': { items: [selectedBlock] },
-                _isNew: true,
-              };
-
-              // Update Redux
-              onChangeFormData(updatedProperties);
-
-              // Rebuild blockPathMap
-              const newBlockPathMap = buildBlockPathMap(updatedProperties, blocksConfig, intl);
-
-              // Snapshot for Reset, and enter edit mode for the just-created
-              // template instance (no unlock warning — the user explicitly made it).
-              templateSnapshotsRef.current[newInstanceId] = updatedProperties;
-              const nextEdit = [
-                ...new Set([...(iframeSyncState.templateEditMode || []), newInstanceId]),
-              ];
-
-              // Find the template instance ID in the new pathMap
-              // (it will be created as a virtual container)
-              setIframeSyncState(prev => ({
-                ...prev,
-                formData: updatedProperties,
-                blockPathMap: newBlockPathMap,
-                toolbarRequestDone: `make-template-${Date.now()}`,
-                pendingSelectBlockUid: newInstanceId, // Select the template instance
-                templateEditMode: [
-                  ...new Set([...(prev.templateEditMode || []), newInstanceId]),
-                ], // v2: add to the unlocked set
-              }));
-              postTemplateEditMode(nextEdit);
-            }}
           />
 
       {/* Add Button — single-block only, hidden during multi-select */}
@@ -6795,7 +7203,10 @@ const Iframe = (props) => {
                 justifyContent: 'center',
                 padding: '0',
               }}
-              onClick={handleIframeAdd}
+              onClick={(e) => {
+                setChooserAnchor(e.currentTarget.getBoundingClientRect());
+                handleIframeAdd();
+              }}
               title={addTitle}
             >
               {addIcon}
@@ -6852,100 +7263,17 @@ const Iframe = (props) => {
       <ParentBlocksWidget
         selectedBlock={selectedBlock}
         multiSelected={multiSelected}
-        blocksErrors={blocksErrors}
+        blocksErrors={{ ...blocksErrors, ...templateBlocksErrors }}
         blockStatuses={translationStatuses.statuses}
         formData={properties}
         blockPathMap={iframeSyncState.blockPathMap}
         templatePermissions={templateCacheRef.current}
+        onChangeFormData={onChangeFormData}
         onSelectBlock={onSelectBlock}
-        onDeleteBlock={onDeleteBlock}
-        onBlockAction={(actionId, blockId) => {
-          // Generic action handler - dispatches based on action type
-          // Used by sidebar dropdowns to handle table/block actions
-          const pathInfo = iframeSyncState.blockPathMap?.[blockId];
-
-          if (actionId === 'deleteColumn' && pathInfo?.parentAddMode === 'table') {
-            const cellIndex = pathInfo.path[pathInfo.path.length - 1];
-            const newFormData = deleteTableColumn(properties, iframeSyncState.blockPathMap, blockId);
-            if (newFormData) {
-              let selectBlockId = pathInfo.parentId;
-              if (cellIndex > 0) {
-                const newBlockPathMap = buildBlockPathMap(newFormData, blocksConfig, intl);
-                const rowBlock = getBlockByPath(newFormData, newBlockPathMap[pathInfo.parentId]?.path);
-                if (rowBlock?.cells?.[cellIndex - 1]) {
-                  selectBlockId = rowBlock.cells[cellIndex - 1].key;
-                }
-              }
-              flushSync(() => {
-                setIframeSyncState((prev) => ({
-                  ...prev,
-                  pendingSelectBlockUid: selectBlockId,
-                }));
-              });
-              onSelectBlock(null);
-              onChangeFormData(newFormData);
-            }
-          } else if (actionId === 'deleteRow') {
-            let rowId = blockId;
-            let rowPathInfo = pathInfo;
-            let cellIndex = null;
-            if (pathInfo?.parentAddMode === 'table') {
-              cellIndex = pathInfo.path[pathInfo.path.length - 1];
-              rowId = pathInfo.parentId;
-              rowPathInfo = iframeSyncState.blockPathMap?.[rowId];
-            }
-            if (rowPathInfo?.addMode === 'table') {
-              const containerConfig = getContainerFieldConfig(rowId, iframeSyncState.blockPathMap, properties, blocksConfig, intl);
-              const rowIndex = rowPathInfo.path[rowPathInfo.path.length - 1];
-              // A row delete is a delete: deleteBlocks removes it and settles what
-              // that disturbed (re-seeding the table if it took the last row),
-              // and brings the lock backstop with it — a row of locked template
-              // chrome is not the author's to remove from a page.
-              const { formData: newFormData, deleted: deletedRows } = deleteBlocks(
-                properties,
-                iframeSyncState.blockPathMap,
-                [rowId],
-                { blocksConfig, intl, uuidGenerator: uuid, templateEditMode: iframeSyncState.templateEditMode, metadata },
-              );
-              if (deletedRows.length > 0) {
-                let selectBlockId = rowPathInfo.parentId;
-                if (cellIndex != null && rowIndex > 0) {
-                  const newBlockPathMap = buildBlockPathMap(newFormData, blocksConfig, intl);
-                  const tableBlock = getBlockByPath(newFormData, newBlockPathMap[rowPathInfo.parentId]?.path);
-                  const dataPath = [...(containerConfig.regionPath || []), containerConfig.region || 'rows'];
-                  let rows = tableBlock;
-                  for (const key of dataPath) {
-                    rows = rows?.[key];
-                  }
-                  const prevRow = rows?.[rowIndex - 1];
-                  if (prevRow?.cells?.[cellIndex]) {
-                    selectBlockId = prevRow.cells[cellIndex].key;
-                  }
-                }
-                flushSync(() => {
-                  setIframeSyncState((prev) => ({
-                    ...prev,
-                    pendingSelectBlockUid: selectBlockId,
-                  }));
-                });
-                onSelectBlock(null);
-                onChangeFormData(newFormData);
-              }
-            }
-          } else if (actionId === 'addRowBefore' || actionId === 'addRowAfter') {
-            const action = actionId === 'addRowBefore' ? 'before' : 'after';
-            let targetBlock = blockId;
-            let selectChildIndex = null;
-            if (pathInfo?.parentAddMode === 'table') {
-              selectChildIndex = pathInfo.path[pathInfo.path.length - 1];
-              targetBlock = pathInfo.parentId;
-            }
-            insertAndSelectBlock(targetBlock, null, action, null, { selectChildIndex });
-          } else if (actionId === 'addColumnBefore' || actionId === 'addColumnAfter') {
-            const action = actionId === 'addColumnBefore' ? 'before' : 'after';
-            insertAndSelectBlock(blockId, null, action);
-          }
-        }}
+        convertTargetsFor={convertTargetsFor}
+        onConvertBlock={requestConvert}
+        onBlockAction={handleBlockAction}
+        blockMenuProps={blockMenuProps}
         onChangeBlock={onChangeBlock}
         templateEditMode={iframeSyncState.templateEditMode}
         onChangeTemplateSettings={(instanceId, settings) => {
@@ -6976,12 +7304,20 @@ const Iframe = (props) => {
         }}
         onToggleTemplateEditMode={handleToggleTemplateEditMode}
       />
+      <PageLayoutsSection
+        formData={properties}
+        blockPathMap={iframeSyncState.blockPathMap}
+        templateEditMode={iframeSyncState.templateEditMode}
+        onChangeFormData={onChangeFormData}
+      />
       <ChildBlocksWidget
         selectedBlock={selectedBlock}
         formData={properties}
         blockPathMap={iframeSyncState.blockPathMap}
         onSelectBlock={onSelectBlock}
         onAddBlock={(parentBlockId, containerConfig, options) => {
+          // The sidebar "+" that was pressed is where its chooser opens.
+          if (options?.anchor) setChooserAnchor(options.anchor);
           if (options?.afterBlockId) {
             // Template slot section: add after specific block
             const afterId = options.afterBlockId;
@@ -7009,7 +7345,6 @@ const Iframe = (props) => {
           );
           onChangeFormData(newFormData);
         }}
-        onChangeFormData={onChangeFormData}
         templateEditMode={iframeSyncState.templateEditMode}
       />
     </div>

@@ -293,6 +293,37 @@ test.describe('Inline Editing - Basic', () => {
     await helper.waitForEditorText(editor, /^First Second$/);
   });
 
+  // Redo is Ctrl+Shift+Z on the canvas; it is in the sidebar too. Undo moves
+  // the focus while the block re-renders, so a redo pressed straight after
+  // it can land in the sidebar or the page around the canvas: it must still
+  // redo, not do nothing.
+  test('redo with Ctrl+Shift+Z works from the sidebar too', async ({ page }) => {
+    const helper = new AdminUIHelper(page);
+    await helper.login();
+    await helper.navigateToEdit('/test-page');
+
+    const editor = await helper.enterEditMode('block-1-uuid');
+    await helper.selectAllTextInEditor(editor);
+    await editor.pressSequentially('First', { delay: 10 });
+    await helper.openSidebarTab('Block');
+    await helper.waitForFieldValueToBe('value', 'First');
+    await editor.pressSequentially(' Second', { delay: 10 });
+    await helper.waitForFieldValueToBe('value', 'First Second');
+
+    await page.keyboard.press('Control+z');
+    await helper.waitForFieldValueToBe('value', 'First');
+
+    // Into the sidebar's copy of the text, then redo from there.
+    const sidebarText = page.locator(
+      '#sidebar-properties .field-wrapper-value [contenteditable="true"]',
+    );
+    await sidebarText.click();
+    await expect(sidebarText).toBeFocused();
+    await page.keyboard.press('Control+Shift+z');
+    await helper.waitForFieldValueToBe('value', 'First Second');
+    await helper.waitForEditorText(editor, /^First Second$/);
+  });
+
   test('pressing Enter at end of line creates new Slate block', async ({ page }) => {
     // This test verifies the expected Volto behavior where pressing Enter
     // creates a new Slate block (like standard Volto does via withSplitBlocksOnBreak).
@@ -438,6 +469,46 @@ test.describe('Inline Editing - Basic', () => {
     // Cursor should be at the join point — typing should insert between the two texts
     await mergedEditor.pressSequentially(' JOINED ', { delay: 10 });
     await helper.waitForEditorText(mergedEditor, /First block JOINED Second block/);
+  });
+
+  test('Delete over selected text deletes it, as Backspace does', async ({ page }) => {
+    // The select-all selection ends on the field element itself. Delete
+    // treated that as a caret to move into the text, collapsed the selection,
+    // and deleted nothing, leaving a selection that named the element: a
+    // paste after it took the editor down.
+    const helper = new AdminUIHelper(page);
+    await helper.login();
+    await helper.navigateToEdit('/test-page');
+    const editor = await helper.enterEditMode('block-1-uuid');
+
+    await helper.selectAllTextInEditor(editor);
+    await editor.press('Delete');
+    await helper.waitForEditorText(editor, /^$/);
+    await editor.pressSequentially('Fresh', { delay: 10 });
+    await helper.waitForEditorText(editor, /^Fresh$/);
+  });
+
+  test('HTML pasted after Delete has cleared the field replaces its text', async ({ page }) => {
+    const helper = new AdminUIHelper(page);
+    await helper.login();
+    await helper.navigateToEdit('/test-page');
+    const editor = await helper.enterEditMode('block-1-uuid');
+    const errors: string[] = [];
+    page.on('pageerror', (e) => errors.push(e.message));
+
+    await helper.selectAllTextInEditor(editor);
+    await editor.press('Delete');
+    await helper.waitForEditorText(editor, /^$/);
+    await editor.evaluate((el: HTMLElement) => {
+      const dt = new DataTransfer();
+      dt.setData('text/html', '<p>Hello</p>');
+      dt.setData('text/plain', 'Hello');
+      const event = new ClipboardEvent('paste', { bubbles: true, cancelable: true });
+      Object.defineProperty(event, 'clipboardData', { value: dt });
+      el.dispatchEvent(event);
+    });
+    await helper.waitForEditorText(editor, /^Hello$/);
+    expect(errors).toEqual([]);
   });
 
   test('Backspace at start of bullet list item demotes to paragraph', async ({ page }) => {
@@ -776,13 +847,7 @@ test.describe('Inline Editing - Basic', () => {
     await expect(sidebarEditor).toHaveText(newText, { timeout: 5000 });
 
     await sidebarEditor.click();
-    await sidebarEditor.press('ControlOrMeta+a'); // Select all
-
-    // Verify text is selected
-    await expect(async () => {
-      const selectedText = await sidebarEditor.evaluate(() => window.getSelection()?.toString());
-      expect(selectedText).toBe(newText);
-    }).toPass({ timeout: 5000 });
+    await helper.selectAllTextInEditor(sidebarEditor);
 
     // Wait for the sidebar's floating toolbar to appear and click bold
     const sidebarToolbar = await helper.waitForSidebarSlateToolbar();

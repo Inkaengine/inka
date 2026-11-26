@@ -10,8 +10,16 @@
  * anywhere else; and nothing is sent without the click, so a page that merely
  * opens the link gets nothing. Not signed in, the person signs in first (any
  * way the site offers) and comes back here.
+ *
+ * Allow is offered only once the site has accepted the token: the browser can
+ * hold one the site no longer does (a deploy that resets the site stops
+ * accepting every token it had issued), and the agent would be handed it, and
+ * fail on every call. Renewing asks the site; refused, Volto drops the token
+ * and the person signs in again, as if they had not been.
  */
-import { useSelector } from 'react-redux';
+import { useEffect, useState } from 'react';
+import { useDispatch, useSelector } from 'react-redux';
+import { loginRenew } from '@plone/volto/actions/userSession/userSession';
 import { Redirect, useLocation } from 'react-router-dom';
 import qs from 'query-string';
 import jwtDecode from 'jwt-decode';
@@ -22,8 +30,16 @@ import { agentRedirect } from './agentRedirect';
 
 const ConnectAgent = () => {
   const location = useLocation();
+  const dispatch = useDispatch();
   const token = useSelector((state) => state.userSession.token);
   const { redirect_uri: redirectUri, state, client } = qs.parse(location.search);
+  const [accepted, setAccepted] = useState(false);
+  useEffect(() => {
+    if (!token || accepted) return;
+    // A refusal needs nothing here: Volto's reducer drops the token, and the
+    // page sends the person to sign in.
+    dispatch(loginRenew()).then(() => setAccepted(true), () => {});
+  }, [dispatch, token, accepted]);
 
   if (!token) {
     return <Redirect to={`/login?return_url=${encodeURIComponent(`${location.pathname}${location.search}`)}`} />;
@@ -42,6 +58,15 @@ const ConnectAgent = () => {
   const where = agentRedirect(redirectUri, runtimeConfig.RAZZLE_INKA_MCP_URL);
   if (!where) {
     return refuse(`Your sign-in can be given only to an agent on this computer or to this site's MCP server, not to ${redirectUri}.`);
+  }
+  if (!accepted) {
+    return (
+      <Container className="connect-agent">
+        <Helmet title="Connect an agent" />
+        <h1>Connect an agent</h1>
+        <p>Checking your sign-in…</p>
+      </Container>
+    );
   }
   const asking = where === 'local'
     ? 'An agent on this computer is asking'

@@ -4,8 +4,8 @@
  * it's a prominent button at the top of the parent-blocks panel (see getTemplateEditButtonState).
  *
  * A template's name/location IS the template's own metadata, so changing it is editing the
- * template — only allowed while that template is being edited. When locked, the sidebar renders
- * this schema through ReadOnlyForm (static text) instead of the editable form.
+ * template — only allowed while that template is being edited. When locked, the sidebar shows
+ * none of it: the template's section says what the template is and how to unlock it instead.
  *
  * `id` is the template's URL id / filename (the last path segment). An object_browser can only
  * SELECT existing content, so the id needs a plain text field. It's only editable for a not-yet-
@@ -15,8 +15,10 @@
  * @param {Object} intl
  * @param {Object} [opts]
  * @param {boolean} [opts.idEditable=true] - allow editing the Short name (new templates only)
+ * @param {string} [opts.templateType] - the template's content type. A save location is any
+ *   folderish item the site lets the user add that type to (its @types), not a type by name.
  */
-export const getTemplateInstanceSchema = (intl, { idEditable = true } = {}) => ({
+export const getTemplateInstanceSchema = (intl, { idEditable = true, templateType } = {}) => ({
   title: 'Template Settings',
   fieldsets: [
     {
@@ -42,7 +44,8 @@ export const getTemplateInstanceSchema = (intl, { idEditable = true } = {}) => (
       description: 'Folder where this template will be saved',
       widget: 'object_browser',
       mode: 'link',
-      selectableTypes: ['Folder'],
+      onlyFolderishSelectable: true,
+      addableType: templateType,
       allowExternals: false,
     },
   },
@@ -126,7 +129,7 @@ export const getTemplateBlockSettingsSchema = ({ insideSlot = false } = {}) => (
     slotId: {
       title: 'Slot ID',
       description:
-        'Identifies where user content goes in the template (e.g., "header", "primary")',
+        'Identifies where user content goes in the template (e.g., "header", "default"; the main content slot of a layout is "default")',
       type: 'string',
     },
     kind: {

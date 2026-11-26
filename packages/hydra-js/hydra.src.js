@@ -31,8 +31,8 @@ import {
 import { expelAllowedTypes, findOnlyEmptyChildUid } from './containerOps.js';
 import { acceptableAt } from './conversionMap.js';
 import { collectLinkableAnchors } from './linkableAnchors.js';
-import { isStyleAllowed } from './slateStyles.js';
-import { isRegionField } from './regionWidgets.js';
+import { isStyleAllowed } from '@volto-hydra/helpers/slateStyles.js';
+import { isRegionField } from '@volto-hydra/helpers/regionWidgets.js';
 
 /**
  * Has the frontend drawn the slate value it was given? `dom` is the DOM read
@@ -235,21 +235,6 @@ export function caretTargetTextNode(element) {
 // readSlateValueFromDOM
 // findParentWithAttribute
 
-////////////////////////////////////////////////////////////////////////////////
-// Text Formatting
-////////////////////////////////////////////////////////////////////////////////
-
-// getSelectionHTML
-// isFormatted
-// nextNode
-// formatSelectedText
-// unwrapFormatting
-// unwrapSelectedPortion
-// unwrapElement
-// removeEmptyFormattingElements
-// sendFormattedHTMLToAdminUI
-// findEditableParent
-
 // injectCSS
 
 // Template-family helpers (isLayoutTemplate, findSlotRegions,
@@ -300,6 +285,7 @@ const isValidNodeId = (id) => id && /^\d+(\.\d+)*$/.test(id);
 
 // How many nested closed containers a reveal will open before giving up.
 const MAX_REVEAL_DEPTH = 5;
+
 
 // What counts as the control a reveal handle activates — see
 // Bridge.activationTarget. A link needs an href to be one; a bare <a> is text.
@@ -670,6 +656,35 @@ export class Bridge {
 
     log('isBlockReadonly:', readonlyFromShared ? 'TRUE (blockData)' : 'FALSE', 'for:', blockUid);
     return readonlyFromShared;
+  }
+
+  /**
+   * Whether a field can't be edited: the lock of the block that OWNS the field,
+   * not of the block drawing it. A locked template block may draw the page's
+   * own `/title`; the page isn't locked, so neither is its title. A field
+   * named relative to another block (`../x`) is that block's. With no field
+   * name, the block's own lock.
+   *
+   * @param {string|null} fieldName - The field path as the frontend names it
+   * @param {string} blockUid - The block drawing the field
+   * @returns {boolean}
+   */
+  /**
+   * The field carrying `attr` that a click on `target` landed in, if it can be
+   * edited: not inside a frontend's own `data-block-readonly`, and not locked
+   * by its owning block (isFieldReadonly), so a page field drawn in a locked
+   * block still counts.
+   */
+  clickedFieldAt(target, attr, blockUid) {
+    if (target.closest('[data-block-readonly]')) return null;
+    const field = target.closest(`[${attr}]`);
+    return field && !this.isFieldReadonly(field.getAttribute(attr), blockUid) ? field : null;
+  }
+
+  isFieldReadonly(fieldName, blockUid) {
+    return this.isBlockReadonly(
+      fieldName ? this.resolveFieldPath(fieldName, blockUid).blockId : blockUid,
+    );
   }
 
   /**
@@ -1093,7 +1108,7 @@ export class Bridge {
    *
    * A frontend annotates the element it renders. A design system's script then
    * often turns that element into a shell around the control it builds for
-   * itself: the NSW accordion empties its `.nsw-accordion__title`, puts a
+   * itself: an accordion empties its `.ds-accordion__title`, puts a
    * `<button>` inside it, and binds both the toggle and `aria-expanded` to that
    * button. A person clicking the title hits the button — the event starts
    * there and bubbles outward — but `shell.click()` starts at the shell and
@@ -1373,11 +1388,13 @@ export class Bridge {
    */
   collectBlockFields(blockElement, attrName, processor) {
     const blockUid = blockElement.getAttribute('data-block-uid');
-
-    // Check if block is marked readonly (registry, block data, or DOM attribute)
-    if (blockUid && this.isBlockReadonly(blockUid)) {
-      return {};
-    }
+    const collect = processor;
+    // Each field by its own lock (isFieldReadonly): a locked block's own fields
+    // are skipped, a page field it draws is not.
+    processor = (el, name, results) => {
+      if (blockUid && this.isFieldReadonly(name, blockUid)) return;
+      collect(el, name, results);
+    };
 
     const results = {};
 
@@ -1583,6 +1600,19 @@ export class Bridge {
     return depth % 2 === 0 ? 'bottom' : 'right';
   }
 
+  /**
+   * The add button a frontend draws inside an empty placeholder, if it draws
+   * one: an element marked data-block-add="button" (docs: Empty Blocks). Only
+   * an empty block has one; on any other block the attribute means nothing.
+   */
+  ownAddButton(blockElement) {
+    const uid = blockElement?.getAttribute('data-block-uid');
+    if (!uid || this.getBlockType(uid) !== 'empty') return null;
+    const button = blockElement.querySelector('[data-block-add="button"]');
+    // It must be this block's own, not one inside a nested block.
+    return button && button.closest('[data-block-uid]') === blockElement ? button : null;
+  }
+
   getAddDirection(blockElement) {
     const blockUid = blockElement.getAttribute('data-block-uid');
 
@@ -1601,6 +1631,14 @@ export class Bridge {
     // place. Without this, a seeded empty (no defaultBlockType + multiple allowedBlocks) is
     // stranded with no + and no way to be typed.
     if (!addability.canInsertAfter && !addability.canReplace) {
+      return 'hidden';
+    }
+
+    // An empty placeholder that draws its own add button (an element marked
+    // data-block-add="button", docs: Empty Blocks) gets no '+' from the admin:
+    // the frontend's button is the '+', and clicking it opens the chooser
+    // (blockClickHandler).
+    if (this.ownAddButton(blockElement)) {
       return 'hidden';
     }
 
@@ -3572,16 +3610,19 @@ export class Bridge {
       }
     }
 
-    // Selection spans element nodes (formatted content) → delete transform
-    if (!range.collapsed) {
-      const hasElementNodes = this.selectionContainsElementNodes(range);
-      if (hasElementNodes) {
-        log('Delete selection contains element nodes, sending transform');
-        this.sendTransformRequest(blockUid, 'delete', {
-          direction: key === 'Backspace' ? 'backward' : 'forward',
-        });
-        return true;
-      }
+    // A selection in a slate field → delete transform, for either key. The
+    // browser deleting it can remove whole text nodes (select-all), which the
+    // bridge only reads back as text edits: select-all + Delete emptied the
+    // field on screen, the admin kept the old text, and the next paste landed
+    // on it and took the editor down. (Backspace only escaped this because a
+    // selection from offset 0 counts as "at start" below.) Slate also merges
+    // formatted content across the deleted range.
+    if (!range.collapsed && this.isSlateField(blockUid, this.focusedFieldName)) {
+      log('Delete of a selection, sending transform');
+      this.sendTransformRequest(blockUid, 'delete', {
+        direction: key === 'Backspace' ? 'backward' : 'forward',
+      });
+      return true;
     }
 
     // At node boundary with different formatting → delete transform
@@ -4379,6 +4420,11 @@ export class Bridge {
    * The admin uses these to render combined outline and determine common parent.
    */
   _sendMultiBlockSelected() {
+    // The multi-selection takes over from the block selected until now: left
+    // running, its watchers would announce it as THE selection when it moves
+    // (a scroll), and the admin would drop the multi-selection for it. Its
+    // tracker's own stop only applies while that block is still selected.
+    this.stopTransitionTracking();
     const rects = {};
     for (const uid of this.multiSelectedBlockUids) {
       const el = this.queryBlockElement(uid);
@@ -4605,6 +4651,7 @@ export class Bridge {
         this.setupScrollHandler();
         this.setupResizeHandler();
         this.setupMouseActivityReporter();
+        this.reportCanvasFocus();
         this.setupStructuralObserver();
 
         // Add beforeunload warning to prevent accidental navigation
@@ -4619,56 +4666,14 @@ export class Bridge {
           return '';
         });
 
-        // INITIAL_DATA is the ONLY acknowledgement of INIT, and INIT used to be
-        // posted exactly once. A message posted before the admin has mounted its
-        // listener is simply gone — the iframe then sits there fully loaded and
-        // completely inert, and the only thing hydra did about it was paint a
-        // "Not Connected" diagnostic five seconds later. Reloading was the user's
-        // only recovery. Waiting on the acknowledgement and re-posting until it
-        // comes turns that dead editor into a slow one.
-        //
-        // Backs off rather than spinning: a lost INIT is recovered in a quarter
-        // of a second, and an admin that is genuinely absent is given up on
-        // after ~7.75s instead of being asked forever.
-        this._retryInitUntilAcknowledged = (initMessage) => {
-          const delays = [250, 500, 1000, 2000, 4000];
-          let attempt = 0;
-          const again = () => {
-            if (this.initialized || attempt >= delays.length) {
-              if (!this.initialized) {
-                // Out of attempts with no acknowledgement. THIS is the moment
-                // the diagnostic is entitled to speak — a handshake that has
-                // actually failed, not a clock that ran out while it was still
-                // in progress.
-                this._initHandshakeGaveUp = true;
-                _showBridgeDiagnostic({
-                  windowName: window.name,
-                  hasHydraName: window.name.startsWith('hydra-edit:'),
-                  inIframe: window.self !== window.top,
-                  adminOrigin: this.adminOrigin || null,
-                  bridgeCreated: true,
-                  bridgeInitialized: false,
-                });
-              }
-              return;
-            }
-            this._initRetryTimer = setTimeout(() => {
-              if (this.initialized) return;
-              log(`INIT not acknowledged, retrying (attempt ${attempt + 1})`);
-              window.parent.postMessage(initMessage, this.adminOrigin);
-              attempt += 1;
-              again();
-            }, delays[attempt]);
-          };
-          again();
-        };
-
-        this._stopInitRetries = () => {
-          if (this._initRetryTimer) {
-            clearTimeout(this._initRetryTimer);
-            this._initRetryTimer = null;
-          }
-        };
+        // INIT is posted ONCE, and INITIAL_DATA is its only acknowledgement.
+        // It used to be re-posted until acknowledged, to recover an INIT the
+        // admin dropped before it could answer; the admin now holds an early
+        // INIT until it can answer it (View.jsx, the deferred-INIT replay). The
+        // re-posts did harm of their own: under load the admin answered every
+        // copy, and a late answer rebuilt the page from the form as it was when
+        // that copy arrived — over edits made since. An INIT nobody answers is a
+        // broken editor, and the connection check below reports it as one.
 
         // Send single INIT message with config - admin merges config before responding
         // This ensures blockPathMap is built with complete schema knowledge
@@ -4727,7 +4732,6 @@ export class Bridge {
             initMessage.voltoConfig = options.voltoConfig;
           }
           window.parent.postMessage(initMessage, this.adminOrigin);
-          this._retryInitUntilAcknowledged(initMessage);
         }
 
         const receiveInitialData = (e) => {
@@ -4749,16 +4753,16 @@ export class Bridge {
                 this._executeRender(this.onContentChangeCallback);
               }
 
-              // Focus the iframe window so keyboard events reach it on page load.
-              // Must happen inside the iframe (window.focus()) because the parent
-              // cannot call contentWindow.focus() on a cross-origin iframe.
-              window.focus();
+              // No focus here. Whether this page should take the keyboard as
+              // it loads is the admin's call: the author may be in the sidebar,
+              // or in another page the admin shows beside this one, and a page
+              // can't see either. The admin focuses the page being edited when
+              // nothing else has focus.
 
               // Mark bridge as initialized — block selection is now allowed
               this.initialized = true;
-              // The handshake is acknowledged: stop retrying, and take down any
-              // diagnostic that was raised while we were still trying.
-              this._stopInitRetries();
+              // The handshake is acknowledged: take down a diagnostic raised
+              // while the answer was slow.
               _removeBridgeDiagnostic();
 
               // Restore block selection if provided (e.g., after adding a new block)
@@ -4825,6 +4829,19 @@ export class Bridge {
         };
         window.removeEventListener('message', receiveInitialData);
         window.addEventListener('message', receiveInitialData);
+        // A held image (holdPendingImage): the admin sends its file, as a Blob,
+        // before the INITIAL_DATA or FORM_DATA that first names it, so it is
+        // here for that render. A Blob crosses postMessage as a handle to the
+        // admin's bytes, and a blob: URL made here is this page's own, so the
+        // front end can load it. Sent again after a reload; one URL per ref.
+        if (!this._pendingImageListener) {
+          this._pendingImageListener = (e) => {
+            if (e.origin !== this.adminOrigin || e.data?.type !== 'PENDING_IMAGE') return;
+            if (this.pendingImages.has(e.data.ref)) return;
+            this.holdPendingImage(e.data.ref, URL.createObjectURL(e.data.blob));
+          };
+          window.addEventListener('message', this._pendingImageListener);
+        }
         // Add a single document-level focus listener to track field changes
         // This avoids adding duplicate listeners and works for all blocks
         if (!this.fieldFocusListenerAdded) {
@@ -4944,10 +4961,7 @@ export class Bridge {
         event.origin === this.adminOrigin ||
         event.origin === window.location.origin
       ) {
-        if (
-          event.data.type === 'FORM_DATA' ||
-          event.data.type === 'TOGGLE_MARK_DONE'
-        ) {
+        if (event.data.type === 'FORM_DATA') {
           log('Received', event.data.type, 'message');
           // Number each admin message as it arrives. The queue drain below
           // re-posts its entry to this window, which lands it BEHIND any
@@ -5272,6 +5286,23 @@ export class Bridge {
         }
         return;
       }
+      // A frontend's own add button in an empty placeholder: select the empty
+      // and ask the admin to fill it, as its '+' would.
+      const ownAdd = event.target.closest('[data-block-add="button"]');
+      const ownAddBlock = ownAdd?.closest('[data-block-uid]');
+      if (ownAddBlock && this.ownAddButton(ownAddBlock) === ownAdd) {
+        event.preventDefault();
+        event.stopPropagation();
+        const blockUid = ownAddBlock.getAttribute('data-block-uid');
+        log('blockClickHandler: own add button for empty', blockUid);
+        this.selectBlock(ownAddBlock);
+        this.sendMessageToParent({
+          type: 'ADD_BLOCK',
+          blockUid,
+          rect: ownAdd.getBoundingClientRect().toJSON(),
+        });
+        return;
+      }
       log('blockClickHandler: event target:', event.target.tagName, event.target.className);
       log('blockClickHandler: _isDragging:', this._isDragging, '_navigatingToBlock:', this._navigatingToBlock);
 
@@ -5475,23 +5506,24 @@ export class Bridge {
         // Using relative coordinates ensures focus()/scroll doesn't invalidate the position
         // Also store the target for field detection
         // Inside readonly blocks, ignore editable/linkable/media fields (they're from query results, not editable)
-        const clickedEditableField = isInsideReadonly ? null : event.target.closest('[data-edit-text]');
-        const editableField = clickedEditableField || (isInsideReadonly ? null : blockElement.querySelector('[data-edit-text]'));
+        // A field is judged by its own lock (isFieldReadonly), so a page field
+        // drawn in a locked block is still editable.
+        const clickedEditableField = this.clickedFieldAt(event.target, 'data-edit-text', blockUid);
+        const editableField = clickedEditableField || this.getOwnFirstEditableField(blockElement);
 
-        // Detect clicked linkable and media fields (ignored inside readonly blocks)
-        const clickedLinkableField = isInsideReadonly ? null : event.target.closest('[data-edit-link]');
-        const clickedMediaField = isInsideReadonly ? null : event.target.closest('[data-edit-media]');
-
-        // Clicking a data-edit-text element starts INLINE text editing, so prevent
-        // the element's OWN default action. A data-edit-text submit button would
-        // otherwise submit the form (showing the success state) instead of letting
-        // you edit its label. Links are handled above (data-edit-link); a plain
-        // <h3>/<p>/<label> has no default action so this is a no-op for them.
-        if (clickedEditableField) {
+        // Clicking a data-edit-text element starts INLINE text editing, and
+        // clicking a data-edit-link element edits its link, so prevent the
+        // element's OWN default action. A submit button would otherwise submit
+        // its form (showing the success state, or leaving the page) instead of
+        // letting you edit its label, or the page it goes to. An <a> is handled
+        // above; a plain <h3>/<p>/<label> has no default action so this is a
+        // no-op for them.
+        const clickedLinkableField = this.clickedFieldAt(event.target, 'data-edit-link', blockUid);
+        if (clickedEditableField || clickedLinkableField) {
           event.preventDefault();
         }
 
-        this.recordClickPosition(event, editableField, !!isInsideReadonly);
+        this.recordClickPosition(event, editableField, blockUid);
         // Cancel any pending initial-selection from waitForStable —
         // user click takes priority over automatic block restoration
         if (this._pendingInitialSelectTimer) {
@@ -5546,9 +5578,7 @@ export class Bridge {
           typeof matchMedia === 'function' &&
           matchMedia('(pointer: coarse)').matches;
         const alreadySelected = blockUid === this.selectedBlockUid;
-        const hasOwnText =
-          !this.isBlockReadonly(blockUid) &&
-          this.getOwnEditableFields(blockElement).length > 0;
+        const hasOwnText = this.getOwnEditableFields(blockElement).length > 0;
         const enterTextMode = hasOwnText && (!coarsePointer || alreadySelected);
         this.editMode = enterTextMode ? 'text' : 'block';
         this.selectBlock(blockElement, { fromUserClick: true });
@@ -5943,8 +5973,10 @@ export class Bridge {
 
     if (processing) {
       log('BLOCKING input for', blockId);
-      // Clear any existing buffer when starting new blocking
-      this.eventBuffer = [];
+      // Keys already buffered for this block (typed while focus was on the body,
+      // between a transform and its new field's focus) are kept and replayed
+      // with what is buffered next; keys for another block go (inka#645).
+      if (blockId !== this.selectedBlockUid) this.eventBuffer = [];
       this.blockedBlockId = blockId;
 
       this._ensureDocumentKeyboardBlocker();
@@ -6450,9 +6482,17 @@ export class Bridge {
 
       // If no text node exists, create one with ZWS for cursor positioning
       if (!textNode) {
+        // Inside the innermost element the frontend drew for the empty text
+        // (its leaf <span>, say), not beside it: its next render writes the
+        // text into that element, so text typed beside it was left behind,
+        // and the caret with it (inka#645).
+        let leaf = firstNodeIdEl;
+        while (leaf.firstElementChild && leaf.firstElementChild.tagName !== 'BR') {
+          leaf = leaf.firstElementChild;
+        }
         textNode = document.createTextNode('\uFEFF');
-        firstNodeIdEl.appendChild(textNode);
-        log('getValidPositionForWhitespace: created ZWS text node in empty element');
+        leaf.appendChild(textNode);
+        log('getValidPositionForWhitespace: created ZWS text node in empty element', leaf.tagName);
         return { textNode, offset: 1 }; // Position after ZWS
       }
 
@@ -6696,6 +6736,13 @@ export class Bridge {
         anchorPos = this.getValidatedPosition(range.startContainer, range.startOffset);
         focusPos = this.getValidatedPosition(range.endContainer, range.endOffset);
       }
+    } else if (range.collapsed) {
+      // One caret, one position. Resolving each end separately put them in
+      // different places when the first made a text node for the caret: the
+      // second then found that node and resolved elsewhere, so text went
+      // before what was typed (inka#645).
+      anchorPos = this.getValidatedPosition(range.startContainer, range.startOffset);
+      focusPos = anchorPos;
     } else {
       anchorPos = this.getValidatedPosition(range.startContainer, range.startOffset);
       focusPos = this.getValidatedPosition(range.endContainer, range.endOffset);
@@ -7389,8 +7436,8 @@ export class Bridge {
         || null;
       const fieldName = container?.getAttribute?.('data-edit-text') || null;
 
-      // Skip error for readonly blocks - they don't need selection sync
-      if (blockUid && this.isBlockReadonly(blockUid)) {
+      // Skip error for readonly fields - they don't need selection sync
+      if (blockUid && this.isFieldReadonly(fieldName, blockUid)) {
         return null;
       }
 
@@ -7494,14 +7541,13 @@ export class Bridge {
     // Get blockUid from the element - don't rely on this.selectedBlockUid as it may not be set yet
     const blockUid = blockElement.getAttribute('data-block-uid');
 
-    // If block is readonly, remove contenteditable from all its editable fields
+    // In a readonly block, a field that is itself readonly loses contenteditable.
     if (blockUid && this.isBlockReadonly(blockUid)) {
-      const editableFields = blockElement.querySelectorAll('[data-edit-text][contenteditable="true"]');
-      editableFields.forEach((field) => {
-        field.removeAttribute('contenteditable');
+      blockElement.querySelectorAll('[data-edit-text][contenteditable="true"]').forEach((field) => {
+        if (this.isFieldReadonly(field.getAttribute('data-edit-text'), blockUid)) {
+          field.removeAttribute('contenteditable');
+        }
       });
-      log(`restoreContentEditableOnFields called from ${caller}: block ${blockUid} is readonly, removed contenteditable`);
-      return;
     }
 
     // For multi-element blocks, collect fields from ALL elements with this UID
@@ -7605,6 +7651,13 @@ export class Bridge {
     const fieldType = this.getFieldType(blockUid, fieldName);
 
     if (!this.fieldTypeIsTextEditable(fieldType)) {
+      return;
+    }
+
+    // Editable, but the keyboard stays where the author is: no focus, so no
+    // caret to place either (see selectBlock's `focus`).
+    if (options.focus === false) {
+      this.updateEmptyState(fieldElement);
       return;
     }
 
@@ -8104,7 +8157,9 @@ export class Bridge {
               // that selection — regression introduced in 97dd597b.
               log('Selecting new block from afterContentRender:', blockUidToProcess, 'transformedSelection:', !!transformedSelection);
               this.editMode = 'text';
-              this.selectBlock(el, transformedSelection ? {} : { fieldToFocus: 'first' });
+              // The admin switched to this block (one it added, or the new
+              // block after Enter) for the author to type in: it takes focus.
+              this.selectBlock(el, transformedSelection ? { focus: true } : { fieldToFocus: 'first', focus: true });
             }
           : (el) => this.updateBlockUIAfterFormData(el, skipFocus);
 
@@ -8494,6 +8549,8 @@ export class Bridge {
    * render draws the same text again in its own node ("FreshFresh"). So before
    * a character goes in, the caret moves to the end of the frontend's node and
    * the bridge's node goes — the same cleanup _insertTextAtCursor does after.
+   * Every bare one of the bridge's in the line goes, not only the caret's: a
+   * clear's re-render can leave two, and the browser may type into the other.
    */
   adoptFrontendCaretTarget() {
     const sel = window.getSelection();
@@ -8510,9 +8567,11 @@ export class Bridge {
     // format the author just toggled off at the caret, and it stays put.
     const walker = document.createTreeWalker(line, NodeFilter.SHOW_TEXT);
     let target = null;
+    const bridgeNodes = [];
     for (let n = walker.nextNode(); n; n = walker.nextNode()) {
       if (this.stripZeroWidthSpaces(n.data) !== '') return;
-      if (!target && n !== bridgeNode && /^\u200B+$/.test(n.data)) target = n;
+      if (n.parentElement === line && /^\uFEFF+$/.test(n.data)) bridgeNodes.push(n);
+      else if (!target && /^\u200B+$/.test(n.data)) target = n;
     }
     if (!target) return;
     const range = document.createRange();
@@ -8520,7 +8579,7 @@ export class Bridge {
     range.collapse(true);
     sel.removeAllRanges();
     sel.addRange(range);
-    bridgeNode.remove();
+    for (const node of bridgeNodes) node.remove();
   }
 
   /**
@@ -8559,7 +8618,14 @@ export class Bridge {
     brs[0].remove();
   }
 
-  domNodeToSlate(el, metadataMap, matchMetadataFromDom = false, keepCaretTargets = false) {
+  /**
+   * `hoisted` collects the nodes drawn INSIDE `el` that its path says are not
+   * its own: a sub-list belongs beside its item in the editor's value
+   * (indenting wraps the item in a new list where it stands), but valid HTML
+   * draws it inside the item. The caller reads each one as `el`'s next
+   * sibling, so the value keeps the editor's shape.
+   */
+  domNodeToSlate(el, metadataMap, matchMetadataFromDom = false, keepCaretTargets = false, hoisted = []) {
     // keepCaretTargets: keep the zero-width spaces — to ask whether the frontend
     // has drawn the caret targets it was given (renderedMatches), not only
     // what the author wrote.
@@ -8597,7 +8663,14 @@ export class Bridge {
         }
         const childNodeId = child.getAttribute('data-node-id');
         if (childNodeId && isValidNodeId(childNodeId)) {
-          children.push(this.domNodeToSlate(child, metadataMap, matchMetadataFromDom, keepCaretTargets));
+          const ownsChild = !nodeId || childNodeId === nodeId || childNodeId.startsWith(`${nodeId}.`);
+          const besideChild = [];
+          const node = this.domNodeToSlate(child, metadataMap, matchMetadataFromDom, keepCaretTargets, besideChild);
+          if (ownsChild) {
+            children.push(node, ...besideChild);
+          } else {
+            hoisted.push(node, ...besideChild);
+          }
         } else if (this.isNonContentIsland(child)) {
           // Non-editable / decorative island with no data-node-id — e.g. a
           // frontend's external-link icon after a link's text, or any generated
@@ -8702,7 +8775,8 @@ export class Bridge {
     // Both produce the same Slate value.
     const fieldNodeId = fieldEl.getAttribute('data-node-id');
     if (fieldNodeId && isValidNodeId(fieldNodeId)) {
-      return [this.domNodeToSlate(fieldEl, metadataMap, matchMetadataFromDom, keepCaretTargets)];
+      const beside = [];
+      return [this.domNodeToSlate(fieldEl, metadataMap, matchMetadataFromDom, keepCaretTargets, beside), ...beside];
     }
 
     const topNodes = [];
@@ -8710,7 +8784,8 @@ export class Bridge {
       if (child.nodeType === Node.ELEMENT_NODE) {
         const nodeId = child.getAttribute('data-node-id');
         if (nodeId && isValidNodeId(nodeId)) {
-          topNodes.push(this.domNodeToSlate(child, metadataMap, matchMetadataFromDom, keepCaretTargets));
+          const beside = [];
+          topNodes.push(this.domNodeToSlate(child, metadataMap, matchMetadataFromDom, keepCaretTargets, beside), ...beside);
         }
       }
     }
@@ -9281,6 +9356,14 @@ export class Bridge {
     // Back-compat: old callers pass a string as second arg (caller name for logging)
     const opts = typeof options === 'string' ? {} : options;
     const fieldToFocus = opts.fieldToFocus; // undefined=auto, null=block mode, string=specific field
+    // Whether selecting may focus a field or the block. By default only when
+    // this page already has focus: the bridge never moves the keyboard into
+    // its page by itself — selecting the block it opened with as it settles,
+    // re-selecting after a re-render, following the admin's selection. Focus
+    // stays where the author is, and the block is still selected and
+    // outlined. `focus: true` is the admin asking for the keyboard (a block it
+    // added); `focus: false` never focuses.
+    const takeFocus = opts.focus ?? this._iframeFocused;
     // Accept either a DOM element (from click handlers) or a block UID string
     const blockUidFromArg = typeof blockElementOrUid === 'string' ? blockElementOrUid : null;
 
@@ -9376,11 +9459,13 @@ export class Bridge {
       this.scrollBlockIntoView(blockElement);
     }
 
-    // Flush any pending text updates from the previous block before switching
-    // Also clear event buffer - user is reorienting to a new block
+    // Flush any pending text updates from the previous block before switching.
+    // Keys still buffered were typed for the old block, so they go - unless a
+    // transform is pending: then this switch IS its result (Enter made this
+    // block) and the keys typed after it belong here (inka#645).
     if (!isSelectingSameBlock) {
       this.flushPendingTextUpdates();
-      this.eventBuffer = [];
+      if (!this.pendingTransform) this.eventBuffer = [];
     }
 
     // editMode is controlled by user actions only (Escape → block, click/Enter → text).
@@ -9405,6 +9490,14 @@ export class Bridge {
       // Focus specific field + cursor placement after DOM settles
       if (fieldToFocus === 'first' || fieldToFocus === 'last' || typeof fieldToFocus === 'string') {
         const cursorAt = opts.cursorAt || 'start';
+        // The block's text when this placement was asked for. Keys can be
+        // replayed into it, and the author type on, before the frames below:
+        // once text has been typed the caret is where the typing left it, and
+        // putting it back at the start put what they typed next before it
+        // (inka#645). A caret that only moved (an arrow key's own move into
+        // this block) is still placed.
+        const textOf = (el) => this.stripZeroWidthSpaces(el?.textContent || '');
+        const askedText = textOf(blockElement);
         requestAnimationFrame(() => {
           requestAnimationFrame(() => {
             const currentElement = this.queryBlockElement(blockUid);
@@ -9420,6 +9513,8 @@ export class Bridge {
               targetField = currentElement.querySelector(`[data-edit-text="${fieldToFocus}"]`);
             }
             if (targetField && targetField.getAttribute('contenteditable') === 'true') {
+              if (textOf(currentElement) !== askedText) return;
+              if (!takeFocus) return;
               targetField.focus();
               if (cursorAt === 'end') {
                 this._placeCursorAtEnd(targetField);
@@ -9445,8 +9540,7 @@ export class Bridge {
     // the document-level keyboard blocker receives key events. Without focus
     // in the iframe, keydown events go to the parent page instead.
     if (!isTemplateInstance) {
-      const isReadonly = this.isBlockReadonly(blockUid);
-      const hasEditableFields = !isReadonly && this.getOwnEditableFields(blockElement).length > 0;
+      const hasEditableFields = this.getOwnEditableFields(blockElement).length > 0;
       // "No editable fields" is true of a CONTAINER whose text all belongs to
       // its children — a codeExample's labels and code live on its tabs, not on
       // the wrapper. Focusing the wrapper then rips the caret out of the field
@@ -9458,7 +9552,7 @@ export class Bridge {
       const active = document.activeElement;
       const caretAlreadyInside =
         !!active && blockElement.contains(active) && active.isContentEditable;
-      if (!hasEditableFields && !caretAlreadyInside) {
+      if (!hasEditableFields && !caretAlreadyInside && takeFocus) {
         if (!blockElement.hasAttribute('tabindex')) {
           blockElement.setAttribute('tabindex', '-1');
         }
@@ -9596,8 +9690,7 @@ export class Bridge {
     // - Non-editable blocks (no contenteditable field)
     // - Block mode (contenteditable not set)
     {
-      const isReadonly = this.isBlockReadonly(blockUid);
-      const hasEditableFields = !isReadonly && this.getOwnEditableFields(blockElement).length > 0;
+      const hasEditableFields = this.getOwnEditableFields(blockElement).length > 0;
       const needsImmediateSend = isTemplateInstance || isBlockMode || !hasEditableFields;
       if (needsImmediateSend && this._pendingBlockSelected) {
         const pending = this._pendingBlockSelected;
@@ -9759,6 +9852,7 @@ export class Bridge {
               preventScroll: this._isReselectingSameBlock,
               wasAlreadyEditable,
               saveClickPosition: true, // Save for FORM_DATA handler after re-render
+              focus: takeFocus,
             });
           } else if (this.lastClickPosition) {
             // No editable field found, clear click position
@@ -9803,14 +9897,13 @@ export class Bridge {
    * @param {HTMLElement|null} editableField - The text field the click resolved
    *   to, or null when the click wasn't on one (the target is still recorded,
    *   for field detection).
-   * @param {boolean} isInsideReadonly - Inside a readonly block (listing items
-   *   and friends) linkable/media fields come from query results, not editable
-   *   content, so they are ignored.
+   * @param {string} blockUid - The clicked block. A locked field (a listing
+   *   item's, a locked template block's own) is not recorded.
    */
-  recordClickPosition(event, editableField, isInsideReadonly = false) {
+  recordClickPosition(event, editableField, blockUid) {
     const rect = editableField?.getBoundingClientRect();
     const fieldAttr = (attr) =>
-      (isInsideReadonly ? null : event.target.closest(`[${attr}]`)?.getAttribute(attr)) || null;
+      this.clickedFieldAt(event.target, attr, blockUid)?.getAttribute(attr) || null;
     this.lastClickPosition = {
       ...(editableField && {
         relativeX: event.clientX - rect.left,
@@ -9867,7 +9960,8 @@ export class Bridge {
 
     // Readonly blocks (listing items and friends) render query results, not
     // editable content — same exclusion the plain-click path applies.
-    if (event.target.closest('[data-block-readonly]') || this.isBlockReadonly(ownerUid)) return;
+    if (event.target.closest('[data-block-readonly]')
+      || this.isFieldReadonly(field.getAttribute('data-edit-text'), ownerUid)) return;
 
     // Touch: the first tap on a not-yet-selected block selects it without a
     // caret, so iOS word-select and long-press multi-select have a clean
@@ -9879,7 +9973,7 @@ export class Bridge {
       return;
     }
 
-    this.recordClickPosition(event, field);
+    this.recordClickPosition(event, field, ownerUid);
     // editMode FIRST: focusedFieldName is an accessor that drops any value
     // assigned while the mode is still 'block' (block mode has no focused
     // field). Assigning the other way round silently loses the field name, and
@@ -11068,8 +11162,12 @@ export class Bridge {
         // Single element: clone it as before
         draggedBlock = allElements[0].cloneNode(true);
         draggedBlock.classList.add('dragging');
-        // Remove data-block-uid from shadow so it doesn't interfere with selectors
+        // Remove data-block-uid from the shadow, and from every block inside it,
+        // so none of it interferes with selectors: the shadow follows the cursor,
+        // and a container's own children in it were taken as the nearest drop
+        // target, dropping it into itself (inka#705).
         draggedBlock.removeAttribute('data-block-uid');
+        for (const inner of draggedBlock.querySelectorAll('[data-block-uid]')) inner.removeAttribute('data-block-uid');
       }
 
       // IMPORTANT: Set styles BEFORE appending to avoid brief layout flash
@@ -11174,8 +11272,10 @@ export class Bridge {
         // resolution is uniform for every cursor position (it effectively walks both up
         // and down and takes the nearest droppable edge). Enable HYDRA_DEBUG to trace.
         {
+          // Nor anything inside a dragged block: a block can't go into itself.
           const candidates = Array.from(document.querySelectorAll('[data-block-uid]'))
-            .filter(el => el !== draggedBlock && !draggedBlockUids.includes(uidOf(el)));
+            .filter(el => el !== draggedBlock && !draggedBlockUids.includes(uidOf(el))
+              && !allElements.some((dragged) => dragged.contains(el)));
           // For each candidate, measure BOTH insert edges along the axis its siblings
           // are laid out on — a horizontal row (columns / data-block-add="right") uses
           // the left/right edges + clientX, a vertical stack uses top/bottom + clientY
@@ -11433,15 +11533,19 @@ export class Bridge {
           const targetBlockData = this.getBlockData(closestBlockUid);
           const sourceBlockData = this.getBlockData(this.selectedBlockUid);
           const addability = getBlockAddability(closestBlockUid, this.blockPathMap, targetBlockData, this.templateEditMode, sourceBlockData);
+          // A '+' redirected elsewhere (insertAt: the top of the layout's default
+          // slot) means there is no room right here: a drop lands where it is
+          // shown, so it can't go after this block.
+          const canDropAfter = addability.canInsertAfter && !addability.insertAt;
 
           // Use preferred position if allowed, otherwise try the other side
           if (preferredInsertAt === 0 && addability.canInsertBefore) {
             insertAt = 0;
-          } else if (preferredInsertAt === 1 && addability.canInsertAfter) {
+          } else if (preferredInsertAt === 1 && canDropAfter) {
             insertAt = 1;
           } else if (addability.canInsertBefore) {
             insertAt = 0;
-          } else if (addability.canInsertAfter) {
+          } else if (canDropAfter) {
             insertAt = 1;
           } else {
             // Neither side is allowed - hide indicator
@@ -11495,10 +11599,27 @@ export class Bridge {
               borderLeft: 'none', borderTop: '3px dashed #007bff', display: 'block'
             });
           }
+          // The indicator shows where the drop goes: a place the author can't
+          // see is no drop. Walked up to a container's far edge, out of the
+          // window, a layout's title was dropped after the whole layout (inka#705).
+          // The edge it lands at must be in the window; the indicator, drawn in
+          // the gap beside that edge, is then kept on screen with it.
+          const landsAt = isHorizontal ? (insertAt === 0 ? rect.left : rect.right) : (insertAt === 0 ? rect.top : rect.bottom);
+          const windowEnd = isHorizontal ? window.innerWidth : window.innerHeight;
+          if (landsAt < 0 || landsAt > windowEnd) {
+            dropIndicator.style.display = 'none';
+            dropIndicatorVisible = false;
+            closestBlockUid = null;
+            replaceTargetUid = null;
+            return;
+          }
+          const scrolled = isHorizontal ? window.scrollX : window.scrollY;
+          const along = isHorizontal ? 'left' : 'top';
+          const at = parseFloat(dropIndicator.style[along]);
+          const kept = Math.min(Math.max(at, scrolled), scrolled + windowEnd - indicatorSize);
+          if (kept !== at) dropIndicator.style[along] = `${kept}px`;
           this._nameDropTarget(dropIndicator, closestBlockUid, insertAt === 1, isHorizontal);
           dropIndicatorVisible = true;
-          // TODO(scroll-into-view): if the resolved edge is off-screen, scroll it into
-          // view — deferred; scrolling mid-drag fights a held cursor, needs its own design.
         } else {
           // No valid drop target - hide indicator and mark as not droppable
           const existingIndicator = document.querySelector('.volto-hydra-drop-indicator');
@@ -11536,6 +11657,11 @@ export class Bridge {
 
         // Always clean up drop indicator on mouseup
         const dropIndicator = document.querySelector('.volto-hydra-drop-indicator');
+        // Where the block was dropped, in the frame's viewport: a chooser the
+        // drop asks for (convert to fit) opens there.
+        const dropRect = dropIndicatorVisible && dropIndicator
+          ? dropIndicator.getBoundingClientRect().toJSON()
+          : null;
         if (dropIndicator) {
           log('Hiding drop indicator on mouseup');
           dropIndicator.style.display = 'none';
@@ -11565,6 +11691,7 @@ export class Bridge {
               // When set, the admin deletes this block after the move so the
               // 'empty' placeholder is replaced rather than dropped beside.
               replaceTargetId: replaceTargetUid || null,
+              dropRect,
             },
             this.adminOrigin,
           );
@@ -11614,6 +11741,14 @@ export class Bridge {
         // This prevents ping-pong when Admin echoes back the selection from iframe click
         const alreadySelected = this.selectedBlockUid === uid;
 
+        // The admin selecting a block never takes the keyboard into this page.
+        // The author chose it somewhere else — the sidebar's block list, or the
+        // page beside this one, which this page follows — and keeps working
+        // there. Only when this page already has focus does the caret go to
+        // the block, as a click on it would. (_iframeFocused, not
+        // document.hasFocus(), which headless browsers always answer false.)
+        const focus = this._iframeFocused;
+
         this.selectedBlockUid = uid;
         // Don't update formData here - it's managed via FORM_DATA messages
         // Don't post FORM_DATA - form data syncing is handled separately
@@ -11622,7 +11757,7 @@ export class Bridge {
         // selectBlock handles these by computing bounding box from child elements
         if (this.blockPathMap?.[uid]?.isTemplateInstance) {
           if (!alreadySelected) {
-            this.selectBlock(uid);
+            this.selectBlock(uid, { focus });
           }
           return;
         }
@@ -11655,7 +11790,7 @@ export class Bridge {
             const stillWanted = this.awaitPendingSelect(uid);
             waitForVisible().then((visible) => {
               if (visible && stillWanted()) {
-                this.selectBlock(blockElement);
+                this.selectBlock(blockElement, { focus });
               }
             });
             return;
@@ -11667,7 +11802,7 @@ export class Bridge {
             const stillWanted = this.awaitPendingSelect(uid);
             waitForVisible().then((visible) => {
               if (visible && stillWanted()) {
-                this.selectBlock(blockElement);
+                this.selectBlock(blockElement, { focus });
               }
             });
             return; // Exit early - selection will happen in the async callback
@@ -11691,14 +11826,14 @@ export class Bridge {
           // Call selectBlock() to properly set up toolbar and contenteditable
           // This ensures blocks selected via Order tab work the same as clicking
           this.editMode = 'text';
-          this.selectBlock(blockElement);
+          this.selectBlock(blockElement, { focus });
 
           // Focus the contenteditable element for blocks with editable fields
           // This includes slate, string, and textarea field types
           const schemaProps = this.getBlockSchema(uid)?.properties;
           const hasEditableFields = schemaProps && Object.keys(schemaProps).length > 0;
 
-          if (hasEditableFields) {
+          if (hasEditableFields && focus) {
             // Use double requestAnimationFrame to wait for ALL DOM updates including Quanta toolbar
             requestAnimationFrame(() => {
               requestAnimationFrame(() => {
@@ -11742,7 +11877,7 @@ export class Bridge {
               clearTimeout(safetyTimer);
               if (!stillWanted()) return;
               log('Block element appeared via observer, selecting:', uid);
-              this.selectBlock(el);
+              this.selectBlock(el, { focus });
             }
           });
           observer.observe(document.body, { childList: true, subtree: true });
@@ -11860,6 +11995,23 @@ export class Bridge {
   }
 
   /**
+   * Tell the admin when this page gets focus (CANVAS_FOCUSED): the author
+   * clicked in it or tabbed into it, from the admin or from another page the
+   * admin shows. Once per switch: the window's focus event fires when focus
+   * arrives from elsewhere, not for each click or key inside.
+   *
+   * The admin can't see this itself: focus moving into an iframe, or from one
+   * iframe to another, fires nothing on the admin's side. And it is always the
+   * author: the bridge never moves focus into its own page by itself (not on
+   * load, nor when the admin selects a block — see SELECT_BLOCK).
+   */
+  reportCanvasFocus() {
+    window.addEventListener('focus', () => {
+      window.parent.postMessage({ type: 'CANVAS_FOCUSED' }, this.adminOrigin);
+    });
+  }
+
+  /**
    * Sends throttled MOUSE_ACTIVITY messages to admin on mouse use.
    * The admin uses this to show the toolbar (which starts hidden).
    * Listens for both mousemove and mousedown (click without prior movement).
@@ -11913,8 +12065,8 @@ export class Bridge {
       editableField = this.getOwnFirstEditableField(elementOrBlock);
     }
 
-    // Skip making readonly blocks editable
-    if (blockUid && this.isBlockReadonly(blockUid)) {
+    // Skip making readonly fields editable
+    if (blockUid && this.isFieldReadonly(editableField?.getAttribute('data-edit-text'), blockUid)) {
       return;
     }
 
@@ -11983,6 +12135,14 @@ export class Bridge {
       editableField.addEventListener('paste', (e) => {
         e.preventDefault(); // Prevent default paste
         const html = e.clipboardData.getData('text/html') || e.clipboardData.getData('text/plain');
+        // During a transform (a delete still on its way to the admin), the
+        // paste waits for it, as the document handler's does: sent at once,
+        // it went with the content from before the delete.
+        if (this.blockedBlockId) {
+          this.eventBuffer.push({ _type: 'paste', html });
+          log('BUFFERED paste data (field handler), buffer size:', this.eventBuffer.length);
+          return;
+        }
         this._doPaste(blockUid, html);
       });
 
@@ -12408,26 +12568,19 @@ export class Bridge {
   }
 
   /**
-   * The block's schema fields that COULD be revealed: ones with an inline
-   * affordance that the frontend is currently rendering no element for.
+   * The block's empty fields the reveal button would show: those its frontend
+   * marked `optionalOnCanvas: true` (inka#765).
    *
-   * Purely observational — no schema annotation, no dependence on `required`
-   * (most block schemas here don't declare it).
+   * The mark is the frontend saying "I draw this field on the page when it has
+   * a value, and nothing when it is empty". Nothing else can tell: the widget
+   * only says a field COULD be edited inline, and alt text, a css class or a
+   * free-text style value are plain strings that live in the sidebar. Guessing
+   * offered a button on almost every block that often revealed nothing.
    *
-   * DELIBERATELY OVER-INCLUSIVE, don't "fix" this. The widget/type only says a
-   * field COULD be edited inline, not that this frontend renders it: alt text, a
-   * css class, a free-text style value are all plain strings that live in the
-   * sidebar. Telling them apart from an empty heading is impossible without data,
-   * since "renders nothing because it's empty" and "never renders inline" look
-   * identical — it would need a schema annotation or a frontend-side declaration,
-   * i.e. exactly the per-field bookkeeping #296 exists to remove.
-   *
-   * So reveal is BEST-EFFORT: it seeds every candidate, the ones the frontend
-   * renders appear, and the rest are a no-op. A sentinel for a field nobody
-   * renders is harmless — it lives only in the render projection, never in state
-   * and never in saved content — and the editor fills those from the sidebar as
-   * before. No warning is raised for them: a frontend that legitimately keeps a
-   * field sidebar-only is not misconfigured.
+   * Two marks contradict the field and are refused: a REQUIRED field is never
+   * toggled (an empty required image is always shown, emptyRequiredFields; a
+   * required text field is drawn by the frontend itself), and a field with no
+   * inline affordance (a select, a boolean) can't be revealed on the page.
    */
   revealableFields(blockUid) {
     const schema = this.getBlockSchema(blockUid);
@@ -12440,17 +12593,19 @@ export class Bridge {
 
     return Object.entries(properties)
       .filter(([fieldName, fieldDef]) => {
-        const fieldType = this.getFieldType(blockUid, fieldName);
-        // Has an inline affordance at all. Returns undefined for select /
-        // boolean / number, so sidebar-only fields drop out for free.
-        if (!this._revealSentinelFor(fieldDef, fieldType)) {
-          return false;
+        if (fieldDef?.optionalOnCanvas !== true) return false;
+        const where = `${block['@type']}.${fieldName}`;
+        if (schema.required?.includes(fieldName)) {
+          throw new Error(
+            `${where} is both required and optionalOnCanvas: a required field is always there, so it has nothing to reveal`,
+          );
         }
-        // A REQUIRED field is never toggled: an empty required image is always
-        // shown (emptyRequiredFields, seeded on every render), and a required
-        // text field is drawn by the frontend itself. Excluding them keeps the
-        // button's "N empty optional fields" count honest.
-        if (schema.required?.includes(fieldName)) return false;
+        const fieldType = this.getFieldType(blockUid, fieldName);
+        if (!this._revealSentinelFor(fieldDef, fieldType)) {
+          throw new Error(
+            `${where} is marked optionalOnCanvas, but its widget isn't one the page edits (text, rich text, image or link)`,
+          );
+        }
         // A slate field is never absent — it defaults to one empty paragraph —
         // so its empty is that paragraph, the same test a renderer hides it by.
         if (isSlateFieldType(fieldType)) return isEmptySlate(block[fieldName]);
@@ -12630,9 +12785,14 @@ export class Bridge {
         // bridge gave it. Reveal fills THAT paragraph rather than inventing one,
         // so the element the renderer draws carries a data-node-id and typing
         // into it maps back into the value.
+        // A field with no value at all (an admin always sends the default
+        // paragraph, but the bridge doesn't depend on it) reveals as that
+        // default would: one paragraph, with the node id the bridge gives it.
         const stored = source[fieldName];
         if (isSlateFieldType(fieldType) && Array.isArray(stored) && stored.length === 1) {
           sentinel = [{ ...stored[0], children: [{ text: Bridge.REVEAL_ZWS }] }];
+        } else if (isSlateFieldType(fieldType)) {
+          sentinel = this.addNodeIds(sentinel);
         }
         if (!projected) projected = JSON.parse(JSON.stringify(formData));
         let target = projected;
@@ -12644,8 +12804,45 @@ export class Bridge {
     // (not this.formData) to tell "field is empty, so no element is CORRECT" from
     // "field has content but the renderer produced no element" — including a
     // revealed sentinel, whose element failing to appear means reveal did nothing.
-    this._lastRenderedData = projected || formData;
+    this._lastRenderedData = this._withPendingImages(projected || formData);
     return this._lastRenderedData;
+  }
+
+  /**
+   * Images the admin holds until the page is saved (a front end that sets
+   * `deferImageUploads`), by the reference the page names each by
+   * (`inka-pending:<id>`), as a blob: URL of the file the admin sent once
+   * (PENDING_IMAGE). Every FORM_DATA carries only the reference.
+   */
+  get pendingImages() {
+    if (!this._pendingImages) this._pendingImages = new Map();
+    return this._pendingImages;
+  }
+
+  holdPendingImage(ref, dataUrl) {
+    this.pendingImages.set(ref, dataUrl);
+  }
+
+  /**
+   * `data` with each held image's reference replaced by its blob: URL, for the
+   * renderer: the front end, having opted in, renders a complete URL as it is.
+   * State keeps the reference. Cloned only when something is swapped.
+   */
+  _withPendingImages(data) {
+    if (!this._pendingImages?.size || !data) return data;
+    const swap = (value) => {
+      if (typeof value === 'string') return this._pendingImages.get(value) ?? value;
+      if (!value || typeof value !== 'object') return value;
+      let copy = null;
+      for (const [key, item] of Object.entries(value)) {
+        const swapped = swap(item);
+        if (swapped === item) continue;
+        if (!copy) copy = Array.isArray(value) ? [...value] : { ...value };
+        copy[key] = swapped;
+      }
+      return copy || value;
+    };
+    return swap(data);
   }
 
   _executeRender(callbackFn, afterRenderOptions = {}) {
@@ -14751,6 +14948,18 @@ export class Bridge {
 
       this.setFieldValueByPath(block, resolved.fieldName, freshValue);
       log('handleTextChange: updated', editableField);
+
+      // The author has typed into this field, so its caret target (see
+      // _requestCaretTarget) has done its job: the frontend's node now holds
+      // their text. Forget it. Kept, it would fill its leaf with a zero-width
+      // space whenever the leaf is empty again — after linking the whole line,
+      // the empty leaf before the link — and the frontend, handed the same
+      // value it last drew there, would leave the typed text in that node, in
+      // front of the link.
+      const caretLeaf = this._caretLeaf;
+      if (caretLeaf && caretLeaf.blockUid === blockUid && caretLeaf.fieldName === editableField) {
+        this._caretLeaf = null;
+      }
     } else {
       // Non-Slate field - update field directly with text content
       // Resolve field path to handle /fieldName (page) and ../fieldName (parent) syntax
@@ -14984,369 +15193,6 @@ export class Bridge {
       node = node.parentElement;
     }
     return null;
-  }
-
-  ////////////////////////////////////////////////////////////////////////////////
-  // Text Formatting
-  ////////////////////////////////////////////////////////////////////////////////
-
-  /**
-   * Check if a selection range involves formatted content (nested elements).
-   * Uses getNodePath to determine if selection is inside or spans inline formatting.
-   *
-   * Path length indicates nesting:
-   * - [0, 0] = text directly in paragraph (plain text)
-   * - [0, 1, 0] = text inside inline element like strong (formatted)
-   *
-   * @param {Range} range - The selection range
-   * @returns {boolean} True if selection involves formatted/structured content
-   */
-  selectionContainsElementNodes(range) {
-    // Get paths for start and end of selection
-    const startPath = this.getNodePath(range.startContainer);
-    const endPath = this.getNodePath(range.endContainer);
-
-    if (!startPath || !endPath) return false;
-
-    // Path length > 2 means inside nested element (e.g., strong inside p)
-    if (startPath.length > 2) return true;
-    if (endPath.length > 2) return true;
-
-    // If paths are identical, selection is within same text node - no structure
-    if (startPath.join('.') === endPath.join('.')) return false;
-
-    // Different paths means selection spans multiple children
-    // Could have elements between them (e.g., start [0,0], end [0,2] has [0,1] between)
-    return true;
-  }
-
-  getSelectionHTML(range) {
-    const div = document.createElement('div');
-    div.appendChild(range.cloneContents());
-    return div.innerHTML;
-  }
-
-  /**
-   * Checks if the selected text has which types of formatting.
-   * @param {Range} range - The selection range
-   * @returns {Object} An object indicating the presence of bold, italic, del, and link formatting
-   */
-  isFormatted(range) {
-    const formats = {
-      bold: { present: false, enclosing: false },
-      italic: { present: false, enclosing: false },
-      del: { present: false, enclosing: false },
-      link: { present: false, enclosing: false },
-    };
-
-    // Check if the selection is collapsed (empty)
-    // if (range.collapsed) return formats;
-
-    // Get the common ancestor container of the selection
-    let container = range.commonAncestorContainer;
-
-    // Traverse upwards until we find the editable parent or the root
-    while (
-      container &&
-      container !== document &&
-      !(container.dataset && container.dataset.editableField === 'value')
-    ) {
-      // Check if the container itself has any of the formatting
-      if (container.nodeName === 'STRONG' || container.nodeName === 'B') {
-        if (
-          container.contains(range.startContainer) &&
-          container.contains(range.endContainer)
-        ) {
-          formats.bold.enclosing = true;
-          formats.bold.present = true;
-        }
-      }
-      if (container.nodeName === 'EM' || container.nodeName === 'I') {
-        if (
-          container.contains(range.startContainer) &&
-          container.contains(range.endContainer)
-        ) {
-          formats.italic.enclosing = true;
-          formats.italic.present = true;
-        }
-      }
-      if (container.nodeName === 'DEL') {
-        if (
-          container.contains(range.startContainer) &&
-          container.contains(range.endContainer)
-        ) {
-          formats.del.enclosing = true;
-          formats.del.present = true;
-        }
-      }
-      if (container.nodeName === 'A') {
-        if (
-          container.contains(range.startContainer) &&
-          container.contains(range.endContainer)
-        ) {
-          formats.link.enclosing = true;
-          formats.link.present = true;
-        }
-      }
-
-      container = container.parentNode;
-    }
-
-    // Check for formatting within the selection
-    const selectionHTML = this.getSelectionHTML(range).toString();
-    if (selectionHTML.includes('</strong>') || selectionHTML.includes('</b>')) {
-      formats.bold.present = true;
-    }
-    if (selectionHTML.includes('</em>') || selectionHTML.includes('</i>')) {
-      formats.italic.present = true;
-    }
-    if (selectionHTML.includes('</del>')) {
-      formats.del.present = true;
-    }
-    if (selectionHTML.includes('</a>')) {
-      formats.link.present = true;
-    }
-
-    return formats;
-  }
-
-  /**
-   * Helper function to get the next node in the selection
-   * @param {Node} node - The current node
-   * @returns {Node|null} The next node in the selection, or null if at the end
-   */
-  nextNode(node) {
-    if (!node) return null; // Handle the case where node is null
-
-    if (node.firstChild) return node.firstChild;
-
-    while (node) {
-      if (node.nextSibling) return node.nextSibling;
-      node = node.parentNode;
-    }
-
-    return null; // Reached the end, return null
-  }
-
-  /**
-   * Formats the selected text within a block.
-   *
-   * @param {string} format - The format to apply (e.g., 'bold', 'italic', 'del').
-   * @param {boolean} remove - Whether to remove the format (true) or apply it (false).
-   */
-  formatSelectedText(format, remove) {
-    // Don't set isInlineEditing to false - keep it true for text changes
-    const selection = window.getSelection();
-    if (!selection.rangeCount) return;
-
-    const range = selection.getRangeAt(0);
-    if (remove) {
-      this.unwrapFormatting(range, format);
-    } else {
-      // Handle selections that include non-Text nodes
-      const fragment = range.extractContents(); // Extract the selected content
-      const newNode = document.createElement(
-        format === 'bold'
-          ? 'strong'
-          : format === 'italic'
-            ? 'em'
-            : format === 'del'
-              ? 'del'
-              : 'span',
-      );
-      newNode.appendChild(fragment); // Append the extracted content to the new node
-      range.insertNode(newNode); // Insert the new node back into the document
-    }
-    this.sendFormattedHTMLToAdminUI(selection);
-  }
-
-  // Helper function to unwrap formatting while preserving other formatting
-  unwrapFormatting(range, format) {
-    const formattingElements = {
-      bold: ['STRONG', 'B'],
-      italic: ['EM', 'I'],
-      del: ['DEL'],
-      link: ['A'],
-    };
-
-    // Check if the selection is entirely within a formatting element of the specified type
-    let container = range.commonAncestorContainer;
-    let topmostParent = false;
-    while (container && container !== document && !topmostParent) {
-      if (container.dataset && container.dataset.editableField === 'value')
-        topmostParent = true;
-      if (formattingElements[format].includes(container.nodeName)) {
-        // Check if the entire content of the formatting element is selected
-        const isEntireContentSelected =
-          range.startOffset === 0 &&
-          range.endOffset === container.textContent.length;
-
-        if (isEntireContentSelected) {
-          // Unwrap the entire element
-          this.unwrapElement(container);
-        } else {
-          // Unwrap only the selected portion
-          this.unwrapSelectedPortion(
-            container,
-            range,
-            format,
-            formattingElements,
-          );
-        }
-        return; // No need to check further
-      }
-      container = container.parentNode;
-    }
-
-    // If the selection is not entirely within a formatting element, remove all occurrences of the format within the selection
-    let node = range.startContainer;
-    while (node && node !== range.endContainer) {
-      if (
-        node.nodeType === Node.ELEMENT_NODE &&
-        formattingElements[format].includes(node.nodeName)
-      ) {
-        this.unwrapElement(node);
-      } else if (
-        node.nodeType === Node.TEXT_NODE &&
-        node.parentNode &&
-        formattingElements[format].includes(node.parentNode.nodeName)
-      ) {
-        // Handle the case where the text node itself is within the formatting element
-        this.unwrapElement(node.parentNode);
-      }
-      node = this.nextNode(node);
-    }
-  }
-
-  // Helper function to unwrap the selected portion within a formatting element
-  unwrapSelectedPortion(element, range, format, formattingElements) {
-    const formattingTag = formattingElements[format][0];
-
-    // Check if selection starts at the beginning of the formatting element
-    const selectionStartsAtBeginning = range.startOffset === 0;
-
-    // Check if selection ends at the end of the formatting element
-    const selectionEndsAtEnd = range.endOffset === element.textContent.length;
-
-    // Extract the contents before the selection (only if not at the beginning)
-    let beforeFragment = null;
-    if (!selectionStartsAtBeginning) {
-      const beforeRange = document.createRange();
-      beforeRange.setStart(element, 0);
-      beforeRange.setEnd(range.startContainer, range.startOffset);
-      beforeFragment = beforeRange.extractContents();
-    }
-
-    // Extract the selected contents
-    const selectionFragment = range.extractContents();
-
-    // Extract the contents after the selection (only if not at the end)
-    let afterFragment = null;
-    if (!selectionEndsAtEnd) {
-      const afterRange = document.createRange();
-      afterRange.setStart(range.endContainer, range.endOffset);
-      afterRange.setEnd(element, element.childNodes.length);
-      afterFragment = afterRange.extractContents();
-    }
-
-    // Create new elements to wrap the before and after fragments, keeping the original formatting (only if fragments exist)
-    const beforeWrapper = beforeFragment
-      ? document.createElement(formattingTag)
-      : null;
-    if (beforeWrapper) {
-      beforeWrapper.appendChild(beforeFragment);
-    }
-    const afterWrapper = afterFragment
-      ? document.createElement(formattingTag)
-      : null;
-    if (afterWrapper) {
-      afterWrapper.appendChild(afterFragment);
-    }
-
-    // Replace the original element with the unwrapped selection and the formatted before/after parts
-    const parent = element.parentNode;
-    if (beforeWrapper) {
-      parent.insertBefore(beforeWrapper, element);
-    }
-    parent.insertBefore(selectionFragment, element);
-    if (afterWrapper) {
-      parent.insertBefore(afterWrapper, element);
-    }
-    parent.removeChild(element);
-    // Check and remove any empty formatting elements that might have been created
-    this.removeEmptyFormattingElements(parent);
-  }
-
-  // Helper function to unwrap a single formatting element
-  unwrapElement(element) {
-    const parent = element.parentNode;
-    if (!parent) return; // Handle the case where the element has no parent
-
-    // Store the next sibling of the element before modifying the DOM
-    const nextSibling = element.nextSibling;
-
-    while (element.firstChild) {
-      parent.insertBefore(element.firstChild, element);
-    }
-
-    // Remove the element itself
-    parent.removeChild(element);
-
-    this.removeEmptyFormattingElements(parent);
-
-    // If there was a next sibling, set the selection to the beginning of it
-    if (nextSibling) {
-      const range = document.createRange();
-      range.setStart(nextSibling, 0);
-      range.collapse(true);
-      const selection = window.getSelection();
-      selection.removeAllRanges();
-      selection.addRange(range);
-    }
-  } // Helper function to remove empty formatting elements
-  removeEmptyFormattingElements(parent) {
-    for (let i = 0; i < parent.childNodes.length; i++) {
-      const child = parent.childNodes[i];
-      if (
-        child.nodeType === Node.ELEMENT_NODE &&
-        (child.nodeName === 'STRONG' ||
-          child.nodeName === 'EM' ||
-          child.nodeName === 'DEL' ||
-          child.nodeName === 'A') &&
-        child.textContent.trim() === ''
-      ) {
-        parent.removeChild(child);
-        i--; // Decrement i since we removed a child
-      }
-    }
-  }
-  sendFormattedHTMLToAdminUI(selection) {
-    if (!selection.rangeCount) return; // No selection
-
-    const range = selection.getRangeAt(0);
-    const commonAncestor = range.commonAncestorContainer;
-
-    const editableParent = this.findEditableParent(commonAncestor);
-    if (!editableParent) return; // Couldn't find the editable parent
-
-    const htmlString = editableParent.outerHTML;
-
-    window.parent.postMessage(
-      {
-        type: 'TOGGLE_MARK',
-        html: htmlString,
-      },
-      this.adminOrigin,
-    );
-  }
-  findEditableParent(node) {
-    if (!node || node === document) return null; // Reached the top without finding
-
-    if (node.dataset && node.dataset.nodeId === '1') {
-      return node;
-    }
-
-    return this.findEditableParent(node.parentNode);
   }
 
   /**
@@ -15669,6 +15515,10 @@ export class Bridge {
           color: #b8c6c8;
           pointer-events: none;
         }
+        /* The frontend draws its own add button (data-block-add="button"). */
+        [data-hydra-empty]:has([data-block-add="button"])::after {
+          content: none;
+        }
       `;
     document.head.appendChild(style);
   }
@@ -15760,14 +15610,11 @@ if (typeof window !== 'undefined' && window.self !== window.top) {
     // Check after page load + 5 seconds — enough time for bridge to connect
     const _checkConnection = () => {
       setTimeout(() => {
-        // Only the "initBridge was never called" case is left to a timer, and
-        // only because there is no event for something that never happens. A
-        // bridge that HAS been created is mid-handshake: it retries INIT and
-        // reports for itself when it runs out of attempts, so the clock must
-        // not pre-empt it.
-        const stillHandshaking =
-          bridgeInstance && !bridgeInstance.initialized && !bridgeInstance._initHandshakeGaveUp;
-        if (!stillHandshaking && (!bridgeInstance || !bridgeInstance.initialized)) {
+        // A bridge never created, or an INIT never answered: either way the
+        // editor is not connected, and this is the only thing that says so
+        // (there is no event for something that never happens). A late answer
+        // takes the panel down again (_removeBridgeDiagnostic).
+        if (!bridgeInstance || !bridgeInstance.initialized) {
           _showBridgeDiagnostic({
             windowName: window.name,
             hasHydraName: _isEditMode,
@@ -16047,8 +15894,3 @@ export { canContain, findConversionPath, mapLayoutItems } from './containerOps.j
 // in-page navigation block) build the hierarchy from ONE source.
 export { buildAnchorTree } from './linkableAnchors.js';
 
-// buildIdFieldMap derives the merge's `idFieldMap` ({ blockType: { field: idField } }) from a
-// blocks config — the same one a frontend passes to initBridge. Re-exported so frontends
-// build it from their own block schemas exactly as the admin does: it is a fact about the
-// frontend's schemas, which the backend (and so the @templates endpoint) never sees.
-export { buildIdFieldMap } from './buildBlockPathMap.js';

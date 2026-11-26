@@ -6,7 +6,7 @@
 import { describe, it, expect } from 'vitest';
 import { sharedBlocksConfig } from '../../tests-playwright/fixtures/shared-block-schemas.js';
 import { editBlocks, EditError } from './editBlocks.mjs';
-import { slateToMd } from '../../lib/slate-md.mjs';
+import { slateToMd } from '@inka/blockmd/slate-md.mjs';
 
 /** A page as an ordered list of [id, block]; containers not modelled. */
 function fakeAgent(initial) {
@@ -35,6 +35,8 @@ function fakeAgent(initial) {
       return id;
     },
     async update({ id, fields }) { calls.push(['update', id]); Object.assign(page[at(id)][1], fields); },
+    async getBlock(id) { return structuredClone(page[at(id)][1]); },
+    async replace({ id, block }) { calls.push(['update', id]); page[at(id)][1] = block; },
     async remove(id) { calls.push(['remove', id]); page.splice(at(id), 1); },
     async move({ id, targetId, insertAfter }) {
       calls.push(['move', id, targetId, insertAfter]);
@@ -61,7 +63,7 @@ describe('edit_blocks', () => {
     }], opts);
     // Not reversed: the second goes after the first, not after the title.
     expect(agent.order()).toEqual(['title', 'real-1', 'real-2', 'p1', 'p2']);
-    expect(agent.block('real-1').plaintext).toBe('First');
+    expect(slateToMd(agent.block('real-1').value)).toBe('First');
   });
 
   it('lets a later operation refer to a new block by its own @uid', async () => {
@@ -77,7 +79,6 @@ describe('edit_blocks', () => {
   it('updates fields, taking markdown for rich text', async () => {
     const agent = page();
     await editBlocks(agent, [{ op: 'update', id: 'p1', set: { value: 'Now **bold**' } }], opts);
-    expect(agent.block('p1').plaintext).toBe('Now bold');
     expect(slateToMd(agent.block('p1').value)).toBe('Now **bold**');
   });
 

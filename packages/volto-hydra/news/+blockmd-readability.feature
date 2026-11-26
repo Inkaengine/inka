@@ -1,0 +1,1 @@
+blockmd has a readability report: `node packages/blockmd/readability.mjs <dir>` says, per page and worst first, what share of its words are markdown rather than tags, attributes or JSON, how each block is written (bare, a tag, a fields tag, JSON), and how much of the page is markup, plus which block types are written as tags.

@@ -9,7 +9,8 @@
  * No `regions` map, no synthesised 'items'.
  */
 
-import { getBlocksFieldNames, buildBlockPathMap, getPageAllowedBlocksFromRestricted, addableSiblingTypes } from './buildBlockPathMap.js';
+import { describe, test, expect } from 'vitest';
+import { getBlocksFieldNames, buildBlockPathMap, getPageAllowedBlocksFromRestricted, addableSiblingTypes } from '@volto-hydra/helpers/buildBlockPathMap.js';
 import { mapLayoutItems } from './containerOps.js';
 
 describe('getBlocksFieldNames', () => {

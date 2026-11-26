@@ -12,6 +12,7 @@
  * we actually publish.
  */
 
+import { describe, it, expect, afterEach } from 'vitest';
 import Cookies from 'js-cookie';
 import getSavedURLs, { serialiseEntries } from './getSavedURLs';
 import { getSavedUrlsCookieName } from './cookieNames';

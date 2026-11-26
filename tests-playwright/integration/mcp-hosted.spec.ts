@@ -13,7 +13,7 @@ import { UnauthorizedError } from '@modelcontextprotocol/sdk/client/auth.js';
 import { test, expect } from '../fixtures';
 import { AdminUIHelper } from '../helpers/AdminUIHelper';
 import { hostedServer } from '../../packages/inka-mcp/http.mjs';
-import { localCodes } from '../../packages/inka-mcp/codes.mjs';
+import { localCodes, localPictures, localMedia } from '../../packages/inka-mcp/codes.mjs';
 
 /** Listen on a free loopback port; the server and its address. */
 async function listen(handler: Parameters<typeof httpListener>[0] | ReturnType<typeof hostedServer>['app']) {
@@ -63,6 +63,10 @@ test.describe('hosted MCP server', () => {
       publicUrl: mcp.url,
       secret: randomBytes(32).toString('base64'),
       codes: localCodes({ instance: null, now: Date.now }),
+      pictures: localPictures({ instance: null, now: Date.now }),
+      media: localMedia({ instance: null, now: Date.now }),
+      // Nothing reported: these tests ARE the ones that make tools throw.
+      reporting: null,
       poolSize: 1,
     });
 
@@ -81,9 +85,9 @@ test.describe('hosted MCP server', () => {
       await client.connect(new StreamableHTTPClientTransport(new URL('/mcp', mcp.url), { authProvider: auth }));
       const { tools } = await client.listTools();
       expect(tools.map((t) => t.name)).toContain('get_page');
-      const read = await client.callTool({ name: 'get_page', arguments: { path: '/_test_data/line-breaks-page' } }, undefined, { timeout: 90000 });
+      const read = await client.callTool({ name: 'get_page', arguments: { path: '/_test_data/test-page' } }, undefined, { timeout: 90000 });
       expect(read.isError, (read.content as any[])[0].text).toBeFalsy();
-      expect(JSON.parse((read.content as any[])[0].text).path).toBe('/_test_data/line-breaks-page');
+      expect(JSON.parse((read.content as any[])[0].text).path).toBe('/_test_data/test-page');
 
       // The client holds sealed tokens, not the person's Plone token.
       const signedInAs = (await page.context().cookies()).find((c) => c.name === 'auth_token')!.value;
@@ -99,7 +103,7 @@ test.describe('hosted MCP server', () => {
   test('without a token, the server says how to sign in', async ({ urls }) => {
     let hosted: ReturnType<typeof hostedServer>;
     const mcp = await listen((req, res) => hosted.app(req, res));
-    hosted = hostedServer({ adminUrl: urls.voltoSsr, publicUrl: mcp.url, secret: randomBytes(32).toString('base64'), codes: localCodes({ instance: null, now: Date.now }), poolSize: 1 });
+    hosted = hostedServer({ adminUrl: urls.voltoSsr, publicUrl: mcp.url, secret: randomBytes(32).toString('base64'), codes: localCodes({ instance: null, now: Date.now }), pictures: null, media: null, reporting: null, poolSize: 1 });
     try {
       const res = await fetch(`${mcp.url}/mcp`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
       expect(res.status).toBe(401);

@@ -21,7 +21,7 @@ const criteria = (body, i) => body.query.filter((q) => q.i === i);
 describe('buildQuerystringSearchBody — core body', () => {
   test('no queryConfig → the folder\'s own items (".::1") + folder-order sort', () => {
     // Volto's listing with no criteria shows the folder's CONTENTS — its
-    // direct children. `.` alone is the whole subtree: the LECC "Information in
+    // direct children. `.` alone is the whole subtree: a converted "Information in
     // other languages" page listed 25 items (every language's sub-pages)
     // against the source's 7 languages, and three languages fell off the page.
     const body = buildQuerystringSearchBody(undefined, {}, {});
@@ -131,6 +131,44 @@ describe('buildQuerystringSearchBody — sort order when only sort_on is set', (
 
   test('the implicit default sort for a configured query stays newest first', () => {
     const body = buildQuerystringSearchBody({ query: docsQuery }, {}, {});
+    expect(body.sort_on).toBe('effective');
+    expect(body.sort_order).toBe('descending');
+  });
+});
+
+describe('buildQuerystringSearchBody — relevance', () => {
+  // Plone ranks a keyword search by relevance only when the request names no
+  // sort_on; any sort_on replaces the ranking. So relevance is asked for by
+  // `sort_on: null` — a sort the caller chose, unlike a missing sort_on, which
+  // takes the listing's own sort or the default.
+  const docsQuery = [
+    { i: 'portal_type', o: 'plone.app.querystring.operation.selection.any', v: ['Document'] },
+  ];
+
+  test('sort_on: null with a keyword sends no sort, even over the listing\'s own', () => {
+    const body = buildQuerystringSearchBody(
+      { query: docsQuery, sort_on: 'effective', sort_order: 'descending' },
+      {},
+      { SearchableText: 'dog', sort_on: null },
+    );
+    expect(body).not.toHaveProperty('sort_on');
+    expect(body).not.toHaveProperty('sort_order');
+    expect(criterion(body, 'SearchableText').v).toBe('dog');
+  });
+
+  test('sort_on: null with no keyword fails, naming why', () => {
+    // With nothing to rank, Plone returns catalog order: not a sort anyone chose.
+    expect(() =>
+      buildQuerystringSearchBody({ query: docsQuery }, {}, { sort_on: null }),
+    ).toThrow(/relevance.*SearchableText/i);
+  });
+
+  test('a missing sort_on still takes the listing\'s sort', () => {
+    const body = buildQuerystringSearchBody(
+      { query: docsQuery, sort_on: 'effective', sort_order: 'descending' },
+      {},
+      { SearchableText: 'dog' },
+    );
     expect(body.sort_on).toBe('effective');
     expect(body.sort_order).toBe('descending');
   });

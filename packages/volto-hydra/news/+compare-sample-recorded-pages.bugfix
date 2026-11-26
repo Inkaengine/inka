@@ -1,0 +1,1 @@
+compare-sites: replaying the source from recordings, a sample leaves out a page with no recording (one made on the new site after it) and says which blocks go unchecked, instead of failing on it.

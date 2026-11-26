@@ -1,3 +1,4 @@
+import { describe, it, expect, afterEach } from 'vitest';
 import { JSDOM } from 'jsdom';
 import { getAccessToken } from './hydra.src.js';
 

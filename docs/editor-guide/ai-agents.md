@@ -21,7 +21,7 @@ rights: ""
 subjects: []
 title: Working with an AI agent
 blocks-matched: |
-  <block type="slate" value="${p,h*,ul,ol,blockquote,strong,em,a/slate}" plaintext="${p,h*,ul,ol,blockquote,strong,em,a/text}" />
+  <block type="slate" value="${p,h*,ul,ol,blockquote,strong,em,a/slate}" />
   <block type="title" _="${h1}" />
   <block type="codeExample">
     <region name="tabs" widget="object_list" idField="@id" typeField="@type">
@@ -53,6 +53,8 @@ claude mcp add --transport http inka https://mcp.example.org/mcp
 
 The first time the assistant uses it, your browser opens the site's sign-in. Sign in as you always do, then choose **Allow** on the page that asks whether to connect the assistant. From then on the assistant works as you, until you sign out or the sign-in runs out, when it asks you again.
 
+When the site's team updates the MCP server, what the assistant can do may change. The server tells assistants that listen for changes, and they pick them up by themselves. Others only learn of them in a new conversation, and some need the connector disconnected and connected again.
+
 ## Running it on your own computer
 
 A developer can run the MCP server locally instead of using a hosted one. From an Inka checkout with its dependencies installed, add it to the assistant with the address of the site's editor:
@@ -60,10 +62,18 @@ A developer can run the MCP server locally instead of using a hosted one. From a
 ### Shell
 
 ```shell
-claude mcp add inka --env INKA_ADMIN_URL=https://admin.example.org -- node /path/to/inka/packages/inka-mcp/server.mjs
+claude mcp add inka --env INKA_ADMIN_URL=https://admin.example.org -- node /path/to/inka/packages/inka-mcp/stdio.mjs
 ```
 
 The first call opens your browser to sign in, as above. The sign-in is kept in `~/.config/inka-mcp/tokens.json`, readable only by you, so you aren't asked again until it runs out.
+
+To let it add files from your computer to a page, name the folders it may read, separated by `:` (`;` on Windows). It reads nothing outside them:
+
+### Shell
+
+```shell
+claude mcp add inka --env INKA_ADMIN_URL=https://admin.example.org --env INKA_MEDIA_FOLDERS=$HOME/Pictures/site -- node /path/to/inka/packages/inka-mcp/stdio.mjs
+```
 
 ## What the assistant can do
 
@@ -71,7 +81,9 @@ The first call opens your browser to sign in, as above. The sign-in is kept in `
 - Read a page, and see it as a visitor sees it.
 - Add, change, move and remove blocks, and change a page's own fields such as its title and summary.
 - Preview a change as a visitor would see it before saving it.
-- Add, move, rename and delete pages.
+- Add images and other files to a page: from a web address, a screenshot it took, a file you drop into the conversation when it asks for one, or, when it runs on your computer, a folder you allowed. A file goes onto the site only when the change that uses it is saved. The site's front end has to support this; if it doesn't, the assistant says so.
+- Add, copy, move, rename and delete pages, and change the order of a section's pages, which is the order of its menu.
+- See what a page held at an earlier save, and how it looked, and undo a saved change by putting the page back to it.
 - Change a template's locked blocks on every page that uses it, but only when you ask for that.
 
 It learns what each kind of block is for from the site itself: the description and guidance the site's developers gave it, examples of it, and pages that already use it.
@@ -86,7 +98,7 @@ Ask in your own words, naming pages by their title or where they are on the site
 - **Rework a page:** "Rewrite the summary of the Events page to under 30 words, and put the opening hours in a table."
 - **Try a layout:** "Show me two ways to lay out the Services page with what's on it now, then build the one I choose."
 - **Make a page:** "Create a page in News called 'Spring opening', with a heading, a short introduction and a link to the Events page."
-- **Tidy the site:** "Move the old Press page into the About section and rename it 'Media'."
+- **Tidy the site:** "Move the old Press page into the About section, rename it 'Media' and put it last in the menu."
 - **Learn the blocks:** "Which block should I use for a list of steps? Show me an example of it."
 - **Change a template:** "Change the footer's copyright line on every page." It changes a template's locked blocks only when you ask, and says which templates it changed; every page using them changes too.
 

@@ -7,7 +7,7 @@ import { describe, it, expect } from 'vitest';
 import { readFileSync, readdirSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { decodePage } from '../../lib/prototype-mapping.mjs';
+import { decodePage } from '@inka/blockmd/prototype-mapping.mjs';
 import { sharedBlocksConfig } from '../../tests-playwright/fixtures/shared-block-schemas.js';
 import { toAgentBlocks, toStoredBlocks, toStoredBlock } from './pageFormat.mjs';
 
@@ -35,7 +35,7 @@ describe('agent page format', () => {
       // Yield before a body that blocks the worker: vitest reports each finished
       // test over RPC with a 1s timeout, and a run of synchronous round trips
       // starves it ("Timeout calling onTaskUpdate") though every test passes.
-      // Same as lib/prototype-roundtrip.test.mjs.
+      // Same as packages/blockmd/prototype-roundtrip.test.mjs.
       await new Promise((resolve) => setTimeout(resolve, 0));
       const agent = toAgentBlocks(stored);
       const back = toStoredBlocks(agent, config);
@@ -43,9 +43,9 @@ describe('agent page format', () => {
     });
   }
 
-  it('gives each block its uid, and rich text as markdown', () => {
+  it('gives each block its uid, and rich text as markdown, without the search text save writes', () => {
     const stored = {
-      blocks: { a: { '@type': 'slate', value: [{ type: 'p', children: [{ text: 'Hi ' }, { text: 'there', bold: true }] }], plaintext: 'Hi there' } },
+      blocks: { a: { '@type': 'slate', value: [{ type: 'p', children: [{ text: 'Hi ' }, { text: 'there', bold: true }] }], plaintext: 'Hi there', searchableText: 'Hi there' } },
       blocks_layout: { items: ['a'] },
     };
     expect(toAgentBlocks(stored)).toEqual([{ '@uid': 'a', '@type': 'slate', value: { md: 'Hi **there**' } }]);
@@ -63,10 +63,10 @@ describe('agent page format', () => {
     expect(columns.columns[0].blocks).toEqual([]);
   });
 
-  it('accepts a plain markdown string for a rich-text field, and recomputes plaintext', () => {
+  it('accepts a plain markdown string for a rich-text field, and adds no search text: save writes it', () => {
     const block = toStoredBlock({ '@type': 'slate', value: 'Hello *world*' }, { blocksConfig: sharedBlocksConfig, mintId: () => 'x' });
     expect(block.value[0].type).toBe('p');
-    expect(block.plaintext).toBe('Hello world');
+    expect(Object.keys(block)).toEqual(['@type', 'value']);
   });
 
   it('mints ids for new blocks and new list items that hold blocks', () => {
@@ -80,6 +80,27 @@ describe('agent page format', () => {
     expect(panel['@id']).toMatch(/^new-/);
     expect(panel.blocks_layout.items).toHaveLength(1);
     expect(panel.blocks[panel.blocks_layout.items[0]].value[0].children[0].text).toBe('A');
+  });
+
+  // An agent added a slider whose slides had no ids, and the front end's
+  // template merge refused the page (a 500 in the preview): every item of a
+  // list of objects needs the id its field names.
+  it('gives each new item of a list of objects the id its field names, and keeps one it has', () => {
+    let n = 0;
+    const mintId = () => `new-${++n}`;
+    const block = toStoredBlock({
+      '@type': 'slider',
+      slides: [{ '@type': 'image', url: '/a.png' }, { '@type': 'slide', '@id': 'kept', title: 'B' }],
+    }, { blocksConfig: sharedBlocksConfig, mintId });
+    expect(block.slides.map((slide) => slide['@id'])).toEqual(['new-1', 'kept']);
+  });
+
+  it('mints the id field a list names, when it is not @id', () => {
+    const blocksConfig = {
+      faq: { blockSchema: { properties: { questions: { widget: 'object_list', idField: 'key' } } } },
+    };
+    const block = toStoredBlock({ '@type': 'faq', questions: [{ q: 'Why?' }] }, { blocksConfig, mintId: () => 'k-1' });
+    expect(block.questions).toEqual([{ q: 'Why?', key: 'k-1' }]);
   });
 
   it('refuses something that is not a block', () => {

@@ -46,6 +46,6 @@ blobs:
 
 # Images
 
-<block type="listing" headlineTag="h2" variation="image" />
+<block type="listing" data-json='{"headlineTag":"h2","variation":"image","fieldMapping":{"getURL":{"field":"href","type":"link"},"title":{"field":"alt","type":"string"},"image":{"field":"url","type":"image_link"}}}' />
 
 <block type="slate" data-json='{"value":[{"children":[{"text":""}],"type":"p"}]}' />

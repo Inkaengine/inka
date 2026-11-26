@@ -15,8 +15,7 @@
       "templateId": "resolveuid/context-navigation-layout-uid",
       "templateInstanceId": "page-a-cnav-instance",
       "slotId": "default",
-      "value": [{ "type": "p", "children": [{ "text": "Body of page A. The contextNavigation should appear above this." }] }],
-      "plaintext": "Body of page A. The contextNavigation should appear above this."
+      "value": [{ "type": "p", "children": [{ "text": "Body of page A. The contextNavigation should appear above this." }] }]
     }
   },
   "blocks_layout": { "items": ["title-block", "body"] }
