@@ -1433,6 +1433,7 @@ function isContainmentExempt(entry, blockData, rules = { slots: [] }, pagePath =
 
 import { slateStyles } from './slate-styles.js';
 import { canvasFieldsSet } from './canvas-fields.js';
+import { offersSeveralWidths } from './imageSizes.mjs';
 
 /** The text styles in every slate field of a block. */
 function stylesOfBlock(blockData) {
@@ -1482,6 +1483,19 @@ function fieldExampleCases(cases, candidates, fieldsOf) {
     added.push({ ...example, kind: `field:${key.slice(example.blockType.length + 1)}`, isListing: false });
   }
   return added;
+}
+
+/**
+ * A case drawing an image that offers several widths, when no case does.
+ *
+ * The image-size rule judges a render only when the data offers a choice of
+ * widths; a type's usual example carries one, and the rule then judges nothing.
+ * `candidate` is the first block in the content with such an image (or none);
+ * `offersSeveral` says whether a case's block has one.
+ */
+function scaleExampleCases(cases, candidate, offersSeveral) {
+  if (!candidate || cases.some(offersSeveral)) return [];
+  return [{ ...candidate, kind: 'image-widths', isListing: false }];
 }
 
 /**
@@ -1600,6 +1614,10 @@ async function discoverBlocks(
   // block's set canvas fields, for fieldExampleCases.
   const fieldCandidates = new Map();
   const canvasFieldsOf = new Map();
+  // The first block with an image offering several widths, and which blocks
+  // have one, for scaleExampleCases.
+  let scaleCandidate;
+  const severalWidths = new Set();
   // style -> where it is first offered: every style an author can pick in a
   // region some block's text sits in (see undemonstratedStyles).
   const offeredStyles = new Map();
@@ -1819,6 +1837,10 @@ async function discoverBlocks(
         // Likewise each picture or link it sets, for fieldExampleCases.
         const setFields = canvasFieldsSet(schema, blockData);
         canvasFieldsOf.set(`${pagePath} ${blockId}`, setFields);
+        if (offersSeveralWidths(schema, blockData)) {
+          severalWidths.add(`${pagePath} ${blockId}`);
+          scaleCandidate ??= { blockType, variation, blockId, pagePath, blockData };
+        }
         for (const field of setFields) {
           const key = `${blockType} ${field}`;
           if (!fieldCandidates.has(key)) {
@@ -1926,6 +1948,10 @@ async function discoverBlocks(
   for (const fieldCase of fieldExampleCases(result, fieldCandidates, (c) => canvasFieldsOf.get(`${c.pagePath} ${c.blockId}`) ?? [])) {
     console.log(`[DISCOVER] Found ${fieldCase.blockType} block "${fieldCase.blockId}" on ${fieldCase.pagePath} (adds ${fieldCase.kind})`);
     result.push(fieldCase);
+  }
+  for (const scaleCase of scaleExampleCases(result, scaleCandidate, (c) => severalWidths.has(`${c.pagePath} ${c.blockId}`))) {
+    console.log(`[DISCOVER] Found ${scaleCase.blockType} block "${scaleCase.blockId}" on ${scaleCase.pagePath} (adds an image offering several widths)`);
+    result.push(scaleCase);
   }
   console.log(`[DISCOVER] Discovered ${result.length} unique (blockType, variation, kind) pairs from ${fetched} pages`);
   // Not render cases: the coverage reporter reads them from the discovery file.
@@ -2165,6 +2191,7 @@ export {
   editableInstance,
   styleExampleCases,
   fieldExampleCases,
+  scaleExampleCases,
   undemonstratedStyles,
   // Exported so the content validator asks the same question this does — a
   // second list of "fields that are not schema fields" would drift, and the
