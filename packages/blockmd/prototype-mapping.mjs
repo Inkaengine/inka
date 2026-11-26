@@ -79,6 +79,16 @@ function typedAttrs(raw) {
   return out;
 }
 
+/** A block tag's type, from its `is` (HTML's attribute for "this element is a
+ *  custom X"). `type` is free for a block field of that name (an alert's
+ *  info/warning), so a tag still naming its type with `type` is old content. */
+function blockTypeOf(attrs) {
+  if (typeof attrs.is !== 'string' || !attrs.is) {
+    throw new Error(`blockmd: a <block> names its type with is="…"${attrs.type ? `, not type="${attrs.type}"` : ''}`);
+  }
+  return attrs.is;
+}
+
 /**
  * Canonical node kind, in HTML vocabulary so refs read as `p`/`hr`/`img`/`td`
  * rather than mdast's internal names. A heading carries its level (`h2`).
@@ -113,7 +123,7 @@ function settleTypeField(region) {
   if (region.widget === 'blocks_layout' || region.typeField !== undefined) return;
   if (region.protos.length > 1) {
     const types = region.protos.map((p) => p.type).join(', ');
-    throw new Error(`object_list region "${region.name}" of <block type="${region.owner}"> allows ${region.protos.length} item types (${types}), so it must declare typeField`);
+    throw new Error(`object_list region "${region.name}" of <block is="${region.owner}"> allows ${region.protos.length} item types (${types}), so it must declare typeField`);
   }
   region.typeField = null;
 }
@@ -139,24 +149,25 @@ export function parsePrototypes(text, { explicit = false } = {}) {
     if (tag.name === 'block') {
       // `explicit` comes from section membership (the `blocks-tagged:` frontmatter
       // key), not an attribute: an explicit prototype matches ONLY inside its
-      // `<block type>` tag, never bare markdown -- so a pattern that overlaps a
+      // `<block is>` tag, never bare markdown -- so a pattern that overlaps a
       // common one (a heading-link is also a teaser) does not silently grab it.
       // Bare stays the implicit/common (`blocks-matched:`) reading.
-      const { type, ...fields } = attrs;
+      if (tag.kind === 'close') { stack.pop(); continue; }
+      const type = blockTypeOf(attrs);
+      const { is: _is, ...fields } = attrs;
       // Markdown no longer carries a Text block's `plaintext` (save writes its words as
       // its searchableText), so a prototype that made it would match no block.
       if ('plaintext' in fields) {
-        throw new Error(`<block type="${type}"> plaintext is no longer stored (a Text block's words are its searchableText), so a prototype can't make it: drop it`);
+        throw new Error(`<block is="${type}"> plaintext is no longer stored (a Text block's words are its searchableText), so a prototype can't make it: drop it`);
       }
       // A value that starts a ref must BE one: a typo'd ref would otherwise be
       // a literal, silently stamped onto every block this prototype decodes.
       for (const [k, v] of Object.entries(fields)) {
         if (typeof v === 'string' && v.trim().startsWith('${') && !parseRef(v)) {
-          throw new Error(`<block type="${type}"> ${k}="${v}" is not a valid ref`);
+          throw new Error(`<block is="${type}"> ${k}="${v}" is not a valid ref`);
         }
       }
       const proto = { type, explicit, fields, regions: [] };
-      if (tag.kind === 'close') { stack.pop(); continue; }
       place(proto);
       if (tag.kind === 'open') stack.push({ kind: 'block', proto });
     } else if (tag.name === 'region') {
@@ -170,7 +181,7 @@ export function parsePrototypes(text, { explicit = false } = {}) {
       // rendered its last cell. typeField is settled when the region closes
       // (settleTypeField), once its item types are known.
       if (attrs.widget !== 'blocks_layout' && !attrs.idField) {
-        throw new Error(`object_list region "${attrs.name}" of <block type="${t.proto.type}"> must declare idField`);
+        throw new Error(`object_list region "${attrs.name}" of <block is="${t.proto.type}"> must declare idField`);
       }
       // `path` is the field path the region's value lives at: a region may be
       // nested in an object field (slateTable's `table.rows`).
@@ -768,12 +779,13 @@ function variantKeys(protos, proto) {
   return new Set(Object.entries(proto.fields).filter(([, v]) => !parseRef(v)).map(([k]) => k));
 }
 
-/** Decode an explicit `<block type=X>` tag with body `inner`. A `data-json`
+/** Decode an explicit `<block is=X>` tag with body `inner`. A `data-json`
  *  attr carries object fields (e.g. `{"fixed":false}`), merged like everywhere
  *  else `data-json` is honoured -- self-closing tags and `<fields>` both parse
  *  it, so a block-with-children must too. */
 function decodeTag(protos, attrs, inner, depth) {
-  const { type, 'data-json': data, ...override } = attrs;
+  const type = blockTypeOf(attrs);
+  const { is: _is, 'data-json': data, ...override } = attrs;
   if (data) Object.assign(override, JSON.parse(data));
 
   const container = containerFor(protos, type, override);
@@ -844,13 +856,14 @@ function decodeTag(protos, attrs, inner, depth) {
       return finish(leafBlock(proto, content, depth));
     }
   }
-  throw new NoFit(`no leaf prototype for <block type="${type}"> matching its body`);
+  throw new NoFit(`no leaf prototype for <block is="${type}"> matching its body`);
 }
 
-/** A tier-3 self-closing data tag -> the raw block it stores. The `uid` is
- *  redundant (assignments carry it) and dropped; `data` merges the JSON fields. */
+/** A tier-3 self-closing data tag -> the raw block it stores; `data` merges the
+ *  JSON fields. Every other attribute is a field, `uid` and `type` included. */
 function decodeRawTag(attrs) {
-  const { type, uid, 'data-json': data, ...rest } = attrs;
+  const type = blockTypeOf(attrs);
+  const { is: _is, 'data-json': data, ...rest } = attrs;
   const block = { '@type': type, ...rest };
   if (data) Object.assign(block, JSON.parse(data));
   return block;
@@ -1112,7 +1125,7 @@ function emitItemBody(protos, itemProto, blocks, depth) {
     });
   };
   return parts.map((part, i) => (!part.startsWith('<block') && hasDelimHeading(part)
-    ? `<block type="${blocks[i]['@type']}">\n\n${part}\n\n</block>` : part)).join('\n\n');
+    ? `<block is="${blocks[i]['@type']}">\n\n${part}\n\n</block>` : part)).join('\n\n');
 }
 
 /** Emit a greedy container BARE: its region items back to back, no `<block>`
@@ -1200,7 +1213,7 @@ function structuralProtoOf(region, item, at) {
   return proto;
 }
 
-/** Emit a container block as a `<block type>` tag over its regions. */
+/** Emit a container block as a `<block is>` tag over its regions. */
 function emitContainer(protos, proto, block, depth) {
   const head = emitFields(proto, block, depth); // the container's own scalar refs (a grid headline)
   // `wrap`: write each blocks_layout child in its own `<block>` tag. A bare
@@ -1227,7 +1240,7 @@ function emitContainer(protos, proto, block, depth) {
       if (hoist) return hoistFields(scope, val, depth + 1);
       const parts = emitSegments(scope, val, depth + 1);
       return (wrap ? parts.map((part, i) => (/^<(block|fields)[\s>]/.test(part) ? part
-        : `<block type="${val[i]['@type']}">\n\n${part}\n\n</block>`)) : parts).join('\n\n');
+        : `<block is="${val[i]['@type']}">\n\n${part}\n\n</block>`)) : parts).join('\n\n');
     }
     // Items that are table rows (`${tr}`) are a markdown table.
     if (region.protos.every((p) => itemKind(p) === 'tr')) {
@@ -1240,7 +1253,7 @@ function emitContainer(protos, proto, block, depth) {
     }
     return val.map((item) => emitItem(protos, region.protos[0], item, depth)).join('\n\n');
   };
-  const tag = (body) => `<block type="${block['@type']}"${emitOverrides(proto, block, variantKeys(protos, proto))}>\n\n${[head, body].filter(Boolean).join('\n\n')}\n\n</block>`;
+  const tag = (body) => `<block is="${block['@type']}"${emitOverrides(proto, block, variantKeys(protos, proto))}>\n\n${[head, body].filter(Boolean).join('\n\n')}\n\n</block>`;
   // A table is written in the first form that reads back the same: a plain
   // GFM table, else a grid table, else a GFM table with HTML in its cells. A
   // container with no table tries once.
@@ -1278,29 +1291,29 @@ function emitLeaf(protos, block, depth) {
 }
 
 /** Tier-3: an un-prototyped block -> a self-closing data tag (decodeRawTag reads it). */
-/** Attribute names the `<block>` tag itself uses: a block FIELD of the same
- *  name can't be an attribute -- `<block type="alert" type="warning">` reads
- *  back as a block of type "warning" -- so it rides in the tag's data-json. */
-const TAG_ATTRS = new Set(['type', 'data-json']);
+/** Attribute names the `<block>` tag itself uses: `is` (its type) and
+ *  `data-json`. A block FIELD of the same name can't be an attribute, so it
+ *  rides in the tag's data-json. */
+const TAG_ATTRS = new Set(['is', 'data-json']);
 
 function emitRawTag(block) {
   const { '@type': type, ...rest } = block;
   for (const k of Object.keys(rest)) if (isEmptyObject(rest[k])) delete rest[k]; // drop no-op {} defaults (styles: {})
-  // Every value is an attribute (text, or `:name` holding JSON); only a field
-  // whose NAME no attribute can carry (`@id`, or one of the tag's own) goes to
-  // data-json. Then all of them do, in authored order: a trailing data-json
-  // reorders the block on decode (attrs come first), and byte-stable re-emit
-  // needs the authored order back.
-  const mixed = Object.keys(rest).some((k) => TAG_ATTRS.has(k) || !attrName(k));
-  const attrs = mixed
-    ? `data-json='${JSON.stringify(rest).replace(/&/g, '&amp;').replace(/'/g, '&#39;')}'`
-    : fmtTagAttrs(rest);
-  return `<block type="${type}"${attrs ? ` ${attrs}` : ''} />`;
+  // Every value is an attribute (text, or `:name` holding JSON). A field whose
+  // NAME no attribute can carry (`@id`, or one of the tag's own, like `type`)
+  // rides in data-json on its own, as on a prototyped block (emitOverrides).
+  const asAttr = ([k]) => attrName(k) && !TAG_ATTRS.has(k);
+  const attrs = fmtTagAttrs(Object.fromEntries(Object.entries(rest).filter(asAttr)));
+  const tagOwn = Object.fromEntries(Object.entries(rest).filter((e) => !asAttr(e)));
+  const data = Object.keys(tagOwn).length
+    ? ` data-json='${JSON.stringify(tagOwn).replace(/&/g, '&amp;').replace(/'/g, '&#39;')}'`
+    : '';
+  return `<block is="${type}"${attrs ? ` ${attrs}` : ''}${data} />`;
 }
 
 /**
  * Emit one block as markdown. A container (a type with regions) becomes a
- * `<block type>` tag over its regions; a leaf reverses its refs; a type with no
+ * `<block is>` tag over its regions; a leaf reverses its refs; a type with no
  * prototype falls back to a tier-3 data tag.
  */
 function emitBlock(protos, block, depth) {
@@ -1310,10 +1323,10 @@ function emitBlock(protos, block, depth) {
   return emitRawTag(block);
 }
 
-/** Wrap a block's bare markdown in an explicit `<block type>` tag. */
+/** Wrap a block's bare markdown in an explicit `<block is>` tag. */
 function emitTag(protos, block, depth) {
   const body = emitBlock(protos, block, depth);
-  return `<block type="${block['@type']}">\n\n${body ? `${body}\n\n` : ''}</block>`;
+  return `<block is="${block['@type']}">\n\n${body ? `${body}\n\n` : ''}</block>`;
 }
 
 /** Fields a leaf's clean form can't carry: not @type, not a ref (in the body),
@@ -1340,7 +1353,7 @@ function emitFieldsTag(protos, block, depth) {
   const extra = uncoveredFields(proto, block);
   if (!Object.keys(extra).length) return null;
   const body = [emitLeaf(protos, block, depth), `<fields ${fmtTagAttrs(extra)} />`].filter(Boolean).join('\n\n');
-  return `<block type="${block['@type']}">\n\n${body}\n\n</block>`;
+  return `<block is="${block['@type']}">\n\n${body}\n\n</block>`;
 }
 
 /**

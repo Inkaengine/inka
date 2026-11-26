@@ -24,21 +24,21 @@ subjects:
   - editing
 title: How Inka Works
 blocks-matched: |
-  <block type="slate" value="${p,h*,ul,ol,blockquote,strong,em,a/slate}" />
-  <block type="title" _="${h1}" />
-  <block type="separator" _="${hr}" :styles='{"align":"full"}' />
-  <block type="codeExample">
+  <block is="slate" value="${p,h*,ul,ol,blockquote,strong,em,a/slate}" />
+  <block is="title" _="${h1}" />
+  <block is="separator" _="${hr}" :styles='{"align":"full"}' />
+  <block is="codeExample">
     <region name="tabs" widget="object_list" idField="@id" typeField="@type">
-      <block type="tab" label="${h3/text}" language="${pre/lang}" code="${pre/textarea}" />
+      <block is="tab" label="${h3/text}" language="${pre/lang}" code="${pre/textarea}" />
     </region>
   </block>
 blocks-tagged: |
-  <block type="slateTable">
+  <block is="slateTable">
     <region name="table.rows" idField="key">
-      <block type="row" _="${tr}">
+      <block is="row" _="${tr}">
         <region name="cells" idField="key" typeField="type">
-          <block type="header" value="${th/slate}" />
-          <block type="data" value="${td/slate}" />
+          <block is="header" value="${th/slate}" />
+          <block is="data" value="${td/slate}" />
         </region>
       </block>
     </region>
@@ -49,7 +49,7 @@ blocks-tagged: |
 
 Inka is the page-building and governance layer between your CMS and your front ends. Content stays in the CMS, rules come from your design system, and front ends in any framework render the result. Editing is private; publishing is public.
 
-<block type="separator" />
+<block is="separator" />
 
 ## Your design system as blocks and rules
 
@@ -175,7 +175,7 @@ See [Build a frontend](./frontend-guide/build-a-frontend.md) for the full step-b
 
 Inka is **additive**: each layer below works on its own, and each next row enhances editing without breaking what came before. You can ship at any row, mix rows on the same site, and add the next layer when you're ready.
 
-<block type="slateTable" table.fixed table.celled>
+<block is="slateTable" table.fixed table.celled>
 
 | Step | What you wire up | What editors get |
 | --- | --- | --- |

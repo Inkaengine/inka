@@ -21,26 +21,26 @@ rights: ""
 subjects: []
 title: Selecting blocks
 blocks-matched: |
-  <block type="slate" value="${p,h*,ul,ol,blockquote,strong,em,a/slate}" />
-  <block type="title" _="${h1}" />
-  <block type="image" description="${p?/textarea}" url="${img/src}" alt="${img?/alt}" title="${img?/title}" align="center" size="l" />
-  <block type="codeExample">
+  <block is="slate" value="${p,h*,ul,ol,blockquote,strong,em,a/slate}" />
+  <block is="title" _="${h1}" />
+  <block is="image" description="${p?/textarea}" url="${img/src}" alt="${img?/alt}" title="${img?/title}" align="center" size="l" />
+  <block is="codeExample">
     <region name="tabs" widget="object_list" idField="@id" typeField="@type">
-      <block type="tab" label="${h3/text}" language="${pre/lang}" code="${pre/textarea}" />
+      <block is="tab" label="${h3/text}" language="${pre/lang}" code="${pre/textarea}" />
     </region>
   </block>
 blocks-tagged: |
-  <block type="callout">
+  <block is="callout">
     <region name="items" widget="blocks_layout">
-      <block type="slate" value="${p,h*,ul,ol,blockquote,strong,em,a/slate}" />
+      <block is="slate" value="${p,h*,ul,ol,blockquote,strong,em,a/slate}" />
     </region>
   </block>
-  <block type="slateTable">
+  <block is="slateTable">
     <region name="table.rows" idField="key">
-      <block type="row" _="${tr}">
+      <block is="row" _="${tr}">
         <region name="cells" idField="key" typeField="type">
-          <block type="header" value="${th/slate}" />
-          <block type="data" value="${td/slate}" />
+          <block is="header" value="${th/slate}" />
+          <block is="data" value="${td/slate}" />
         </region>
       </block>
     </region>
@@ -74,7 +74,7 @@ Press `Escape` to leave text editing. The block stays selected, but you're no lo
 
 Press `Escape` again to **deselect** (or go up to the parent container if this block is inside one). Each `Escape` walks one step up the hierarchy.
 
-<block type="image">
+<block is="image">
 
 ![Same paragraph in block mode — full blue border, no cursor.](../images/block-mode.png)
 
@@ -84,7 +84,7 @@ Press `Escape` again to **deselect** (or go up to the parent container if this b
 
 You can select multiple blocks at once and operate on the group.
 
-<block type="slateTable" table.fixed table.celled>
+<block is="slateTable" table.fixed table.celled>
 
 | Action | Result |
 | --- | --- |
@@ -105,7 +105,7 @@ While multiple blocks are selected:
 
 ![Two adjacent paragraphs multi-selected — combined bounding box, sidebar shows "2 selected", toolbar shows count badge.](../images/multi-select.png)
 
-<block type="callout" variation="tip">
+<block is="callout" variation="tip">
 
 Shift+Click in **text mode** doesn't multi-select — that's reserved for normal text-range selection in your browser. Press `Escape` first to enter block mode, then Shift+Click. Ctrl/Cmd+Click works in either mode.
 
@@ -132,7 +132,7 @@ When a block is selected, the sidebar shows the **chain of parent containers** f
 
 Click any `‹` arrow to **navigate up** to that level. This does the same thing as pressing `Escape` repeatedly, but visibly — you can see what each parent is named, jump several levels in one click, and edit the parent's own settings (alignment, padding, …) inline without leaving the current selection.
 
-<block type="image">
+<block is="image">
 
 ![Sidebar showing parent chain for a slate inside a column inside columns. Three sections each with a \`‹\` arrow: Columns ("My Columns Section"), Column ("Left Column"), Text (current, body field shown).](../images/parent-chain.png)
 
@@ -159,7 +159,7 @@ Slides                    [+]
 
 If the container has multiple blocks fields (e.g. a header field and a body field), each appears as a separate section with its own children list and add button.
 
-<block type="image">
+<block is="image">
 
 ![Sidebar with a search container selected, showing two children-list sections — Facets (with three facet rows) and Results Listing (with one Listing row). Each row has a \`⋮⋮\` drag handle and a \`>\` drill-in arrow; each section has a \`+\` add button.](../images/children-list.png)
 

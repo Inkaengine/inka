@@ -39,15 +39,15 @@ sync_uid: null
 title: Event
 whole_day: false
 blocks-matched: |
-  <block type="slate" value="${p,h*,ul,ol,blockquote,strong,em,a/slate}" />
-  <block type="title" _="${h1}" />
+  <block is="slate" value="${p,h*,ul,ol,blockquote,strong,em,a/slate}" />
+  <block is="title" _="${h1}" />
 ---
 
 <fields templateId="/inka-templates/event-view" templateInstanceId="tpl-ev-def">
 
 <fields :fixed="true">
 
-<block type="title">
+<block is="title">
 
 # Event
 
@@ -55,11 +55,11 @@ blocks-matched: |
 
 </block>
 
-<block type="eventMetadata" slotId="event-metadata" :readOnly="false" />
+<block is="eventMetadata" slotId="event-metadata" :readOnly="false" />
 
 </fields>
 
-<block type="slate">
+<block is="slate">
 
 <fields slotId="default" :fixed="false" :readOnly="false" />
 

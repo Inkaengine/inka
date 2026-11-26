@@ -20,37 +20,37 @@ subjects:
   - content
 title: Typography - Page Title (H1, 48/56px)
 blocks-matched: |
-  <block type="slate" value="${p,h*,ul,ol,blockquote,strong,em,a/slate}" />
-  <block type="title" _="${h1}" />
-  <block type="image" description="${p?/textarea}" url="${img/src}" alt="${img?/alt}" title="${img?/title}" align="center" size="l" />
+  <block is="slate" value="${p,h*,ul,ol,blockquote,strong,em,a/slate}" />
+  <block is="title" _="${h1}" />
+  <block is="image" description="${p?/textarea}" url="${img/src}" alt="${img?/alt}" title="${img?/title}" align="center" size="l" />
 blocks-tagged: |
-  <block type="button" title="${a/text}" href="${a/link}" />
-  <block type="teaser" title="${h?/text}" head_title="${strong?/text}" href="${h?/link}" description="${p?/textarea}" />
-  <block type="introduction" value="${p,h*/slate}" />
-  <block type="slateTable">
+  <block is="button" title="${a/text}" href="${a/link}" />
+  <block is="teaser" title="${h?/text}" head_title="${strong?/text}" href="${h?/link}" description="${p?/textarea}" />
+  <block is="introduction" value="${p,h*/slate}" />
+  <block is="slateTable">
     <region name="table.rows" idField="key">
-      <block type="row" _="${tr}">
+      <block is="row" _="${tr}">
         <region name="cells" idField="key" typeField="type">
-          <block type="header" value="${th/slate}" />
-          <block type="data" value="${td/slate}" />
+          <block is="header" value="${th/slate}" />
+          <block is="data" value="${td/slate}" />
         </region>
       </block>
     </region>
   </block>
-  <block type="gridBlock" headline="${h/text}">
+  <block is="gridBlock" headline="${h/text}">
     <region name="items" widget="blocks_layout">
-      <block type="teaser" title="${h/text}" head_title="${strong?/text}" href="${h/link}" description="${p?/textarea}" />
+      <block is="teaser" title="${h/text}" head_title="${strong?/text}" href="${h/link}" description="${p?/textarea}" />
     </region>
   </block>
 ---
 
 # Typography - Page Title (H1, 48/56px)
 
-<block type="heading" alignment="left" heading="Heading (H2, 33/42px)" tag="h2" />
+<block is="heading" alignment="left" heading="Heading (H2, 33/42px)" tag="h2" />
 
-<block type="gridBlock">
+<block is="gridBlock">
 
-<block type="teaser">
+<block is="teaser">
 
 ### [Teaser Title (H2, 30/36px)](./index.md)
 
@@ -62,11 +62,11 @@ For grid blocks, the font of the headlines are variable, depending on the number
 
 </block>
 
-<block type="gridBlock">
+<block is="gridBlock">
 
 <fields :styles='{"align":"left"}'>
 
-<block type="teaser">
+<block is="teaser">
 
 ### [Teaser Title (H3, 24/30px)](./index.md)
 
@@ -74,7 +74,7 @@ For grid blocks, the font of the headlines are variable, depending on the number
 
 </block>
 
-<block type="teaser">
+<block is="teaser">
 
 ### [Teaser Title (H3, 24/30px)](./index.md)
 
@@ -108,7 +108,7 @@ Lorem ipsum dolor sit amet, consetetur sadipscing elitr, sed diam nonumy eirmod 
 
 Lorem ipsum dolor sit amet, consetetur sadipscing elitr, sed diam nonumy eirmod tempor invidunt ut labore et dolore magna aliquyam erat, sed diam voluptua. At vero eos et accusam et justo duo dolores et ea rebum. Stet clita kasd gubergren, no sea takimata sanctus est Lorem ipsum dolor sit amet. Lorem ipsum dolor sit amet, consetetur sadipscing elitr, sed diam nonumy eirmod tempor invidunt ut labore et dolore magna aliquyam erat, sed diam voluptua. At vero eos et accusam et justo duo dolores et ea rebum. Stet clita kasd gubergren, no sea takimata sanctus est Lorem ipsum dolor sit amet.
 
-<block type="introduction">
+<block is="introduction">
 
 ## Text Heading H2 (H2, 36/48px)
 
@@ -116,9 +116,9 @@ Lorem ipsum dolor sit amet, consetetur sadipscing elitr, sed diam nonumy eirmod 
 
 Paragraph text (p, 24/33px) -> Lorem ipsum dolor sit amet, consetetur sadipscing elitr, sed diam nonumy eirmod tempor invidunt ut labore et dolore magna aliquyam erat, sed diam voluptua. At vero eos et accusam et justo duo dolores et ea rebum. Stet clita kasd gubergren, no sea takimata sanctus est Lorem ipsum dolor sit amet. Lorem ipsum dolor sit amet, consetetur sadipscing elitr, sed diam nonumy eirmod tempor invidunt ut labore et dolore magna aliquyam erat, sed diam voluptua. At vero eos et accusam et justo duo dolores et ea rebum. Stet clita kasd gubergren, no sea takimata sanctus est Lorem ipsum dolor sit amet.
 
-<block type="listing" block="875e2811-edb6-4842-8cc0-246fa1be6f58" headline="Heading (H2, 33/42px)" headlineTag="h2" variation="default" :query="[]" :querystring='{"limit":"5","query":[{"i":"portal_type","o":"plone.app.querystring.operation.selection.any","v":["File","Document"]}],"sort_on":"effective","sort_order":"descending","sort_order_boolean":"descending"}' :fieldMapping='{"getURL":{"field":"href","type":"link"},"title":{"field":"title","type":"string"},"description":{"field":"description","type":"textarea"}}' />
+<block is="listing" block="875e2811-edb6-4842-8cc0-246fa1be6f58" headline="Heading (H2, 33/42px)" headlineTag="h2" variation="default" :query="[]" :querystring='{"limit":"5","query":[{"i":"portal_type","o":"plone.app.querystring.operation.selection.any","v":["File","Document"]}],"sort_on":"effective","sort_order":"descending","sort_order_boolean":"descending"}' :fieldMapping='{"getURL":{"field":"href","type":"link"},"title":{"field":"title","type":"string"},"description":{"field":"description","type":"textarea"}}' />
 
-<block type="image">
+<block is="image">
 
 Caption Description (14/18px). The Image content type can be used to upload an image in various formats (JPG, GIF, PNG, SVG). The uploaded image should always have a high resolution so that it can be used flexibly, for example as a banner image. Plone automatically delivers the images in the best scaling, so there is no need to scale images down manually.
 
@@ -128,17 +128,17 @@ Caption Description (14/18px). The Image content type can be used to upload an i
 
 </block>
 
-<block type="button" inneralign="left" title="Button text (button, 18/24px)" />
+<block is="button" inneralign="left" title="Button text (button, 18/24px)" />
 
-<block type="gridBlock">
+<block is="gridBlock">
 
-<block type="slate">
+<block is="slate">
 
 ## Text Heading (H2, 30/36px)
 
 </block>
 
-<block type="slate">
+<block is="slate">
 
 For grid blocks, the font of the headlines are variable, depending on the number of cells in the grid.
 
@@ -146,27 +146,27 @@ For grid blocks, the font of the headlines are variable, depending on the number
 
 </block>
 
-<block type="gridBlock">
+<block is="gridBlock">
 
-<block type="slate">
-
-## Text Heading (H3, 24/30px)
-
-</block>
-
-<block type="slate">
-
-Paragraph Text (p, 18/24px)
-
-</block>
-
-<block type="slate">
+<block is="slate">
 
 ## Text Heading (H3, 24/30px)
 
 </block>
 
-<block type="slate">
+<block is="slate">
+
+Paragraph Text (p, 18/24px)
+
+</block>
+
+<block is="slate">
+
+## Text Heading (H3, 24/30px)
+
+</block>
+
+<block is="slate">
 
 Paragraph Text (p, 18/24px)
 
@@ -174,9 +174,9 @@ Paragraph Text (p, 18/24px)
 
 </block>
 
-<block type="toc" variation="default" :levels='["h2","h3"]' />
+<block is="toc" variation="default" :levels='["h2","h3"]' />
 
-<block type="slateTable" table.celled table.fixed>
+<block is="slateTable" table.celled table.fixed>
 
 | Table Header (THEAD, 18/24) | Table Header (THEAD, 18/24) |
 | --- | --- |
@@ -184,6 +184,6 @@ Paragraph Text (p, 18/24px)
 
 </block>
 
-<block type="slate">
+<block is="slate">
 
 </block>

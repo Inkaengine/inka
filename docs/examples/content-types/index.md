@@ -58,15 +58,15 @@ blobs:
       no need to scale images down manually.
     exclude_from_nav: false
 blocks-matched: |
-  <block type="slate" value="${p,h*,ul,ol,blockquote,strong,em,a/slate}" />
-  <block type="title" _="${h1}" />
+  <block is="slate" value="${p,h*,ul,ol,blockquote,strong,em,a/slate}" />
+  <block is="title" _="${h1}" />
 ---
 
 # Content Types
 
 Every page is a content type — a Document, News Item, Event, Image or Link. The type decides which metadata a page carries and, if you choose, the layout it renders with. The samples below are live instances you can open and copy.
 
-<block type="listing" headlineTag="h2" variation="default" :fieldMapping='{"getURL":{"field":"href","type":"link"},"title":{"field":"title","type":"string"},"description":{"field":"description","type":"textarea"}}' />
+<block is="listing" headlineTag="h2" variation="default" :fieldMapping='{"getURL":{"field":"href","type":"link"},"title":{"field":"title","type":"string"},"description":{"field":"description","type":"textarea"}}' />
 
 ## Page metadata
 

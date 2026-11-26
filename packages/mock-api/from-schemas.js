@@ -26,7 +26,7 @@ export function schemaRegistryFromBlockDefinitions(registry) {
 }
 
 /**
- * Fill a page's `<block type="codeExample" source="<type>" format="schema">` with
+ * Fill a page's `<block is="codeExample" source="<type>" format="schema">` with
  * that block type's schema, from the registry the frontends register from: the
  * schema a doc page shows is the one that validates. blockmd's decode fills the
  * `format="json"` ones, which show a block from the same page. A type with no

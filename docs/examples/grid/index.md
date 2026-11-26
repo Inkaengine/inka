@@ -34,19 +34,19 @@ order:
   - teaser
   - text
 blocks-matched: |
-  <block type="slate" value="${p,h*,ul,ol,blockquote,strong,em,a/slate}" />
-  <block type="title" _="${h1}" />
-  <block type="image" description="${p?/textarea}" url="${img/src}" alt="${img?/alt}" title="${img?/title}" align="center" size="l" />
-  <block type="codeExample">
+  <block is="slate" value="${p,h*,ul,ol,blockquote,strong,em,a/slate}" />
+  <block is="title" _="${h1}" />
+  <block is="image" description="${p?/textarea}" url="${img/src}" alt="${img?/alt}" title="${img?/title}" align="center" size="l" />
+  <block is="codeExample">
     <region name="tabs" widget="object_list" idField="@id" typeField="@type">
-      <block type="tab" label="${h3/text}" language="${pre/lang}" code="${pre/textarea}" />
+      <block is="tab" label="${h3/text}" language="${pre/lang}" code="${pre/textarea}" />
     </region>
   </block>
 blocks-tagged: |
-  <block type="teaser" title="${h?/text}" head_title="${strong?/text}" href="${h?/link}" description="${p?/textarea}" />
-  <block type="gridBlock" headline="${h/text}">
+  <block is="teaser" title="${h?/text}" head_title="${strong?/text}" href="${h?/link}" description="${p?/textarea}" />
+  <block is="gridBlock" headline="${h/text}">
     <region name="items" widget="blocks_layout">
-      <block type="teaser" title="${h/text}" head_title="${strong?/text}" href="${h/link}" description="${p?/textarea}" />
+      <block is="teaser" title="${h/text}" head_title="${strong?/text}" href="${h/link}" description="${p?/textarea}" />
     </region>
   </block>
 ---
@@ -55,15 +55,15 @@ blocks-tagged: |
 
 A responsive grid that lays out child blocks in equal-width cells. The block uses Volto's standard shared-blocks shape — blocks is the dict of children, blocks_layout.items is their order — and constrains the allowed types via allowedBlocks.
 
-<block type="listing" block="616b625c-b79f-4881-8536-b67a9e401a7d" headlineTag="h2" variation="default" :query="[]" :fieldMapping='{"getURL":{"field":"href","type":"link"},"title":{"field":"title","type":"string"},"description":{"field":"description","type":"textarea"}}' />
+<block is="listing" block="616b625c-b79f-4881-8536-b67a9e401a7d" headlineTag="h2" variation="default" :query="[]" :fieldMapping='{"getURL":{"field":"href","type":"link"},"title":{"field":"title","type":"string"},"description":{"field":"description","type":"textarea"}}' />
 
-<block type="slate">
+<block is="slate">
 
 </block>
 
-<block type="gridBlock">
+<block is="gridBlock">
 
-<block type="teaser">
+<block is="teaser">
 
 ### [Design](../../architecture.md)
 
@@ -71,9 +71,9 @@ We craft beautiful interfaces that users love.
 
 </block>
 
-<block type="image" url="https://placehold.co/600x400" alt="Placeholder" />
+<block is="image" url="https://placehold.co/600x400" alt="Placeholder" />
 
-<block type="teaser">
+<block is="teaser">
 
 ### [Learn More](../../index.md)
 
@@ -85,7 +85,7 @@ Explore the full documentation.
 
 <fields templateId="/inka-templates/block-reference-layout" templateInstanceId="tpl-inst-grid" :fixed="false" :readOnly="false">
 
-<block type="codeExample" slotId="schema">
+<block is="codeExample" slotId="schema">
 
 ### Schema
 
@@ -95,7 +95,7 @@ Explore the full documentation.
 
 </block>
 
-<block type="codeExample" slotId="json-data">
+<block is="codeExample" slotId="json-data">
 
 ### JSON
 
@@ -106,7 +106,7 @@ Explore the full documentation.
 
 </block>
 
-<block type="codeExample" slotId="rendering">
+<block is="codeExample" slotId="rendering">
 
 ### React
 

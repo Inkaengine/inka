@@ -21,22 +21,22 @@ subjects:
   - media
 title: Hero Block
 blocks-matched: |
-  <block type="slate" value="${p,h*,ul,ol,blockquote,strong,em,a/slate}" />
-  <block type="title" _="${h1}" />
-  <block type="codeExample">
+  <block is="slate" value="${p,h*,ul,ol,blockquote,strong,em,a/slate}" />
+  <block is="title" _="${h1}" />
+  <block is="codeExample">
     <region name="tabs" widget="object_list" idField="@id" typeField="@type">
-      <block type="tab" label="${h3/text}" language="${pre/lang}" code="${pre/textarea}" />
+      <block is="tab" label="${h3/text}" language="${pre/lang}" code="${pre/textarea}" />
     </region>
   </block>
 blocks-tagged: |
-  <block type="hero" heading="${h1/text}" subheading="${strong?/textarea}" description="${p?/slate}" buttonText="${a?/text}" buttonLink="${a?/link}" image="${img?/src}" />
+  <block is="hero" heading="${h1/text}" subheading="${strong?/textarea}" description="${p?/slate}" buttonText="${a?/text}" buttonLink="${a?/link}" image="${img?/src}" />
 ---
 
 # Hero Block
 
 A full-width hero section with heading, subheading, image, rich text description, and a call-to-action button. Demonstrates multiple field types in a single block: string, textarea, slate, image, and object_browser.
 
-<block type="hero">
+<block is="hero">
 
 # Welcome to Our Site
 
@@ -53,7 +53,7 @@ We build tools that make content editing delightful.
 
 <fields templateId="/inka-templates/block-reference-layout" templateInstanceId="tpl-inst-hero" :fixed="false" :readOnly="false">
 
-<block type="codeExample" slotId="schema">
+<block is="codeExample" slotId="schema">
 
 ### Schema
 
@@ -63,7 +63,7 @@ We build tools that make content editing delightful.
 
 </block>
 
-<block type="codeExample" slotId="json-data">
+<block is="codeExample" slotId="json-data">
 
 ### JSON
 
@@ -74,7 +74,7 @@ We build tools that make content editing delightful.
 
 </block>
 
-<block type="codeExample" slotId="rendering">
+<block is="codeExample" slotId="rendering">
 
 ### React
 

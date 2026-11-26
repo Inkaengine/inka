@@ -23,13 +23,13 @@ rights: ""
 subjects: []
 title: Templates and layouts
 blocks-matched: |
-  <block type="slate" value="${p,h*,ul,ol,blockquote,strong,em,a/slate}" />
-  <block type="title" _="${h1}" />
-  <block type="image" description="${p?/textarea}" url="${img/src}" alt="${img?/alt}" title="${img?/title}" align="center" size="l" />
+  <block is="slate" value="${p,h*,ul,ol,blockquote,strong,em,a/slate}" />
+  <block is="title" _="${h1}" />
+  <block is="image" description="${p?/textarea}" url="${img/src}" alt="${img?/alt}" title="${img?/title}" align="center" size="l" />
 blocks-tagged: |
-  <block type="callout">
+  <block is="callout">
     <region name="items" widget="blocks_layout">
-      <block type="slate" value="${p,h*,ul,ol,blockquote,strong,em,a/slate}" />
+      <block is="slate" value="${p,h*,ul,ol,blockquote,strong,em,a/slate}" />
     </region>
   </block>
 ---
@@ -45,7 +45,7 @@ Templates let editors reuse a layout consistently across many pages without copy
 
 The two share the same merge rules; the difference is just where they're applied.
 
-<block type="callout" variation="note">
+<block is="callout" variation="note">
 
 Whether your site has any templates or layouts at all is a design-system choice. A site can perfectly well skip them and let editors build pages freely; another might lock most pages into a small set of fixed layouts. The mechanics on this page apply when they're configured.
 
@@ -85,7 +85,7 @@ Typical use: a "callout" block in the middle of a layout — every page has one,
 
 Regular blocks where you can do anything — add, edit, move, delete. The template marks regions as slots (with a `slotId`) and your existing content is placed into the matching slots when the template merges.
 
-<block type="image">
+<block is="image">
 
 ![A snippet template applied to a page. The "Snippet Header" block is selected, rendered muted as a locked block. Its sidebar shows its content read-only — a "Text" field with the value "Snippet Header - From Template" — under the template it belongs to.](../images/template-locked.png)
 
@@ -97,7 +97,7 @@ You **can't** insert a new block between two adjacent fixed/readonly template bl
 
 If you need to add content there, you may need to switch to a different layout (one whose structure has a slot in that position) or talk to whoever maintains the templates.
 
-<block type="callout" variation="note">
+<block is="callout" variation="note">
 
 This is how it works when you're **filling** a template — the normal case. When you're **editing the template itself** (unlocked, see below), it's the opposite: dragging a block **keeps** its slot, because you set slots deliberately there. To move a block to a different slot while editing the template, change its **slot name** in the sidebar rather than relying on where you drop it.
 
@@ -129,7 +129,7 @@ When `allowedLayouts` is configured for a page (or a region), you choose it in t
 
 The point of `slotId` is that two layouts can share the same set of region names — switch between them and your content lands in the right places automatically.
 
-<block type="callout" variation="warning">
+<block is="callout" variation="warning">
 
 Editing a template changes its **definition** — the change will appear on **every page that uses it**. Unlocking asks you to confirm first.
 
@@ -157,7 +157,7 @@ Unlocking one template unlocks only *that* template. The rest of the page stays 
 
 Templates are saved when you **save the page**, and only the ones you changed. A page can't be saved with a template still unlocked: you're prompted to lock it first. While you have a template unlocked, and until you save the page, nobody else can unlock it.
 
-<block type="image">
+<block is="image">
 
 ![A template's section in the sidebar, locked (🔒): it says the template is locked and that changes apply to every page using it, and has the Unlock template button.](../images/template-edit-locked.png)
 

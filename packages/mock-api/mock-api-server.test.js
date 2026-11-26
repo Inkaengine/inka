@@ -803,7 +803,7 @@ describe('/@export (tree export, json | markdown)', { skip: HAVE_ASSETS ? false 
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         format: 'markdown',
-        prototypes: { matched: '<block type="slate" value="${p,h*,ul,ol,blockquote,strong,em/slate}" />' },
+        prototypes: { matched: '<block is="slate" value="${p,h*,ul,ol,blockquote,strong,em/slate}" />' },
       }),
     });
     assert.equal(res.status, 200);

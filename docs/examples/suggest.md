@@ -17,11 +17,11 @@ rights: ""
 subjects: []
 title: Suggest Block
 blocks-matched: |
-  <block type="slate" value="${p,h*,ul,ol,blockquote,strong,em,a/slate}" />
-  <block type="title" _="${h1}" />
-  <block type="codeExample">
+  <block is="slate" value="${p,h*,ul,ol,blockquote,strong,em,a/slate}" />
+  <block is="title" _="${h1}" />
+  <block is="codeExample">
     <region name="tabs" widget="object_list" idField="@id" typeField="@type">
-      <block type="tab" label="${h3/text}" language="${pre/lang}" code="${pre/textarea}" />
+      <block is="tab" label="${h3/text}" language="${pre/lang}" code="${pre/textarea}" />
     </region>
   </block>
 ---
@@ -32,11 +32,11 @@ A question whose answer is completed from a vocabulary the author picked.
 
 ## Try it
 
-<block type="suggest" label="Topic" suggestFrom="plone.app.vocabularies.Keywords" value="" />
+<block is="suggest" label="Topic" suggestFrom="plone.app.vocabularies.Keywords" value="" />
 
 <fields templateId="/inka-templates/block-reference-layout" templateInstanceId="tpl-inst-suggest" :fixed="false" :readOnly="false">
 
-<block type="codeExample" slotId="schema">
+<block is="codeExample" slotId="schema">
 
 ### Schema
 
@@ -46,7 +46,7 @@ A question whose answer is completed from a vocabulary the author picked.
 
 </block>
 
-<block type="codeExample" slotId="json-data">
+<block is="codeExample" slotId="json-data">
 
 ### JSON
 
@@ -57,7 +57,7 @@ A question whose answer is completed from a vocabulary the author picked.
 
 </block>
 
-<block type="codeExample" slotId="rendering">
+<block is="codeExample" slotId="rendering">
 
 ### React
 

@@ -129,7 +129,7 @@ blobs:
     uid: docs-images-wrap-chooser-001
     id: wrap-chooser.png
 blocks-matched: |
-  <block type="title" _="${h1}" />
+  <block is="title" _="${h1}" />
 ---
 
 # Images

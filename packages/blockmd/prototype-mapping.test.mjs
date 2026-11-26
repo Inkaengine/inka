@@ -13,7 +13,7 @@ import { fieldText } from '@volto-hydra/helpers/blockText.js';
 
 describe('prototype mapping', () => {
   it('maps a paragraph to a slate block via a single-node prototype', () => {
-    const protos = parsePrototypes('<block type="slate" value="${p/slate}" />');
+    const protos = parsePrototypes('<block is="slate" value="${p/slate}" />');
     const blocks = matchBlocks(protos, 'Hello world.');
     expect(blocks).toEqual([
       { '@type': 'slate', value: [{ type: 'p', children: [{ text: 'Hello world.' }] }] },
@@ -22,7 +22,7 @@ describe('prototype mapping', () => {
 
   it('maps a paragraph + image to one image block via a two-node prototype', () => {
     const protos = parsePrototypes(
-      '<block type="image" description="${p/text}" url="${img/src}" alt="${img/alt}" />',
+      '<block is="image" description="${p/text}" url="${img/src}" alt="${img/alt}" />',
     );
     const blocks = matchBlocks(protos, 'A caption.\n\n![alt text](/img.png)');
     expect(blocks).toEqual([
@@ -32,8 +32,8 @@ describe('prototype mapping', () => {
 
   it('prefers the longer pattern, falling back to the shorter (leftmost-longest)', () => {
     const protos = parsePrototypes([
-      '<block type="slate" value="${p/slate}" />',
-      '<block type="image" description="${p/text}" url="${img/src}" alt="${img/alt}" />',
+      '<block is="slate" value="${p/slate}" />',
+      '<block is="image" description="${p/text}" url="${img/src}" alt="${img/alt}" />',
     ].join('\n'));
     // A lone paragraph -> slate (the 2-node image pattern can't match two
     // paragraphs); a paragraph + image -> image.
@@ -50,17 +50,17 @@ describe('prototype mapping', () => {
     // marks it. Emitting its wrapped form (body = readable markdown), even
     // alongside the `slate` catch-all and carrying template-slot-fill fields.
     const withSlate = parsePrototypes(
-      '<block type="slate" value="${p,h*,ul,ol,blockquote,strong,em/slate}" />',
-    ).concat(parsePrototypes('<block type="introduction" value="${p,h*/slate}" />', { explicit: true }));
+      '<block is="slate" value="${p,h*,ul,ol,blockquote,strong,em/slate}" />',
+    ).concat(parsePrototypes('<block is="introduction" value="${p,h*/slate}" />', { explicit: true }));
     const intro = { '@type': 'introduction', value: [{ type: 'p', children: [{ text: 'A lead paragraph.' }] }] };
-    expect(emitBlocks(withSlate, [intro])).toContain('<block type="introduction">');
+    expect(emitBlocks(withSlate, [intro])).toContain('<block is="introduction">');
     expect(matchBlocks(withSlate, emitBlocks(withSlate, [intro]))).toEqual([intro]);
     // A template slot-fill (slotId/templateId/fixed/readOnly) still wraps, with
     // its value in the body — not dumped whole into a data-json blob.
     const slot = { '@type': 'introduction', value: [{ type: 'p', children: [{ text: 'Slot lead.' }] }],
       slotId: 'default', templateId: '/inka-templates/event-view', templateInstanceId: 'tpl-ev-def', fixed: false, readOnly: false };
     const slotMd = emitBlocks(withSlate, [slot]);
-    expect(slotMd).toContain('<block type="introduction"');
+    expect(slotMd).toContain('<block is="introduction"');
     expect(slotMd).not.toContain('data-json=\'{"value"');
   });
 
@@ -68,8 +68,8 @@ describe('prototype mapping', () => {
     // Unlike `${…/link}` (the `[{'@id'}]` widget), `${…/href}` is a plain url
     // string — so a long url (e.g. a maps embed) rides in link syntax, not a
     // data-json attr. Tagged so a bare paragraph-link stays slate.
-    const protos = parsePrototypes('<block type="maps" title="${a/text}" url="${a/href}" />', { explicit: true });
-    const md = '<block type="maps">\n\n[Our office](https://maps.example/a/very/long/embed/url)\n\n</block>';
+    const protos = parsePrototypes('<block is="maps" title="${a/text}" url="${a/href}" />', { explicit: true });
+    const md = '<block is="maps">\n\n[Our office](https://maps.example/a/very/long/embed/url)\n\n</block>';
     const blocks = matchBlocks(protos, md);
     expect(blocks).toEqual([
       { '@type': 'maps', title: 'Our office', url: 'https://maps.example/a/very/long/embed/url' },
@@ -83,15 +83,15 @@ describe('prototype mapping', () => {
     // h2; the panel's content is the implicit remainder. (uid-keying deferred:
     // panel content is asserted as an ordered `blocks` list, not a dict.)
     const protos = parsePrototypes([
-      '<block type="slate" value="${p/slate}" />',
-      '<block type="accordion" right_arrows>',
+      '<block is="slate" value="${p/slate}" />',
+      '<block is="accordion" right_arrows>',
       '  <region name="panels" widget="object_list" idField="@id" typeField="@type">',
-      '    <block type="panel" title="${h2/text}" />',
+      '    <block is="panel" title="${h2/text}" />',
       '  </region>',
       '</block>',
     ].join('\n'));
     const md = [
-      '<block type="accordion">', '',
+      '<block is="accordion">', '',
       '## First', '', 'First body.', '',
       '## Second', '', 'Second body.', '',
       '</block>',
@@ -134,9 +134,9 @@ describe('uid keying', () => {
   });
 
   const accProto = parsePrototypes([
-    '<block type="accordion">',
+    '<block is="accordion">',
     '  <region name="panels" widget="object_list" idField="@id" typeField="@type">',
-    '    <block type="panel" title="${h2/text}" />',
+    '    <block is="panel" title="${h2/text}" />',
     '  </region>',
     '</block>',
   ].join('\n'));
@@ -172,15 +172,15 @@ describe('uid keying', () => {
 
   it('decodes accordion markdown end-to-end: matchBlocks then keyBlocks', () => {
     const protos = parsePrototypes([
-      '<block type="slate" value="${p/slate}" />',
-      '<block type="accordion" right_arrows>',
+      '<block is="slate" value="${p/slate}" />',
+      '<block is="accordion" right_arrows>',
       '  <region name="panels" widget="object_list" idField="@id" typeField="@type">',
-      '    <block type="panel" title="${h2/text}" />',
+      '    <block is="panel" title="${h2/text}" />',
       '  </region>',
       '</block>',
     ].join('\n'));
     const md = [
-      '<block type="accordion">', '',
+      '<block is="accordion">', '',
       '## First', '', 'First body.', '',
       '## Second', '', 'Second body.', '',
       '</block>',
@@ -237,13 +237,13 @@ describe('uid keying', () => {
 
 describe('object_list idField (schema-free, named on the region)', () => {
   const protos = () => parsePrototypes([
-    '<block type="tbl">',
+    '<block is="tbl">',
     '  <region name="rows" widget="object_list" idField="key" typeField="@type">',
-    '    <block type="row" label="${h3/text}" />',
+    '    <block is="row" label="${h3/text}" />',
     '  </region>',
     '</block>',
   ].join('\n'));
-  const body = '<block type="tbl">\n\n### Row A\n\n### Row B\n\n</block>';
+  const body = '<block is="tbl">\n\n### Row A\n\n### Row B\n\n</block>';
 
   it('keys object_list items by the region idField, not a hardcoded @id', () => {
     const keyed = keyBlocks(matchBlocks(protos(), body), [], protos()); // [] = mint uids/ids
@@ -265,9 +265,9 @@ describe('object_list idField (schema-free, named on the region)', () => {
 
   it('still defaults to @id when the region names no idField', () => {
     const p = parsePrototypes([
-      '<block type="tbl">',
+      '<block is="tbl">',
       '  <region name="rows" widget="object_list" idField="@id" typeField="@type">',
-      '    <block type="row" label="${h3/text}" />',
+      '    <block is="row" label="${h3/text}" />',
       '  </region>',
       '</block>',
     ].join('\n'));
@@ -278,7 +278,7 @@ describe('object_list idField (schema-free, named on the region)', () => {
 
 describe('emit', () => {
   it('emits a slate block as bare paragraph markdown', () => {
-    const protos = parsePrototypes('<block type="slate" value="${p/slate}" />');
+    const protos = parsePrototypes('<block is="slate" value="${p/slate}" />');
     const block = { '@type': 'slate', value: [{ type: 'p', children: [{ text: 'Hello world.' }] }] };
     expect(emitBlocks(protos, [block])).toBe('Hello world.');
   });
@@ -287,7 +287,7 @@ describe('emit', () => {
 describe('emit multi-node', () => {
   it('emits an image-with-caption block as paragraph + image markdown', () => {
     const protos = parsePrototypes(
-      '<block type="image" description="${p/text}" url="${img/src}" alt="${img/alt}" />',
+      '<block is="image" description="${p/text}" url="${img/src}" alt="${img/alt}" />',
     );
     const block = { '@type': 'image', description: 'A caption.', url: '/img.png', alt: 'alt text' };
     expect(emitBlocks(protos, [block])).toBe('A caption.\n\n![alt text](/img.png)');
@@ -298,7 +298,7 @@ describe('emit multi-node', () => {
     // truthy; a block with no alt VALUE must still render an empty alt, or it
     // round-trips to the literal string "undefined" and the block tier-3s.
     const protos = parsePrototypes(
-      '<block type="image" url="${img/src}" alt="${img?/alt}" title="${img?/title}" />',
+      '<block is="image" url="${img/src}" alt="${img?/alt}" title="${img?/title}" />',
     );
     const block = { '@type': 'image', url: '/img.png' }; // no alt, no title
     expect(emitBlocks(protos, [block])).toBe('![](/img.png)');
@@ -309,7 +309,7 @@ describe('emit multi-node', () => {
 describe('a field named as no HTML attribute can be', () => {
   // CommonMark reads a line as an HTML tag only if its attribute names are
   // legal; `@id` is not, so such a tag decodes as a paragraph of text.
-  const protos = parsePrototypes('<block type="slate" value="${p,h*/slate}" />');
+  const protos = parsePrototypes('<block is="slate" value="${p,h*/slate}" />');
   const video = { '@type': 'video', '@id': 'v1', url: '/v.mp4', size: 'full' };
   const heading = { '@type': 'slate', value: [{ type: 'h2', children: [{ text: 'Next' }] }] };
 
@@ -330,7 +330,7 @@ describe('`/text` of a text block reads its words as search text does', () => {
   // bold syllable stays inside its word. A field read with `/text` from rich text
   // and the search text of that text must not disagree.
   const protos = parsePrototypes(
-    '<block type="slate" value="${p,ul,ol/slate}" words="${p,ul,ol/text}" />',
+    '<block is="slate" value="${p,ul,ol/slate}" words="${p,ul,ol/text}" />',
   );
 
   it('a list: each item is its own words', () => {
@@ -358,7 +358,7 @@ describe('`/text` of a text block reads its words as search text does', () => {
   });
 
   it('a link\'s text read into a field keeps its spaces: it is the value as written', () => {
-    const linkProtos = parsePrototypes('<block type="maps" title="${a/text}" url="${a/href}" />');
+    const linkProtos = parsePrototypes('<block is="maps" title="${a/text}" url="${a/href}" />');
     const [block] = matchBlocks(linkProtos, '[Namur, Belgium ](https://example.org/map)');
     expect(block.title).toBe('Namur, Belgium ');
   });
@@ -380,7 +380,7 @@ describe('optional NODE (absent) matching — one prototype, present or absent',
   // own separate prototype (the two image forms collapse to one).
   it('bare: one image prototype matches both a captioned and an uncaptioned image', () => {
     const protos = parsePrototypes(
-      '<block type="image" description="${p?/text}" url="${img/src}" alt="${img?/alt}" />',
+      '<block is="image" description="${p?/text}" url="${img/src}" alt="${img?/alt}" />',
     );
     const withCap = matchBlocks(protos, 'A caption.\n\n![alt](/i.png)');
     expect(withCap).toEqual([{ '@type': 'image', description: 'A caption.', url: '/i.png', alt: 'alt' }]);
@@ -392,14 +392,14 @@ describe('optional NODE (absent) matching — one prototype, present or absent',
 
   it('tagged leaf: one teaser prototype matches with/without head_title and description', () => {
     const protos = parsePrototypes(
-      '<block type="teaser" title="${h/text}" head_title="${strong?/text}" href="${h/link}" description="${p?/text}" />',
+      '<block is="teaser" title="${h/text}" head_title="${strong?/text}" href="${h/link}" description="${p?/text}" />',
       { explicit: true },
     );
-    const full = matchBlocks(protos, '<block type="teaser">\n\n## [T](/x)\n\n**Kick**\n\nBody.\n\n</block>');
+    const full = matchBlocks(protos, '<block is="teaser">\n\n## [T](/x)\n\n**Kick**\n\nBody.\n\n</block>');
     expect(full).toEqual([{ '@type': 'teaser', title: 'T', head_title: 'Kick', href: [{ '@id': '/x' }], description: 'Body.' }]);
-    const noKicker = matchBlocks(protos, '<block type="teaser">\n\n## [T](/x)\n\nBody.\n\n</block>');
+    const noKicker = matchBlocks(protos, '<block is="teaser">\n\n## [T](/x)\n\nBody.\n\n</block>');
     expect(noKicker).toEqual([{ '@type': 'teaser', title: 'T', href: [{ '@id': '/x' }], description: 'Body.' }]);
-    const noBody = matchBlocks(protos, '<block type="teaser">\n\n## [T](/x)\n\n**Kick**\n\n</block>');
+    const noBody = matchBlocks(protos, '<block is="teaser">\n\n## [T](/x)\n\n**Kick**\n\n</block>');
     expect(noBody).toEqual([{ '@type': 'teaser', title: 'T', head_title: 'Kick', href: [{ '@id': '/x' }] }]);
     for (const b of [full, noKicker, noBody]) {
       expect(matchBlocks(protos, emitBlocks(protos, b))).toEqual(b);
@@ -410,9 +410,9 @@ describe('optional NODE (absent) matching — one prototype, present or absent',
 describe('verify-on-emit', () => {
   it('falls back to a tag when the bare form would over-merge with a neighbour', () => {
     const protos = parsePrototypes([
-      '<block type="slate" value="${p/slate}" />',
-      '<block type="image" description="${p/text}" url="${img/src}" alt="${img/alt}" />',
-      '<block type="image" url="${img/src}" alt="${img/alt}" />',
+      '<block is="slate" value="${p/slate}" />',
+      '<block is="image" description="${p/text}" url="${img/src}" alt="${img/alt}" />',
+      '<block is="image" url="${img/src}" alt="${img/alt}" />',
     ].join('\n'));
     // Bare, "Prose." + an image would re-decode as ONE image-with-caption.
     // Verify-on-emit must break that up so it round-trips to two blocks.
@@ -427,10 +427,10 @@ describe('verify-on-emit', () => {
 
 describe('emit container', () => {
   const protos = parsePrototypes([
-    '<block type="slate" value="${p/slate}" />',
-    '<block type="accordion" right_arrows>',
+    '<block is="slate" value="${p/slate}" />',
+    '<block is="accordion" right_arrows>',
     '  <region name="panels" widget="object_list" idField="@id" typeField="@type">',
-    '    <block type="panel" title="${h2/text}" />',
+    '    <block is="panel" title="${h2/text}" />',
     '  </region>',
     '</block>',
   ].join('\n'));
@@ -445,7 +445,7 @@ describe('emit container', () => {
     };
     const md = emitBlocks(protos, [block]);
     expect(md).toContain('## First');
-    expect(md).toContain('<block type="accordion">');
+    expect(md).toContain('<block is="accordion">');
     expect(matchBlocks(protos, md)).toEqual([block]);
   });
 });
@@ -455,8 +455,8 @@ describe('emit a container with several regions', () => {
   // regions are keys of one blocks_layout, so nothing in the markdown of the
   // blocks themselves says where one region ends and the next begins.
   const protos = parsePrototypes([
-    '<block type="slate" value="${p/slate}" />',
-    '<block type="layout">',
+    '<block is="slate" value="${p/slate}" />',
+    '<block is="layout">',
     '  <region name="sidebar" widget="blocks_layout" />',
     '  <region name="main" widget="blocks_layout" />',
     '</block>',
@@ -484,10 +484,10 @@ describe('emit a container with several regions', () => {
 
 describe('emitPage / full page round-trip', () => {
   const protos = parsePrototypes([
-    '<block type="slate" value="${p/slate}" />',
-    '<block type="accordion" right_arrows>',
+    '<block is="slate" value="${p/slate}" />',
+    '<block is="accordion" right_arrows>',
     '  <region name="panels" widget="object_list" idField="@id" typeField="@type">',
-    '    <block type="panel" title="${h2/text}" />',
+    '    <block is="panel" title="${h2/text}" />',
     '  </region>',
     '</block>',
   ].join('\n'));
@@ -522,7 +522,7 @@ describe('emitPage / full page round-trip', () => {
 
 describe('separator (zero-capture node directive)', () => {
   it('decodes --- to a separator and emits it back', () => {
-    const protos = parsePrototypes('<block type="separator" _="${hr}" />');
+    const protos = parsePrototypes('<block is="separator" _="${hr}" />');
     expect(matchBlocks(protos, '---')).toEqual([{ '@type': 'separator' }]);
     expect(emitBlocks(protos, [{ '@type': 'separator' }])).toBe('---');
   });
@@ -538,8 +538,8 @@ describe('decodePage (full page: frontmatter + prototypes + assignments + body -
       '  - { uid: p-1, type: slate }',
       '  - { uid: sep-2, type: separator }',
       'prototypes: |',
-      '  <block type="slate" value="${p/slate}" />',
-      '  <block type="separator" _="${hr}" />',
+      '  <block is="slate" value="${p/slate}" />',
+      '  <block is="separator" _="${hr}" />',
       '---',
       '',
       'Hello world.',
@@ -566,14 +566,14 @@ describe('decodePage (full page: frontmatter + prototypes + assignments + body -
       '  - { uid: h-1 }',
       '  - { uid: b-2 }',
       'blocks-matched: |',         // implicit — auto-matched from bare markdown
-      '  <block type="slate" value="${p,h*/slate}" />',
+      '  <block is="slate" value="${p,h*/slate}" />',
       'blocks-tagged: |',          // explicit — only via its tag
-      '  <block type="button" title="${a/text}" href="${a/link}" />',
+      '  <block is="button" title="${a/text}" href="${a/link}" />',
       '---',
       '',
       '# A heading',
       '',
-      '<block type="button">',
+      '<block is="button">',
       '',
       '[Docs](/docs)',
       '',
@@ -590,14 +590,14 @@ describe('decodePage (full page: frontmatter + prototypes + assignments + body -
 
 describe('title (match-only h1)', () => {
   it('matches an h1 to a bare title block, storing nothing from it', () => {
-    const protos = parsePrototypes('<block type="title" _="${h1}" />');
+    const protos = parsePrototypes('<block is="title" _="${h1}" />');
     expect(matchBlocks(protos, '# Hello')).toEqual([{ '@type': 'title' }]);
   });
 });
 
 describe('alternation (slate default over many node kinds)', () => {
   it('a heading decodes to slate via a node set', () => {
-    const protos = parsePrototypes('<block type="slate" value="${p|h2|h3/slate}" />');
+    const protos = parsePrototypes('<block is="slate" value="${p|h2|h3/slate}" />');
     expect(matchBlocks(protos, '## A heading'))
       .toEqual([{ '@type': 'slate', value: [{ type: 'h2', children: [{ text: 'A heading' }] }] }]);
   });
@@ -606,8 +606,8 @@ describe('alternation (slate default over many node kinds)', () => {
     // `${h1}` and the `${…h1…}` set are both type-level (equal specificity), so
     // they tie; title declared AFTER slate wins the h1, like a later CSS rule.
     const protos = parsePrototypes([
-      '<block type="slate" value="${p,h1,h2/slate}" />',
-      '<block type="title" _="${h1}" />',
+      '<block is="slate" value="${p,h1,h2/slate}" />',
+      '<block is="title" _="${h1}" />',
     ].join('\n'));
     expect(matchBlocks(protos, '# Title\n\n## Sub')).toEqual([
       { '@type': 'title' },
@@ -617,8 +617,8 @@ describe('alternation (slate default over many node kinds)', () => {
 
   it('the earlier prototype loses the tie — title BEFORE slate makes an h1 a slate', () => {
     const protos = parsePrototypes([
-      '<block type="title" _="${h1}" />',
-      '<block type="slate" value="${p,h1,h2/slate}" />',
+      '<block is="title" _="${h1}" />',
+      '<block is="slate" value="${p,h1,h2/slate}" />',
     ].join('\n'));
     expect(matchBlocks(protos, '# X')).toEqual([
       { '@type': 'slate', value: [{ type: 'h1', children: [{ text: 'X' }] }] },
@@ -628,8 +628,8 @@ describe('alternation (slate default over many node kinds)', () => {
   it('a multi-node run is more specific (compound) and outranks a single-node prototype', () => {
     // image+caption (2 type slots) beats bare slate (1) by specificity, though declared first
     const protos = parsePrototypes([
-      '<block type="image" description="${p/text}" url="${img/src}" />',
-      '<block type="slate" value="${p,h*/slate}" />',
+      '<block is="image" description="${p/text}" url="${img/src}" />',
+      '<block is="slate" value="${p,h*/slate}" />',
     ].join('\n'));
     const md = '![alt](/x.png)\n\ncaption text';
     expect(matchBlocks(protos, md)).toEqual([
@@ -643,7 +643,7 @@ describe('lone-bold/italic paragraph parts', () => {
   // so a ref can target it directly (`${em/…}`). The part accessors must put the
   // paragraph wrapper back — a slate value is a list of block nodes, not an inline.
   it('${em/slate} reconstructs the paragraph around a lifted italic', () => {
-    const protos = parsePrototypes('<block type="x" value="${em/slate}" />');
+    const protos = parsePrototypes('<block is="x" value="${em/slate}" />');
     expect(matchBlocks(protos, '*just italic*')).toEqual([{
       '@type': 'x',
       value: [{ type: 'p', children: [{ type: 'em', children: [{ text: 'just italic' }] }] }],
@@ -652,7 +652,7 @@ describe('lone-bold/italic paragraph parts', () => {
 
   it('${em/richtext} yields an HTML rich-text field (the Volto RichText shape)', () => {
     // A `richtext` WIDGET stores HTML, not slate. (Slate FIELDS use `/slate`.)
-    const protos = parsePrototypes('<block type="hero" description="${em/richtext}" />');
+    const protos = parsePrototypes('<block is="hero" description="${em/richtext}" />');
     expect(matchBlocks(protos, '*Fitted, not forced.*')).toEqual([{
       '@type': 'hero',
       description: { 'content-type': 'text/html', data: '<em>Fitted, not forced.</em>', encoding: 'utf-8' },
@@ -663,14 +663,14 @@ describe('lone-bold/italic paragraph parts', () => {
 describe('codeExample (tabs region over pre fences)', () => {
   it('decodes tabs split at h3, each a label + fenced code', () => {
     const protos = parsePrototypes([
-      '<block type="codeExample">',
+      '<block is="codeExample">',
       '  <region name="tabs" widget="object_list" idField="@id" typeField="@type">',
-      '    <block type="tab" label="${h3/text}" language="${pre/lang}" code="${pre/text}" />',
+      '    <block is="tab" label="${h3/text}" language="${pre/lang}" code="${pre/text}" />',
       '  </region>',
       '</block>',
     ].join('\n'));
     const md = [
-      '<block type="codeExample">', '',
+      '<block is="codeExample">', '',
       '### Bash', '', '```bash', 'echo hi', '```', '',
       '### JS', '', '```javascript', 'console.log(1)', '```', '',
       '</block>',
@@ -687,22 +687,25 @@ describe('codeExample (tabs region over pre fences)', () => {
 
 describe('tier-3 data tag decode', () => {
   it('reconstructs a raw block from a self-closing data tag', () => {
-    const protos = parsePrototypes('<block type="slate" value="${p/slate}" />');
-    const md = '<block type="separator" data-json=\'{"styles":{"align":"left"}}\' />';
+    const protos = parsePrototypes('<block is="slate" value="${p/slate}" />');
+    const md = '<block is="separator" data-json=\'{"styles":{"align":"left"}}\' />';
     expect(matchBlocks(protos, md)).toEqual([{ '@type': 'separator', styles: { align: 'left' } }]);
   });
 
-  it('keeps string attrs and drops the redundant uid (keying supplies it)', () => {
-    const protos = parsePrototypes('<block type="slate" value="${p/slate}" />');
-    const md = '<block type="button" uid="b-1" title="Go" data-json=\'{"inneralign":"left"}\' />';
-    expect(matchBlocks(protos, md)).toEqual([{ '@type': 'button', title: 'Go', inneralign: 'left' }]);
+  it('keeps every attribute as a field, a `uid` too, and merges data-json', () => {
+    // A block's uid comes from the page's assignments, never a tag attribute, so
+    // an attribute named `uid` is a field of that name: dropping it lost data.
+    const protos = parsePrototypes('<block is="slate" value="${p/slate}" />');
+    const md = '<block is="button" uid="b-1" title="Go" data-json=\'{"inneralign":"left"}\' />';
+    expect(matchBlocks(protos, md)).toEqual([{ '@type': 'button', uid: 'b-1', title: 'Go', inneralign: 'left' }]);
   });
 });
 
 // The forms before bound attributes, which the reader must now refuse. Kept out
 // of the tags the migration rewrote, so they stay as written.
-const OLD_UNQUOTED = ['<block type="toc"', 'levels=3 />'].join(' ');
-const OLD_DICT = ['<block type="toc"', 'styles:align="left" />'].join(' ');
+const OLD_UNQUOTED = ['<block is="toc"', 'levels=3 />'].join(' ');
+const OLD_DICT = ['<block is="toc"', 'styles:align="left" />'].join(' ');
+const OLD_TYPE = ['<block', 'type="toc" />'].join(' ');
 
 describe('a value that is not plain text is a bound attribute: `:field` holds JSON', () => {
   // As in Vue: `field="…"` is always text, and `:field="…"` is always data.
@@ -743,10 +746,10 @@ describe('a value that is not plain text is a bound attribute: `:field` holds JS
 
   it('keeps a prototyped block light when it also has a list field', () => {
     const protos = parsePrototypes([
-      '<block type="slate" value="${p|h2/slate}" />',
-      '<block type="cards">',
+      '<block is="slate" value="${p|h2/slate}" />',
+      '<block is="cards">',
       '  <region name="blocks" widget="blocks_layout">',
-      '    <block type="card" title="${h2/text}" />',
+      '    <block is="card" title="${h2/text}" />',
       '  </region>',
       '</block>',
     ].join('\n'));
@@ -758,6 +761,25 @@ describe('a value that is not plain text is a bound attribute: `:field` holds JS
     expect(matchBlocks(protos, md)).toEqual([block]);
   });
 
+  it('a field named `type` is an ordinary attribute: the tag names its type with `is`', () => {
+    const block = { '@type': 'inPageAlert', type: 'info', copy: [{ type: 'p', children: [{ text: 'Hi' }] }] };
+    const md = emitBlocks([], [block]);
+    expect(md).toMatch(/^<block is="inPageAlert" type="info" :copy=/);
+    expect(md).not.toContain('data-json');
+    expect(matchBlocks([], md)).toEqual([block]);
+  });
+
+  it('a field named like the tag\'s own attribute goes to data-json alone', () => {
+    const block = { '@type': 'x', is: 'a field', copy: 'Text' };
+    const md = emitBlocks([], [block]);
+    expect(md).toBe(`<block is="x" copy="Text" data-json='{"is":"a field"}' />`);
+    expect(matchBlocks([], md)).toEqual([{ '@type': 'x', copy: 'Text', is: 'a field' }]);
+  });
+
+  it('refuses a block tag that names its type with `type`', () => {
+    expect(() => matchBlocks([], OLD_TYPE)).toThrow(/is="…"/);
+  });
+
   it('refuses an unquoted value: text is quoted, data is bound', () => {
     expect(() => matchBlocks([], OLD_UNQUOTED)).toThrow(/:levels/);
   });
@@ -767,16 +789,16 @@ describe('a value that is not plain text is a bound attribute: `:field` holds JS
   });
 
   it('still decodes the legacy data-json form (backward compatible)', () => {
-    const md = '<block type="separator" data-json=\'{"styles":{"align":"left"}}\' />';
+    const md = '<block is="separator" data-json=\'{"styles":{"align":"left"}}\' />';
     expect(matchBlocks([], md)).toEqual([{ '@type': 'separator', styles: { align: 'left' } }]);
   });
 });
 
 describe('codeExample emit + tier-3 emit', () => {
   const cx = parsePrototypes([
-    '<block type="codeExample">',
+    '<block is="codeExample">',
     '  <region name="tabs" widget="object_list" idField="@id" typeField="@type">',
-    '    <block type="tab" label="${h3/text}" language="${pre/lang}" code="${pre/text}" />',
+    '    <block is="tab" label="${h3/text}" language="${pre/lang}" code="${pre/text}" />',
     '  </region>',
     '</block>',
   ].join('\n'));
@@ -801,7 +823,7 @@ describe('slateTable (iterate-children regions)', () => {
   const protosP = import('./default-prototypes.mjs').then(({ DEFAULT_PROTOTYPES: D }) => [
     ...parsePrototypes(D.matched), ...parsePrototypes(D.tagged, { explicit: true }),
   ]);
-  const md = ['<block type="slateTable">', '', '| A | B |', '| --- | --- |', '| c | d |', '', '</block>'].join('\n');
+  const md = ['<block is="slateTable">', '', '| A | B |', '| --- | --- |', '| c | d |', '', '</block>'].join('\n');
 
   it('decodes table -> rows -> cells, the first row header cells', async () => {
     const r = matchBlocks(await protosP, md);
@@ -843,32 +865,32 @@ describe('typed attributes', () => {
   // A bound field decodes AT ITS position, so what emit writes next is in the
   // authored order — a re-emit of unchanged content is byte-identical.
   it('keeps a dict field where it was written', () => {
-    const protos = parsePrototypes('<block type="slate" value="${p/slate}" />');
-    const [block] = matchBlocks(protos, `<block type="toc" :styles='{"align":"left"}' :levels="3" />`);
+    const protos = parsePrototypes('<block is="slate" value="${p/slate}" />');
+    const [block] = matchBlocks(protos, `<block is="toc" :styles='{"align":"left"}' :levels="3" />`);
     expect(Object.keys(block)).toEqual(['@type', 'styles', 'levels']);
   });
 
   it('decodes HTML booleans (bare=true), bound numbers, quoted strings', () => {
-    const protos = parsePrototypes('<block type="slate" value="${p/slate}" />');
-    const md = '<block type="toc" celled :levels="3" title="Contents" />';
+    const protos = parsePrototypes('<block is="slate" value="${p/slate}" />');
+    const md = '<block is="toc" celled :levels="3" title="Contents" />';
     expect(matchBlocks(protos, md)).toEqual([{ '@type': 'toc', celled: true, levels: 3, title: 'Contents' }]);
   });
 });
 
 describe('gridBlock (scoped teaser, blocks_layout, no per-card wrapper)', () => {
   const protos = parsePrototypes([
-    '<block type="slate" value="${p|h2/slate}" />',
-    '<block type="image" url="${img/src}" alt="${img/alt}" />',
-    '<block type="gridBlock">',
+    '<block is="slate" value="${p|h2/slate}" />',
+    '<block is="image" url="${img/src}" alt="${img/alt}" />',
+    '<block is="gridBlock">',
     '  <region name="blocks" widget="blocks_layout">',
-    '    <block type="teaser" title="${h2/text}" description="${p/text}" url="${img/src}" />',
+    '    <block is="teaser" title="${h2/text}" description="${p/text}" url="${img/src}" />',
     '  </region>',
     '</block>',
   ].join('\n'));
 
   it('reads each ## card + copy + image as a teaser, and round-trips', () => {
     const md = [
-      '<block type="gridBlock">', '',
+      '<block is="gridBlock">', '',
       '## Card One', '', 'Copy one.', '', '![](/a)', '',
       '## Card Two', '', 'Copy two.', '', '![](/b)', '',
       '</block>',
@@ -886,10 +908,10 @@ describe('gridBlock (scoped teaser, blocks_layout, no per-card wrapper)', () => 
 
 describe('columns (nested blocks_layout container-in-container)', () => {
   const protos = parsePrototypes([
-    '<block type="slate" value="${p,strong,em/slate}" />',
-    '<block type="columns">',
+    '<block is="slate" value="${p,strong,em/slate}" />',
+    '<block is="columns">',
     '  <region name="columns" widget="blocks_layout">',
-    '    <block type="column">',
+    '    <block is="column">',
     '      <region name="items" widget="blocks_layout" />',
     '    </block>',
     '  </region>',
@@ -898,9 +920,9 @@ describe('columns (nested blocks_layout container-in-container)', () => {
 
   it('decodes columns -> column -> slates, ordered by the region\'s own layout key', () => {
     const md = [
-      '<block type="columns">', '',
-      '<block type="column">', '', '**Compliance**', '', 'Body one.', '', '</block>', '',
-      '<block type="column">', '', '**Design**', '', 'Body two.', '', '</block>', '',
+      '<block is="columns">', '',
+      '<block is="column">', '', '**Compliance**', '', 'Body one.', '', '</block>', '',
+      '<block is="column">', '', '**Design**', '', 'Body two.', '', '</block>', '',
       '</block>',
     ].join('\n');
     const block = matchBlocks(protos, md)[0];
@@ -913,7 +935,7 @@ describe('columns (nested blocks_layout container-in-container)', () => {
 
 describe('h* any heading', () => {
   it('matches any heading level for the slate default', () => {
-    const protos = parsePrototypes('<block type="slate" value="${p|h*/slate}" />');
+    const protos = parsePrototypes('<block is="slate" value="${p|h*/slate}" />');
     expect(matchBlocks(protos, '#### Deep')).toEqual([{ '@type': 'slate', value: [{ type: 'h4', children: [{ text: 'Deep' }] }] }]);
     expect(matchBlocks(protos, 'Text.')).toEqual([{ '@type': 'slate', value: [{ type: 'p', children: [{ text: 'Text.' }] }] }]);
   });
@@ -921,21 +943,21 @@ describe('h* any heading', () => {
 
 describe('relative heading depth ${h}', () => {
   const protos = parsePrototypes([
-    '<block type="slate" value="${p|h*/slate}" />',
-    '<block type="accordion">',
+    '<block is="slate" value="${p|h*/slate}" />',
+    '<block is="accordion">',
     '  <region name="panels" widget="object_list" idField="@id" typeField="@type">',
-    '    <block type="panel" title="${h/text}" />',
+    '    <block is="panel" title="${h/text}" />',
     '  </region>',
     '</block>',
   ].join('\n'));
 
   it('resolves to the delimiter level at the current depth', () => {
-    const md2 = ['<block type="accordion">', '', '## Two A', '', '### deeper', '', '## Two B', '', 'x', '', '</block>'].join('\n');
+    const md2 = ['<block is="accordion">', '', '## Two A', '', '### deeper', '', '## Two B', '', 'x', '', '</block>'].join('\n');
     const b2 = matchBlocks(protos, md2, 2)[0]; // depth 2 -> split at h2
     expect(b2.panels.map((p) => p.title)).toEqual(['Two A', 'Two B']);
     expect(b2.panels[0].blocks[0].value[0].type).toBe('h3'); // ### stays as content
 
-    const md3 = ['<block type="accordion">', '', '### Three A', '', '### Three B', '', '</block>'].join('\n');
+    const md3 = ['<block is="accordion">', '', '### Three A', '', '### Three B', '', '</block>'].join('\n');
     const b3 = matchBlocks(protos, md3, 3)[0]; // depth 3 -> same ${h} now splits at h3
     expect(b3.panels.map((p) => p.title)).toEqual(['Three A', 'Three B']);
   });
@@ -944,10 +966,10 @@ describe('relative heading depth ${h}', () => {
 describe('relative depth round-trip', () => {
   it('emits ${h} at the current depth and decodes back', () => {
     const protos = parsePrototypes([
-      '<block type="slate" value="${p|h*/slate}" />',
-      '<block type="accordion">',
+      '<block is="slate" value="${p|h*/slate}" />',
+      '<block is="accordion">',
       '  <region name="panels" widget="object_list" idField="@id" typeField="@type">',
-      '    <block type="panel" title="${h/text}" />',
+      '    <block is="panel" title="${h/text}" />',
       '  </region>',
       '</block>',
     ].join('\n'));
@@ -962,10 +984,10 @@ describe('relative depth round-trip', () => {
 
 describe('grid headline as heading (container scalar-ref)', () => {
   const protos = parsePrototypes([
-    '<block type="slate" value="${p|h*/slate}" />',
-    '<block type="gridBlock" headline="${h/text}">',
+    '<block is="slate" value="${p|h*/slate}" />',
+    '<block is="gridBlock" headline="${h/text}">',
     '  <region name="blocks" widget="blocks_layout">',
-    '    <block type="teaser" title="${h/text}" description="${p/text}" />',
+    '    <block is="teaser" title="${h/text}" description="${p/text}" />',
     '  </region>',
     '</block>',
   ].join('\n'));
@@ -991,28 +1013,28 @@ describe('grid headline as heading (container scalar-ref)', () => {
 
 describe('local overrides', () => {
   const acc = parsePrototypes([
-    '<block type="slate" value="${p|h*/slate}" />',
-    '<block type="accordion" right_arrows>',
+    '<block is="slate" value="${p|h*/slate}" />',
+    '<block is="accordion" right_arrows>',
     '  <region name="panels" widget="object_list" idField="@id" typeField="@type">',
-    '    <block type="panel" title="${h/text}" />',
+    '    <block is="panel" title="${h/text}" />',
     '  </region>',
     '</block>',
   ].join('\n'));
 
   it('attribute override: an instance attr beats the prototype default', () => {
-    const md = ['<block type="accordion" :right_arrows="false">', '', '## A', '', 'x', '', '</block>'].join('\n');
+    const md = ['<block is="accordion" :right_arrows="false">', '', '## A', '', 'x', '', '</block>'].join('\n');
     expect(matchBlocks(acc, md)[0].right_arrows).toBe(false); // proto default is true
   });
 
   it('light tag: a named-type tag with a clean body decodes via its prototype', () => {
-    const protos = parsePrototypes('<block type="slate" value="${p/slate}" />');
-    expect(matchBlocks(protos, '<block type="slate">\n\nHello.\n\n</block>'))
+    const protos = parsePrototypes('<block is="slate" value="${p/slate}" />');
+    expect(matchBlocks(protos, '<block is="slate">\n\nHello.\n\n</block>'))
       .toEqual([{ '@type': 'slate', value: [{ type: 'p', children: [{ text: 'Hello.' }] }] }]);
   });
 
   it('inline <region>: an explicit region tag sets that region content', () => {
     const md = [
-      '<block type="accordion">', '',
+      '<block is="accordion">', '',
       '<region name="panels" idField="@id" typeField="@type">', '',
       '## First', '', 'one', '',
       '## Second', '', 'two', '',
@@ -1024,7 +1046,7 @@ describe('local overrides', () => {
 });
 
 describe('<fields> tag', () => {
-  const protos = parsePrototypes('<block type="slate" value="${p/slate}" />');
+  const protos = parsePrototypes('<block is="slate" value="${p/slate}" />');
 
   it('hoists an uncovered field, keeping the body clean, and round-trips', () => {
     const block = { '@type': 'slate', value: [{ type: 'p', children: [{ text: 'Prose.' }] }], styles: { align: 'left' } };
@@ -1036,7 +1058,7 @@ describe('<fields> tag', () => {
   });
 
   it('decodes multiple fields from one <fields> tag', () => {
-    const md = '<block type="slate">\n\nHi.\n\n<fields fixed data-json=\'{"styles":{"align":"left"}}\' />\n\n</block>';
+    const md = '<block is="slate">\n\nHi.\n\n<fields fixed data-json=\'{"styles":{"align":"left"}}\' />\n\n</block>';
     expect(matchBlocks(protos, md)).toEqual([
       { '@type': 'slate', value: [{ type: 'p', children: [{ text: 'Hi.' }] }], fixed: true, styles: { align: 'left' } },
     ]);
@@ -1045,8 +1067,8 @@ describe('<fields> tag', () => {
 
 describe('<fields> enclosing (propagate fields to every wrapped block)', () => {
   const protos = parsePrototypes([
-    '<block type="slate" value="${p/slate}" />',
-    '<block type="separator" _="${hr}" />',
+    '<block is="slate" value="${p/slate}" />',
+    '<block is="separator" _="${hr}" />',
   ].join('\n'));
 
   it('stamps a wrapper\'s fields onto every enclosed block as defaults', () => {
@@ -1065,7 +1087,7 @@ describe('<fields> enclosing (propagate fields to every wrapped block)', () => {
   it('lets an enclosed block override an inherited field (block wins)', () => {
     const md = [
       '<fields slotId="rendering">', '',
-      '<block type="slate" slotId="schema">', '', 'Body.', '', '</block>', '',
+      '<block is="slate" slotId="schema">', '', 'Body.', '', '</block>', '',
       '</fields>',
     ].join('\n');
     expect(matchBlocks(protos, md)[0].slotId).toBe('schema');
@@ -1086,7 +1108,7 @@ describe('<fields> enclosing (propagate fields to every wrapped block)', () => {
 });
 
 describe('emit: hoist shared fields into <fields> wrappers', () => {
-  const protos = parsePrototypes('<block type="slate" value="${p/slate}" />');
+  const protos = parsePrototypes('<block is="slate" value="${p/slate}" />');
   const keyed = {
     blocks: {
       a: { '@type': 'slate', value: [{ type: 'p', children: [{ text: 'One.' }] }], templateInstanceId: 'ti', slotId: 'schema' },
@@ -1114,12 +1136,12 @@ describe('emit: hoist shared fields into <fields> wrappers', () => {
 
 describe('link widget (/link)', () => {
   const protos = [
-    ...parsePrototypes('<block type="slate" value="${p,h*,ul,ol,blockquote,a/slate}" />'),
-    ...parsePrototypes('<block type="button" title="${a/text}" href="${a/link}" />', { explicit: true }),
+    ...parsePrototypes('<block is="slate" value="${p,h*,ul,ol,blockquote,a/slate}" />'),
+    ...parsePrototypes('<block is="button" title="${a/text}" href="${a/link}" />', { explicit: true }),
   ];
 
   it('decodes a button light tag into title + object-browser href', () => {
-    const md = '<block type="button">\n\n[Docs](/docs)\n\n</block>';
+    const md = '<block is="button">\n\n[Docs](/docs)\n\n</block>';
     expect(matchBlocks(protos, md)).toEqual([
       { '@type': 'button', title: 'Docs', href: [{ '@id': '/docs' }] },
     ]);
@@ -1132,7 +1154,7 @@ describe('link widget (/link)', () => {
   it('emits a button as a light tag (explicit), the link clean, not tier-3', () => {
     const block = { '@type': 'button', title: 'Docs', href: [{ '@id': '/docs' }] };
     const md = emitBlocks(protos, [block]);
-    expect(md).toContain('<block type="button">');
+    expect(md).toContain('<block is="button">');
     expect(md).toContain('[Docs](/docs)');
     expect(md).not.toContain('data=');
     expect(matchBlocks(protos, md)).toEqual([block]);
@@ -1140,7 +1162,7 @@ describe('link widget (/link)', () => {
 
   it('reads the href from a link inside a heading (teaser)', () => {
     const teaser = parsePrototypes(
-      '<block type="teaser" title="${h/text}" href="${h/link}" description="${p/text}" />');
+      '<block is="teaser" title="${h/text}" href="${h/link}" description="${p/text}" />');
     const block = {
       '@type': 'teaser', title: 'Headline', href: [{ '@id': '/page' }], description: 'Lorem.',
     };
@@ -1154,8 +1176,8 @@ describe('link widget (/link)', () => {
 
 describe('required elements — a ref must resolve for the prototype to match', () => {
   const protos = parsePrototypes([
-    '<block type="slate" value="${p|h*|ul|ol|blockquote/slate}" />',
-    '<block type="teaser" title="${h/text}" href="${h/link}" description="${p/text}" />',
+    '<block is="slate" value="${p|h*|ul|ol|blockquote/slate}" />',
+    '<block is="teaser" title="${h/text}" href="${h/link}" description="${p/text}" />',
   ].join('\n'));
 
   it('does not grab a linkless heading + paragraph as a teaser (href is required)', () => {
@@ -1172,7 +1194,7 @@ describe('required elements — a ref must resolve for the prototype to match', 
 
 describe('adjacent bare-text leaves are one leaf (Slate normalisation)', () => {
   it('accepts split text leaves as clean, since markdown merges them', () => {
-    const protos = parsePrototypes('<block type="slate" value="${p/slate}" />');
+    const protos = parsePrototypes('<block is="slate" value="${p/slate}" />');
     // Slate can store "Hello world." as two adjacent leaves (an editing artifact);
     // markdown merges them, and the comparison treats the two forms as equal.
     const block = { '@type': 'slate', value: [{ type: 'p', children: [
@@ -1186,8 +1208,8 @@ describe('adjacent bare-text leaves are one leaf (Slate normalisation)', () => {
 
 describe('explicit prototypes — require the tag, never match bare', () => {
   const protos = [
-    ...parsePrototypes('<block type="slate" value="${p,h*,ul,ol,blockquote/slate}" />'),
-    ...parsePrototypes('<block type="teaser" title="${h/text}" href="${h/link}" description="${p/text}" />', { explicit: true }),
+    ...parsePrototypes('<block is="slate" value="${p,h*,ul,ol,blockquote/slate}" />'),
+    ...parsePrototypes('<block is="teaser" title="${h/text}" href="${h/link}" description="${p/text}" />', { explicit: true }),
   ];
 
   it('does not grab a bare heading-link + prose (stays two slates)', () => {
@@ -1195,8 +1217,8 @@ describe('explicit prototypes — require the tag, never match bare', () => {
       .toEqual(['slate', 'slate']);
   });
 
-  it('matches only via an explicit <block type="teaser"> tag', () => {
-    const md = '<block type="teaser">\n\n## [See docs](/docs)\n\nProse.\n\n</block>';
+  it('matches only via an explicit <block is="teaser"> tag', () => {
+    const md = '<block is="teaser">\n\n## [See docs](/docs)\n\nProse.\n\n</block>';
     const [t] = matchBlocks(protos, md);
     expect(t['@type']).toBe('teaser');
     expect(t.href).toEqual([{ '@id': '/docs' }]);
@@ -1205,14 +1227,14 @@ describe('explicit prototypes — require the tag, never match bare', () => {
 
 describe('format leaning: comma delimiter, data-json, optional assignment type', () => {
   it('comma is the node-set delimiter, matching like pipe (h* wildcard kept)', () => {
-    const protos = parsePrototypes('<block type="slate" value="${p,h*,ul,ol,blockquote/slate}" />');
+    const protos = parsePrototypes('<block is="slate" value="${p,h*,ul,ol,blockquote/slate}" />');
     expect(matchBlocks(protos, '## Head')).toEqual([{ '@type': 'slate', value: [{ type: 'h2', children: [{ text: 'Head' }] }] }]);
     expect(matchBlocks(protos, 'Para.')).toEqual([{ '@type': 'slate', value: [{ type: 'p', children: [{ text: 'Para.' }] }] }]);
   });
 
   it('a tier-3 fallback uses data-json, leaving a real `data` field intact', () => {
-    const protos = parsePrototypes('<block type="slate" value="${p/slate}" />');
-    const md = `<block type="teaser" data-json='{"title":"T","data":{"x":1}}' />`;
+    const protos = parsePrototypes('<block is="slate" value="${p/slate}" />');
+    const md = `<block is="teaser" data-json='{"title":"T","data":{"x":1}}' />`;
     expect(matchBlocks(protos, md)).toEqual([{ '@type': 'teaser', title: 'T', data: { x: 1 } }]);
   });
 
@@ -1225,7 +1247,7 @@ describe('format leaning: comma delimiter, data-json, optional assignment type',
 
   it('emitPage no longer writes type into assignments', () => {
     const keyed = { blocks: { u1: { '@type': 'slate', value: [{ type: 'p', children: [{ text: 'hi' }] }] } }, blocks_layout: { items: ['u1'] } };
-    const protos = parsePrototypes('<block type="slate" value="${p,h*/slate}" />');
+    const protos = parsePrototypes('<block is="slate" value="${p,h*/slate}" />');
     const { assignments } = emitPage(protos, keyed);
     expect(assignments).toEqual([{ uid: 'u1' }]);
   });
@@ -1233,10 +1255,10 @@ describe('format leaning: comma delimiter, data-json, optional assignment type',
 
 describe('greedy container — bare codeExample, no wrapper', () => {
   const protos = parsePrototypes([
-    '<block type="slate" value="${p,h*/slate}" />',
-    '<block type="codeExample">',
+    '<block is="slate" value="${p,h*/slate}" />',
+    '<block is="codeExample">',
     '  <region name="tabs" widget="object_list" idField="@id" typeField="@type">',
-    '    <block type="tab" label="${h3/text}" language="${pre/lang}" code="${pre/text}" />',
+    '    <block is="tab" label="${h3/text}" language="${pre/lang}" code="${pre/text}" />',
     '  </region>',
     '</block>',
   ].join('\n'));
@@ -1261,34 +1283,34 @@ describe('greedy container — bare codeExample, no wrapper', () => {
 
 describe('bold/italic paragraph kinds + optional refs', () => {
   it('captures an all-bold paragraph as a `strong` kind (leaf), round-tripping', () => {
-    const protos = parsePrototypes('<block type="hero" headline="${h/text}" kicker="${strong/text}" />', { explicit: true });
-    const md = '<block type="hero">\n\n## Title\n\n**Kick**\n\n</block>';
+    const protos = parsePrototypes('<block is="hero" headline="${h/text}" kicker="${strong/text}" />', { explicit: true });
+    const md = '<block is="hero">\n\n## Title\n\n**Kick**\n\n</block>';
     const b = matchBlocks(protos, md);
     expect(b).toEqual([{ '@type': 'hero', headline: 'Title', kicker: 'Kick' }]);
     expect(matchBlocks(protos, emitBlocks(protos, b))).toEqual(b);
   });
 
   it('captures an all-italic paragraph as an `em` kind', () => {
-    const protos = parsePrototypes('<block type="hero" headline="${h/text}" lead="${em/text}" />', { explicit: true });
-    const md = '<block type="hero">\n\n## Title\n\n*Lead in*\n\n</block>';
+    const protos = parsePrototypes('<block is="hero" headline="${h/text}" lead="${em/text}" />', { explicit: true });
+    const md = '<block is="hero">\n\n## Title\n\n*Lead in*\n\n</block>';
     expect(matchBlocks(protos, md)).toEqual([{ '@type': 'hero', headline: 'Title', lead: 'Lead in' }]);
   });
 
   it('a paragraph with only SOME bold is NOT a strong kind (stays slate/p)', () => {
-    const protos = parsePrototypes('<block type="hero" kicker="${strong/text}" />', { explicit: true });
+    const protos = parsePrototypes('<block is="hero" kicker="${strong/text}" />', { explicit: true });
     // "a **bold** word" is a normal paragraph -> no lone strong -> hero cannot match
-    expect(() => matchBlocks(protos, '<block type="hero">\n\na **bold** word\n\n</block>')).toThrow();
+    expect(() => matchBlocks(protos, '<block is="hero">\n\na **bold** word\n\n</block>')).toThrow();
   });
 
   it('an optional item ref (`${strong?/text}`) is skipped when its node is absent', () => {
     const protos = parsePrototypes([
-      '<block type="slider">',
+      '<block is="slider">',
       '  <region name="slides" widget="object_list" idField="@id" typeField="@type">',
-      '    <block type="slide" title="${h/text}" kicker="${strong?/text}" />',
+      '    <block is="slide" title="${h/text}" kicker="${strong?/text}" />',
       '  </region>',
       '</block>',
     ].join('\n'), { explicit: true });
-    const md = ['<block type="slider">', '', '## One', '', '**Kick**', '', '## Two', '', '</block>'].join('\n');
+    const md = ['<block is="slider">', '', '## One', '', '**Kick**', '', '## Two', '', '</block>'].join('\n');
     const [slider] = matchBlocks(protos, md);
     expect(slider.slides.map((s) => [s.title, s.kicker])).toEqual([['One', 'Kick'], ['Two', undefined]]);
   });
@@ -1296,24 +1318,24 @@ describe('bold/italic paragraph kinds + optional refs', () => {
 
 describe('vocabulary: title-string + code meta parts', () => {
   it('captures an image title-string via ${img/title}, round-tripping', () => {
-    const protos = parsePrototypes('<block type="figure" url="${img/src}" alt="${img/alt}" caption="${img/title}" />', { explicit: true });
-    const md = '<block type="figure">\n\n![the alt](/x.png "the caption")\n\n</block>';
+    const protos = parsePrototypes('<block is="figure" url="${img/src}" alt="${img/alt}" caption="${img/title}" />', { explicit: true });
+    const md = '<block is="figure">\n\n![the alt](/x.png "the caption")\n\n</block>';
     const b = matchBlocks(protos, md);
     expect(b).toEqual([{ '@type': 'figure', url: '/x.png', alt: 'the alt', caption: 'the caption' }]);
     expect(matchBlocks(protos, emitBlocks(protos, b))).toEqual(b);
   });
 
   it('captures a link title-string via ${a/title}, round-tripping', () => {
-    const protos = parsePrototypes('<block type="cta" label="${a/text}" href="${a/link}" tip="${a/title}" />', { explicit: true });
-    const md = '<block type="cta">\n\n[click me](/go "the tooltip")\n\n</block>';
+    const protos = parsePrototypes('<block is="cta" label="${a/text}" href="${a/link}" tip="${a/title}" />', { explicit: true });
+    const md = '<block is="cta">\n\n[click me](/go "the tooltip")\n\n</block>';
     const b = matchBlocks(protos, md);
     expect(b[0].tip).toBe('the tooltip');
     expect(matchBlocks(protos, emitBlocks(protos, b))).toEqual(b);
   });
 
   it('captures a code-fence info string via ${pre/meta}, round-tripping', () => {
-    const protos = parsePrototypes('<block type="snippet" language="${pre/lang}" code="${pre/text}" opts="${pre/meta}" />', { explicit: true });
-    const md = '<block type="snippet">\n\n```js highlight=1-3\ncode()\n```\n\n</block>';
+    const protos = parsePrototypes('<block is="snippet" language="${pre/lang}" code="${pre/text}" opts="${pre/meta}" />', { explicit: true });
+    const md = '<block is="snippet">\n\n```js highlight=1-3\ncode()\n```\n\n</block>';
     const b = matchBlocks(protos, md);
     expect(b[0]).toMatchObject({ language: 'js', opts: 'highlight=1-3', code: 'code()' });
     expect(matchBlocks(protos, emitBlocks(protos, b))).toEqual(b);
@@ -1322,18 +1344,18 @@ describe('vocabulary: title-string + code meta parts', () => {
 
 describe('labelled section matching (${p[Heading]/part})', () => {
   const protos = [
-    ...parsePrototypes('<block type="slate" value="${p,h*/slate}" />'),
+    ...parsePrototypes('<block is="slate" value="${p,h*/slate}" />'),
     ...parsePrototypes([
-    '<block type="page" summary="${p[Summary]/text}" intro="${p[Intro]/text}">',
+    '<block is="page" summary="${p[Summary]/text}" intro="${p[Intro]/text}">',
     '  <region name="blocks" widget="blocks_layout">',
-    '    <block type="slate" value="${p,h*/slate}" />',
+    '    <block is="slate" value="${p,h*/slate}" />',
     '  </region>',
     '</block>',
   ].join('\n'), { explicit: true })];
 
   it('captures the paragraph under a named heading, by label not position', () => {
     const md = [
-      '<block type="page">', '',
+      '<block is="page">', '',
       '## Intro', '', 'The intro paragraph.', '',
       '## Summary', '', 'The summary paragraph.', '',
       '</block>',
@@ -1346,18 +1368,18 @@ describe('labelled section matching (${p[Heading]/part})', () => {
 
 describe('labelled section emit (round-trip)', () => {
   const protos = [
-    ...parsePrototypes('<block type="slate" value="${p,h*/slate}" />'),
+    ...parsePrototypes('<block is="slate" value="${p,h*/slate}" />'),
     ...parsePrototypes([
-      '<block type="page" summary="${p[Summary]/text}" intro="${p[Intro]/text}">',
+      '<block is="page" summary="${p[Summary]/text}" intro="${p[Intro]/text}">',
       '  <region name="blocks" widget="blocks_layout">',
-      '    <block type="slate" value="${p,h*/slate}" />',
+      '    <block is="slate" value="${p,h*/slate}" />',
       '  </region>',
       '</block>',
     ].join('\n'), { explicit: true })];
 
   it('decode -> emit -> decode yields the same block (labelled sections)', () => {
     const md = [
-      '<block type="page">', '',
+      '<block is="page">', '',
       '## Intro', '', 'The intro paragraph.', '',
       '## Summary', '', 'The summary paragraph.', '',
       '</block>',
@@ -1371,18 +1393,18 @@ describe('labelled section emit (round-trip)', () => {
 
 describe('def-list term matching (${dd[Term]/part})', () => {
   const protos = [
-    ...parsePrototypes('<block type="slate" value="${p,h*/slate}" />'),
+    ...parsePrototypes('<block is="slate" value="${p,h*/slate}" />'),
     ...parsePrototypes([
-      '<block type="eventMetadata" start="${dd[Start]/text}" location="${dd[Location]/text}">',
+      '<block is="eventMetadata" start="${dd[Start]/text}" location="${dd[Location]/text}">',
       '  <region name="blocks" widget="blocks_layout">',
-      '    <block type="slate" value="${p,h*/slate}" />',
+      '    <block is="slate" value="${p,h*/slate}" />',
       '  </region>',
       '</block>',
     ].join('\n'), { explicit: true })];
 
   it('captures def-list values by term and round-trips', () => {
     const md = [
-      '<block type="eventMetadata">', '',
+      '<block is="eventMetadata">', '',
       'Start', ': 2024-01-01', '',
       'Location', ': Berlin', '',
       '</block>',
@@ -1405,7 +1427,7 @@ describe('def-list term matching (${dd[Term]/part})', () => {
  */
 describe('line breaks in a textarea field', () => {
   const protos = parsePrototypes(
-    '<block type="image" description="${p/textarea}" url="${img/src}" alt="${img/alt}" />',
+    '<block is="image" description="${p/textarea}" url="${img/src}" alt="${img/alt}" />',
   );
   const block = (description) => ({ '@type': 'image', description, url: '/i.png', alt: 'a' });
   const read = (para) => matchBlocks(protos, `${para}\n\n![a](/i.png)`);
@@ -1431,9 +1453,9 @@ describe('line breaks in a textarea field', () => {
 
 describe('object_list regions declare their id and type fields', () => {
   const proto = (attrs) => [
-    '<block type="slider">',
+    '<block is="slider">',
     `  <region name="slides" widget="object_list"${attrs}>`,
-    '    <block type="slide" title="${h2/text}" />',
+    '    <block is="slide" title="${h2/text}" />',
     '  </region>',
     '</block>',
   ].join('\n');
@@ -1458,9 +1480,9 @@ describe('object_list regions declare their id and type fields', () => {
 
   it('does not ask blocks_layout regions for them', () => {
     expect(() => parsePrototypes([
-      '<block type="gridBlock">',
+      '<block is="gridBlock">',
       '  <region name="blocks" widget="blocks_layout">',
-      '    <block type="teaser" title="${h2/text}" />',
+      '    <block is="teaser" title="${h2/text}" />',
       '  </region>',
       '</block>',
     ].join('\n'))).not.toThrow();
@@ -1479,7 +1501,7 @@ describe('default slateTable decodes to the Volto table shape', () => {
       ...parsePrototypes(DEFAULT_PROTOTYPES.matched),
       ...parsePrototypes(DEFAULT_PROTOTYPES.tagged, { explicit: true }),
     ];
-    const md = ['<block type="slateTable">', '', '| A | B |', '| --- | --- |', '| c | d |', '', '</block>'].join('\n');
+    const md = ['<block is="slateTable">', '', '| A | B |', '| --- | --- |', '| c | d |', '', '</block>'].join('\n');
     const { blocks } = keyBlocks(matchBlocks(protos, md), [], protos);
     const table = Object.values(blocks).find((b) => b['@type'] === 'slateTable').table;
     for (const row of table.rows) {
@@ -1492,9 +1514,9 @@ describe('default slateTable decodes to the Volto table shape', () => {
   // type field: they are typed by their container (hydra's virtual
   // `slateTable:rows`). Only an ABSENT typeField is an error.
   const tableProto = (typeAttr) => [
-    '<block type="slateTable">',
+    '<block is="slateTable">',
     `  <region name="table.rows" idField="key"${typeAttr}>`,
-    '    <block type="row" />',
+    '    <block is="row" />',
     '  </region>',
     '</block>',
   ].join('\n');
@@ -1513,10 +1535,10 @@ describe('default slateTable decodes to the Volto table shape', () => {
   });
 
   const twoTypes = (typeAttr) => [
-    '<block type="form">',
+    '<block is="form">',
     `  <region name="subblocks" widget="object_list" idField="field_id"${typeAttr}>`,
-    '    <block type="text" label="${h/text}" />',
-    '    <block type="textarea" label="${h/text}" />',
+    '    <block is="text" label="${h/text}" />',
+    '    <block is="textarea" label="${h/text}" />',
     '  </region>',
     '</block>',
   ].join('\n');
@@ -1532,7 +1554,7 @@ describe('default slateTable decodes to the Volto table shape', () => {
 
   it('an object_list region still must declare idField', () => {
     expect(() => parsePrototypes([
-      '<block type="slateTable">', '  <region name="table.rows" :typeField="null">', '    <block type="row" />', '  </region>', '</block>',
+      '<block is="slateTable">', '  <region name="table.rows" :typeField="null">', '    <block is="row" />', '  </region>', '</block>',
     ].join('\n'), { explicit: true })).toThrow(/must declare idField/);
   });
 });
@@ -1548,15 +1570,15 @@ describe('container items keep their nested blocks intact', () => {
   const panels = async (md) => (await matchBlocks(await protosP, md))[0].panels;
 
   it("a nested block's <fields> stay on that block, not the panel", async () => {
-    const [p] = await panels(['<block type="accordion">', '', '## Panel A', '',
-      '<block type="image">', '', '![](/x.png)', '', '<fields align="left" />', '', '</block>', '', '</block>'].join('\n'));
+    const [p] = await panels(['<block is="accordion">', '', '## Panel A', '',
+      '<block is="image">', '', '![](/x.png)', '', '<fields align="left" />', '', '</block>', '', '</block>'].join('\n'));
     expect(p.align).toBeUndefined();
     expect(p.blocks[0].align).toBe('left');
   });
 
   it('a heading inside a nested block does not start a new panel', async () => {
-    const ps = await panels(['<block type="accordion">', '', '## Panel A', '',
-      '<block type="slate">', '', '## Sub heading', '', '</block>', '', 'Text', '', '</block>'].join('\n'));
+    const ps = await panels(['<block is="accordion">', '', '## Panel A', '',
+      '<block is="slate">', '', '## Sub heading', '', '</block>', '', 'Text', '', '</block>'].join('\n'));
     expect(ps.map((p) => p.title)).toEqual(['Panel A']);
     expect(ps[0].blocks.map((b) => b['@type'])).toEqual(['slate', 'slate']);
   });
@@ -1603,7 +1625,7 @@ describe('emitPage: hoisting never makes the page less readable', () => {
     const { markdown } = emitPage(protos, keyBlocks([acc('One'), acc('Two')], [], protos));
     expect(markdown).toMatch(/## One/);
     expect(markdown).toMatch(/## Two/);
-    expect(markdown).not.toMatch(/<block type="accordion" data-json/);
+    expect(markdown).not.toMatch(/<block is="accordion" data-json/);
   });
 });
 
@@ -1649,7 +1671,7 @@ describe('a block with no prototype is written as attributes where it can be', (
   // fields are all strings, booleans and numbers is an attribute tag, not a
   // data-json blob.
   it('booleans and numbers stay attributes', () => {
-    const protos = parsePrototypes('<block type="slate" value="${p/slate}" />');
+    const protos = parsePrototypes('<block is="slate" value="${p/slate}" />');
     const b = { '@type': 'toc', title: 'On this page', ordered: true, levels: 3, sticky: false };
     const md = emitBlocks(protos, [b]);
     expect(md).not.toMatch(/data-json/);
@@ -1755,12 +1777,12 @@ describe('tables are pure prototype rules — no names built into the engine', (
   // a line is a `tr`, a head entry a `th`, a body entry a `td`, and which field
   // stores which.
   const protos = parsePrototypes([
-    '<block type="matrix">',
+    '<block is="matrix">',
     '  <region name="grid.lines" idField="lid">',
-    '    <block type="line" _="${tr}">',
+    '    <block is="line" _="${tr}">',
     '      <region name="entries" idField="eid" typeField="kind">',
-    '        <block type="head" content="${th/slate}" />',
-    '        <block type="body" content="${td/slate}" />',
+    '        <block is="head" content="${th/slate}" />',
+    '        <block is="body" content="${td/slate}" />',
     '      </region>',
     '    </block>',
     '  </region>',
@@ -1798,7 +1820,7 @@ describe('tables are pure prototype rules — no names built into the engine', (
 describe('a false field is data, whatever its name', () => {
   // The engine has no list of fields whose false "matters": a stored false is
   // written like any other value, so nothing depends on a field's name.
-  const protos = parsePrototypes('<block type="note" text="${p/text}" />');
+  const protos = parsePrototypes('<block is="note" text="${p/text}" />');
 
   it('a false boolean round-trips', () => {
     const block = { '@type': 'note', text: 'Hi', hidden: false };
@@ -1827,7 +1849,7 @@ describe('an empty block is an empty tag, not JSON', () => {
     const block = { '@type': 'slate', value: empty };
     const md = emitBlocks(protos, [block]);
     expect(md).not.toMatch(/data-json/);
-    expect(md).toBe('<block type="slate">\n\n</block>');
+    expect(md).toBe('<block is="slate">\n\n</block>');
     expect(matchBlocks(protos, md)).toEqual([block]);
   });
 
@@ -1861,7 +1883,7 @@ describe('a long string is still an attribute', () => {
   // A long value is no easier to read as JSON than as an attribute — only a
   // value an attribute can't hold (a `"`, a newline, an object) needs data-json.
   it('an un-prototyped block with a 300-character string', () => {
-    const protos = parsePrototypes('<block type="slate" value="${p/slate}" />');
+    const protos = parsePrototypes('<block is="slate" value="${p/slate}" />');
     const block = { '@type': 'heading', alignment: 'left', tag: 'h2', heading: ` ${'Lorem ipsum dolor sit amet. '.repeat(11)}` };
     const md = emitBlocks(protos, [block]);
     expect(md).not.toMatch(/data-json/);
@@ -1875,7 +1897,7 @@ describe("a container's own refs never reach into a nested block", () => {
   ]);
 
   // gridBlock's `headline="${h/text}"` is the grid's OWN heading. A heading
-  // inside a nested `<block type="slate">` belongs to that block: taking it as
+  // inside a nested `<block is="slate">` belongs to that block: taking it as
   // the headline emptied the slate and invented a headline.
   it('a grid with no headline whose first item is a heading slate', async () => {
     const protos = await protosP;
@@ -1918,14 +1940,14 @@ describe('a malformed ref is an error, never a literal', () => {
   // `${p[2]?/text}` (the `?` belongs after the node: `${p?[2]/text}`) once
   // parsed as no ref at all, so the field silently became that literal string.
   it('rejects a value that starts a ref but does not parse as one', () => {
-    expect(() => parsePrototypes('<block type="x" a="${p[2]?/text}" />')).toThrow(/\$\{p\[2\]\?\/text\}/);
+    expect(() => parsePrototypes('<block is="x" a="${p[2]?/text}" />')).toThrow(/\$\{p\[2\]\?\/text\}/);
   });
 });
 
 describe('a prototype can\'t make a plaintext', () => {
   // Markdown no longer carries it: save writes a Text block's words as its searchableText.
   it('is refused', () => {
-    expect(() => parsePrototypes('<block type="slate" value="${p/slate}" plaintext="${p/text}" />'))
+    expect(() => parsePrototypes('<block is="slate" value="${p/slate}" plaintext="${p/text}" />'))
       .toThrow(/plaintext/);
   });
 });
@@ -2071,17 +2093,17 @@ describe('a hand-wrapped paragraph stays markdown', () => {
 
 describe('/text reads prose, /textarea keeps every line', () => {
   const protos = parsePrototypes([
-    '<block type="card" kicker="${strong/text}" body="${p/textarea}" />',
+    '<block is="card" kicker="${strong/text}" body="${p/textarea}" />',
   ].join('\n'), { explicit: true });
 
   it('a soft wrap is a space in /text and a newline in /textarea', () => {
-    const [b] = matchBlocks(protos, '<block type="card">\n\n**A long\nwrapped kicker**\n\nFirst line\nsecond line\n\n</block>');
+    const [b] = matchBlocks(protos, '<block is="card">\n\n**A long\nwrapped kicker**\n\nFirst line\nsecond line\n\n</block>');
     expect(b.kicker).toBe('A long wrapped kicker');
     expect(b.body).toBe('First line\nsecond line');
   });
 
   it('a hard break is a newline in both', () => {
-    const [b] = matchBlocks(protos, '<block type="card">\n\n**One\\\ntwo**\n\nLine one\\\nline two\n\n</block>');
+    const [b] = matchBlocks(protos, '<block is="card">\n\n**One\\\ntwo**\n\nLine one\\\nline two\n\n</block>');
     expect(b.kicker).toBe('One\ntwo');
     expect(b.body).toBe('Line one\nline two');
   });
@@ -2099,18 +2121,18 @@ describe('container-cell tables (cells that hold blocks; headerMode by prototype
   // prototypes say, by kind and position (`td[1]` = first cell of a body row),
   // which shape each cell takes. Nothing about tables is in the engine.
   // The prototype parser is line-based: one tag per line.
-  const H = (ref) => `<block type="tableHeaderCell" value="\${${ref}/slate}" />`;
+  const H = (ref) => `<block is="tableHeaderCell" value="\${${ref}/slate}" />`;
   const D = (kind) => [
-    `<block type="tableCell" _="\${${kind}}">`,
+    `<block is="tableCell" _="\${${kind}}">`,
     '  <region name="blocks" widget="object_list" idField="@id" typeField="@type">',
-    '    <block type="slate" value="${p,h*,ul,ol,blockquote/slate}" />',
+    '    <block is="slate" value="${p,h*,ul,ol,blockquote/slate}" />',
     '  </region>',
     '</block>',
   ].join('\n');
   const variant = (mode, cells) => [
-    `<block type="table" headerMode="${mode}">`,
+    `<block is="table" headerMode="${mode}">`,
     '  <region name="table.rows" idField="key">',
-    '    <block type="row" _="${tr}">',
+    '    <block is="row" _="${tr}">',
     '      <region name="cells" idField="key" typeField="@type">',
     ...cells.flatMap((c) => c.split('\n').map((l) => `        ${l}`)),
     '      </region>',
@@ -2167,14 +2189,14 @@ describe('container-cell tables (cells that hold blocks; headerMode by prototype
 
   it('a cell slate\'s stored plaintext is left out', () => {
     const withText = parsePrototypes([
-      '<block type="table" headerMode="row">',
+      '<block is="table" headerMode="row">',
       '  <region name="table.rows" idField="key">',
-      '    <block type="row" _="${tr}">',
+      '    <block is="row" _="${tr}">',
       '      <region name="cells" idField="key" typeField="@type">',
-      '        <block type="tableHeaderCell" value="${th/slate}" />',
-      '        <block type="tableCell" _="${td}">',
+      '        <block is="tableHeaderCell" value="${th/slate}" />',
+      '        <block is="tableCell" _="${td}">',
       '          <region name="blocks" widget="object_list" idField="@id" typeField="@type">',
-      '            <block type="slate" value="${p/slate}" />',
+      '            <block is="slate" value="${p/slate}" />',
       '          </region>',
       '        </block>',
       '      </region>',
@@ -2210,16 +2232,16 @@ describe('container-cell tables (cells that hold blocks; headerMode by prototype
   // A cell's content goes through the whole engine: its items are picked by
   // their type, like anywhere else -- an image, a tagged block, not only slate.
   const anyBlockCell = parsePrototypes([
-    '<block type="table" headerMode="row">',
+    '<block is="table" headerMode="row">',
     '  <region name="table.rows" idField="key">',
-    '    <block type="row" _="${tr}">',
+    '    <block is="row" _="${tr}">',
     '      <region name="cells" idField="key" typeField="@type">',
-    '        <block type="tableHeaderCell" value="${th/slate}" />',
-    '        <block type="tableCell" _="${td}">',
+    '        <block is="tableHeaderCell" value="${th/slate}" />',
+    '        <block is="tableCell" _="${td}">',
     '          <region name="blocks" widget="object_list" idField="@id" typeField="@type">',
-    '            <block type="slate" value="${p/slate}" />',
-    '            <block type="image" url="${img/src}" alt="${img/alt}" />',
-    '            <block type="button" title="${a/text}" href="${a/link}" />',
+    '            <block is="slate" value="${p/slate}" />',
+    '            <block is="image" url="${img/src}" alt="${img/alt}" />',
+    '            <block is="button" title="${a/text}" href="${a/link}" />',
     '          </region>',
     '        </block>',
     '      </region>',
@@ -2256,10 +2278,10 @@ describe('container-cell tables (cells that hold blocks; headerMode by prototype
 describe('a block field named like a tag attribute (`type`)', () => {
   // GOV.UK's alert has a `type` field (warning / important / success). Written as
   // an attribute it collided with the tag's own `type` -- the block's type -- so
-  // `<block type="alert" type="warning">` read back as a block of type "warning".
+  // `<block is="alert" type="warning">` read back as a block of type "warning".
   const protos = [
-    ...parsePrototypes('<block type="slate" value="${p/slate}" />'),
-    ...parsePrototypes(['<block type="alert" heading="${h/text}">', '  <region name="items" widget="blocks_layout" />', '</block>'].join('\n'), { explicit: true }),
+    ...parsePrototypes('<block is="slate" value="${p/slate}" />'),
+    ...parsePrototypes(['<block is="alert" heading="${h/text}">', '  <region name="items" widget="blocks_layout" />', '</block>'].join('\n'), { explicit: true }),
   ];
 
   it('a container keeps its type, and the field, through markdown', () => {
@@ -2306,7 +2328,7 @@ describe('markdown may hold a block\'s search text', () => {
   });
 
   it('a prototype may make it from the page\'s own words, and then it is bare markdown', () => {
-    const protos = parsePrototypes('<block type="slate" value="${p/slate}" searchableText="${p/text}" />');
+    const protos = parsePrototypes('<block is="slate" value="${p/slate}" searchableText="${p/text}" />');
     const block = { '@type': 'slate', value, searchableText: 'Hello' };
     const md = emitBlocks(protos, [block]);
     expect(md).toBe('Hello');
@@ -2319,7 +2341,7 @@ describe('trying a form lets a bug through', () => {
   // thrown while trying one is a bug in the content or the engine, and used to be
   // swallowed: a broken Text value went out as a JSON tag as if nothing were wrong.
   it('a Text block whose value holds a null fails the export', () => {
-    const protos = parsePrototypes('<block type="slate" value="${p/slate}" />');
+    const protos = parsePrototypes('<block is="slate" value="${p/slate}" />');
     expect(() => emitBlocks(protos, [{ '@type': 'slate', value: [null] }])).toThrow(TypeError);
   });
 });
@@ -2329,10 +2351,10 @@ describe('fields shared by a run of blocks are written once, in a region too', (
   // layout's `main`), and every block there carries the same template membership.
   // Written per block, each paragraph became a <block> tag holding five fields.
   const protos = parsePrototypes([
-    '<block type="slate" value="${p,h*/slate}" />',
-    '<block type="section">',
+    '<block is="slate" value="${p,h*/slate}" />',
+    '<block is="section">',
     '  <region name="items" widget="blocks_layout">',
-    '    <block type="slate" value="${p,h*/slate}" />',
+    '    <block is="slate" value="${p,h*/slate}" />',
     '  </region>',
     '</block>',
   ].join('\n'));
@@ -2343,7 +2365,7 @@ describe('fields shared by a run of blocks are written once, in a region too', (
   it('a region\'s blocks share one <fields> wrapper and are bare markdown', () => {
     const md = emitBlocks(protos, [section]);
     expect(md.match(/<fields /g)).toHaveLength(1);
-    expect(md).not.toContain('<block type="slate"');
+    expect(md).not.toContain('<block is="slate"');
     expect(md).toContain('First.');
   });
 

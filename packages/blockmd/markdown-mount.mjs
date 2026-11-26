@@ -396,7 +396,7 @@ export function resolveLiteralIncludes(text, baseDir, mount) {
 }
 
 /**
- * Resolve `<block type="codeExample" source="<selector>" format="json|schema">`
+ * Resolve `<block is="codeExample" source="<selector>" format="json|schema">`
  * blocks on a decoded page — the single-source example views. Instead of a
  * hand-written copy that drifts, a codeExample POINTS at the real thing:
  *   - format="json"   -> the data of the block on this page whose uid or @type

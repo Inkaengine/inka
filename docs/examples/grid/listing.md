@@ -27,25 +27,25 @@ rights: ""
 subjects: []
 title: Grid-Listing
 blocks-matched: |
-  <block type="slate" value="${p,h*,ul,ol,blockquote,strong,em,a/slate}" />
-  <block type="title" _="${h1}" />
+  <block is="slate" value="${p,h*,ul,ol,blockquote,strong,em,a/slate}" />
+  <block is="title" _="${h1}" />
 blocks-tagged: |
-  <block type="gridBlock" headline="${h/text}">
+  <block is="gridBlock" headline="${h/text}">
     <region name="items" widget="blocks_layout">
-      <block type="teaser" title="${h/text}" head_title="${strong?/text}" href="${h/link}" description="${p?/textarea}" />
+      <block is="teaser" title="${h/text}" head_title="${strong?/text}" href="${h/link}" description="${p?/textarea}" />
     </region>
   </block>
 ---
 
 # Grid-Listing
 
-<block type="gridBlock">
+<block is="gridBlock">
 
 <fields headlineTag="h2" variation="default">
 
-<block type="listing" :querystring='{"limit":"7","query":[{"i":"path","o":"plone.app.querystring.operation.string.absolutePath","v":"/docs/examples/grid"}],"sort_order":"ascending"}' :fieldMapping='{"getURL":{"field":"href","type":"link"},"title":{"field":"title","type":"string"},"description":{"field":"description","type":"textarea"}}' />
+<block is="listing" :querystring='{"limit":"7","query":[{"i":"path","o":"plone.app.querystring.operation.string.absolutePath","v":"/docs/examples/grid"}],"sort_order":"ascending"}' :fieldMapping='{"getURL":{"field":"href","type":"link"},"title":{"field":"title","type":"string"},"description":{"field":"description","type":"textarea"}}' />
 
-<block type="listing" :querystring='{"limit":"7","query":[{"i":"path","o":"plone.app.querystring.operation.string.absolutePath","v":"/docs/examples/grid"}],"sort_on":"getId","sort_order":"descending","sort_order_boolean":true}' :fieldMapping='{"getURL":{"field":"href","type":"link"},"title":{"field":"title","type":"string"},"description":{"field":"description","type":"textarea"}}' />
+<block is="listing" :querystring='{"limit":"7","query":[{"i":"path","o":"plone.app.querystring.operation.string.absolutePath","v":"/docs/examples/grid"}],"sort_on":"getId","sort_order":"descending","sort_order_boolean":true}' :fieldMapping='{"getURL":{"field":"href","type":"link"},"title":{"field":"title","type":"string"},"description":{"field":"description","type":"textarea"}}' />
 
 </fields>
 

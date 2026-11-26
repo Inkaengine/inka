@@ -22,24 +22,24 @@ subjects:
   - blocks
 title: Button
 blocks-matched: |
-  <block type="slate" value="${p,h*,ul,ol,blockquote,strong,em,a/slate}" />
-  <block type="title" _="${h1}" />
-  <block type="separator" _="${hr}" :styles='{"align":"full"}' />
-  <block type="image" description="${p?/textarea}" url="${img/src}" alt="${img?/alt}" title="${img?/title}" align="center" size="l" />
-  <block type="codeExample">
+  <block is="slate" value="${p,h*,ul,ol,blockquote,strong,em,a/slate}" />
+  <block is="title" _="${h1}" />
+  <block is="separator" _="${hr}" :styles='{"align":"full"}' />
+  <block is="image" description="${p?/textarea}" url="${img/src}" alt="${img?/alt}" title="${img?/title}" align="center" size="l" />
+  <block is="codeExample">
     <region name="tabs" widget="object_list" idField="@id" typeField="@type">
-      <block type="tab" label="${h3/text}" language="${pre/lang}" code="${pre/textarea}" />
+      <block is="tab" label="${h3/text}" language="${pre/lang}" code="${pre/textarea}" />
     </region>
   </block>
 blocks-tagged: |
-  <block type="button" title="${a/text}" href="${a/link}" />
+  <block is="button" title="${a/text}" href="${a/link}" />
 ---
 
 # Button
 
 A call-to-action button with an editable label and link.
 
-<block type="image">
+<block is="image">
 
 ![The button example block being edited in Inka](../images/button-edit.png)
 
@@ -47,7 +47,7 @@ A call-to-action button with an editable label and link.
 
 ---
 
-<block type="button">
+<block is="button">
 
 [Button](/)
 
@@ -57,7 +57,7 @@ A call-to-action button with an editable label and link.
 
 ---
 
-<block type="button">
+<block is="button">
 
 [Button](/)
 
@@ -67,7 +67,7 @@ A call-to-action button with an editable label and link.
 
 ---
 
-<block type="button">
+<block is="button">
 
 [Button](/)
 
@@ -79,7 +79,7 @@ A call-to-action button with an editable label and link.
 
 Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nib euismod tincidunt ut laoreet dolore magna aliquam erat volutpat. Ut wisi enim ad minim veniam, quis nostrud exerci tation ullamcorper suscipit lobortis nisl ut aliquip ex ea commodo consequat. Duis autem vel eum iriure dolor in hendrerit in vulputate velit esse molestie consequat, vel illum dolore eu feugiat nulla facilisis at vero eros et accumsan et iusto odio dignissim qui blandit praesent luptatum zzril delenit augue duis dolore te feugait nulla facilisi.
 
-<block type="button">
+<block is="button">
 
 [Button](/)
 
@@ -91,7 +91,7 @@ Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nib euismod tincidu
 
 Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincidunt ut laoreet dolore magna aliquam erat volutpat. Ut wisi enim ad minim veniam, quis nostrud exerci tation ullamcorper suscipit lobortis nisl ut aliquip ex ea commodo consequat. Duis autem vel eum iriure dolor in hendrerit in vulputate velit esse molestie consequat, vel illum dolore eu feugiat nulla facilisis at vero eros et accumsan et iusto odio dignissim qui blandit praesent luptatum zzril delenit augue duis dolore te feugait nulla facilisi.
 
-<block type="button">
+<block is="button">
 
 [Button](/)
 
@@ -103,7 +103,7 @@ Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincid
 
 Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincidunt ut laoreet dolore magna aliquam erat volutpat. Ut wisi enim ad minim veniam, quis nostrud exerci tation ullamcorper suscipit lobortis nisl ut aliquip ex ea commodo consequat. Duis autem vel eum iriure dolor in hendrerit in vulputate velit esse molestie consequat, vel illum dolore eu feugiat nulla facilisis at vero eros et accumsan et iusto odio dignissim qui blandit praesent luptatum zzril delenit augue duis dolore te feugait nulla facilisi.
 
-<block type="button">
+<block is="button">
 
 [Button](/)
 
@@ -111,9 +111,9 @@ Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincid
 
 </block>
 
-<block type="heading" alignment="left" heading="Button Block" tag="h2" :styles='{"backgroundColor":"grey"}' />
+<block is="heading" alignment="left" heading="Button Block" tag="h2" :styles='{"backgroundColor":"grey"}' />
 
-<block type="separator">
+<block is="separator">
 
 ---
 
@@ -121,7 +121,7 @@ Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincid
 
 </block>
 
-<block type="button">
+<block is="button">
 
 [Button](/)
 
@@ -129,7 +129,7 @@ Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincid
 
 </block>
 
-<block type="separator">
+<block is="separator">
 
 ---
 
@@ -137,7 +137,7 @@ Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincid
 
 </block>
 
-<block type="button">
+<block is="button">
 
 [Button](/)
 
@@ -145,7 +145,7 @@ Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincid
 
 </block>
 
-<block type="separator">
+<block is="separator">
 
 ---
 
@@ -153,7 +153,7 @@ Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincid
 
 </block>
 
-<block type="button">
+<block is="button">
 
 [Button](/)
 
@@ -161,7 +161,7 @@ Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincid
 
 </block>
 
-<block type="separator">
+<block is="separator">
 
 ---
 
@@ -169,7 +169,7 @@ Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincid
 
 </block>
 
-<block type="slate">
+<block is="slate">
 
 Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nib euismod tincidunt ut laoreet dolore magna aliquam erat volutpat. Ut wisi enim ad minim veniam, quis nostrud exerci tation ullamcorper suscipit lobortis nisl ut aliquip ex ea commodo consequat. Duis autem vel eum iriure dolor in hendrerit in vulputate velit esse molestie consequat, vel illum dolore eu feugiat nulla facilisis at vero eros et accumsan et iusto odio dignissim qui blandit praesent luptatum zzril delenit augue duis dolore te feugait nulla facilisi.
 
@@ -177,7 +177,7 @@ Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nib euismod tincidu
 
 </block>
 
-<block type="button">
+<block is="button">
 
 [Button](/)
 
@@ -185,7 +185,7 @@ Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nib euismod tincidu
 
 </block>
 
-<block type="separator">
+<block is="separator">
 
 ---
 
@@ -193,7 +193,7 @@ Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nib euismod tincidu
 
 </block>
 
-<block type="slate">
+<block is="slate">
 
 Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nib euismod tincidunt ut laoreet dolore magna aliquam erat volutpat. Ut wisi enim ad minim veniam, quis nostrud exerci tation ullamcorper suscipit lobortis nisl ut aliquip ex ea commodo consequat. Duis autem vel eum iriure dolor in hendrerit in vulputate velit esse molestie consequat, vel illum dolore eu feugiat nulla facilisis at vero eros et accumsan et iusto odio dignissim qui blandit praesent luptatum zzril delenit augue duis dolore te feugait nulla facilisi.
 
@@ -201,7 +201,7 @@ Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nib euismod tincidu
 
 </block>
 
-<block type="button">
+<block is="button">
 
 [Button](/)
 
@@ -209,7 +209,7 @@ Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nib euismod tincidu
 
 </block>
 
-<block type="separator">
+<block is="separator">
 
 ---
 
@@ -217,7 +217,7 @@ Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nib euismod tincidu
 
 </block>
 
-<block type="slate">
+<block is="slate">
 
 Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nib euismod tincidunt ut laoreet dolore magna aliquam erat volutpat. Ut wisi enim ad minim veniam, quis nostrud exerci tation ullamcorper suscipit lobortis nisl ut aliquip ex ea commodo consequat. Duis autem vel eum iriure dolor in hendrerit in vulputate velit esse molestie consequat, vel illum dolore eu feugiat nulla facilisis at vero eros et accumsan et iusto odio dignissim qui blandit praesent luptatum zzril delenit augue duis dolore te feugait nulla facilisi.
 
@@ -225,7 +225,7 @@ Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nib euismod tincidu
 
 </block>
 
-<block type="button">
+<block is="button">
 
 [Button](/)
 
@@ -235,7 +235,7 @@ Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nib euismod tincidu
 
 <fields templateId="/inka-templates/block-reference-layout" templateInstanceId="tpl-inst-button" :fixed="false" :readOnly="false">
 
-<block type="codeExample" slotId="schema">
+<block is="codeExample" slotId="schema">
 
 ### Schema
 
@@ -245,7 +245,7 @@ Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nib euismod tincidu
 
 </block>
 
-<block type="codeExample" slotId="json-data">
+<block is="codeExample" slotId="json-data">
 
 ### JSON
 
@@ -256,7 +256,7 @@ Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nib euismod tincidu
 
 </block>
 
-<block type="codeExample" slotId="rendering">
+<block is="codeExample" slotId="rendering">
 
 ### React
 

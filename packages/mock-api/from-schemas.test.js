@@ -43,7 +43,7 @@ describe('link summaries: a bare link to a local page gets its summary', () => {
   it('fills @type, Title and Description onto a bare object_browser link', () => {
     const items = tree({
       'target.md': '---\n"@type": Document\nUID: tgtuid1234567\nid: target\ntitle: Target Page\ndescription: A described target\n---\n',
-      'source.md': source(`<block type="teaser" data-json='{"href":[{"@id":"/target"}],"title":"See"}' />`),
+      'source.md': source(`<block is="teaser" data-json='{"href":[{"@id":"/target"}],"title":"See"}' />`),
     });
     const [teaser] = Object.values(items.get('/source').blocks);
     assert.equal(teaser.href[0]['@id'], '/target');
@@ -57,7 +57,7 @@ describe('link summaries: a bare link to a local page gets its summary', () => {
     // the bare `@id` deploys byte-identical to the form it replaces.
     const items = tree({
       'page.md': '---\n"@type": Document\nUID: pageuid12345678\nid: page\ntitle: Page\ndescription: The Page content type.\npreview_image:\n  blob_path: page/preview.png\n---\n',
-      'source.md': source(`<block type="teaser" data-json='{"href":[{"@id":"/page"}]}' />`),
+      'source.md': source(`<block is="teaser" data-json='{"href":[{"@id":"/page"}]}' />`),
     });
     const [teaser] = Object.values(items.get('/source').blocks);
     assert.deepEqual(teaser.href[0], {
@@ -67,7 +67,7 @@ describe('link summaries: a bare link to a local page gets its summary', () => {
   });
 
   it('leaves a url-widget field (an external string) untouched', () => {
-    const items = tree({ 'source.md': source(`<block type="card" data-json='{"href":"https://example.com"}' />`) });
+    const items = tree({ 'source.md': source(`<block is="card" data-json='{"href":"https://example.com"}' />`) });
     const [card] = Object.values(items.get('/source').blocks);
     assert.equal(card.href, 'https://example.com');
   });

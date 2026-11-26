@@ -27,19 +27,19 @@ subjects:
   - news
 title: Another News Item
 blocks-matched: |
-  <block type="slate" value="${p,h*,ul,ol,blockquote,strong,em,a/slate}" />
-  <block type="title" _="${h1}" />
+  <block is="slate" value="${p,h*,ul,ol,blockquote,strong,em,a/slate}" />
+  <block is="title" _="${h1}" />
 blocks-tagged: |
-  <block type="introduction" value="${p,h*/slate}" />
+  <block is="introduction" value="${p,h*/slate}" />
 ---
 
 <fields templateId="/inka-templates/newsitem-view" templateInstanceId="tpl-ni-def">
 
 <fields :fixed="true" :readOnly="true">
 
-<block type="dateField" dateField="effective" slotId="date" :showTime="false" />
+<block is="dateField" dateField="effective" slotId="date" :showTime="false" />
 
-<block type="title">
+<block is="title">
 
 # Another News Item
 
@@ -51,7 +51,7 @@ blocks-tagged: |
 
 <fields :readOnly="false">
 
-<block type="introduction">
+<block is="introduction">
 
 Cinnamon skinny medium panna americano spice affogato froth frappuccino that.
 
@@ -59,9 +59,9 @@ Cinnamon skinny medium panna americano spice affogato froth frappuccino that.
 
 </block>
 
-<block type="leadimage" align="center" slotId="lead-image" :fixed="true" />
+<block is="leadimage" align="center" slotId="lead-image" :fixed="true" />
 
-<block type="slate">
+<block is="slate">
 
 Ristretto so chicory skinny ristretto au decaffeinated sugar that spoon shop crema ut pot lungo. Flavour that milk brewed flavour whipped kopi black and robusta. Bar sugar americano eu froth variety brewed acerbic steamed. Aroma est milk doppio frappuccino half cream filter french froth luwak. Acerbic plunger au barista flavour in froth trade.
 

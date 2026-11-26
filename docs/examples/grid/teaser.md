@@ -21,23 +21,23 @@ rights: ""
 subjects: []
 title: Grid-Teaser block
 blocks-matched: |
-  <block type="title" _="${h1}" />
+  <block is="title" _="${h1}" />
 blocks-tagged: |
-  <block type="teaser" title="${h?/text}" head_title="${strong?/text}" href="${h?/link}" description="${p?/textarea}" />
-  <block type="gridBlock" headline="${h/text}">
+  <block is="teaser" title="${h?/text}" head_title="${strong?/text}" href="${h?/link}" description="${p?/textarea}" />
+  <block is="gridBlock" headline="${h/text}">
     <region name="items" widget="blocks_layout">
-      <block type="teaser" title="${h/text}" head_title="${strong?/text}" href="${h/link}" description="${p?/textarea}" />
+      <block is="teaser" title="${h/text}" head_title="${strong?/text}" href="${h/link}" description="${p?/textarea}" />
     </region>
   </block>
 ---
 
 # Grid-Teaser block
 
-<block type="gridBlock">
+<block is="gridBlock">
 
 ## Block Title
 
-<block type="teaser">
+<block is="teaser">
 
 ### [Teaser Title H2](../content-types/page.md)
 
@@ -51,11 +51,11 @@ Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincid
 
 </block>
 
-<block type="gridBlock">
+<block is="gridBlock">
 
 <fields :styles='{"align":"left"}'>
 
-<block type="teaser">
+<block is="teaser">
 
 ### [Teaser Title H2](../content-types/page.md)
 
@@ -65,7 +65,7 @@ Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincid
 
 </block>
 
-<block type="teaser">
+<block is="teaser">
 
 ### [Teaser Title H2](../content-types/page.md)
 
@@ -79,11 +79,11 @@ Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincid
 
 </block>
 
-<block type="gridBlock">
+<block is="gridBlock">
 
 <fields :styles='{"align":"left"}'>
 
-<block type="teaser">
+<block is="teaser">
 
 ### [Teaser Title H2](../content-types/page.md)
 
@@ -93,7 +93,7 @@ Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincid
 
 </block>
 
-<block type="teaser">
+<block is="teaser">
 
 ### [Teaser Title H2](../content-types/page.md)
 
@@ -103,7 +103,7 @@ Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincid
 
 </block>
 
-<block type="teaser">
+<block is="teaser">
 
 ### [Teaser Title H2](../content-types/page.md)
 
@@ -117,11 +117,11 @@ Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincid
 
 </block>
 
-<block type="gridBlock">
+<block is="gridBlock">
 
 <fields :styles='{"align":"left"}'>
 
-<block type="teaser">
+<block is="teaser">
 
 ### [Teaser Title H2](../content-types/page.md)
 
@@ -131,7 +131,7 @@ Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincid
 
 </block>
 
-<block type="teaser">
+<block is="teaser">
 
 ### [Teaser Title H2](../content-types/page.md)
 
@@ -141,7 +141,7 @@ Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincid
 
 </block>
 
-<block type="teaser">
+<block is="teaser">
 
 ### [Teaser Title H2](../content-types/page.md)
 
@@ -151,7 +151,7 @@ Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincid
 
 </block>
 
-<block type="teaser">
+<block is="teaser">
 
 ### [Teaser Title H2](../content-types/page.md)
 
@@ -167,11 +167,11 @@ Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincid
 
 <fields :styles='{"backgroundColor":"grey"}'>
 
-<block type="gridBlock">
+<block is="gridBlock">
 
 ## Block Title
 
-<block type="teaser">
+<block is="teaser">
 
 ### [Teaser Title H2](../content-types/page.md)
 
@@ -185,11 +185,11 @@ Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincid
 
 </block>
 
-<block type="gridBlock">
+<block is="gridBlock">
 
 <fields :styles='{"align":"left"}'>
 
-<block type="teaser">
+<block is="teaser">
 
 ### [Teaser Title H2](../content-types/page.md)
 
@@ -199,7 +199,7 @@ Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincid
 
 </block>
 
-<block type="teaser">
+<block is="teaser">
 
 ### [Teaser Title H2](../content-types/page.md)
 
@@ -213,11 +213,11 @@ Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincid
 
 </block>
 
-<block type="gridBlock">
+<block is="gridBlock">
 
 <fields :styles='{"align":"left"}'>
 
-<block type="teaser">
+<block is="teaser">
 
 ### [Teaser Title H2](../content-types/page.md)
 
@@ -227,7 +227,7 @@ Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincid
 
 </block>
 
-<block type="teaser">
+<block is="teaser">
 
 ### [Teaser Title H2](../content-types/page.md)
 
@@ -237,7 +237,7 @@ Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincid
 
 </block>
 
-<block type="teaser">
+<block is="teaser">
 
 ### [Teaser Title H2](../content-types/page.md)
 
@@ -251,11 +251,11 @@ Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincid
 
 </block>
 
-<block type="gridBlock">
+<block is="gridBlock">
 
 <fields :styles='{"align":"left"}'>
 
-<block type="teaser">
+<block is="teaser">
 
 ### [Teaser Title H2](../content-types/page.md)
 
@@ -265,7 +265,7 @@ Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincid
 
 </block>
 
-<block type="teaser">
+<block is="teaser">
 
 ### [Teaser Title H2](../content-types/page.md)
 
@@ -275,7 +275,7 @@ Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincid
 
 </block>
 
-<block type="teaser">
+<block is="teaser">
 
 ### [Teaser Title H2](../content-types/page.md)
 
@@ -285,7 +285,7 @@ Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincid
 
 </block>
 
-<block type="teaser">
+<block is="teaser">
 
 ### [Teaser Title H2](../content-types/page.md)
 

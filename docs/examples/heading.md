@@ -22,20 +22,20 @@ subjects:
   - text
 title: Heading
 blocks-matched: |
-  <block type="slate" value="${p,h*,ul,ol,blockquote,strong,em,a/slate}" />
-  <block type="title" _="${h1}" />
-  <block type="separator" _="${hr}" :styles='{"align":"full"}' />
-  <block type="codeExample">
+  <block is="slate" value="${p,h*,ul,ol,blockquote,strong,em,a/slate}" />
+  <block is="title" _="${h1}" />
+  <block is="separator" _="${hr}" :styles='{"align":"full"}' />
+  <block is="codeExample">
     <region name="tabs" widget="object_list" idField="@id" typeField="@type">
-      <block type="tab" label="${h3/text}" language="${pre/lang}" code="${pre/textarea}" />
+      <block is="tab" label="${h3/text}" language="${pre/lang}" code="${pre/textarea}" />
     </region>
   </block>
 blocks-tagged: |
-  <block type="teaser" title="${h?/text}" head_title="${strong?/text}" href="${h?/link}" description="${p?/textarea}" />
-  <block type="introduction" value="${p,h*/slate}" />
-  <block type="gridBlock" headline="${h/text}">
+  <block is="teaser" title="${h?/text}" head_title="${strong?/text}" href="${h?/link}" description="${p?/textarea}" />
+  <block is="introduction" value="${p,h*/slate}" />
+  <block is="gridBlock" headline="${h/text}">
     <region name="items" widget="blocks_layout">
-      <block type="teaser" title="${h/text}" head_title="${strong?/text}" href="${h/link}" description="${p?/textarea}" />
+      <block is="teaser" title="${h/text}" head_title="${strong?/text}" href="${h/link}" description="${p?/textarea}" />
     </region>
   </block>
 ---
@@ -44,7 +44,7 @@ blocks-tagged: |
 
 A standalone heading block that renders as h1–h6 based on a configurable tag field. Unlike headings inside a slate block, this is a dedicated block type with its own heading text field.
 
-<block type="separator">
+<block is="separator">
 
 ---
 
@@ -52,7 +52,7 @@ A standalone heading block that renders as h1–h6 based on a configurable tag f
 
 </block>
 
-<block type="introduction">
+<block is="introduction">
 
 Lorem ipsum vitae elit libero, a pharetra augue. Nulla vitae elit libero, a pharetra augue. Duis mollis, est non commodo luctus, nisi erat porttitor ligula, eget lacinia odio sem nec elit. Donec ullamcorper nulla non metus auctor fringilla. Vivamus sagittis lacus vel augue laoreet rutrum faucibus dolor auctor. Vestibulum id ligula porta felis euismod semper.
 
@@ -60,7 +60,7 @@ Lorem ipsum vitae elit libero, a pharetra augue. Nulla vitae elit libero, a phar
 
 ---
 
-<block type="introduction">
+<block is="introduction">
 
 ## Highlight Title H2&#x20;
 
@@ -80,11 +80,11 @@ Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincid
 
 ---
 
-<block type="gridBlock">
+<block is="gridBlock">
 
 ## Block Title
 
-<block type="teaser">
+<block is="teaser">
 
 ### [Teaser Title H2](./content-types/page.md)
 
@@ -96,11 +96,11 @@ Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincid
 
 </block>
 
-<block type="heading" heading="Getting Started" tag="h2" />
+<block is="heading" heading="Getting Started" tag="h2" />
 
 <fields templateId="/inka-templates/block-reference-layout" templateInstanceId="tpl-inst-heading" :fixed="false" :readOnly="false">
 
-<block type="codeExample" slotId="schema">
+<block is="codeExample" slotId="schema">
 
 ### Schema
 
@@ -110,7 +110,7 @@ Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincid
 
 </block>
 
-<block type="codeExample" slotId="json-data">
+<block is="codeExample" slotId="json-data">
 
 ### JSON
 
@@ -121,7 +121,7 @@ Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincid
 
 </block>
 
-<block type="codeExample" slotId="rendering">
+<block is="codeExample" slotId="rendering">
 
 ### React
 

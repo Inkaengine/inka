@@ -3664,7 +3664,7 @@ async function exportContent(req, res) {
         const closes = (line.match(/<\/block>/g) || []).length;
         const net = (opens - selfs) - closes;
         if (!cur) {
-          const m = /<block\s+type="([^"]+)"/.exec(line);
+          const m = /<block\s+is="([^"]+)"/.exec(line);
           if (!m) continue;
           cur = { type: m[1], lines: [line] }; depth = net;
         } else { cur.lines.push(line); depth += net; }

@@ -21,24 +21,24 @@ subjects:
   - media
 title: Video
 blocks-matched: |
-  <block type="slate" value="${p,h*,ul,ol,blockquote,strong,em,a/slate}" />
-  <block type="title" _="${h1}" />
-  <block type="separator" _="${hr}" :styles='{"align":"full"}' />
-  <block type="image" description="${p?/textarea}" url="${img/src}" alt="${img?/alt}" title="${img?/title}" align="center" size="l" />
-  <block type="codeExample">
+  <block is="slate" value="${p,h*,ul,ol,blockquote,strong,em,a/slate}" />
+  <block is="title" _="${h1}" />
+  <block is="separator" _="${hr}" :styles='{"align":"full"}' />
+  <block is="image" description="${p?/textarea}" url="${img/src}" alt="${img?/alt}" title="${img?/title}" align="center" size="l" />
+  <block is="codeExample">
     <region name="tabs" widget="object_list" idField="@id" typeField="@type">
-      <block type="tab" label="${h3/text}" language="${pre/lang}" code="${pre/textarea}" />
+      <block is="tab" label="${h3/text}" language="${pre/lang}" code="${pre/textarea}" />
     </region>
   </block>
 blocks-tagged: |
-  <block type="video" url="${a/link}" preview_image="${img?/link}" />
+  <block is="video" url="${a/link}" preview_image="${img?/link}" />
 ---
 
 # Video
 
 Embeds a video from a URL. Detects YouTube links and renders an iframe embed; otherwise falls back to an HTML5 \<video> element.
 
-<block type="image">
+<block is="image">
 
 ![The video example block being edited in Inka](../images/video-edit.png)
 
@@ -46,7 +46,7 @@ Embeds a video from a URL. Detects YouTube links and renders an iframe embed; ot
 
 ## Video-Block (Full Width)
 
-<block type="video">
+<block is="video">
 
 [](https://www.youtube.com/watch?v=_yaYy86jdk8)
 
@@ -56,7 +56,7 @@ Embeds a video from a URL. Detects YouTube links and renders an iframe embed; ot
 
 ## Video-Block (Standard Size)
 
-<block type="video">
+<block is="video">
 
 [](https://www.youtube.com/watch?v=_yaYy86jdk8)
 
@@ -70,7 +70,7 @@ Embeds a video from a URL. Detects YouTube links and renders an iframe embed; ot
 
 Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincidunt ut laoreet dolore magna aliquam erat volutpat. Ut wisi enim ad minim veniam, quis nostrud exerci tation ullamcorper suscipit lobortis nisl ut aliquip ex ea commodo consequat. Duis autem vel eum iriure dolor in hendrerit in vulputate velit esse molestie consequat, vel illum dolore eu feugiat nulla facilisis at vero eros et accumsan et iusto odio dignissim qui blandit praesent luptatum zzril delenit augue duis dolore te feugait nulla facilisi.
 
-<block type="video">
+<block is="video">
 
 [](https://www.youtube.com/watch?v=_yaYy86jdk8)
 
@@ -78,7 +78,7 @@ Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincid
 
 </block>
 
-<block type="separator">
+<block is="separator">
 
 ---
 
@@ -90,7 +90,7 @@ Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincid
 
 The Video-Block can be aligned to the left with text floating around it on the right side.
 
-<block type="video">
+<block is="video">
 
 [](https://www.youtube.com/watch?v=_yaYy86jdk8)
 
@@ -106,7 +106,7 @@ Lorem ipsum dolor sit amet, consetetur sadipscing elitr, sed diam nonumy eirmod 
 
 The Video-Block can be aligned to the right with text floating around it on the left side.
 
-<block type="video">
+<block is="video">
 
 [](https://www.youtube.com/watch?v=_yaYy86jdk8)
 
@@ -120,7 +120,7 @@ Lorem ipsum dolor sit amet, consetetur sadipscing elitr, sed diam nonumy eirmod 
 
 <fields templateId="/inka-templates/block-reference-layout" templateInstanceId="tpl-inst-video" :fixed="false" :readOnly="false">
 
-<block type="codeExample" slotId="schema">
+<block is="codeExample" slotId="schema">
 
 ### Schema
 
@@ -130,7 +130,7 @@ Lorem ipsum dolor sit amet, consetetur sadipscing elitr, sed diam nonumy eirmod 
 
 </block>
 
-<block type="codeExample" slotId="json-data">
+<block is="codeExample" slotId="json-data">
 
 ### JSON
 
@@ -141,7 +141,7 @@ Lorem ipsum dolor sit amet, consetetur sadipscing elitr, sed diam nonumy eirmod 
 
 </block>
 
-<block type="codeExample" slotId="rendering">
+<block is="codeExample" slotId="rendering">
 
 ### React
 

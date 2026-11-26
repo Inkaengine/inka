@@ -26,21 +26,21 @@ subjects:
   - blocks
 title: Table
 blocks-matched: |
-  <block type="slate" value="${p,h*,ul,ol,blockquote,strong,em,a/slate}" />
-  <block type="title" _="${h1}" />
-  <block type="image" description="${p?/textarea}" url="${img/src}" alt="${img?/alt}" title="${img?/title}" align="center" size="l" />
-  <block type="codeExample">
+  <block is="slate" value="${p,h*,ul,ol,blockquote,strong,em,a/slate}" />
+  <block is="title" _="${h1}" />
+  <block is="image" description="${p?/textarea}" url="${img/src}" alt="${img?/alt}" title="${img?/title}" align="center" size="l" />
+  <block is="codeExample">
     <region name="tabs" widget="object_list" idField="@id" typeField="@type">
-      <block type="tab" label="${h3/text}" language="${pre/lang}" code="${pre/textarea}" />
+      <block is="tab" label="${h3/text}" language="${pre/lang}" code="${pre/textarea}" />
     </region>
   </block>
 blocks-tagged: |
-  <block type="slateTable">
+  <block is="slateTable">
     <region name="table.rows" idField="key">
-      <block type="row" _="${tr}">
+      <block is="row" _="${tr}">
         <region name="cells" idField="key" typeField="type">
-          <block type="header" value="${th/slate}" />
-          <block type="data" value="${td/slate}" />
+          <block is="header" value="${th/slate}" />
+          <block is="data" value="${td/slate}" />
         </region>
       </block>
     </region>
@@ -51,15 +51,15 @@ blocks-tagged: |
 
 A table with rich text (Slate) content in each cell. Supports adding/removing rows and columns via toolbar actions.
 
-<block type="image">
+<block is="image">
 
 ![The table example block being edited in Inka](../images/table-edit.png)
 
 </block>
 
-<block type="heading" alignment="left" heading="Basic Table" tag="h2" />
+<block is="heading" alignment="left" heading="Basic Table" tag="h2" />
 
-<block type="slateTable" table.celled table.fixed>
+<block is="slateTable" table.celled table.fixed>
 
 | Feature | Supported |
 | --- | --- |
@@ -68,9 +68,9 @@ A table with rich text (Slate) content in each cell. Supports adding/removing ro
 
 </block>
 
-<block type="heading" alignment="left" heading="Stripe alternating rows with colors" tag="h2" />
+<block is="heading" alignment="left" heading="Stripe alternating rows with colors" tag="h2" />
 
-<block type="slateTable" table.celled table.fixed table.striped>
+<block is="slateTable" table.celled table.fixed table.striped>
 
 | Title Tablehead | Title Tablehead | Title Tablehead | Title Tablehead |
 | --- | --- | --- | --- |
@@ -83,9 +83,9 @@ A table with rich text (Slate) content in each cell. Supports adding/removing ro
 
 <fields :styles='{"backgroundColor":"grey"}'>
 
-<block type="heading" alignment="left" heading="Basic Table" tag="h2" />
+<block is="heading" alignment="left" heading="Basic Table" tag="h2" />
 
-<block type="slateTable" table.celled table.fixed>
+<block is="slateTable" table.celled table.fixed>
 
 | Title Tablehead | Title Tablehead | Title Tablehead | Title Tablehead |
 | --- | --- | --- | --- |
@@ -96,9 +96,9 @@ A table with rich text (Slate) content in each cell. Supports adding/removing ro
 
 </block>
 
-<block type="heading" alignment="left" heading="Stripe alternating rows with colors" tag="h2" />
+<block is="heading" alignment="left" heading="Stripe alternating rows with colors" tag="h2" />
 
-<block type="slateTable" table.celled table.fixed table.striped>
+<block is="slateTable" table.celled table.fixed table.striped>
 
 | Title Tablehead | Title Tablehead | Title Tablehead | Title Tablehead |
 | --- | --- | --- | --- |
@@ -113,7 +113,7 @@ A table with rich text (Slate) content in each cell. Supports adding/removing ro
 
 <fields templateId="/inka-templates/block-reference-layout" templateInstanceId="tpl-inst-table" :fixed="false" :readOnly="false">
 
-<block type="codeExample" slotId="schema">
+<block is="codeExample" slotId="schema">
 
 ### Schema
 
@@ -123,7 +123,7 @@ A table with rich text (Slate) content in each cell. Supports adding/removing ro
 
 </block>
 
-<block type="codeExample" slotId="json-data">
+<block is="codeExample" slotId="json-data">
 
 ### JSON
 
@@ -134,7 +134,7 @@ A table with rich text (Slate) content in each cell. Supports adding/removing ro
 
 </block>
 
-<block type="codeExample" slotId="rendering">
+<block is="codeExample" slotId="rendering">
 
 ### React
 

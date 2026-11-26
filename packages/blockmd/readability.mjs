@@ -69,7 +69,7 @@ export function pageReadability(md) {
       words.tags += tagWords(node.value);
       for (const tag of node.value.matchAll(/<(block|fields)\b[^>]*>/g)) {
         if (tag[1] === 'fields') { blocks.fields += 1; continue; }
-        const type = /\btype="([^"]+)"/.exec(tag[0])?.[1] ?? '?';
+        const type = /\bis="([^"]+)"/.exec(tag[0])?.[1] ?? '?';
         const form = /\bdata-json=/.test(tag[0]) ? 'raw' : 'light';
         blocks[form] += 1;
         byType[type] ??= { light: 0, fields: 0, raw: 0 };

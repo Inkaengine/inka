@@ -23,11 +23,11 @@ subjects:
   - content
 title: Content as Markdown
 blocks-matched: |
-  <block type="slate" value="${p,h*,ul,ol,blockquote,strong,em,a/slate}" />
-  <block type="title" _="${h1}" />
-  <block type="codeExample">
+  <block is="slate" value="${p,h*,ul,ol,blockquote,strong,em,a/slate}" />
+  <block is="title" _="${h1}" />
+  <block is="codeExample">
     <region name="tabs" widget="object_list" idField="@id" typeField="@type">
-      <block type="tab" label="${h3/text}" language="${pre/lang}" code="${pre/textarea}" />
+      <block is="tab" label="${h3/text}" language="${pre/lang}" code="${pre/textarea}" />
     </region>
   </block>
 ---
@@ -64,8 +64,8 @@ Two frontmatter sections, `blocks-matched` and `blocks-tagged`, describe how the
 A block shows up in the body in the cheapest form that can carry it:
 
 - **Bare Markdown** — prose, a heading, a list, a fenced code block, a rule. It matches a *matched* prototype (usually the text block) with no wrapper at all.
-- **A paired tag**, `<block type="…"> … </block>` — an explicit block, a container that holds regions of children, or a block that needs a field its plain Markdown cannot express.
-- **A self-closing tag**, `<block type="…" … />` — the escape hatch, a raw block built from its attributes, with `data='{…}'` carrying any object fields verbatim.
+- **A paired tag**, `<block is="…"> … </block>` — an explicit block, a container that holds regions of children, or a block that needs a field its plain Markdown cannot express.
+- **A self-closing tag**, `<block is="…" … />` — the escape hatch, a raw block built from its attributes, with `data='{…}'` carrying any object fields verbatim.
 
 Headings written inside a container are interpreted **relative** to that container, so a panel or section reads naturally as `##` no matter how deeply it is nested.
 
@@ -74,7 +74,7 @@ Headings written inside a container are interpreted **relative** to that contain
 A *prototype* maps a Markdown shape to a block type. It is written as a block tag whose fields hold `${…}` references, and which of the two frontmatter sections it lives in decides how it is matched:
 
 - **`blocks-matched`** prototypes are matched **implicitly**, from bare Markdown. Order is a cascade, like CSS: the most specific prototype wins — specificity being the number of concrete node kinds it names — and ties go to the one declared later. That is why the text block is declared before `title`: a top heading ties on specificity, and the later `title` takes it.
-- **`blocks-tagged`** prototypes match **only** when you write their `<block type="…">` tag. Use them for a shape too ambiguous to read from bare Markdown — a variable-shape container, or a leaf whose pattern would otherwise hijack a common reading. A teaser is a heading-with-a-link followed by prose, for instance, but you rarely want every such pair to silently become one, so a teaser is tagged.
+- **`blocks-tagged`** prototypes match **only** when you write their `<block is="…">` tag. Use them for a shape too ambiguous to read from bare Markdown — a variable-shape container, or a leaf whose pattern would otherwise hijack a common reading. A teaser is a heading-with-a-link followed by prose, for instance, but you rarely want every such pair to silently become one, so a teaser is tagged.
 
 ## References
 
@@ -83,9 +83,9 @@ An attribute value is either a plain JSON scalar or a `${…}` reference; the tw
 ### Markdown
 
 ```markdown
-<block type="heading" text="${h1/text}" tag="h${1/level}" />
-<block type="callout" value="${p,blockquote/slate}" />
-<block type="separator" _="${hr}" />
+<block is="heading" text="${h1/text}" tag="h${1/level}" />
+<block is="callout" value="${p,blockquote/slate}" />
+<block is="separator" _="${hr}" />
 ```
 
 The first line reads the first heading's text and interpolates its level into a tag name. The second accepts a set of node kinds — any paragraph or quote — as a rich value. The third is *match-only*: the `_` field consumes the rule and stores nothing.
@@ -122,9 +122,9 @@ A container names each region of children with a `<region>` tag and the widget t
 ### Markdown
 
 ```markdown
-<block type="gridBlock">
+<block is="gridBlock">
   <region name="items" widget="blocks_layout">
-    <block type="teaser" title="${h/text}" description="${p/text}" />
+    <block is="teaser" title="${h/text}" description="${p/text}" />
   </region>
 </block>
 ```
@@ -146,19 +146,19 @@ A table is mapped by its prototype like any other block — the engine knows wha
 ### Markdown
 
 ```markdown
-<block type="slateTable">
+<block is="slateTable">
   <region name="table.rows" idField="key">
-    <block type="row" _="${tr}">
+    <block is="row" _="${tr}">
       <region name="cells" idField="key" typeField="type">
-        <block type="header" value="${th/slate}" />
-        <block type="data" value="${td/slate}" />
+        <block is="header" value="${th/slate}" />
+        <block is="data" value="${td/slate}" />
       </region>
     </block>
   </region>
 </block>
 ```
 
-Read left to right: the rows at `table.rows` are the table's `tr`s; each row's `cells` are its `th`s and `td`s, stored with `type` set to `header` or `data` and the cell's content in `value`. The same rules are read backwards to write the table. The table object's other fields — `celled`, `striped` — are written as dotted attributes, `<block type="slateTable" table.celled>`. A markdown table's header is exactly its first row, so a table whose header cells are anywhere else keeps the `data-json` form.
+Read left to right: the rows at `table.rows` are the table's `tr`s; each row's `cells` are its `th`s and `td`s, stored with `type` set to `header` or `data` and the cell's content in `value`. The same rules are read backwards to write the table. The table object's other fields — `celled`, `striped` — are written as dotted attributes, `<block is="slateTable" table.celled>`. A markdown table's header is exactly its first row, so a table whose header cells are anywhere else keeps the `data-json` form.
 
 A markdown cell is one line of inline content, so `## ` cannot go in one — but a cell can hold several blocks, such as a heading above its text. Those are written as inline HTML tags, which a markdown cell allows, and the markdown between them reads as usual:
 
@@ -189,6 +189,8 @@ An attribute's type comes from how it is written, with no schema involved. As in
 
 Bound JSON holding double quotes is single-quoted: `:styles='{"align":"left"}'`. An unquoted value, `size=3`, is refused, because it could be either.
 
+A block tag names its type with `is`, HTML's attribute for "this element is a custom X": `<block is="inPageAlert" type="info">`. So every other name, `type` included, is free for the block's own fields; only `is` and `data-json` belong to the tag.
+
 ## Lists and objects
 
 A field holding a list or an object is one bound attribute, so the block stays a tag with its Markdown body rather than turning into a JSON blob. A teaser's styles, an object:
@@ -196,7 +198,7 @@ A field holding a list or an object is one bound attribute, so the block stays a
 ### Markdown
 
 ```markdown
-<block type="teaser" :styles='{"align":"left","backgroundColor":"grey"}' />
+<block is="teaser" :styles='{"align":"left","backgroundColor":"grey"}' />
 ```
 
 An empty list is `:facets="[]"`, so empty and absent stay different. Only a field whose name an attribute can't carry, such as `@id`, sends its block to the `data='{…}'` form.

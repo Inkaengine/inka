@@ -25,17 +25,17 @@ subjects:
   - templates
 title: Context Navigation Block
 blocks-matched: |
-  <block type="slate" value="${p,h*,ul,ol,blockquote,strong,em,a/slate}" />
-  <block type="title" _="${h1}" />
-  <block type="codeExample">
+  <block is="slate" value="${p,h*,ul,ol,blockquote,strong,em,a/slate}" />
+  <block is="title" _="${h1}" />
+  <block is="codeExample">
     <region name="tabs" widget="object_list" idField="@id" typeField="@type">
-      <block type="tab" label="${h3/text}" language="${pre/lang}" code="${pre/textarea}" />
+      <block is="tab" label="${h3/text}" language="${pre/lang}" code="${pre/textarea}" />
     </region>
   </block>
 blocks-tagged: |
-  <block type="contextNavigation">
+  <block is="contextNavigation">
     <region name="items" widget="blocks_layout">
-      <block type="navItem" label="${a/text}" href="${a/link}" />
+      <block is="navItem" label="${a/text}" href="${a/link}" />
     </region>
   </block>
 ---
@@ -44,21 +44,21 @@ blocks-tagged: |
 
 A vertical navigation list for grouped pages — a left sidebar on desktop and a collapsible disclosure at the top on mobile. Each row is a navItem (hand-added link) and/or a listing (auto-populated from a path query). The active link is detected from the current URL and gets aria-current="page" plus a .current class. Named after Plone's @contextnavigation endpoint, which serves the same purpose.
 
-<block type="contextNavigation" ariaLabel="Section navigation">
+<block is="contextNavigation" ariaLabel="Section navigation">
 
-<block type="navItem">
+<block is="navItem">
 
 [Architecture](../architecture.md)
 
 </block>
 
-<block type="navItem">
+<block is="navItem">
 
 [Custom blocks](../frontend-guide/custom-blocks.md)
 
 </block>
 
-<block type="navItem">
+<block is="navItem">
 
 [Listings](../frontend-guide/listings.md)
 
@@ -68,7 +68,7 @@ A vertical navigation list for grouped pages — a left sidebar on desktop and a
 
 <fields templateId="/inka-templates/block-reference-layout" templateInstanceId="tpl-inst-contextNavigation" :fixed="false" :readOnly="false">
 
-<block type="codeExample" slotId="schema">
+<block is="codeExample" slotId="schema">
 
 ### Schema
 
@@ -78,7 +78,7 @@ A vertical navigation list for grouped pages — a left sidebar on desktop and a
 
 </block>
 
-<block type="codeExample" slotId="json-data">
+<block is="codeExample" slotId="json-data">
 
 ### JSON
 
@@ -89,7 +89,7 @@ A vertical navigation list for grouped pages — a left sidebar on desktop and a
 
 </block>
 
-<block type="codeExample" slotId="rendering">
+<block is="codeExample" slotId="rendering">
 
 ### React
 
