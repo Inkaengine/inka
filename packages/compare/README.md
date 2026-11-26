@@ -29,6 +29,12 @@ the page before it is shot: `normalise` names functions from the settings'
 OURS a difference the exception approves (a run of text, where CSS can only
 hide elements). Each is `(document) => void`, run with `page.evaluate`.
 
+An exception that draws a column wider on ours than ours draws it (to compare
+its content at the source's width) stretches the images the browser chose for
+the narrower column. Its `imageStretch` is the factor it widens by: an image
+drawn up to that many times wider than the copy it loaded is not reported
+stretched. A wider stretch still is.
+
 And what a comparison runs on:
 
 | Module | |

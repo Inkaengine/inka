@@ -162,6 +162,16 @@ test("an image that loads the wrong copy is named, with what the source loads", 
   assert.deepEqual(imageFindings([img({})], []), []);
 });
 
+test("an approved stretch excuses an image drawn up to that factor wider, and no further", () => {
+  const img = (over) => ({ key: "/a.jpg", src: "/a.jpg", block: null, drawn: { w: 1168, h: 365 }, natural: { w: 800, h: 250 }, largest: 3333, ...over });
+  assert.equal(imageFindings([img({})], [])[0].undersized, true);
+  assert.deepEqual(imageFindings([img({})], [], { stretch: 1168 / 768 }), []);
+  assert.deepEqual(imageFindings([img({ natural: { w: 768, h: 240 } })], [], { stretch: 1168 / 768 }), []);
+  assert.equal(imageFindings([img({ natural: { w: 600, h: 188 } })], [], { stretch: 1168 / 768 })[0].undersized, true);
+  // Only the stretch: a copy many times too big is still reported.
+  assert.equal(imageFindings([img({ drawn: { w: 300, h: 94 }, natural: { w: 3333, h: 1042 } })], [], { stretch: 2 })[0].oversized, true);
+});
+
 test("a page that did not settle says why, for each side", () => {
   assert.equal(unsettledVerdict({ loadError: "timeout" }, {}, 1000), "the page did not load (source: timeout)");
   assert.equal(

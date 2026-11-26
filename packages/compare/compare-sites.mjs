@@ -197,6 +197,8 @@ function exceptionsFor(pagePath) {
     // And the ones it names for ours (the settings' oursNormalisers).
     normaliseOurs: active.flatMap((e) => e.normaliseOurs ?? []),
     tolerance: Math.max(DEFAULT_TOLERANCE, ...active.map((e) => e.tolerance ?? 0)),
+    // How much wider than its copy an image may be drawn (imageFindings).
+    imageStretch: Math.max(1, ...active.map((e) => e.imageStretch ?? 1)),
   };
 }
 
@@ -844,7 +846,7 @@ async function comparePage(p) {
   if (ONLY_BLOCKS) plan.regions = [];
   plan.regions = [...plan.regions, ...blockRegions, ...partRegions];
   const slug = slugOf(p);
-  const { masks, css, normalise, normaliseOurs, tolerance } = exceptionsFor(p);
+  const { masks, css, normalise, normaliseOurs, tolerance, imageStretch } = exceptionsFor(p);
   const oldFile = path.join(BASELINE_DIR, `${slug}.png`);
   const newFile = path.join(OUT, `${slug}--ours.png`);
   // The masks are part of the baseline's identity: hiding a different set of
@@ -1268,6 +1270,7 @@ async function comparePage(p) {
       block: img.inCard ? "card image" : img.where !== "main" ? `${img.where} image` : null,
     })),
     o.images ?? [],
+    { stretch: imageStretch },
   ).filter(
     // The one image difference a settled rule explains: a reviewed lone card
     // drawn the row's width stretches its image with it. Every other image
