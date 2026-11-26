@@ -8,7 +8,7 @@
 import { searchTextOptions, withSearchableText } from '@volto-hydra/helpers/searchableText.js';
 import { linkItemSnapshot } from '@volto-hydra/helpers/linkItem.js';
 import { buildBlockPathMap } from '@volto-hydra/helpers/buildBlockPathMap.js';
-import { getBlockById, updateBlockById, regionSlotId } from '@volto-hydra/helpers/blockPath.js';
+import { getBlockByPath, updateBlockById, regionSlotId } from '@volto-hydra/helpers/blockPath.js';
 import { buildIdFieldMap } from '@volto-hydra/helpers/buildBlockPathMap.js';
 import { getChildFields, getChildBlockEntries, setChildBlockEntries } from '@volto-hydra/helpers';
 import { resolveEffectiveBlockSchema } from '@volto-hydra/helpers/blockSync.js';
@@ -211,18 +211,21 @@ export function withoutDefaultSearchText(page, blocksConfig) {
 const fixedDefaults = (schema) => Object.entries(schema?.properties ?? {})
   .filter(([, def]) => def && def.default !== undefined && typeof def.default !== 'function' && def.widget !== 'object');
 
-/** Every block of a page, nested ones too, rewritten by `fn(block, schema)`
- *  against the block's effective schema (its variation's, enhanced). */
+/** Every block of a page, nested ones too, rewritten by `fn(block, schema, type)`
+ *  against the block's effective schema (its variation's, enhanced). The block is
+ *  as stored: a list item typed by its own field (a form's `field_type`) is not
+ *  given the `@type` that reading it as a block shows (getBlockById). */
 function eachBlockWithSchema(page, blocksConfig, fn) {
   if (!page.blocks) return page;
   const pathMap = buildBlockPathMap(page, blocksConfig, SEARCH_INTL);
   let out = page;
-  for (const id of Object.keys(pathMap)) {
-    const block = getBlockById(out, pathMap, id);
+  for (const [id, info] of Object.entries(pathMap)) {
+    if (!info?.path) continue; // a virtual block (a template's), not in the page
+    const block = getBlockByPath(out, info.path);
     if (!block) continue;
     const schema = resolveEffectiveBlockSchema(id, out, pathMap, blocksConfig, SEARCH_INTL);
     if (!schema) continue;
-    const next = fn(block, schema);
+    const next = fn(block, schema, info.blockType ?? block['@type']);
     if (next !== block) out = updateBlockById(out, pathMap, id, next);
   }
   return out;
@@ -240,10 +243,10 @@ const sameValue = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 // states as a literal, which its bare Markdown implies (an image's `size`), so
 // dropping it would leave the bare form unable to read back.
 export function withoutSchemaDefaults(page, blocksConfig, { keep = () => false } = {}) {
-  return eachBlockWithSchema(page, blocksConfig, (block, schema) => {
+  return eachBlockWithSchema(page, blocksConfig, (block, schema, type) => {
     let out = block;
     for (const [field, def] of fixedDefaults(schema)) {
-      if (keep(block['@type'], field)) continue;
+      if (keep(type, field)) continue;
       if (field in out && sameValue(out[field], def.default)) {
         if (out === block) out = { ...block };
         delete out[field];
