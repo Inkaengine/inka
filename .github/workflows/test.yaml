@@ -40,7 +40,7 @@ jobs:
           fetch-depth: 0
       - name: Setup pnpm
         run: |
-          npm install -g corepack
+          npm install -g --force corepack  # the Playwright image ships its own yarn, which corepack replaces
           corepack cache clean
           corepack enable
       - name: Use Node.js
@@ -358,7 +358,7 @@ jobs:
       - uses: actions/checkout@v4
       - name: Setup pnpm
         run: |
-          npm install -g corepack
+          npm install -g --force corepack  # the Playwright image ships its own yarn, which corepack replaces
           corepack cache clean
           corepack enable
       - name: Use Node.js
@@ -413,7 +413,7 @@ jobs:
           fetch-depth: 0
       - name: Setup pnpm
         run: |
-          npm install -g corepack
+          npm install -g --force corepack  # the Playwright image ships its own yarn, which corepack replaces
           corepack cache clean
           corepack enable
       - name: Use Node.js
@@ -536,7 +536,7 @@ jobs:
           fetch-depth: 0
       - name: Setup pnpm
         run: |
-          npm install -g corepack
+          npm install -g --force corepack  # the Playwright image ships its own yarn, which corepack replaces
           corepack cache clean
           corepack enable
       - name: Use Node.js
@@ -655,7 +655,7 @@ jobs:
           fetch-depth: 0
       - name: Setup pnpm
         run: |
-          npm install -g corepack
+          npm install -g --force corepack  # the Playwright image ships its own yarn, which corepack replaces
           corepack cache clean
           corepack enable
       - name: Use Node.js
@@ -785,7 +785,7 @@ jobs:
           fetch-depth: 0
       - name: Setup pnpm
         run: |
-          npm install -g corepack
+          npm install -g --force corepack  # the Playwright image ships its own yarn, which corepack replaces
           corepack cache clean
           corepack enable
       - name: Use Node.js
@@ -897,7 +897,7 @@ jobs:
           fetch-depth: 0
       - name: Setup pnpm
         run: |
-          npm install -g corepack
+          npm install -g --force corepack  # the Playwright image ships its own yarn, which corepack replaces
           corepack cache clean
           corepack enable
       - name: Use Node.js
@@ -1019,7 +1019,7 @@ jobs:
           fetch-depth: 0
       - name: Setup pnpm
         run: |
-          npm install -g corepack
+          npm install -g --force corepack  # the Playwright image ships its own yarn, which corepack replaces
           corepack cache clean
           corepack enable
       - name: Use Node.js
