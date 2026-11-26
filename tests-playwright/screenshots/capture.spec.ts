@@ -8,7 +8,7 @@
  * Editor Guide markdown pages reference those images by filename.
  *
  * Not part of normal test runs — gated to its own project (see
- * playwright.config.ts). CSS-driven re-renders are accepted; rerun the
+ * playwright.config.mts). CSS-driven re-renders are accepted; rerun the
  * --project=screenshots when the editor chrome changes.
  */
 import * as fs from 'fs';

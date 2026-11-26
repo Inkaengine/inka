@@ -253,7 +253,7 @@ tests-playwright/
 ├── integration/
 │   ├── block-selection.spec.ts  # Block selection tests
 │   └── inline-editing.spec.ts   # Inline editing tests
-├── playwright.config.ts          # Playwright configuration
+├── playwright.config.mts          # Playwright configuration
 ├── tsconfig.json                # TypeScript config
 └── README.md                    # This file
 ```
@@ -343,7 +343,7 @@ npx playwright show-trace test-results/trace.zip
 
 ## Configuration
 
-### playwright.config.ts
+### playwright.config.mts
 
 Key settings:
 
@@ -413,7 +413,7 @@ jobs:
 
 ### Tests Timeout
 
-Increase timeout in `playwright.config.ts`:
+Increase timeout in `playwright.config.mts`:
 ```typescript
 timeout: 60 * 1000, // 60 seconds
 ```
@@ -459,7 +459,7 @@ await page.waitForSelector('#element', { state: 'visible' });
 
 2. Disable parallelization:
 ```typescript
-// playwright.config.ts
+// playwright.config.mts
 workers: 1,
 ```
 

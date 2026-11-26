@@ -107,6 +107,24 @@ describe('the source link is declared, not sniffed', () => {
     expect(() => getSourceField(cfg)).toThrow(/url, href, searchPath/);
   });
 
+  it('is null for a block that pulls nothing, however many link fields it has', () => {
+    // A video has its own address and a poster image, both link fields, and
+    // copies nothing from either: no mapping, so no source to declare. Asking
+    // it to name one threw on every edit of its address.
+    const cfg = {
+      id: 'video',
+      blockSchema: {
+        properties: {
+          url: { widget: 'url' },
+          preview_image: { widget: 'object_browser', mode: 'link' },
+        },
+      },
+    };
+    expect(getSourceField(cfg)).toBe(null);
+    const oneLink = { blockSchema: { properties: { href: { widget: 'url' } } } };
+    expect(getSourceField(oneLink)).toBe(null);
+  });
+
   it('is null for a block with no link field at all', () => {
     const cfg = {
       fieldMappings: { '@target': { title: 'title' } },

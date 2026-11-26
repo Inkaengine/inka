@@ -1168,7 +1168,7 @@ function formatSearchItem(content, baseUrl) {
     'id': content.id,
     'title': content.title,
     'description': content.description || '',
-    'review_state': content.review_state || 'published',
+    'review_state': reviewStateOf(content),
     'is_working_copy': content.is_working_copy === true,
     'UID': content.UID,
     'is_folderish': content.is_folderish !== undefined ? content.is_folderish : true,
@@ -1586,11 +1586,20 @@ function formatNavItem(rawContent, urlPath, baseUrl, remainingDepth, sessionId) 
   const children = (remainingDepth > 0 && rawContent.is_folderish !== false)
     ? getNavigationItems(urlPath, remainingDepth, baseUrl, sessionId)
     : [];
+  // Exactly the fields a real Plone's @navigation item carries. Checked
+  // against a live one: @id, description, items, review_state, title (and
+  // use_view_action_in_listings where the type sets it) — and nothing else.
+  //
+  // UID, is_folderish and hasPreviewImage have all been added here at one time
+  // or another, and nothing reads any of them FROM navigation: hasPreviewImage
+  // is a @search metadata column and a link summary's field, which is where it
+  // belongs. A field this reply invents is one a frontend can come to depend on
+  // and then lose against the CMS.
   return {
     '@id': `${baseUrl}${urlPath}`,
     'title': rawContent.title,
     'description': rawContent.description || '',
-    'review_state': rawContent.review_state || 'published',
+    'review_state': reviewStateOf(rawContent),
     'items': children,
   };
 }
@@ -1921,6 +1930,43 @@ const SPW = {
 const ANONYMOUS_HIDDEN_STATES = new Set(['private', 'pending']);
 
 /**
+ * The types bound to NO workflow, and so with no review_state at all.
+ *
+ * Products/CMFPlone/profiles/default/workflows.xml binds
+ * simple_publication_workflow as the default and then lists File, Image and
+ * Plone Site with no workflow of their own. A real Plone answers `null` for
+ * their review_state — verified against a live site, where every one of its
+ * images reports null — and their @workflow is empty.
+ *
+ * This mock used to call them `published`, which is a state they cannot be in.
+ */
+const UNWORKFLOWED_TYPES = new Set(['File', 'Image', 'Plone Site']);
+
+/** Does this type have a workflow? */
+const isWorkflowed = (type) => !UNWORKFLOWED_TYPES.has(type);
+
+/**
+ * The state a newly created item is in.
+ *
+ * simple_publication_workflow's initial_state is `private`, so a page a
+ * frontend has just created is NOT public until someone publishes it. This
+ * mock used to answer `published`, so nothing built against it ever met the
+ * state a real Plone starts content in.
+ */
+const initialReviewState = (type) => (isWorkflowed(type) ? 'private' : null);
+
+/**
+ * The review_state to report for stored content.
+ *
+ * An unworkflowed type has none, whatever is on disk. For the rest, a fixture
+ * that does not say is taken as published: authored fixture content stands for
+ * a live site, and the states that matter to a test are the ones it writes
+ * down.
+ */
+const reviewStateOf = (content) =>
+  isWorkflowed(content?.['@type']) ? (content?.review_state ?? 'published') : null;
+
+/**
  * Whether the session's reader may view `item` (raw content or a summary).
  *
  * Plone filters EVERY catalog query by this (allowedRolesAndUsers), not just
@@ -1956,7 +2002,18 @@ function buildWorkflowComponent(cleanPath, baseUrl, sessionId) {
   // for that root died with "Maximum call stack size exceeded", and a Next
   // frontend fetches the root for its chrome, so every page did.
   const content = rawContentForComponents(cleanPath, sessionId);
-  const state = content?.review_state || 'published';
+  // Nothing to report for a type with no workflow. A real Plone answers
+  // {history: [], state: {id: "", title: ""}, transitions: []} — verified
+  // against a live site's Image — rather than inventing a state for it.
+  if (content && !isWorkflowed(content['@type'])) {
+    return {
+      '@id': `${fullUrl}/@workflow`,
+      history: [],
+      state: { id: '', title: '' },
+      transitions: [],
+    };
+  }
+  const state = reviewStateOf(content);
   return {
     '@id': `${fullUrl}/@workflow`,
     history: [
@@ -2400,7 +2457,7 @@ function summarizeRelations(content, baseUrl) {
       '@type': raw['@type'],
       title: raw.title,
       description: raw.description || '',
-      review_state: raw.review_state || 'published',
+      review_state: reviewStateOf(raw),
       image_field: null,
     };
     if (raw['@type'] === 'Image') {
@@ -2562,7 +2619,7 @@ function getFolderChildItems(folderPath, baseUrl, sessionId) {
         '@id': `${baseUrl}${itemPath}`,
         '@type': rawContent['@type'],
         'description': rawContent.description || '',
-        'review_state': rawContent.review_state || 'published',
+        'review_state': reviewStateOf(rawContent),
         'title': rawContent.title,
         'UID': rawContent.UID,
         // A Volto site's summaries carry the item's image too (plone.volto adds
@@ -2709,7 +2766,7 @@ function enrichContent(content, urlPath, baseUrl, expandList = [], sessionId, ex
     ...workingCopyFields,
     '@id': fullUrl,
     'UID': transformed.UID || `${transformed.id || urlPath.replace(/\//g, '-')}-uid`,
-    'review_state': transformed.review_state || 'published',
+    'review_state': reviewStateOf(transformed),
     'is_folderish': isFolderish,
     'allow_discussion': transformed.allow_discussion !== undefined ? transformed.allow_discussion : false,
     'exclude_from_nav': transformed.exclude_from_nav || false,
@@ -3435,14 +3492,16 @@ app.post('{/*path}/@copy', (req, res) => {
 /**
  * POST /:parent/@order — 404, because plone.restapi has no such endpoint.
  *
- * It used to be implemented here, and only here. Ordering in Plone is a PATCH on
- * the container carrying `ordering` (its OrderingMixin); this route was invented
- * by an earlier version of this mock, our Plone adapter was written against the
- * invention, and the contract suite stayed green while every reorder against a
- * real Plone 404'd. Answering as Plone does is what caught it.
+ * It was implemented here, and only here. Ordering in Plone is a PATCH on the
+ * container carrying `ordering` (its OrderingMixin); this route was invented by
+ * an earlier version of this mock, an adapter was written against the invention
+ * in the same commit, and its contract suite went green — a contract proves the
+ * adapter and the mock AGREE, and when one author writes both halves from one
+ * assumption, agreement is a tautology. It passed for two weeks while every
+ * reorder against a real Plone 404'd.
  *
- * Named rather than left to Express's catch-all so the next caller is told where
- * to go instead of guessing at a bare 404.
+ * Named rather than left to Express's catch-all, so the next caller is told
+ * where to go instead of guessing at a bare 404.
  */
 app.post('{/*path}/@order', (req, res) =>
   res.status(404).json({
@@ -4210,7 +4269,7 @@ app.post('/{*path}', (req, res, next) => {
           },
         }],
       },
-      'review_state': 'published',
+      'review_state': initialReviewState('Image'),
     };
 
     // Store in session-specific storage (or global if no session)
@@ -4262,7 +4321,7 @@ app.post('/{*path}', (req, res, next) => {
         'filename': body.file?.filename || rawName,
         'size': body.file?.data?.length || 0,
       },
-      'review_state': 'published',
+      'review_state': initialReviewState('File'),
     };
 
     const sessionId = getSessionId(req);
@@ -4305,7 +4364,7 @@ app.post('/{*path}', (req, res, next) => {
       created: now,
       modified: now,
       effective: now,
-      review_state: 'published',
+      review_state: initialReviewState(body['@type']),
     };
 
     const sessionId = getSessionId(req);
@@ -4347,7 +4406,7 @@ app.post('/{*path}', (req, res, next) => {
       created: now,
       modified: now,
       effective: now,
-      review_state: 'published',
+      review_state: initialReviewState(body['@type']),
     };
 
     const sessionId = getSessionId(req);
@@ -4463,32 +4522,33 @@ function collectSubjectValues() {
  * GET /@querystring — the query vocabulary, from a real Plone's own answer.
  *
  * This used to be written out by hand here, and it drifted from the thing it
- * was imitating: 11 of plone.app.querystring's 22 indexes, `string.is` offered
- * on Creator (an operation Plone has never registered), Title claimed sortable
- * when Plone says it is not, and none of the relative-date operations
- * (afterToday, beforeToday, today…) on created/modified/effective.
+ * was imitating. Measured against a live Plone and against
+ * plone.app.querystring's own registry profile, it served 11 of the 22
+ * indexes, offered `string.is` on Creator — an operation Plone has never
+ * registered — claimed Title was sortable when Plone says it is not, and had
+ * none of the relative-date operations (afterToday, beforeToday, today,
+ * between) on created, modified or effective.
  *
- * That is not a cosmetic gap. The admin builds its query builder, its rearrange
- * menu and its contents columns from this answer, so each missing index is a
- * feature with nothing to test it, and each invented operation is one an
- * adapter can be written against, pass its contract, and fail on the CMS —
- * exactly how the @order endpoint happened.
+ * That is not cosmetic. The admin builds its query builder, its rearrange menu
+ * and its contents columns from this answer, so each missing index is a
+ * feature with nothing to test it, and each invented operation is one a
+ * frontend can be built against, pass its contract, and have refused by the
+ * CMS — exactly how the @order endpoint happened.
  *
  * So the structure is captured rather than authored: api/querystring.json is a
  * real Plone's response (scripts/capture-querystring.mjs). What is NOT captured
- * is each selection index's `values` — the portal types a site has, the review
- * states its workflows define — because those belong to whoever answers. The
- * mock fills in its own below.
+ * is each selection index's `values` — the portal types a site holds, the
+ * review states its workflows define, the subjects its authors typed. Those
+ * belong to whoever is answering, so the capture strips them and this mock
+ * fills in its own below.
  */
 const QUERYSTRING = JSON.parse(
   fs.readFileSync(path.join(import.meta.dirname, 'api', 'querystring.json'), 'utf-8'),
 );
 
 /**
- * This mock's own vocabulary for the indexes that have one.
- *
- * Plone's stock types and the three states of simple_publication_workflow —
- * what a site running this mock's fixtures actually holds.
+ * This mock's own vocabulary for the indexes that have one: Plone's stock
+ * types, and the three states of simple_publication_workflow.
  */
 const QUERYSTRING_VALUES = {
   portal_type: {
@@ -4518,8 +4578,8 @@ app.get('{/*path}/@querystring', (req, res) => {
   // `string.search` is not core: it comes from a plone.app.querystring fork
   // (raw, un-munged terms for collective.elasticsearch) that some production
   // sites run, and MOCK_QUERYSTRING_SEARCH=1 makes this mock one of them. The
-  // captured answer above is stock — which is why the flag has to layer on top
-  // of it, and why a site without the fork keeps offering `contains` alone.
+  // captured answer above is stock — which is why the flag layers on top of
+  // it, and why a site without the fork keeps offering `contains` alone.
   const operations = searchableTextOperations();
   indexes.SearchableText = {
     ...indexes.SearchableText,
@@ -4725,7 +4785,19 @@ app.post(/.*\/@workflow\/[^/]+$/, (req, res) => {
   const content = getContent(cleanPath, sessionId);
   if (!content) return res.status(404).json({ error: { type: 'NotFound' } });
 
-  const from = content.review_state || 'published';
+  // A type with no workflow has no transitions to make. The exact body a real
+  // Plone sends here is unverified — confirming it means POSTing a transition
+  // to a live site — so this says plainly what is wrong rather than guessing
+  // at Plone's wording.
+  if (!isWorkflowed(content['@type'])) {
+    return res.status(400).json({
+      error: {
+        type: 'BadRequest',
+        message: `${content['@type']} has no workflow, so it has no transitions`,
+      },
+    });
+  }
+  const from = reviewStateOf(content);
   const move = (SPW[from] ?? []).find((t) => t.id === transitionId);
   if (!move) {
     return res.status(400).json({
@@ -4954,7 +5026,7 @@ app.get('{/*path}/@relations', (req, res) => {
       '@type': content['@type'],
       title: content.title,
       description: content.description || '',
-      review_state: content.review_state || 'published',
+      review_state: reviewStateOf(content),
       UID: content.UID,
     };
   };
@@ -5813,7 +5885,7 @@ app.post('{/*path}/@querystring-search', (req, res) => {
   // handler below covers them all instead of per-index branches that drift.
   const selectionFields = {
     portal_type: (item) => [item['@type']],
-    review_state: (item) => [item.review_state || 'published'],
+    review_state: (item) => [reviewStateOf(item)],
     // Items here come from loadRawContentFromDisk — the raw content schema
     // field is lowercase `subjects`. The catalog index name `Subject`
     // (capital S) is only added later by formatSearchItem. Read both so

@@ -132,6 +132,37 @@ if (cmd === 'convert-block') {
   process.stdout.write(`${JSON.stringify(kept)}\n`);
   return;
 }
+// Every data.json under a content tree. An export names its folders by UID, all at
+// the top; a layout names them by path, so a page can sit at any depth.
+function* pageFiles(dir) {
+  for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+    if (!entry.isDirectory()) continue;
+    const sub = path.join(dir, entry.name);
+    const file = path.join(sub, 'data.json');
+    if (fs.existsSync(file)) yield file;
+    yield* pageFiles(sub);
+  }
+}
+
+// Run `change` over every page with blocks and write back only the pages whose data it
+// changes, each in its file's own indentation: content lives in git, and a rewrite in
+// another indentation would change every line and hide what the command did. A file
+// written on one line stays on one line. Returns how many pages were written.
+function rewritePages(contentRoot, change) {
+  let pages = 0;
+  for (const file of pageFiles(contentRoot)) {
+    const before = fs.readFileSync(file, 'utf8');
+    const page = JSON.parse(before);
+    if (!page.blocks) continue;
+    const changed = change(page);
+    if (JSON.stringify(changed) === JSON.stringify(page)) continue;
+    const indent = before.match(/^\{\r?\n([ \t]*)/)?.[1] ?? '';
+    fs.writeFileSync(file, JSON.stringify(changed, null, indent) + (before.endsWith('\n') ? '\n' : ''));
+    pages += 1;
+  }
+  return pages;
+}
+
 // What the editor stores on a block with a mapping widget, for content that
 // doesn't pass through it: the widget's default where there is none, every
 // entry with its conversion, the address under getURL. Only pages it changes
@@ -143,18 +174,9 @@ if (cmd === 'field-mappings') {
   }
   const { withFieldMappings } = require('@volto-hydra/helpers/storeFieldMappings.js');
   const intl = { formatMessage: (m) => m?.defaultMessage || '' };
-  const contentRoot = path.resolve(dirArg || 'content');
-  let pages = 0;
-  for (const entry of fs.readdirSync(contentRoot, { withFileTypes: true })) {
-    const file = path.join(contentRoot, entry.name, 'data.json');
-    if (!entry.isDirectory() || !fs.existsSync(file)) continue;
-    const page = JSON.parse(fs.readFileSync(file, 'utf8'));
-    if (!page.blocks) continue;
-    const written = withFieldMappings(page, schemas, intl, contentTypes);
-    if (written === page) continue;
-    fs.writeFileSync(file, `${JSON.stringify(written, null, 2)}\n`);
-    pages += 1;
-  }
+  const pages = rewritePages(path.resolve(dirArg || 'content'), (page) =>
+    withFieldMappings(page, schemas, intl, contentTypes),
+  );
   console.log(`field-mappings: ${pages} page(s) written`);
   return;
 }
@@ -165,17 +187,9 @@ if (cmd === 'search-text') {
   }
   const { searchTextOptions, withSearchableText } = require('@volto-hydra/helpers/searchableText.js');
   const intl = { formatMessage: (m) => m?.defaultMessage || '' };
-  const contentRoot = path.resolve(dirArg || 'content');
-  let pages = 0;
-  for (const entry of fs.readdirSync(contentRoot, { withFileTypes: true })) {
-    const file = path.join(contentRoot, entry.name, 'data.json');
-    if (!entry.isDirectory() || !fs.existsSync(file)) continue;
-    const page = JSON.parse(fs.readFileSync(file, 'utf8'));
-    if (!page.blocks) continue;
-    const written = withSearchableText(page, searchTextOptions(schemas, intl, page));
-    fs.writeFileSync(file, `${JSON.stringify(written, null, 2)}\n`);
-    pages += 1;
-  }
+  const pages = rewritePages(path.resolve(dirArg || 'content'), (page) =>
+    withSearchableText(page, searchTextOptions(schemas, intl, page)),
+  );
   console.log(`search-text: ${pages} page(s) written`);
   return;
 }
