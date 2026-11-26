@@ -63,7 +63,7 @@ describe('edit_blocks', () => {
     }], opts);
     // Not reversed: the second goes after the first, not after the title.
     expect(agent.order()).toEqual(['title', 'real-1', 'real-2', 'p1', 'p2']);
-    expect(agent.block('real-1').plaintext).toBe('First');
+    expect(slateToMd(agent.block('real-1').value)).toBe('First');
   });
 
   it('lets a later operation refer to a new block by its own @uid', async () => {
@@ -79,7 +79,6 @@ describe('edit_blocks', () => {
   it('updates fields, taking markdown for rich text', async () => {
     const agent = page();
     await editBlocks(agent, [{ op: 'update', id: 'p1', set: { value: 'Now **bold**' } }], opts);
-    expect(agent.block('p1').plaintext).toBe('Now bold');
     expect(slateToMd(agent.block('p1').value)).toBe('Now **bold**');
   });
 

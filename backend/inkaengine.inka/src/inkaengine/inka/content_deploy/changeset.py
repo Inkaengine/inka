@@ -39,6 +39,8 @@ def review_state_action(desired: str | None, current: str | None) -> str | None:
 class ChangeSet:
     creates: list[str] = field(default_factory=list)
     updates: list[str] = field(default_factory=list)
+    # Items whose review state alone changed: transitioned, not re-imported.
+    states: list[str] = field(default_factory=list)
     deletes: list[str] = field(default_factory=list)
     moves: list[dict[str, str]] = field(default_factory=list)  # {src,dst,uid}
     redirects: list[tuple[str, str]] = field(default_factory=list)  # (old_path,new)
@@ -57,6 +59,7 @@ class ChangeSet:
         return cls(
             creates=list(data.get("creates", [])),
             updates=list(data.get("updates", [])),
+            states=list(data.get("states", [])),
             deletes=list(data.get("deletes", [])),
             moves=[dict(m) for m in data.get("moves", [])],
             redirects=[tuple(r) for r in data.get("redirects", [])],

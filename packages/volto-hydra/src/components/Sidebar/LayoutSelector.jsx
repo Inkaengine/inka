@@ -11,7 +11,12 @@ import React from 'react';
 import { defineMessages, useIntl } from 'react-intl';
 import { v4 as uuid } from 'uuid';
 import { adoptTemplate, templateIdToPath } from '@volto-hydra/helpers';
-import { mergeTemplatesIntoPage } from '@volto-hydra/helpers/mergeTemplates.js';
+import {
+  hiddenBlocks,
+  mergeTemplatesIntoPage,
+} from '@volto-hydra/helpers/mergeTemplates.js';
+import { toast } from 'react-toastify';
+import Toast from '@plone/volto/components/manage/Toast/Toast';
 import Api from '@plone/volto/helpers/Api/Api';
 import config from '@plone/volto/registry';
 
@@ -27,6 +32,16 @@ const messages = defineMessages({
   noLayout: {
     id: 'No layout',
     defaultMessage: 'None',
+  },
+  blocksHidden: {
+    id: 'Layout blocks hidden',
+    defaultMessage:
+      '{count, plural, one {# block is} other {# blocks are}} hidden',
+  },
+  blocksHiddenDetail: {
+    id: 'Layout blocks hidden detail',
+    defaultMessage:
+      'This layout has no place for {count, plural, one {it} other {them}}. Switch back before saving to get {count, plural, one {it} other {them}} back; saving removes {count, plural, one {it} other {them}}.',
   },
 });
 
@@ -65,10 +80,13 @@ const getDisplayName = (url, intl) => {
 
 // Detect the currently applied layout from formData blocks.
 // Blocks from a layout template carry a `templateId` that matches an allowedLayouts URL.
+// Content a switch hid still carries the layout it came from: not this one.
 const detectCurrentLayout = (formData, allowedLayouts) => {
   if (!allowedLayouts?.length) return '';
+  const hidden = new Set(hiddenBlocks(formData || {}).map((h) => h.blockId));
   const blocks = formData?.blocks || {};
-  for (const block of Object.values(blocks)) {
+  for (const [blockId, block] of Object.entries(blocks)) {
+    if (hidden.has(blockId)) continue;
     if (block.templateId) {
       // Normalise to pathname so full-URL templateIds match path-based allowedLayouts
       const blockPath = templateIdToPath(block.templateId);
@@ -83,6 +101,7 @@ const LayoutSelector = ({
   formData,
   onChangeFormData,
   allowedLayouts, // Array of template URL strings from field config
+  region = 'items', // The page region the layout is applied to
 }) => {
   const intl = useIntl();
   const [loading, setLoading] = React.useState(false);
@@ -126,10 +145,29 @@ const LayoutSelector = ({
       const { merged: newFormData } = await mergeTemplatesIntoPage(formData, {
         loadTemplate: async (templateId) =>
           adoptTemplate(await api.get(templateId), templateId),
-        pageBlocksFields: { items: { allowedLayouts: [layoutToApply] } },
+        pageBlocksFields: { [region]: { allowedLayouts: [layoutToApply] } },
         uuidGenerator: uuid,
         firstInsert: true,
       });
+
+      // Content in a slot this layout lacks is hidden, not moved: say so.
+      const hiddenBefore = new Set(hiddenBlocks(formData).map((h) => h.blockId));
+      const newlyHidden = hiddenBlocks(newFormData).filter(
+        (h) => !hiddenBefore.has(h.blockId),
+      ).length;
+      if (newlyHidden > 0) {
+        toast.info(
+          <Toast
+            info
+            title={intl.formatMessage(messages.blocksHidden, {
+              count: newlyHidden,
+            })}
+            content={intl.formatMessage(messages.blocksHiddenDetail, {
+              count: newlyHidden,
+            })}
+          />,
+        );
+      }
 
       // Merge with existing formData (preserve other fields)
       onChangeFormData({

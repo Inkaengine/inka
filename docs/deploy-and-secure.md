@@ -22,7 +22,7 @@ subjects:
   - security
 title: Deploy and secure Inka
 blocks-matched: |
-  <block type="slate" value="${p,h*,ul,ol,blockquote,strong,em,a/slate}" plaintext="${p,h*,ul,ol,blockquote,strong,em,a/text}" />
+  <block type="slate" value="${p,h*,ul,ol,blockquote,strong,em,a/slate}" />
   <block type="title" _="${h1}" />
   <block type="codeExample">
     <region name="tabs" widget="object_list" idField="@id" typeField="@type">
@@ -117,7 +117,8 @@ A Plone site whose content ships with its code, as a plone.exportimport layout, 
 `inkaengine.inka.content_deploy` applies only what the layout changed, in one transaction, so visitors see the old content until the new content is complete:
 
 - **Creates and updates** go through plone.exportimport's own importer, for just the changed items.
-- **Moves** keep the item's UID, history and place in its folder. **Deletes** remove the item. Both leave a redirect from the old path.
+- **A change of review state alone** is a workflow transition. The item is not imported again, so its text, a PDF's included, is not indexed again.
+- **Moves** keep the item's UID, history and place in its folder, and leave a redirect from the old path. **Deletes** remove the item, and its address answers 404. To send a deleted page's visitors somewhere else, add the redirect to `redirects.json`.
 - **Ordering, default pages, relations, workflow states and redirects** from the layout are applied too.
 
 The site keeps its own base: the layout it was last deployed from, saved in the same transaction as the content. The release step needs nothing else, so it can run on a throwaway machine. A dry run, a failure or a refused deploy leaves both the content and the base as they were.
@@ -145,6 +146,8 @@ A site that already holds its content, and that nobody edits, can skip that full
 
 A deploy refuses to overwrite a page an editor changed on the site since the base was recorded, and lists it under `must_merge` in the report. Bring that change into the layout and deploy again. A field your site's schema cannot hold looks like an edit on every page that has it, because no export can carry it back; name such fields in `ignored_fields`.
 
+A site that is only a copy of its layout (one being tried out before it goes live, say) can have the layout win everywhere on every deploy instead: `run_delta(..., reset=True)`. Pages made on the site are deleted, pages deleted on the site are made again, and every page changed on the site since the last committed deploy is taken back from the layout. Each committed deploy records when it was classified, and a reset counts changes from then. A site with no deploy on record needs `changed_since`, the time to count from. The report lists what a reset undid under `reset`, and the change-set a caller's `review_changeset` sees names the deletions as `site_only`.
+
 ## Self-hosted or managed
 
 Inka is open source under the MIT licence, and you can run it on your own infrastructure. Nothing phones home.
@@ -166,7 +169,7 @@ The token is the editor's CMS session token, so its lifetime is set by the CMS. 
 
 - Keep the editing front end private, as above. The token is only ever sent to it.
 - Don't log query strings on the editing front end, or strip `access_token` from its logs.
-- Send `Referrer-Policy: no-referrer` (or `same-origin`) from the editing front end.
+- Send `Referrer-Policy: same-origin` from the editing front end. It sends no `Referer` to any other site, and the only one it sends goes to the editing front end itself, which already has the URL. Don't use `no-referrer`: under it the browser sends `Origin: null` with a form's plain POST, so a form the editor submits before the page's JavaScript has loaded is refused by a server that checks the origin (Next.js server actions do, as protection against cross-site requests).
 - Serve everything over HTTPS.
 - Keep the CMS token lifetime short, and let editors sign out when they finish.
 
@@ -200,7 +203,7 @@ initBridge({
 
 ```text
 Content-Security-Policy: frame-ancestors https://inka.example.org
-Referrer-Policy: no-referrer
+Referrer-Policy: same-origin
 ```
 
 ## Keep the bridge out of the public build

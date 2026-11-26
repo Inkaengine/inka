@@ -12,8 +12,7 @@
           "type": "p",
           "children": [{ "text": "Regular block before snippet" }]
         }
-      ],
-      "plaintext": "Regular block before snippet"
+      ]
     },
     "snippet-inst-header": {
       "@type": "slate",
@@ -27,8 +26,7 @@
           "type": "h2",
           "children": [{ "text": "Stale Snippet Header" }]
         }
-      ],
-      "plaintext": "Stale Snippet Header"
+      ]
     },
     "snippet-inst-content": {
       "@type": "slate",
@@ -42,8 +40,7 @@
           "type": "p",
           "children": [{ "text": "User snippet content" }]
         }
-      ],
-      "plaintext": "User snippet content"
+      ]
     },
     "regular-block-2": {
       "@type": "slate",
@@ -52,8 +49,7 @@
           "type": "p",
           "children": [{ "text": "Regular block after snippet" }]
         }
-      ],
-      "plaintext": "Regular block after snippet"
+      ]
     }
   },
   "blocks_layout": {

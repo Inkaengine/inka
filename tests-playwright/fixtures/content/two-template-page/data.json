@@ -9,8 +9,7 @@
       "@type": "slate",
       "value": [
         { "type": "p", "children": [{ "text": "Page block above both templates" }] }
-      ],
-      "plaintext": "Page block above both templates"
+      ]
     },
     "i1-header": {
       "@type": "slate",
@@ -19,7 +18,6 @@
       "value": [
         { "type": "h1", "children": [{ "text": "Stale i1 header" }] }
       ],
-      "plaintext": "Stale i1 header",
       "templateId": "resolveuid/test-layout-template-uid",
       "templateInstanceId": "tpl-instance-1",
       "slotId": "header"
@@ -31,10 +29,9 @@
       "value": [
         { "type": "p", "children": [{ "text": "Instance one editable content" }] }
       ],
-      "plaintext": "Instance one editable content",
       "templateId": "resolveuid/test-layout-template-uid",
       "templateInstanceId": "tpl-instance-1",
-      "slotId": "primary"
+      "slotId": "default"
     },
     "i1-footer": {
       "@type": "slate",
@@ -43,7 +40,6 @@
       "value": [
         { "type": "p", "children": [{ "text": "Stale i1 footer" }] }
       ],
-      "plaintext": "Stale i1 footer",
       "templateId": "resolveuid/test-layout-template-uid",
       "templateInstanceId": "tpl-instance-1",
       "slotId": "footer"
@@ -52,8 +48,7 @@
       "@type": "slate",
       "value": [
         { "type": "p", "children": [{ "text": "Page block between the two templates" }] }
-      ],
-      "plaintext": "Page block between the two templates"
+      ]
     },
     "i2-header": {
       "@type": "slate",
@@ -62,7 +57,6 @@
       "value": [
         { "type": "h1", "children": [{ "text": "Stale i2 header" }] }
       ],
-      "plaintext": "Stale i2 header",
       "templateId": "resolveuid/header-footer-layout-uid",
       "templateInstanceId": "tpl-instance-2",
       "slotId": "header"
@@ -74,7 +68,6 @@
       "value": [
         { "type": "p", "children": [{ "text": "Instance two editable content" }] }
       ],
-      "plaintext": "Instance two editable content",
       "templateId": "resolveuid/header-footer-layout-uid",
       "templateInstanceId": "tpl-instance-2",
       "slotId": "default"
@@ -86,7 +79,6 @@
       "value": [
         { "type": "p", "children": [{ "text": "Stale i2 footer" }] }
       ],
-      "plaintext": "Stale i2 footer",
       "templateId": "resolveuid/header-footer-layout-uid",
       "templateInstanceId": "tpl-instance-2",
       "slotId": "footer"
@@ -95,8 +87,7 @@
       "@type": "slate",
       "value": [
         { "type": "p", "children": [{ "text": "Page block below both templates" }] }
-      ],
-      "plaintext": "Page block below both templates"
+      ]
     }
   },
   "blocks_layout": {

@@ -65,7 +65,6 @@ import { readAsDataURL } from 'promise-file-reader';
 import {
   buildIdFieldMap,
   getBlockTypeSchema,
-  getBlockById,
 } from '../../../../../utils/blockPath';
 import {
   searchTextOptions,
@@ -73,6 +72,7 @@ import {
 } from '@volto-hydra/helpers/searchableText.js';
 import { normalizeSlateStylesForSave } from '../../../../../utils/blockSync';
 import { buildBlockPathMap } from '@volto-hydra/helpers/buildBlockPathMap.js';
+import { withoutHiddenBlocks } from '@volto-hydra/helpers/mergeTemplates.js';
 import { createLog } from '../../../../../utils/log';
 const log = createLog('FORM');
 import { updateContent } from '@plone/volto/actions/content/content';
@@ -89,8 +89,10 @@ import withSaveAsDraft from '@plone/volto/helpers/Utils/withSaveAsDraft';
 import SlotRenderer from '@plone/volto/components/theme/SlotRenderer/SlotRenderer';
 import Iframe from '../../../../../components/Iframe/View';
 import { ReadOnlyField } from '../../../../../components/Sidebar/ReadOnlyForm';
-import { validateTemplatePlaceholders } from '@volto-hydra/helpers/formDataValidation.js';
 import { validateBlocksAgainstSchemas } from '../../../../../utils/validateBlocks';
+import { withoutUndeclaredFields } from '../../../../../utils/withoutUndeclaredFields';
+import { loadContentTypeSchemas } from '../../../../../utils/contentTypeSchemas';
+import { reportBlockErrors } from '../../../../../utils/reportBlockErrors';
 import './styles.css';
 
 /**
@@ -346,11 +348,20 @@ class Form extends Component {
     // The schema usually arrives AFTER mount, and the offer to restore a draft
     // needs it (it decides which fields the draft covers). Without this, coming
     // back to a page you left mid-edit silently keeps the server's copy.
+    // In the editor the draft is checked against the page as loaded
+    // (onEditorLoaded), once both are here.
     if (!prevProps.schema && this.props.schema) {
-      this.props.checkSavedDraft(
-        this.state.formData,
-        this.updateFormDataWithSaved,
-      );
+      if (!this.props.isEditForm) {
+        this.props.checkSavedDraft(
+          this.state.formData,
+          this.updateFormDataWithSaved,
+        );
+      } else if (this.draftBaseline) {
+        this.props.checkSavedDraft(
+          this.draftBaseline,
+          this.updateFormDataWithSaved,
+        );
+      }
     }
 
     if (!this.props.isFormSelected && prevProps.isFormSelected) {
@@ -384,20 +395,6 @@ class Form extends Component {
     ) {
       this.setState({
         formData: this.props.globalData,
-      });
-    }
-
-    // Hydra: Reset formData when navigating to a different page
-    if (this.props?.location?.pathname !== prevProps?.location?.pathname) {
-      this.setState({ formData: this.props.formData }, () => {
-        // Arriving at a different page is the other moment a draft can exist
-        // for it. The mount check only fires when the Form is created; hydra
-        // navigates between pages inside the editor without remounting it, so
-        // without this you are only ever offered a draft on a cold load.
-        this.props.checkSavedDraft(
-          this.state.formData,
-          this.updateFormDataWithSaved,
-        );
       });
     }
 
@@ -508,8 +505,9 @@ class Form extends Component {
         this.setState({ translationSource: source });
     });
 
-    // Offer back anything autosaved from a previous visit to this page.
-    if (this.props.schema) {
+    // Offer back anything autosaved from a previous visit to this page. (The
+    // editor does so once the page has loaded: onEditorLoaded.)
+    if (this.props.schema && !this.props.isEditForm) {
       this.props.checkSavedDraft(
         this.state.formData,
         this.updateFormDataWithSaved,
@@ -530,6 +528,32 @@ class Form extends Component {
       }
     };
     document.addEventListener('keydown', this.handleSaveShortcut);
+
+    // Redo is Ctrl+Shift+Z (Cmd+Shift+Z) on the canvas, where hydra.js asks
+    // for it; Volto's undo manager here knows only Ctrl+Y. Undo moves the
+    // focus while the block re-renders, so a redo pressed straight after it
+    // often lands here, in the sidebar or around the canvas, and did nothing.
+    // Handed on as the undo manager's own redo key. Capture phase, so it never
+    // sees a Shift+Z: a lower-case 'z' with Shift would be taken as UNDO.
+    this.handleRedoShortcut = (event) => {
+      if (
+        (event.ctrlKey || event.metaKey) &&
+        event.shiftKey &&
+        event.key?.toLowerCase() === 'z'
+      ) {
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        document.dispatchEvent(
+          new KeyboardEvent('keydown', {
+            key: 'y',
+            ctrlKey: true,
+            bubbles: true,
+            cancelable: true,
+          }),
+        );
+      }
+    };
+    document.addEventListener('keydown', this.handleRedoShortcut, true);
   }
 
   /**
@@ -544,6 +568,9 @@ class Form extends Component {
     if (this.handleSaveShortcut) {
       document.removeEventListener('keydown', this.handleSaveShortcut);
     }
+    if (this.handleRedoShortcut) {
+      document.removeEventListener('keydown', this.handleRedoShortcut, true);
+    }
   }
 
   /**
@@ -555,32 +582,36 @@ class Form extends Component {
    * @returns {undefined}
    */
   onChangeField(id, value) {
-    // Autosave (debounced inside the HOC). Blocks are drafted too — see the
-    // withSaveAsDraft shadow — so canvas work survives leaving the page.
-    this.props.onSaveDraft(this.state.formData);
-    this.setState((prevState) => {
-      const { errors, formData } = prevState;
-      const newFormData = {
-        ...formData,
-        // We need to catch also when the value equals false this fixes #888
-        [id]: value || (value !== undefined && isBoolean(value)) ? value : null,
-      };
-      delete errors[id];
-      if (this.props.global) {
-        this.props.setFormData(newFormData);
-      }
-      return {
-        errors,
-        formData: newFormData,
-        // Changing the form data re-renders the select widget which causes the
-        // focus to get lost. To circumvent this, we set the focus back to
-        // the input.
-        // This could fix other widgets too but currently targeted
-        // against the select widget only.
-        // Ensure field to be in focus after the change
-        inFocus: { [id]: true },
-      };
-    });
+    // Autosave (debounced inside the HOC) what the form holds AFTER this
+    // change: drafting the state before it left the last edit out of the
+    // draft.
+    this.setState(
+      (prevState) => {
+        const { errors, formData } = prevState;
+        const newFormData = {
+          ...formData,
+          // We need to catch also when the value equals false this fixes #888
+          [id]:
+            value || (value !== undefined && isBoolean(value)) ? value : null,
+        };
+        delete errors[id];
+        if (this.props.global) {
+          this.props.setFormData(newFormData);
+        }
+        return {
+          errors,
+          formData: newFormData,
+          // Changing the form data re-renders the select widget which causes the
+          // focus to get lost. To circumvent this, we set the focus back to
+          // the input.
+          // This could fix other widgets too but currently targeted
+          // against the select widget only.
+          // Ensure field to be in focus after the change
+          inFocus: { [id]: true },
+        };
+      },
+      () => this.saveDraft(this.state.formData),
+    );
   }
 
   /**
@@ -659,7 +690,46 @@ class Form extends Component {
     if (event) {
       event.preventDefault();
     }
+    // Nothing is drafted while saving: the save's own flush would set a draft
+    // write going (Volto's, 300ms on) that lands after the save, newer than
+    // the page, and is offered back as unsaved work.
+    this.saving = true;
+    let saved = false;
+    try {
+      saved = await this.save();
+    } finally {
+      this.saving = false;
+    }
+    if (saved) {
+      // Saved, so the draft goes now. onCancelDraft clears it 500ms later,
+      // which a tab closed straight after the save never sees.
+      this.draftBaseline = this.state.formData;
+      localStorage.removeItem(this.draftKey());
+    } else {
+      // Not saved (refused, or an upload failed): still the author's work.
+      this.saveDraft(this.state.formData);
+    }
+  }
 
+  /**
+   * Where Volto keeps this form's draft: withSaveAsDraft's getFormId, which it
+   * does not export. Edit names the page (`pathname`); Add does not, so the
+   * route's path stands in, as it does there (useLocation: in the browser,
+   * where saving happens, the window's path).
+   */
+  draftKey() {
+    const { type, isEditForm, schema } = this.props;
+    const pathname = this.props.pathname || window.location.pathname;
+    if (isEditForm) return ['form', type, pathname].join('-');
+    if (type) return ['form', pathname, type].join('-');
+    if (schema?.properties?.comment) return ['form', pathname, 'comment'].join('-');
+    return ['form', pathname].join('-');
+  }
+
+  /**
+   * Validate and save. Resolves true once the save has been sent.
+   */
+  async save() {
     // Flush the iframe's pending inline edits FIRST: text typed on the canvas
     // reaches formData after a debounce, so a required field typed and saved
     // straight away would otherwise be validated as empty and the save refused.
@@ -678,14 +748,11 @@ class Form extends Component {
         })
       : {};
 
-    // Validate template slot contiguity
-    // The same map the merge is given below — the slot rules need it to see
-    // object_list regions at all.
-    const templateValidation = validateTemplatePlaceholders(
-      formData,
-      buildIdFieldMap(config.blocks.blocksConfig, this.props.intl),
-    );
-    // …and every block against its own schema. Core's Form does this and this
+    // Template slots are not checked here: they are checked when a template is
+    // locked, and a page can't be saved with an existing template unlocked. A
+    // new template, saved with the page, is checked as it is saved.
+    //
+    // Every block against its own schema. Core's Form does this and this
     // shadow had lost it, so a block's `required`, `maxLength`, `pattern` — and
     // a fieldRules `error` — were never enforced on save. Nested, because
     // hydra's blocks nest and core's top-level walk would miss everything
@@ -693,8 +760,9 @@ class Form extends Component {
     // Validate what will actually be PERSISTED. Empty slot blocks exist for the
     // canvas and are stripped on the way out (getOnlyFormModifiedValues), so a
     // block that will not be saved must not be able to refuse the save.
+    // Nor can content a layout switch hid, which the save drops.
     const persistedFormData = stripEmptyBlocks(
-      formData,
+      withoutHiddenBlocks(formData),
       config.blocks.blocksConfig,
       this.props.intl,
     );
@@ -702,10 +770,11 @@ class Form extends Component {
       blocksConfig: config.blocks.blocksConfig,
       intl: this.props.intl,
       formatMessage: this.props.intl.formatMessage,
+      // What a listing's mapped site columns hold (cached after the first save).
+      contentTypes: await loadContentTypeSchemas(),
     });
     const blocksErrors = {
       ...schemaValidation.blocksErrors,
-      ...templateValidation.blocksErrors,
     };
 
     if (keys(errors).length > 0) {
@@ -738,120 +807,43 @@ class Form extends Component {
     } else if (keys(blocksErrors).length > 0) {
       // Block errors — say that the save is blocked, name every block that
       // blocks it, and make each one a link that opens it.
-      //
-      // The toast used to title itself after the first failing FIELD, which
-      // for an image block's `url` reads "Image" — a word that names neither
-      // the problem nor the block, and said twice over when two blocks failed
-      // it told an author nothing she could act on. It also reported only the
-      // first block, so a second needed another save to discover.
-      //
-      // The link matters more than the wording: the block at fault is often
-      // one the author cannot find — inside a template container, or scrolled
-      // out of view — so "where is it" is the actual question to answer.
-      const blockPathMap = schemaValidation.blockPathMap || {};
-
-      const offenders = Object.keys(blocksErrors).map((blockId) => {
-        const blockData = getBlockById(
-          persistedFormData,
-          blockPathMap,
-          blockId,
-        );
-        const blockType = blockData?.['@type'];
-        // A template error is { title, message }; a schema error is Volto's
-        // list of messages for one field, named by the field's title since a
-        // region is not drawn as a widget.
-        const reasons = Object.entries(blocksErrors[blockId]).flatMap(
-          ([field, err]) => {
-            if (Array.isArray(err)) {
-              const label =
-                schemaValidation.fieldTitles?.[blockId]?.[field] || field;
-              return [`${label}: ${err.join(', ')}`];
-            }
-            return [err?.message || err?.title].filter(Boolean);
-          },
-        );
-        return {
-          blockId,
-          name: config.blocks.blocksConfig?.[blockType]?.title || blockType,
-          reasons,
-        };
-      });
-
       this.setState({
         errors: { blocks: blocksErrors },
       });
-
-      const goToBlock = (blockId) => {
-        this.props.setUIState({
-          selected: blockId,
-          multiSelected: [],
-          hovered: null,
-        });
-        this.props.setSidebarTab(1);
-      };
-
-      toast.error(
-        <Toast
-          error
-          title="Can't save yet"
-          content={
-            <div className="block-save-errors">
-              {offenders.map(({ blockId, name, reasons }) => (
-                <div key={blockId} className="block-save-error">
-                  <button
-                    type="button"
-                    className="block-save-error-link"
-                    onClick={() => {
-                      goToBlock(blockId);
-                      toast.dismiss();
-                    }}
-                  >
-                    {name ? `Open the ${name} block` : 'Open the block'}
-                  </button>
-                  {reasons.length > 0 && (
-                    <div className="block-save-error-why">
-                      {reasons.join('; ')}
-                    </div>
-                  )}
-                </div>
-              ))}
-            </div>
-          }
-        />,
-      );
-
-      // Still jump to the first one, so the fix stays one click away even if
-      // the toast is dismissed before it is read.
-      goToBlock(offenders[0].blockId);
+      reportBlockErrors({
+        blocksErrors,
+        formData: persistedFormData,
+        blockPathMap: schemaValidation.blockPathMap || {},
+        blocksConfig: config.blocks.blocksConfig,
+        fieldTitles: schemaValidation.fieldTitles,
+        goToBlock: (blockId) => {
+          this.props.setUIState({
+            selected: blockId,
+            multiSelected: [],
+            hovered: null,
+          });
+          this.props.setSidebarTab(1);
+        },
+      });
     } else {
-      // Save templates first if the Iframe has set up the save function. It returns the
-      // page data with finalized template ids ONLY when a new template's placeholder id
-      // was rewritten across the page's block references — save the page with THAT so it
-      // doesn't reference a template id that was never created. When it returns nothing,
-      // save from our own (post-flush) state so just-flushed inline edits aren't lost.
-      let finalizedFormData = null;
+      // The page save is refused while a template is unlocked: a template is
+      // saved by locking it. The Iframe raises "lock your templates first" and
+      // returns { blocked }; otherwise it has flushed the iframe's pending edits.
       if (this.props.isEditForm && this.saveTemplatesRef.current) {
-        const currentPath = this.props.pathname;
         const result = await this.saveTemplatesRef.current(
           formData,
-          currentPath,
+          this.props.pathname,
         );
-        // v2: the page save is gated while a template is unlocked — the Iframe
-        // raised the "lock your templates first" modal and returns this sentinel.
-        // Abort the page save.
         if (result?.blocked) return;
-        finalizedFormData = result;
       }
 
       // Then save the page. Source the PATCH from this.state.formData READ HERE,
       // after saveTemplatesRef has flushed the iframe's pending inline edits, so
       // an edit typed and saved before the 300ms debounce still lands (a pre-flush
-      // snapshot taken at the top of onSubmit would drop it). finalizedFormData is
-      // only returned when a brand-new template's id was rewritten across the page
-      // — that narrow path keeps its own (id-rewritten) data, as upstream does.
-      // Deep-link anchors already ride in formData (merged in as they're
-      // harvested), so there's nothing extra to fold in at save.
-      let pageFormData = finalizedFormData || this.state.formData;
+      // snapshot taken at the top of onSubmit would drop it). Deep-link anchors
+      // already ride in formData (merged in as they're harvested), so there's
+      // nothing extra to fold in at save.
+      let pageFormData = this.state.formData;
       // A translator who rewrites a block has caught it up with the original,
       // so the copy records the source it is now level with and the "the
       // original changed" marker clears. Only the blocks whose WORDS changed:
@@ -868,6 +860,13 @@ class Form extends Component {
         toast.error(<Toast error title="Can't save yet" content={error.message} />);
         return;
       }
+      // Each block holds what its schema declares. A conversion keeps a block's
+      // other fields while editing, so switching the type back restores them;
+      // they stop here, as the content check requires of stored content.
+      pageFormData = withoutUndeclaredFields(pageFormData, {
+        blocksConfig: config.blocks.blocksConfig,
+        intl: this.props.intl,
+      });
       // What a region refuses never reaches the server, however it got into the
       // form: the sidebar's slate editor writes to it with no rules of its own.
       pageFormData = normalizeSlateStylesForSave(
@@ -886,6 +885,10 @@ class Form extends Component {
       } else {
         this.props.onSubmit(pageFormData);
       }
+      // Saved: the draft was this work, and must not be offered back on the
+      // next edit (or to the next page added here) as if it were unsaved.
+      // Volto's own onSubmit does the same.
+      this.props.onCancelDraft();
       if (this.props.resetAfterSubmit) {
         this.setState({
           formData: this.props.formData,
@@ -894,7 +897,9 @@ class Form extends Component {
           this.props.setFormData(this.props.formData);
         }
       }
+      return true;
     }
+    return false;
   }
 
   /**
@@ -980,9 +985,11 @@ class Form extends Component {
     // (a paste/programmatic path may have created that malformed state) before persisting.
     // `sourceFormData` defaults to state, but the save flow passes the template-id-
     // finalized page data so those rewritten references reach the PATCH.
+    // Content a layout switch hid (a slot the layout lacks) is kept only while
+    // the page is edited, as a converted block's unmapped fields are.
     const formData = stripFixedInsideSlots(
       stripEmptyBlocks(
-        sourceFormData,
+        withoutHiddenBlocks(sourceFormData),
         config.blocks.blocksConfig,
         this.props.intl,
       ),
@@ -1021,12 +1028,39 @@ class Form extends Component {
     });
     // Autosave the canvas too. This is THE path that matters in hydra: almost
     // everything an author does happens in the iframe and arrives here, not
-    // through onChangeField, so a draft wired only to the sidebar would save a
-    // title and lose every block.
-    this.props.onSaveDraft(newFormData);
+    // through onChangeField.
+    this.saveDraft(newFormData);
     if (this.props.global) {
       this.props.setFormData(newFormData);
     }
+  };
+
+  /**
+   * The page as the editor loaded it (Iframe's onEditorLoaded): its blocks'
+   * defaults filled in, templates merged, empty regions seeded. Loading
+   * changes the form, as Volto's own form never does; a draft is what the
+   * AUTHOR changed, so it is measured from here, not from the server's copy.
+   */
+  onEditorLoaded = (loadedFormData) => {
+    // Merged as onIframeChangeFormData merged the same data a moment ago.
+    this.draftBaseline = { ...this.state.formData, ...loadedFormData };
+    this.props.checkSavedDraft(
+      this.draftBaseline,
+      this.updateFormDataWithSaved,
+    );
+  };
+
+  /**
+   * Autosave the form, if it holds the author's work. In the editor, nothing
+   * is until the page has loaded, and the page as loaded is not.
+   */
+  saveDraft = (formData) => {
+    if (this.saving) return;
+    if (this.props.isEditForm) {
+      if (!this.draftBaseline) return;
+      if (isEqual(formData, this.draftBaseline)) return;
+    }
+    this.props.onSaveDraft(formData);
   };
 
   removeBlocksLayoutFields = (schema) => {
@@ -1182,6 +1216,7 @@ class Form extends Component {
             token={this.props.token}
             saveTemplatesRef={this.saveTemplatesRef}
             flushEditsRef={this.flushEditsRef}
+            onEditorLoaded={this.onEditorLoaded}
           />
           {/* BlocksForm removed - Hydra uses Iframe for block editing */}
           {this.state.isClient &&

@@ -1,9 +1,11 @@
 // app/[...slug]/page.jsx
 'use client'
 import { useState, useEffect } from 'react'
+import { useParams } from 'next/navigation'
 import { initBridge } from '@hydra-js/hydra.js'
 
-export default function Page({ params }) {
+export default function Page() {
+  const params = useParams()
   const [page, setPage] = useState(null)
   const [editing, setEditing] = useState(false)
 
@@ -18,7 +20,7 @@ export default function Page({ params }) {
             image: { widget: 'image' },
             title: { type: 'string' },
             description: { type: 'string' },
-            link: { widget: 'url' },
+            link: { widget: 'object_browser', mode: 'link', allowExternals: true },
           } } },
         },
         // Re-render on every edit.
@@ -43,7 +45,7 @@ export default function Page({ params }) {
       )
     return (
       <div key={id} data-block-uid={editing ? id : undefined}>
-        <a href={block.link} data-edit-link={editing ? 'link' : undefined}>
+        <a href={block.link?.[0]?.['@id']} data-edit-link={editing ? 'link' : undefined}>
           <img src={block.image} data-edit-media={editing ? 'image' : undefined} />
           <h3 data-edit-text={editing ? 'title' : undefined}>{block.title}</h3>
           <p data-edit-text={editing ? 'description' : undefined}>{block.description}</p>

@@ -25,8 +25,7 @@
             }
           ]
         }
-      ],
-      "plaintext": "This is another test page"
+      ]
     },
     "footer-user-content": {
       "@type": "slate",
@@ -39,8 +38,7 @@
             }
           ]
         }
-      ],
-      "plaintext": "Footer user content - no layout markers"
+      ]
     }
   },
   "blocks_layout": {

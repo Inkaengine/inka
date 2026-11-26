@@ -17,7 +17,7 @@
             image: { widget: 'image' },
             title: { type: 'string' },
             description: { type: 'string' },
-            link: { widget: 'url' },
+            link: { widget: 'object_browser', mode: 'link', allowExternals: true },
           } } } },
           // Server-render mode: the bridge POSTs each smallest-changed-unit to
           // renderEndpoint and swaps the returned HTML into renderContainer.

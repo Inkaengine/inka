@@ -82,7 +82,9 @@ export function isValidValue(value, fieldDef) {
   // For objects with additionalProperties.enum - validate each property value
   if (fieldDef.additionalProperties?.enum && typeof value === 'object' && value !== null) {
     const validValues = new Set(fieldDef.additionalProperties.enum);
-    const invalidValues = Object.entries(value).filter(([k, v]) => v && !validValues.has(v));
+    // A field mapping's value names its field bare or as `{ field, type }`.
+    const named = (v) => (v && typeof v === 'object' ? v.field : v);
+    const invalidValues = Object.entries(value).filter(([k, v]) => v && !validValues.has(named(v)));
     if (invalidValues.length > 0) {
       // eslint-disable-next-line no-console
       console.log('[isValidValue] Invalid values found:', invalidValues, 'validValues:', [...validValues]);

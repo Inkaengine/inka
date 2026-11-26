@@ -1,6 +1,7 @@
 /**
  * An image field's metadata goes beside it, from whichever widget set it.
  */
+import { describe, it, expect, afterEach } from 'vitest';
 import { withImageMetadata } from './imageMetadata';
 import { holdImage, releaseImages } from './pendingImages';
 

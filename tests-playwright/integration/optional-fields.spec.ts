@@ -477,3 +477,70 @@ test.describe('Optional fields — reveal toggle (#296)', () => {
     ).toHaveCount(0);
   });
 });
+
+/**
+ * Reveal is opt-in (inka#765): the frontend marks a field `optionalOnCanvas`
+ * when it draws it on the page only once it has a value. Only marked fields
+ * are revealed, so the eye shows only where pressing it reveals something.
+ * It sits last on the toolbar, being the least important control, and the
+ * block's ⋯ menu offers the same.
+ */
+test.describe('Optional fields — reveal is opt-in (#765)', () => {
+  test('a block whose empty fields are all unmarked offers no reveal', async ({ page }) => {
+    const helper = new AdminUIHelper(page);
+    await helper.login();
+    await helper.navigateToEdit('/optional-fields-page');
+
+    // An image with its picture, and no alt text, caption or credit: those are
+    // edited in the sidebar, so there is nothing to reveal on the page.
+    await helper.clickBlockInIframe('image-plain');
+    await helper.waitForBlockSelectedInAdmin('image-plain');
+    await expect(page.locator('.quanta-toolbar .volto-hydra-menu-trigger')).toBeVisible();
+    await expect(page.locator('.optional-fields-toggle')).toHaveCount(0);
+
+    await page.locator('.quanta-toolbar .volto-hydra-menu-trigger').click();
+    await expect(page.locator('.volto-hydra-dropdown-menu [data-action="copy-block"]')).toBeVisible();
+    await expect(page.locator('.volto-hydra-dropdown-menu .reveal-fields-item')).toHaveCount(0);
+  });
+
+  test('the eye counts only the marked fields, and is last before the step-up and ⋯ buttons', async ({ page }) => {
+    const helper = new AdminUIHelper(page);
+    await helper.login();
+    await helper.navigateToEdit('/optional-fields-page');
+
+    await helper.clickBlockInIframe('hero-empty');
+    const toggle = page.locator('.optional-fields-toggle');
+    await expect(toggle).toHaveAttribute('aria-label', `Show ${FIELDS.length} empty fields`);
+
+    // Last of the block's controls: only step-up and ⋯ come after it.
+    const after = await toggle.evaluate((el) => {
+      const toolbar = el.closest('.quanta-toolbar')!;
+      const x = el.getBoundingClientRect().right;
+      return Array.from(toolbar.querySelectorAll('button'))
+        .filter((b) => b.offsetParent && b.getBoundingClientRect().left >= x)
+        .map((b) => b.className);
+    });
+    expect(after.every((c) => /step-up-btn|volto-hydra-menu-trigger/.test(c)), after.join(' | ')).toBe(true);
+  });
+
+  test('the ⋯ menu shows and hides empty fields, as the eye does', async ({ page }) => {
+    const helper = new AdminUIHelper(page);
+    await helper.login();
+    await helper.navigateToEdit('/optional-fields-page');
+    const iframe = helper.getIframe();
+
+    await helper.clickBlockInIframe('hero-empty');
+    await page.locator('.quanta-toolbar .volto-hydra-menu-trigger').click();
+    const item = page.locator('.volto-hydra-dropdown-menu .reveal-fields-item');
+    await expect(item).toHaveText(`Show ${FIELDS.length} empty fields`);
+    await item.click();
+
+    await expect(iframe.locator('[data-block-uid="hero-empty"] [data-edit-text="heading"]')).toHaveCount(1);
+    await expect(page.locator('.optional-fields-toggle')).toHaveAttribute('aria-pressed', 'true');
+
+    await page.locator('.quanta-toolbar .volto-hydra-menu-trigger').click();
+    await expect(item).toHaveText('Hide empty fields');
+    await item.click();
+    await expect(iframe.locator('[data-block-uid="hero-empty"] [data-edit-text="heading"]')).toHaveCount(0);
+  });
+});

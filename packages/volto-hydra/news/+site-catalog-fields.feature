@@ -1,0 +1,1 @@
+A `@default` mapping may read a site's own catalog fields: a source a mapping widget declares in its `sourceFields` (a file's `mime_type`, a content `Type`) is accepted beside the fields every Plone site has, and converts as the type it is declared. The load check from the previous release took only a fixed list, and refused a site's own columns that links already fetch.

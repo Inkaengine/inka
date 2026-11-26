@@ -44,8 +44,14 @@
           "@type": "listing",
           "variation": "navItem",
           "fieldMapping": {
-            "@id": { "field": "href", "type": "link" },
-            "title": { "field": "label" }
+            "getURL": {
+              "field": "href",
+              "type": "link"
+            },
+            "title": {
+              "field": "label",
+              "type": "string"
+            }
           },
           "querystring": {
             "query": [
@@ -77,15 +83,21 @@
           "@type": "listing",
           "variation": "navItem",
           "fieldMapping": {
-            "@id": { "field": "href", "type": "link" },
-            "title": { "field": "label" }
+            "getURL": {
+              "field": "href",
+              "type": "link"
+            },
+            "title": {
+              "field": "label",
+              "type": "string"
+            }
           },
           "querystring": {
             "query": [
               {
                 "i": "path",
                 "o": "plone.app.querystring.operation.string.absolutePath",
-                "v": "/_test_data/context-navigation-forced-folder"
+                "v": "/_test_data/context-navigation-forced-folder/*"
               },
               {
                 "i": "exclude_from_nav",
@@ -112,8 +124,14 @@
           "@type": "listing",
           "variation": "navItem",
           "fieldMapping": {
-            "@id": { "field": "href", "type": "link" },
-            "title": { "field": "label" }
+            "getURL": {
+              "field": "href",
+              "type": "link"
+            },
+            "title": {
+              "field": "label",
+              "type": "string"
+            }
           },
           "querystring": {
             "query": [

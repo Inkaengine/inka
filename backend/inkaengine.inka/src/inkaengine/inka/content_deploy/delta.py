@@ -34,9 +34,13 @@ from .classify import layout_redirects
 from .classify import load_exportimport_tree
 from .classify import NO_RULES
 from .classify import refresh_from_disk
+from .classify import SITE_ROOT
 from collections.abc import Callable
+from DateTime import DateTime
 from pathlib import Path
 from types import MappingProxyType
+from plone.dexterity.interfaces import IDexterityFTI
+from plone.dexterity.utils import iterSchemataForType
 from plone.exportimport import settings as ei_settings
 from plone.exportimport import types as ei_types
 from plone.exportimport.exporters.content import ContentExporter
@@ -45,17 +49,48 @@ from plone.exportimport.utils import request_provides
 from plone.exportimport.utils.content import blocks as pei_blocks
 from plone.restapi.interfaces import IPloneRestapiLayer
 from typing import Any
+from zope.annotation.interfaces import IAnnotations
 from zope.interface import directlyProvidedBy
 from zope.interface import directlyProvides
+from zope.interface.interfaces import ComponentLookupError
+from zope.schema import getFieldsInOrder
 
 import json
 import logging
 import shutil
 import tempfile
 import time
+import transaction
 
 
 logger = logging.getLogger(__name__)
+
+# When the last committed apply was classified. A reset takes a page changed on
+# the site after it for the site's own change, and takes it back.
+APPLIED_AT_KEY = "inkaengine.inka.content_deploy.applied_at"
+
+
+def last_applied(site) -> DateTime | None:
+    """When the last committed apply was classified, or None if none was."""
+    stamp = IAnnotations(site).get(APPLIED_AT_KEY)
+    return DateTime(stamp) if stamp else None
+
+
+def _changed_on_site_since(site, since: DateTime) -> set[str]:
+    """The content paths modified since `since`, spelled as the layout does."""
+    prefix = "/".join(site.getPhysicalPath())
+    brains = site.portal_catalog.unrestrictedSearchResults(
+        path=prefix, modified={"query": since, "range": "min"}
+    )
+    return {brain.getPath()[len(prefix) :].strip("/") for brain in brains} - {""}
+
+
+def _topmost(rels: set[str]) -> list[str]:
+    """`rels` without any that sit inside another of them: deleting a folder
+    takes what it holds."""
+    return sorted(
+        rel for rel in rels if not any(rel.startswith(other + "/") for other in rels)
+    )
 
 
 class DeltaRefused(Exception):
@@ -123,6 +158,33 @@ def serialize_live_candidates(
         logger.info("content-delta: serialized %s (%.1fs)", rel, time.monotonic() - t)
     shutil.rmtree(blob_scratch, ignore_errors=True)
     return live
+
+
+def field_defaults_of(site) -> dict[str, dict[str, Any]]:
+    """Each content type's fields and their schema defaults, from the site's
+    types and their behaviors (classify.CompareRules): a field at its default
+    is unset. Plain values only (true/false, numbers, text).
+
+    A default a factory makes is read with the site as the context, as the
+    site would give it to a new item: `exclude_from_nav`'s is one. A factory
+    that cannot make it without the item itself (it cannot adapt the site) has
+    no default for the type, so that field is left out and compared."""
+    defaults: dict[str, dict[str, Any]] = {}
+    for fti in site.portal_types.listTypeInfo():
+        if not IDexterityFTI.providedBy(fti):
+            continue
+        of_type: dict[str, Any] = {}
+        for schema in iterSchemataForType(fti.getId()):
+            for name, schema_field in getFieldsInOrder(schema):
+                try:
+                    value = schema_field.bind(site).default
+                except (TypeError, ComponentLookupError):
+                    # "Could not adapt": a default that needs the item.
+                    continue
+                if isinstance(value, (bool, int, float, str)):
+                    of_type[name] = value
+        defaults[fti.getId()] = of_type
+    return defaults
 
 
 def default_views_of(site) -> dict[str, str]:
@@ -226,6 +288,8 @@ def run_delta(
     debug: bool = False,
     review_changeset: Callable[[dict[str, Any]], dict[str, Any]] | None = None,
     ignored_fields: frozenset[str] = frozenset(),
+    reset: bool = False,
+    changed_since: DateTime | None = None,
 ) -> dict[str, Any]:
     """Classify layout_prev -> layout against `site`, then apply (a dry run,
     aborted, unless `commit`). Returns the report; report["apply"]["committed"]
@@ -251,6 +315,16 @@ def run_delta(
 
     ignored_fields: fields this site cannot round-trip, left out of every
     compare (classify.cleaned_for_compare).
+
+    reset: the layout wins everywhere, for a site that is only a copy of its
+    layout. What the site holds that the layout and the base lack is deleted
+    (the topmost of it: a folder takes what it holds); what the layout and the
+    base have that the site lost is created again; and every page modified on
+    the site since the last committed apply (`last_applied`), or since
+    `changed_since` when given, is taken from the layout wherever it differs,
+    as `refresh` does. Reported under report["reset"]; the change-set the
+    caller reviews names the deletions as "site_only". Refused when there is
+    no last apply on record and no `changed_since`.
     """
     if not layout.exists():
         raise DeltaRefused(f"no {layout} — write the layout first")
@@ -298,9 +372,21 @@ def run_delta(
     logger.info("content-delta: site settings %s", early_settings["site_settings"])
     t1 = time.monotonic()
     refresh_rels = [path.strip("/") for path in refresh]
+    if reset:
+        since = changed_since or last_applied(site)
+        if since is None:
+            raise DeltaRefused(
+                "reset: there is no record of when this site was last applied, so "
+                "an editor's change can't be told from an apply's. Pass "
+                "changed_since: the time of the last apply, or earlier."
+            )
+        live_rels = live_content_rels(site)
+        changed = sorted(_changed_on_site_since(site, since) & set(disk))
+        refresh_rels += [rel for rel in changed if rel not in refresh_rels]
     rules = CompareRules(
         ignored_fields=ignored_fields,
         default_views=MappingProxyType(default_views_of(site)),
+        field_defaults=MappingProxyType(field_defaults_of(site)),
     )
     live = serialize_live_candidates(
         site, request, base, disk, extra=refresh_rels, rules=rules
@@ -314,8 +400,28 @@ def run_delta(
         refresh_from_disk(plan, refresh_rels, disk, live, rules)
     except ValueError as exc:
         raise DeltaRefused(str(exc)) from exc
+    if reset:
+        site_only = _topmost(live_rels - set(disk) - set(base))
+        plan.deletes += [rel for rel in site_only if rel not in plan.deletes]
+        arriving = {*plan.creates, *plan.updates, *(m.dst for m in plan.moves)}
+        missing = sorted(
+            rel
+            for rel in set(disk) - live_rels - {SITE_ROOT} - arriving
+            if rel in base
+        )
+        for rel in missing:
+            for bucket in (plan.noops, plan.leaves, plan.states):
+                if rel in bucket:
+                    bucket.remove(rel)
+            plan.creates.append(rel)
+        report["reset"] = {
+            "since": since.ISO8601(),
+            "site_only": site_only,
+            "changed_on_site": [rel for rel in changed if rel in plan.updates],
+            "missing": missing,
+        }
     # The layout's own redirects: classify only makes redirects for the moves
-    # and deletes it finds. A base built from live has no redirects.json, and
+    # it finds. A base built from live has no redirects.json, and
     # then every one is new; apply_redirects keeps any live already has.
     base_redirects_file = layout_prev / "redirects.json"
     plan.redirects += layout_redirects(
@@ -326,10 +432,11 @@ def run_delta(
         "/".join(site.getPhysicalPath()),
     )
     logger.info(
-        "content-delta: classified creates=%d updates=%d deletes=%d moves=%d "
-        "warnings=%d",
+        "content-delta: classified creates=%d updates=%d states=%d deletes=%d "
+        "moves=%d warnings=%d",
         len(plan.creates),
         len(plan.updates),
+        len(plan.states),
         len(plan.deletes),
         len(plan.moves),
         len(plan.warnings),
@@ -337,7 +444,10 @@ def run_delta(
     # In-process there is no classify→apply gap: live was serialized on THIS
     # connection, so its storage's last transaction IS the baseline.
     plan.base_tid = site._p_jar.db().storage.lastTransaction().hex()
+    classified_at = DateTime()
     changeset = plan.to_changeset()
+    if reset:
+        changeset["site_only"] = report["reset"]["site_only"]
 
     report["plan"] = {k: v for k, v in changeset.items() if k != "warnings"}
     report["clobber_warnings"] = changeset["warnings"]
@@ -364,4 +474,7 @@ def run_delta(
         ignore_clobber_warnings=ignore_clobber_warnings,
     )
     logger.info("content-delta: applied (%.1fs)", time.monotonic() - t2)
+    if report["apply"].get("committed"):
+        IAnnotations(site)[APPLIED_AT_KEY] = classified_at.ISO8601()
+        transaction.commit()
     return report

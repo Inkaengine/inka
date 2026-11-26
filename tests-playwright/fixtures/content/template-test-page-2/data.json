@@ -12,8 +12,7 @@
           "type": "p",
           "children": [{ "text": "Page 2 standalone block" }]
         }
-      ],
-      "plaintext": "Page 2 standalone block"
+      ]
     },
     "page2-template-header": {
       "@type": "slate",
@@ -25,7 +24,6 @@
           "children": [{ "text": "Stale Header Page 2 - Should Be Replaced By Merge" }]
         }
       ],
-      "plaintext": "Stale Header Page 2 - Should Be Replaced By Merge",
       "templateId": "resolveuid/test-layout-template-uid",
       "templateInstanceId": "tpl-instance-2",
       "slotId": "header"
@@ -40,10 +38,9 @@
           "children": [{ "text": "Page 2 user content in placeholder" }]
         }
       ],
-      "plaintext": "Page 2 user content in placeholder",
       "templateId": "resolveuid/test-layout-template-uid",
       "templateInstanceId": "tpl-instance-2",
-      "slotId": "primary"
+      "slotId": "default"
     },
     "page2-template-footer": {
       "@type": "slate",
@@ -55,7 +52,6 @@
           "children": [{ "text": "Stale Footer Page 2 - Should Be Replaced By Merge" }]
         }
       ],
-      "plaintext": "Stale Footer Page 2 - Should Be Replaced By Merge",
       "templateId": "resolveuid/test-layout-template-uid",
       "templateInstanceId": "tpl-instance-2",
       "slotId": "footer"

@@ -20,6 +20,7 @@ const spec = (id, slot, text, { fixed = false, readOnly = false } = {}) => ({ id
 const HEAD = spec('head', 'head', 'Template head', { fixed: true, readOnly: true });
 const INTRO = spec('intro', 'intro', 'Template intro', { fixed: true });
 const MAIN = spec('main', 'main', 'Template placeholder');
+const MAIN_2 = spec('main-2', 'main', 'Template second placeholder');
 const FOOT = spec('foot', 'foot', 'Template foot', { fixed: true, readOnly: true });
 const STRUCTURE = [HEAD, INTRO, MAIN, FOOT];
 
@@ -207,6 +208,31 @@ for (const where of Object.keys(WHERE)) {
       expect(one.filter((id) => two.includes(id))).toEqual([]);
     });
 
+    test("a slot the template gives several blocks, on a page with nothing for it: all of them, in order", async () => {
+      // A template can offer a slot's starting point as more than one block (a
+      // hero's three suggested topics). Only the first was placed, so a page
+      // started from the template showed one topic of three.
+      const tpl = template(where, [HEAD, MAIN, MAIN_2, FOOT]);
+      const once = await open(EMPTY_PAGE, tpl);
+      expect(seen(where, once)).toEqual([
+        ['head', 'Template head'],
+        ['main', 'Template placeholder'],
+        ['main', 'Template second placeholder'],
+        ['foot', 'Template foot'],
+      ]);
+      const twice = await open(once, tpl);
+      expect(seen(where, twice)).toEqual(seen(where, once));
+      expect(ids(where, twice)).toEqual(ids(where, once));
+    });
+
+    test("the page's content for such a slot replaces all of the template's blocks", async () => {
+      const opened = await open(await usedPage(where), template(where, [HEAD, INTRO, MAIN, MAIN_2, FOOT]));
+      expect(seen(where, opened).filter(([slot]) => slot === 'main')).toEqual([
+        ['main', 'Page main 1'],
+        ['main', 'Page main 2'],
+      ]);
+    });
+
     test('opening it again gives the same ids', async () => {
       const once = await open(EMPTY_PAGE, template(where));
       const twice = await open(once, template(where));
@@ -273,6 +299,13 @@ for (const where of Object.keys(WHERE)) {
       test('with nothing changed, the template is as it was: its slot keeps its own block, not the page\'s content', async () => {
         const tpl = template(where, STRUCTURE, marks);
         const saved = await commit(await open(await usedPage(where, tpl), tpl), tpl);
+        expect(seen(where, saved)).toEqual(seen(where, tpl));
+        expect(ids(where, saved)).toEqual(ids(where, tpl));
+      });
+
+      test("with nothing changed, a slot's several blocks stay the template's", async () => {
+        const tpl = template(where, [HEAD, MAIN, MAIN_2, FOOT], marks);
+        const saved = await commit(await open(EMPTY_PAGE, tpl), tpl);
         expect(seen(where, saved)).toEqual(seen(where, tpl));
         expect(ids(where, saved)).toEqual(ids(where, tpl));
       });

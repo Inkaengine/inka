@@ -236,7 +236,9 @@ onMounted(() => {
                                     properties: {
                                         url: {
                                             title: 'URL',
-                                            widget: 'url',
+                                            widget: 'object_browser',
+                                            mode: 'link',
+                                            allowExternals: true,
                                         },
                                     },
                                 },
@@ -280,7 +282,10 @@ onMounted(() => {
                             : {}),
                         slate: {
                             styleMenu: {
-                                blockStyles: [{ cssClass: 'lead', label: 'Lead' }],
+                                blockStyles: [
+                                    { cssClass: 'lead', label: 'Lead' },
+                                    { cssClass: 'list-spaced', label: 'Spaced list', appliesTo: ['ul', 'ol'] },
+                                ],
                                 inlineStyles: [{ cssClass: 'dropcap', label: 'Drop cap' }],
                             },
                         },
@@ -295,7 +300,7 @@ onMounted(() => {
                                 allowedTemplates: ['/_test_data/templates/test-layout'],
                                 allowedLayouts: CONTENT_TYPE_LAYOUTS[pageType]
                                     || contextNavLayoutForced.value
-                                    || [null, '/_test_data/templates/test-layout', '/_test_data/templates/header-footer-layout', '/_test_data/templates/header-only-layout', '/_test_data/templates/editable-fixed-layout'],
+                                    || [null, '/_test_data/templates/test-layout', '/_test_data/templates/header-footer-layout', '/_test_data/templates/header-only-layout', '/_test_data/templates/editable-fixed-layout', '/_test_data/templates/aside-layout'],
                             },
                             footer: {
                                 title: 'Footer',
@@ -363,7 +368,7 @@ const mainBlocksAllowedLayouts = computed(() => {
         return null;  // Use page's own blocks_layout directly
     }
     if (contextNavLayoutForced.value) return contextNavLayoutForced.value;
-    return [null, '/_test_data/templates/test-layout', '/_test_data/templates/header-footer-layout', '/_test_data/templates/header-only-layout', '/_test_data/templates/editable-fixed-layout'];
+    return [null, '/_test_data/templates/test-layout', '/_test_data/templates/header-footer-layout', '/_test_data/templates/header-only-layout', '/_test_data/templates/editable-fixed-layout', '/_test_data/templates/aside-layout'];
 });
 
 // Forced layouts, resolved by the backend alongside the page (expand.templates.extra).

@@ -1,14 +1,23 @@
 ---
 /**
  * Video block. Recognizes YouTube URLs and embeds them; falls back to a
- * native <video> for direct media URLs. Static placeholder if no URL.
+ * native <video> for direct media URLs. Static placeholder if no URL. The
+ * preview image is what shows before the video plays: the <video>'s poster,
+ * or for YouTube a picture linked to the video. Empty means absent.
  */
+import { getImageUrl } from './utils.js';
 const { block } = Astro.props;
-const url = block.url || '';
+const url = block.url?.[0]?.['@id'] ?? '';  // a link field: [{ '@id': url }]
 const youtubeId = url.match(/(?:youtu\.be\/|youtube\.com\/(?:watch\?v=|embed\/))([^&?/]+)/)?.[1];
+const preview = block.preview_image ? getImageUrl(block.preview_image) : '';
 ---
 <div class="video-block">
-  {youtubeId && (
+  {youtubeId && preview && (
+    <a href={`https://www.youtube.com/watch?v=${youtubeId}`} data-edit-link="url">
+      <img data-edit-media="preview_image" src={preview} alt="Play video" style="width: 100%" />
+    </a>
+  )}
+  {youtubeId && !preview && (
     <iframe
       src={`https://www.youtube.com/embed/${youtubeId}`}
       allowfullscreen
@@ -17,7 +26,13 @@ const youtubeId = url.match(/(?:youtu\.be\/|youtube\.com\/(?:watch\?v=|embed\/))
     />
   )}
   {!youtubeId && url && (
-    <video src={url} controls style="width: 100%">
+    <video
+      src={url}
+      controls
+      style="width: 100%"
+      poster={preview || undefined}
+      data-edit-media={preview ? 'preview_image' : undefined}
+    >
       <track kind="captions" />
     </video>
   )}

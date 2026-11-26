@@ -1,3 +1,4 @@
+import { describe, test, expect } from 'vitest';
 import { expandListingBlocks } from '@volto-hydra/helpers';
 
 /**
@@ -26,7 +27,7 @@ describe('combined container paging — a manual block AFTER a listing', () => {
   });
 
   const blocks = {
-    l1: { '@type': 'listing', variation: 'default', querystring: { query: [{ i: 'path' }] } },
+    l1: { '@type': 'listing', variation: 'default', fieldMapping: { getURL: { field: 'href', type: 'link' }, title: { field: 'title', type: 'string' } }, querystring: { query: [{ i: 'path' }] } },
     s1: {
       '@type': 'slate',
       value: [{ type: 'p', children: [{ text: 'manual after listing' }] }],

@@ -1,0 +1,1 @@
+A `url` field takes the `link` conversion, as an object-browser link field does: it holds `[{ '@id': url }]`, as the editor's url widget writes it. Converting a block, or pulling from a linked page, wrote a bare string into it. Frontends drawing a `url` field read the link list.

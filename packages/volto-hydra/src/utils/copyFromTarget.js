@@ -23,12 +23,13 @@
  *
  * This module is the PURE core (no React): mapping lookup, schema field-widget
  * swap, and per-field value extraction — the last DELEGATED to the shared
- * `convertFieldValue` + `widgetToTargetType` (the type is derived from the dest
+ * `convertFieldValue` + the mapping rule (mappingConversions: the type is derived from the dest
  * field's widget), so copy-from-target and the listing expander pull identically.
  * The enhancer that installs it on every block and the `copyFromTargetField`
  * wrapper widget build on these.
  */
-import { getMappingTarget, widgetToTargetType } from './blockSync';
+import { getMappingTarget } from './blockSync';
+import { CATALOG_SOURCE_KINDS, conversionFor, widgetToTargetType } from '@volto-hydra/helpers/mappingConversions.js';
 import { convertFieldValue, normalizeCatalogImage } from '@volto-hydra/helpers';
 import { isInternalURL } from '@plone/volto/helpers/Url/Url';
 import {
@@ -191,11 +192,22 @@ export function getTargetValueForField(field, blockConfig, blockData, liveTarget
   const raw = snapshot[entry.src];
   if (raw === undefined) return undefined;
 
-  // Derive the conversion type from the DESTINATION field's widget (the same
-  // rule block-type conversion uses), so we never hard-code per-field behaviour.
+  // The conversion the mapping names; else, for a catalog field (whose kind is
+  // known), the one the mapping rule records, as a listing does (its widget's,
+  // or the one the source needs: a list into text is joined); else, for any
+  // other attribute of the page, the one the field's widget calls for.
   const rawDef = schemaProperties(blockConfig, blockData)[field];
-  const destDef = rawDef?.widget === COPY_FROM_TARGET_WIDGET ? rawDef.baseWidget : rawDef;
-  const type = entry.type ?? widgetToTargetType(destDef?.widget, destDef);
+  let type = entry.type;
+  if (type === undefined) {
+    const kind = CATALOG_SOURCE_KINDS[entry.src];
+    if (kind) {
+      type = conversionFor(kind, rawDef);
+      if (type === undefined) throw new Error(`Copy-from-target: a ${kind} ("${entry.src}") can't become what "${field}" holds.`);
+    } else {
+      const destDef = rawDef?.widget === COPY_FROM_TARGET_WIDGET ? rawDef.baseWidget : rawDef;
+      type = widgetToTargetType(destDef?.widget, destDef);
+    }
+  }
   return convertFieldValue(raw, type);
 }
 

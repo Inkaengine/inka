@@ -6,6 +6,7 @@
  * - FieldMappingWidget: mapping source fields to target block fields
  * - Block sync: inheriting non-mapped fields from referenced type
  */
+import type { Page } from '@playwright/test';
 import { test, expect } from '../fixtures';
 import { AdminUIHelper } from '../helpers/AdminUIHelper';
 
@@ -176,19 +177,15 @@ test.describe('Block Sync - Listing Block Item Type', () => {
     const menu = page.locator('.react-select__menu');
     await menu.waitFor({ state: 'visible', timeout: 3000 });
 
-    // Verify all teaser block fields are available as options
-    // Teaser has: href (Target), title (Title), head_title (Head title),
-    // description (Description), preview_image (Image override)
-    // React Select options are divs with class react-select__option
-    const options = menu.locator('.react-select__option');
-    // Should have at least 6 options: (none), Target, Title, Head title, Description, Image override
-    await expect(options).toHaveCount(9); // All teaser properties + (none)
-
-    // Verify specific teaser fields are present
-    await expect(menu.locator('.react-select__option:has-text("(none)")')).toBeVisible();
-    await expect(menu.locator('.react-select__option:has-text("Target")')).toBeVisible();
-    await expect(menu.locator('.react-select__option:has-text("Description")')).toBeVisible();
-    await expect(menu.locator('.react-select__option:has-text("Image override")')).toBeVisible();
+    // The teaser's fields an address converts into (mappingConversions): its
+    // link, or its text fields. Not its image, nor its yes/no settings.
+    await expect(menu.locator('.react-select__option')).toHaveText([
+      '(none)',
+      'Target',
+      'Title',
+      'Kicker',
+      'Description',
+    ]);
 
     // Close dropdown by clicking elsewhere (not Escape, which deselects the block)
     await mappingTable.locator('th', { hasText: 'Source' }).click();
@@ -236,8 +233,10 @@ test.describe('Block Sync - Listing Block Item Type', () => {
     // Verify "Target" (teaser-specific) is NOT present
     await expect(menu.locator('.react-select__option:has-text("Target")')).not.toBeVisible();
 
-    // Verify image block has its url field (widget: 'image'), titled "Image" by the frontend's schema
-    await expect(menu.locator('.react-select__option', { hasText: /^Image$/ })).toBeVisible();
+    // The image block's link field ("Link to") is offered for the address;
+    // its image field isn't: an address can't become an image.
+    await expect(menu.locator('.react-select__option', { hasText: /^Link to$/ })).toBeVisible();
+    await expect(menu.locator('.react-select__option', { hasText: /^Image$/ })).toHaveCount(0);
 
     // Close dropdown by clicking elsewhere
     await mappingTable.locator('th', { hasText: 'Source' }).click();
@@ -264,6 +263,40 @@ test.describe('Block Sync - Listing Block Item Type', () => {
     await expect(sources.filter({ hasText: /^Published$/ })).toHaveCount(1);
     await expect(sources.filter({ hasText: /^Effective$/ })).toHaveCount(0);
     await expect(page.locator('#sidebar-properties .field-wrapper-fieldMapping .help.error')).toHaveCount(0);
+  });
+
+  test("a site's own catalog column holds what its field on the content types holds", async ({ page }) => {
+    // A column has no type of its own; the catalog fills it from the field of
+    // the same name. exclude_from_nav is a yes/no on every type (its @types
+    // schema says boolean), so its column is a yes/no too: it is offered the
+    // teaser's yes/no fields and none of its text fields, which it was offered
+    // when every column counted as text. CreationDate has no field of
+    // that name on any type (an indexer fills it), so it stays text: the
+    // teaser's Title is offered for it.
+    const helper = new AdminUIHelper(page);
+    await helper.login();
+    await helper.navigateToEdit('/test-page');
+    await helper.clickBlockInIframe('block-9-listing');
+    await helper.waitForSidebarOpen();
+    await helper.openSidebarTab('Block');
+
+    const mappingTable = page.locator('#sidebar-properties .field-wrapper-fieldMapping .field-mapping-table');
+    const menu = page.locator('.react-select__menu');
+    const optionsOf = async (label: RegExp) => {
+      const row = mappingTable.locator('tr').filter({ has: page.locator('td:first-child', { hasText: label }) });
+      await row.locator('.react-select__control').scrollIntoViewIfNeeded();
+      await row.locator('.react-select__control').click();
+      await menu.waitFor({ state: 'visible' });
+      const options = await menu.locator('.react-select__option').allTextContents();
+      await mappingTable.locator('th', { hasText: 'Source' }).click();
+      await menu.waitFor({ state: 'hidden' });
+      return options;
+    };
+    await expect(mappingTable.locator('tbody tr td:first-child').filter({ hasText: /^Exclude from navigation$/ })).toHaveCount(1);
+    const yesNo = await optionsOf(/^Exclude from navigation$/);
+    expect(yesNo).toContain('Open in a new tab');
+    expect(yesNo).not.toContain('Title');
+    expect(await optionsOf(/^Creation date$/)).toContain('Title');
   });
 
   test('fieldMapping shows smart defaults based on field types', async ({ page }) => {
@@ -1459,6 +1492,39 @@ test.describe('Block Type Conversion via fieldMappings', () => {
     await expect(buttonTextInput).toHaveValue('Click Me', { timeout: 5000 });
   });
 
+  /**
+   * The editor keeps a converted block's other fields so switching back restores
+   * them (the test above); the save stores only what the final type declares, as
+   * the content check requires. A hero's button text has no place on an image.
+   */
+  test('saving a converted block stores only what its new type declares', async ({ page, urls }) => {
+    const helper = new AdminUIHelper(page);
+    await helper.login();
+    await helper.navigateToEdit('/test-page');
+
+    await expect(helper.getIframe().locator('[data-block-uid="block-4-hero"]')).toBeVisible({ timeout: 10000 });
+    await helper.clickBlockInIframe('block-4-hero');
+    await helper.waitForSidebarOpen();
+    await helper.openSidebarTab('Block');
+    const breadcrumb = page.locator('.parent-block-section .parent-nav').last();
+    await expect(breadcrumb).toContainText('Hero', { timeout: 5000 });
+
+    await helper.openConvertChooser();
+    await helper.selectBlockType('image');
+    await expect(breadcrumb).toContainText('Image', { timeout: 5000 });
+
+    await helper.saveContent();
+
+    const token = (await page.context().cookies()).find((c) => c.name === 'auth_token')!.value;
+    const stored = await (await page.request.get(`${urls.mockApi}/_test_data/test-page`, {
+      headers: { Accept: 'application/json', Authorization: `Bearer ${token}` },
+    })).json();
+    const image = stored.blocks['block-4-hero'];
+    expect(image['@type']).toBe('image');
+    expect(image, 'a hero-only field is not stored on the image').not.toHaveProperty('buttonText');
+    expect(image, 'nor the subheading').not.toHaveProperty('subheading');
+  });
+
   test('hero to teaser and back preserves image rendering', async ({ page }) => {
     const helper = new AdminUIHelper(page);
 
@@ -1608,9 +1674,66 @@ test.describe('Block Type Conversion via fieldMappings', () => {
  * everywhere except the page written for it here.
  */
 test.describe('fieldRules - a rule that refuses a value', () => {
-  test('a page holding a refused value does not save', async ({ page }) => {
+  // A page broken on purpose is made here, in this login's session: never a
+  // committed fixture the content check would have to excuse.
+  async function createPage(page: Page, urls: { mockApi: string }, data: object) {
+    const token = (await page.context().cookies()).find((c) => c.name === 'auth_token')!.value;
+    const created = await page.request.post(`${urls.mockApi}/_test_data`, {
+      headers: { Authorization: `Bearer ${token}`, Accept: 'application/json', 'Content-Type': 'application/json' },
+      data,
+    });
+    expect(created.status()).toBe(201);
+  }
+
+  test('a page holding a refused value does not save', async ({ page, urls }) => {
     const helper = new AdminUIHelper(page);
     await helper.login();
+    await createPage(page, urls, {
+      "@type": "Document",
+      "id": "refused-value-page",
+      "title": "A block holding a value its own rule refuses",
+      "blocks": {
+        "intro-1": {
+          "@type": "slate",
+          "value": [
+            {
+              "type": "p",
+              "children": [
+                {
+                  "text": "The feed below asks for fewer than no items, which its schema's field rule refuses. Saving this page should not go through."
+                }
+              ]
+            }
+          ]
+        },
+        "rss-refused": {
+          "fieldMapping": {
+            "getURL": {
+              "field": "href",
+              "type": "link"
+            },
+            "title": {
+              "field": "title",
+              "type": "string"
+            },
+            "description": {
+              "field": "description",
+              "type": "textarea"
+            }
+          },
+          "@type": "rssFeed",
+          "feedUrl": [{ "@id": `${urls.mockApi}/rss-stub` }],
+          "count": -1,
+          "variation": "summary"
+        }
+      },
+      "blocks_layout": {
+        "items": [
+          "intro-1",
+          "rss-refused"
+        ]
+      }
+    });
     await helper.navigateToEdit('/refused-value-page');
 
     // The page is up and being edited before anything is asked of it.
@@ -1670,12 +1793,50 @@ test.describe('fieldRules - a rule that refuses a value', () => {
     await expect(page).not.toHaveURL(/\/edit(\?|$)/, { timeout: 15000 });
   });
 
-  test('a string longer than its schema allows does not save', async ({ page }) => {
+  test('a string longer than its schema allows does not save', async ({ page, urls }) => {
     // maxLength — a standard Volto validator, on a plain string field of a
     // fixture block. Every slide in the fixtures has a short kicker, so the
     // constraint is inert until this page writes a long one.
     const helper = new AdminUIHelper(page);
     await helper.login();
+    await createPage(page, urls, {
+      "@type": "Document",
+      "id": "too-long-string-page",
+      "title": "A block holding a string longer than its schema allows",
+      "blocks": {
+        "intro-1": {
+          "@type": "slate",
+          "value": [
+            {
+              "type": "p",
+              "children": [
+                {
+                  "text": "The slide below has a kicker longer than its schema's maxLength, so the page should not save."
+                }
+              ]
+            }
+          ]
+        },
+        "slider-1": {
+          "@type": "slider",
+          "slides": [
+            {
+              "@type": "slide",
+              "@id": "slide-1",
+              "title": "A slide",
+              "description": "Body",
+              "head_title": "A kicker so long it runs well past the sixty characters the schema allows"
+            }
+          ]
+        }
+      },
+      "blocks_layout": {
+        "items": [
+          "intro-1",
+          "slider-1"
+        ]
+      }
+    });
     await helper.navigateToEdit('/too-long-string-page');
     await expect(
       helper.getIframe().locator('[data-block-uid="intro-1"]'),
@@ -1690,66 +1851,59 @@ test.describe('fieldRules - a rule that refuses a value', () => {
   test('a bad value inside a container does not save', async ({ page, urls }) => {
     const helper = new AdminUIHelper(page);
     await helper.login();
-    // Broken on purpose, so it is made here, in this login's session — never a
-    // committed fixture the content check would have to excuse.
-    const token = (await page.context().cookies()).find((c) => c.name === 'auth_token')!.value;
-    const created = await page.request.post(`${urls.mockApi}/_test_data`, {
-      headers: { Authorization: `Bearer ${token}`, Accept: 'application/json', 'Content-Type': 'application/json' },
-      data: {
-        "@type": "Document",
-        "id": "nested-bad-url-page",
-        "title": "A bad value inside a container",
-        "blocks": {
-          "intro-1": {
-            "@type": "slate",
-            "value": [
-              {
-                "type": "p",
-                "children": [
-                  {
-                    "text": "The feed inside the column below has a url that is not one. Core's validation walked the top level and would never have opened this container."
-                  }
-                ]
-              }
-            ]
-          },
-          "cols-1": {
-            "@type": "columns",
-            "blocks": {
-              "col-1": {
-                "@type": "column",
-                "blocks": {
-                  "rss-nested": {
-                    "@type": "rssFeed",
-                    "feedUrl": "not a url at all",
-                    "count": 6,
-                    "variation": "summary"
-                  }
-                },
-                "blocks_layout": {
-                  "items": [
-                    "rss-nested"
-                  ]
+    await createPage(page, urls, {
+      "@type": "Document",
+      "id": "nested-bad-value-page",
+      "title": "A bad value inside a container",
+      "blocks": {
+        "intro-1": {
+          "@type": "slate",
+          "value": [
+            {
+              "type": "p",
+              "children": [
+                {
+                  "text": "The feed inside the column below has a count that is not a number. Core's validation walked the top level and would never have opened this container."
                 }
-              }
-            },
-            "blocks_layout": {
-              "items": [
-                "col-1"
               ]
             }
-          }
-        },
-        "blocks_layout": {
-          "items": [
-            "intro-1",
-            "cols-1"
           ]
+        },
+        "cols-1": {
+          "@type": "columns",
+          "blocks": {
+            "col-1": {
+              "@type": "column",
+              "blocks": {
+                "rss-nested": {
+                  "@type": "rssFeed",
+                  "feedUrl": [{ "@id": `${urls.mockApi}/rss-stub` }],
+                  "count": "lots",
+                  "variation": "summary"
+                }
+              },
+              "blocks_layout": {
+                "items": [
+                  "rss-nested"
+                ]
+              }
+            }
+          },
+          "blocks_layout": {
+            "items": [
+              "col-1"
+            ]
+          }
         }
       },
+      "blocks_layout": {
+        "items": [
+          "intro-1",
+          "cols-1"
+        ]
+      }
     });
-    expect(created.status()).toBe(201);
-    await helper.navigateToEdit('/nested-bad-url-page');
+    await helper.navigateToEdit('/nested-bad-value-page');
     await expect(
       helper.getIframe().locator('[data-block-uid="intro-1"]'),
     ).toBeVisible({ timeout: 15000 });

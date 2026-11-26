@@ -27,6 +27,7 @@ import {
 // primitives: it deletes and then settles the structure the delete disturbed.
 import { deleteBlocks } from './blockSync.js';
 import { mergeTemplatesIntoPage } from '@volto-hydra/helpers/mergeTemplates.js';
+import { validateTemplatePlaceholders } from '@volto-hydra/helpers/formDataValidation.js';
 
 const EMPTY_ANNOUNCEMENT_TEMPLATE = {
   '@id': '/templates/site-announcement',
@@ -213,6 +214,15 @@ describe('forced empty layout is empty but LOCKED until the template is unlocked
     }
     return instanceId;
   }
+
+  // An empty template has one slot: the one its content goes to. The seed
+  // stands in for it, so it names it; a template block that names no slot is
+  // refused on save (inka#708), and every page save would be.
+  test('the seeded empty names the slot it stands in for, so the page saves', async () => {
+    const { seed, seeded } = await seedForcedEmpty();
+    expect(seed?.slotId).toBe('default');
+    expect(validateTemplatePlaceholders(seeded).valid).toBe(true);
+  });
 
   test('the seeded empty is a template member (has a templateInstanceId)', async () => {
     const { seed } = await seedForcedEmpty();

@@ -7,10 +7,7 @@
  * measured, and the style coverage would only ever speak for `p`.
  */
 import { describe, test, expect } from 'vitest';
-import { createRequire } from 'module';
-
-const require = createRequire(import.meta.url);
-const { styleExampleCases } = require('./discover-blocks.cjs');
+import { styleExampleCases, undemonstratedStyles } from './discover-blocks.js';
 
 const para = (text, extra = {}) => ({ type: 'p', ...extra, children: [{ text }] });
 const slate = (...nodes) => ({ '@type': 'slate', value: nodes });
@@ -51,5 +48,24 @@ describe('styleExampleCases', () => {
       ['.tag', block('e', slate({ type: 'p', children: [{ text: 'Tagged', 'style-tag': true }] }))],
     ]);
     expect(styleExampleCases([], candidates).map((c) => c.forStyle)).toEqual(['.lead', '.tag']);
+  });
+});
+
+// Every style the toolbar offers needs an example in the content: one nobody
+// demonstrates is never rendered, so a style that does nothing passes unseen.
+describe('undemonstratedStyles', () => {
+  const where = (blockType, pagePath) => ({ blockType, pagePath });
+
+  test('an offered style with no example in the content is reported, with where it is offered', () => {
+    const offered = new Map([['sup', where('slate', '/page')], ['h2', where('slate', '/page')]]);
+    const candidates = new Map([['h2', block('b', slate({ type: 'h2', children: [{ text: 'Heading' }] }))]]);
+    expect(undemonstratedStyles(offered, candidates)).toEqual([
+      { blockType: 'slate', pagePath: '/page', style: 'sup', unexercisedStyle: true },
+    ]);
+  });
+
+  test('a style in the content that nobody offers is not this finding', () => {
+    const candidates = new Map([['h2', block('b', slate({ type: 'h2', children: [{ text: 'Heading' }] }))]]);
+    expect(undemonstratedStyles(new Map(), candidates)).toEqual([]);
   });
 });

@@ -12,8 +12,7 @@
           "type": "p",
           "children": [{ "text": "This is a standalone block before the template" }]
         }
-      ],
-      "plaintext": "This is a standalone block before the template"
+      ]
     },
     "template-header": {
       "@type": "slate",
@@ -25,7 +24,6 @@
           "children": [{ "text": "Stale Header - Should Be Replaced By Merge" }]
         }
       ],
-      "plaintext": "Stale Header - Should Be Replaced By Merge",
       "templateId": "resolveuid/test-layout-template-uid",
       "templateInstanceId": "tpl-instance-1",
       "slotId": "header"
@@ -40,10 +38,9 @@
           "children": [{ "text": "User content - different from template default" }]
         }
       ],
-      "plaintext": "User content - different from template default",
       "templateId": "resolveuid/test-layout-template-uid",
       "templateInstanceId": "tpl-instance-1",
-      "slotId": "primary"
+      "slotId": "default"
     },
     "user-content-2": {
       "@type": "slate",
@@ -55,10 +52,9 @@
           "children": [{ "text": "Second user content block in placeholder" }]
         }
       ],
-      "plaintext": "Second user content block in placeholder",
       "templateId": "resolveuid/test-layout-template-uid",
       "templateInstanceId": "tpl-instance-1",
-      "slotId": "primary"
+      "slotId": "default"
     },
     "template-slider": {
       "@type": "slider",
@@ -102,7 +98,6 @@
           "children": [{ "text": "Stale Footer - Should Be Replaced By Merge" }]
         }
       ],
-      "plaintext": "Stale Footer - Should Be Replaced By Merge",
       "templateId": "resolveuid/test-layout-template-uid",
       "templateInstanceId": "tpl-instance-1",
       "slotId": "footer"
@@ -114,8 +109,7 @@
           "type": "p",
           "children": [{ "text": "This is a standalone block after the template" }]
         }
-      ],
-      "plaintext": "This is a standalone block after the template"
+      ]
     }
   },
   "blocks_layout": {

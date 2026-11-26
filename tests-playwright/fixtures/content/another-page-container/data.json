@@ -25,8 +25,7 @@
             }
           ]
         }
-      ],
-      "plaintext": "Footer user content - no layout markers"
+      ]
     },
     "moved-form": {
       "@type": "form",
@@ -39,8 +38,7 @@
         {
           "field_id": "moved-field",
           "field_type": "text",
-          "label": "Moved container field",
-          "plaintext": "Moved container field"
+          "label": "Moved container field"
         }
       ],
       "default_to": "admin@example.com",

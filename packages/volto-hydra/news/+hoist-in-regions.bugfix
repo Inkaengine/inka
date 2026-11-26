@@ -1,0 +1,1 @@
+Markdown export writes the fields a run of blocks share once, in a `<fields>` wrapper, inside a container too, as it already did for a page's own blocks. A page made from a template no longer wraps every paragraph in its slot in a `<block>` tag carrying five fields.

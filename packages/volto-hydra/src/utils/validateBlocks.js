@@ -46,6 +46,9 @@ export const BAD_ITEM_ID_MESSAGE =
  * @param {Object} options.blocksConfig - config.blocks.blocksConfig
  * @param {Object} options.intl - react-intl object (for schema resolution)
  * @param {Function} options.formatMessage - intl.formatMessage
+ * @param {Object} [options.contentTypes] - type name → its `@types/<type>`
+ *   schema (loadContentTypeSchemas): what a site's own catalog column holds,
+ *   for a listing that maps one
  * @returns {{ blocksErrors: Object, fieldTitles: Object }}
  *   blocksErrors: blockId → { fieldName: [messages] };
  *   fieldTitles: blockId → { fieldName: title } for each field in error, so a
@@ -57,7 +60,7 @@ export const BAD_ITEM_ID_MESSAGE =
  */
 export function validateBlocksAgainstSchemas(
   formData,
-  { blocksConfig, intl, formatMessage },
+  { blocksConfig, intl, formatMessage, contentTypes },
 ) {
   const blocksErrors = {};
   const fieldTitles = {};
@@ -138,6 +141,8 @@ export function validateBlocksAgainstSchemas(
       blockData,
       validateFieldsPerFieldset: FormValidation.validateFieldsPerFieldset,
       formatMessage,
+      blocksConfig,
+      site: contentTypes && { contentTypes, pageType: formData['@type'] },
     });
     report({ ...errors, ...linkErrors });
   }

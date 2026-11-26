@@ -23,7 +23,7 @@ subjects:
   - frontend
 title: Custom Blocks
 blocks-matched: |
-  <block type="slate" value="${p,h*,ul,ol,blockquote,strong,em,a/slate}" plaintext="${p,h*,ul,ol,blockquote,strong,em,a/text}" />
+  <block type="slate" value="${p,h*,ul,ol,blockquote,strong,em,a/slate}" />
   <block type="title" _="${h1}" />
   <block type="codeExample">
     <region name="tabs" widget="object_list" idField="@id" typeField="@type">
@@ -102,7 +102,9 @@ Defaults and side effects:
 
 ### `blocks` — block type registry
 
-Defines or overrides individual block types. Each key is the block type name (matching what appears in `allowedBlocks` and `@type` on saved blocks).
+Defines the block types your frontend renders. Each key is the block type name (matching what appears in `allowedBlocks` and `@type` on saved blocks).
+
+Inka's admin registers only two blocks itself: `slate` (the rich text every region's text is written in) and `listing`. Every other block your content uses — a title, an image, a teaser, a table of contents, a search and its facets — is yours to declare here, with its `title`, `group` and `blockSchema`. The editor knows nothing else.
 
 ### Js
 
@@ -116,8 +118,8 @@ blocks: {
     mostUsed: true,
     blockSchema: { properties: { /* fields */ } },
   },
-  toc: {                             // override a built-in block
-    blockSchema: { /* YOUR fields — see "Overriding a built-in block" */ },
+  slate: {                           // add rules to Inka's text block
+    schemaEnhancer: { /* see "Inka's text block" */ },
   },
 }
 ```
@@ -125,34 +127,45 @@ blocks: {
 Per-block options (most are passed through to Volto's block config):
 
 - **\`id\`** — block type identifier (matches the key).
-- **\`title\`** — display name in the BlockChooser. **Required for a new block type** — nothing makes one up from the key; a block without one fails to register with an error naming it.
+- **\`title\`** — display name in the BlockChooser. **Required for every block you declare** — nothing makes one up from the key; a block without one stops the editor loading, with an error naming it.
 - **\`icon\`** — icon shown in the BlockChooser (data URL or SVG component).
 - **\`description\`** — what the block is for, kept short: the sidebar shows it at the top of the block's settings, and the BlockChooser as the block button's tooltip. It may link to the block's guidance with a markdown link, `[text](url)` (see [Links in advice](#links-in-advice)).
 - **\`guidance\`** — how to use the block, for an AI agent: when it suits, and how to fill it in. See [Describing a block to AI agents](#describing-a-block-to-ai-agents).
 - **\`examples\`** — the block filled in, as stored blocks, for an AI agent. See [Describing a block to AI agents](#describing-a-block-to-ai-agents).
-- **\`group\`** — chooser group (e.g. `'common'`). **Required for a new block type**, like `title`.
+- **\`group\`** — chooser group (e.g. `'common'`). **Required**, like `title`.
 - **\`restricted\`** — `true` hides the block from the chooser; can also be a function for conditional restrictions.
 - **\`mostUsed\`** — pin to the top of the chooser.
-- **\`disableCustomSidebarEditForm\`** — use only the schema form in the sidebar (no custom edit component). **Defaults to \`true\` for any block you give a \`blockSchema\`** — see [Overriding a built-in block](#overriding-a-built-in-block). Set `false` to keep the admin's own edit component for a block whose sidebar does something a JSON schema cannot express.
-- **\`blockSchema\`** — JSON-schema-style definition of the block's fields. See [Schema Enhancers](#schema-enhancers) below and the [Block reference](../examples/index.md).
+- **\`disableCustomSidebarEditForm\`** — use only the schema form in the sidebar (no custom edit component). **Defaults to \`true\`.** Set `false` for a block whose fields the page form already edits (see [Title and description blocks](#title-and-description-blocks)), or one with an edit component of its own in the editor, for a sidebar a JSON schema cannot express.
+- **\`blockSchema\`** — JSON-schema-style definition of the block's fields. **Required**: the editor reads what a block holds from it (its form, the text a search finds), and a block without one stops the editor loading. A block with no fields of its own sends `{ properties: {} }`. See [Schema Enhancers](#schema-enhancers) below and the [Block reference](../examples/index.md). A field marked `optionalOnCanvas: true` is an optional part of the page: on the canvas when it has a value and gone when empty, and the editor's eye button reveals it to fill it in (see [Optional fields](./visual-editing.md#optional-fields-empty-means-absent)).
 - **\`fieldMappings\`** — block-to-block conversion rules. See [Block conversion and fieldMappings](#block-conversion-and-fieldmappings) below.
 - **\`schemaEnhancer\`** — recipe-based schema modifier; supports `fieldRules`, `inheritSchemaFrom`, etc. See [Schema Enhancers](#schema-enhancers).
 
-`page` and `blocks` interact via name lookup: a region's `allowedBlocks: ['slate', 'slider']` references keys of the `blocks` registry. You can use one without the other — `page` alone restricts placement of built-in blocks; `blocks` alone registers custom types and gets a default `blocks_layout` region accepting everything.
+`page` and `blocks` interact via name lookup: a region's `allowedBlocks: ['slate', 'slider']` references keys of the `blocks` registry. You can use one without the other — `page` alone places only Inka's text block (`slate`); `blocks` alone registers custom types and gets a default `blocks_layout` region accepting everything.
 
-### Overriding a built-in block
+### Title and description blocks
 
-Your frontend is the thing that renders, so it decides what an author can set. Give a built-in block a `blockSchema` and **your schema is the whole schema**: the sidebar shows your fields and nothing else.
+A page's title and description are its own fields, not block data. A frontend that draws them as blocks on the canvas declares a block for each whose schema names that page field; its placeholder is the hint an author sees on an empty one. Each sends `disableCustomSidebarEditForm: false`: the page form already edits the field, and a block form beside it would show a second, always-empty copy of it. A lead image block is the same:
 
 ### Js
 
 ```js
 blocks: {
-  toc: {
+  title: {
+    id: 'title', title: 'Title', group: 'text', restricted: true,
+    disableCustomSidebarEditForm: false,
     blockSchema: {
-      fieldsets: [{ id: 'default', title: 'Default', fields: ['levels'] }],
+      fieldsets: [{ id: 'default', title: 'Default', fields: ['title'] }],
+      properties: { title: { title: 'Title', type: 'string', placeholder: 'Type the title…' } },
+      required: [],
+    },
+  },
+  description: {
+    id: 'description', title: 'Description', group: 'text', restricted: true,
+    disableCustomSidebarEditForm: false,
+    blockSchema: {
+      fieldsets: [{ id: 'default', title: 'Default', fields: ['description'] }],
       properties: {
-        levels: { title: 'Heading levels', type: 'array', items: { choices: [['h2', 'Heading 2']] } },
+        description: { title: 'Description', type: 'string', widget: 'textarea', placeholder: 'Add a description…' },
       },
       required: [],
     },
@@ -160,20 +173,11 @@ blocks: {
 }
 ```
 
-That sidebar offers `levels`. It does not offer the admin's `hide_title`, `ordered`, `title` or `variation`, because your frontend never said it renders them.
+### Inka's text block
 
-This is deliberate: before, the admin's fields were merged in and its edit component kept rendering the sidebar, so an author was offered settings the frontend could not honour — they ticked a box and the page did not change.
+Inka provides one block itself, `slate`: the rich text every region's text is written in. Every other block your site uses, a listing included, is yours to declare. The editor knows no block you don't send: a region whose `allowedBlocks` names one stops the editor loading, with an error saying where, and the content check reports both that and a page holding one.
 
-### Adding to a built-in block
-
-An entry for a block the admin already has applies key by key:
-
-- **`blockSchema` / `schema`** — replaces the admin's schema, as above; your fields are not merged into its.
-- **`schemaEnhancer`** — **adds**: with no `blockSchema`, it runs after the admin's own enhancer, so you can add `fieldRules` to a built-in block without replacing it. **With** a `blockSchema` the admin's enhancer does not run at all — it changes the admin's schema (adds its fields, seeds its regions), and yours is the whole schema; only your own enhancer applies.
-- **Any other key** (`title`, `group`, `fieldMappings`, `allowedBlocks`…) — replaces that key. Send every `fieldMappings` source type you want, including the admin's own conversions.
-- **A key you don't send** — the admin's value stands: a built-in block keeps its name, group and schema.
-
-Don't send an empty `blockSchema` just to register a built-in block: it replaces the admin's (for `title` and `description`, the page field and its placeholder). An entry carrying only rules adds them:
+`slate`'s schema is Inka's: it carries the `value` field that block-sync and inline editing depend on, which a frontend cannot know to send. So you don't declare it. An entry for it carries rules, which add to it:
 
 ### Js
 
@@ -189,14 +193,7 @@ blocks: {
 }
 ```
 
-Two consequences worth knowing:
-
-- **Variations follow the schema.** Variations are a separate registry the admin fills in. Declare a `blockSchema` and the admin's variations for that block are dropped too; send your own `variations` to keep a picker.
-- **Labels are yours.** The admin's built-in labels come from its translation catalogue. A schema sent over the bridge carries plain strings, so an overriding frontend supplies its own — in whatever language it wants them.
-
-`slate` is the one exception: the admin's slate schema carries the `value` field that block-sync and inline editing depend on, which a frontend cannot know to send, so declaring a slate schema adds to it rather than replacing it.
-
-To keep the admin's edit component for one block — a picker or upload UI a schema cannot describe — send `disableCustomSidebarEditForm: false` for that block.
+Every other block's entry is the block's whole definition: its schema, its labels (plain strings, in whatever language you want them) and its `variations`, if it has a picker of renderings.
 
 ### Other top-level options
 
@@ -279,7 +276,7 @@ const bridge = initBridge({
             title: 'Slide',
             blockSchema: {
                 properties: {
-                    url: { title: 'Link', widget: 'url' },
+                    url: { title: 'Link', widget: 'object_browser', mode: 'link', allowExternals: true },
                     title: { title: 'Title' },
                     image: { title: 'Image', widget: 'image' },
                     description: { title: 'Description',
@@ -352,7 +349,7 @@ A field is inline-editable only when BOTH halves are in place. They are easy to 
 <h3 data-edit-text="title">Sydney Opera House</h3>
 ```
 
-An *empty* field still has to render its element in edit mode — the editor reveals empty fields by marking them `data-empty` and drawing a "Click to edit" placeholder, and it can only mark an element that exists. A field that renders nothing when empty can never be filled in on the canvas. (In view mode, render nothing — the annotations are edit-mode only.)
+An *empty* optional field renders nothing: no data, no element, in edit mode as in view. To let the author fill it on the canvas, mark it `optionalOnCanvas: true` in the schema; the editor's eye button then hands your renderer a placeholder value, and your own guard draws the element. See [Optional fields: empty means absent](./visual-editing.md#optional-fields-empty-means-absent).
 
 Text with no box on screen is not inline-editable at all: a `.sr-only` element is clipped to 1×1, so there is nothing to put a cursor in. Leave it unannotated and let the sidebar edit it.
 
@@ -427,6 +424,22 @@ The stored value is a name (`plone.app.vocabularies.Keywords`), not a URL, so co
 
 `@vocabularies/<name>` supports `?title=` (a case-insensitive substring filter, applied server-side) and `b_start` / `b_size` batching. A type-ahead should send `?title=` per keystroke rather than fetch every term — a long vocabulary is exactly the case where a list is the wrong control.
 
+## Link fields hold one shape
+
+A link field is `widget: "object_browser"` with `mode: "link"`; add `allowExternals: true` when an address outside the site is allowed too. It stores a list of links, `[{ "@id": "/about" }]`, whether the link is to a page on the site or an external URL: an address typed in is stored as `[{ "@id": "https://example.com", "title": "example.com" }]`. A link picked from the site may carry its summary as well (`title`, `@type`, …). That's the only shape: unset, or an empty list, means no link, and a plain string is never stored.
+
+The `url` widget is deprecated: declare a link as above instead.
+
+Read the address from the first entry:
+
+### Javascript
+
+```javascript
+const href = block.href?.length ? block.href[0]['@id'] : null;
+```
+
+The editor writes this shape everywhere: the sidebar's link widget, an inline link edit, and a block conversion that maps a field onto a link. The editor's save and the content check refuse any other, so content from somewhere else (an import, a conversion script) has to be converted first. A field meant to hold a plain URL string is a plain string field, not a link field.
+
 ## Picking a block, and a value from it (`blockPicker`)
 
 A field that names **another block** — "show this question when THAT one is answered" — should offer a menu, not ask for a uid. `blockPicker` reads `blockPathMap`, the same container/region map the editor uses, and stores a **field of the block chosen**.
@@ -451,11 +464,11 @@ show_when_when: {
 
 ### What a candidate reads as
 
-`labelField` only nominates where THIS kind of block keeps its name. Without it, a block is named by the shared `blockDisplayTitle` — `title`, then `label`, then the block's own rich text read live, then the stored `plaintext`, then the block type's configured title, then the raw type.
+`labelField` only nominates where THIS kind of block keeps its name. Without it, a block is named by the shared `blockDisplayTitle` — `title`, then `label`, then the block's own rich text read live, then the block type's configured title, then the raw type.
 
-Live text comes before `plaintext` on purpose. Nothing in the editor writes `plaintext`: the backend serializer does, at save time. Preferring it would name a heading by its previous wording for as long as the author kept typing, so the slate value is read directly (`slateNodesText`) and the stored text is the fallback for blocks whose words are not slate.
+The rich text is read as it is now (`slateNodesText`), never from a copy stored on save, so a heading renamed on the canvas is named by its new words straight away.
 
-That is the same function the sidebar's child list uses, deliberately: a question that reads "Your name" in one list and "Text" in another is confusing in a way nobody reports. Set `labelField` when a block's name lives somewhere the chain would not look — a form question's `label` beats its `plaintext`.
+That is the same function the sidebar's child list uses, deliberately: a question that reads "Your name" in one list and "Text" in another is confusing in a way nobody reports. Set `labelField` when a block's name lives somewhere the chain would not look — a form question's `label` beats the words of its description.
 
 ### Not the same as `schemaFieldSelect`
 
@@ -855,7 +868,26 @@ Each key in `fieldMappings` is either a **specific block type name**, **\`@defau
 
 ### `@default` — the canonical content shape
 
-`@default` is a virtual type representing a linked content item's fields — anything a catalog **search** returns as metadata (`metadata_fields: '_all'`): `@id`, `title`, `description`, `image`, `Subject` (tags), `created`/`effective` dates, and so on. A block with `fieldMappings['@default']` is saying "I can be populated from a content item." The keys are content/metadata field names — not this block's own field names (e.g. `label`, `field`, `required` are not content metadata and are invalid).
+`@default` is a virtual type representing a linked content item's fields — what a catalog **search** returns: `getURL` (its address), `title`, `description`, `image`, `Subject` (tags), `created`/`effective` dates, and so on. A block with `fieldMappings['@default']` is saying "I can be populated from a content item." The keys are these catalog field names — not this block's own field names (e.g. `label`, `field`, `required` are not content metadata and are invalid).
+
+Inka knows the catalog fields every Plone site has: `getURL`, `title`, `description`, `image`, `hasPreviewImage`, `Subject`, `created`, `modified`, `effective`, `expires`, `start` and `end`. It can't know your site's own: a site adds metadata columns (a file's type, a page count). Declare those where your mapping widget offers its sources, in its `sourceFields`, with the type of value they hold; a `@default` key may then name them, and that type decides how they convert:
+
+### Js
+
+```js
+fieldMapping: {
+  widget: 'field_mapping',
+  sourceFields: {
+    getURL: { title: 'Address', type: 'string' },
+    title: { title: 'Title', type: 'string' },
+    mime_type: { title: 'File type', type: 'string' },   // the site's own column
+  },
+},
+```
+
+A `@default` key that is neither stops the editor loading, naming it.
+
+The address is `getURL`, not `@id`, though a result carries it as `@id`: Plone reads every `@id` in a block's stored data as a link, and a listing stores its mapping, so a mapping keyed `@id` couldn't be saved. A config that still maps from `@id` stops the editor loading, naming the entry; a stored mapping keyed `@id` makes the listing throw.
 
 ### Explicit type-to-type mappings
 
@@ -867,20 +899,20 @@ Use these when blocks share fields that aren't part of the `@default` set — fo
 // Content item types: use @default (canonical fields) + explicit cross-mappings
 teaser: {
     fieldMappings: {
-        '@default': { '@id': 'href', 'title': 'title', 'image': 'preview_image' },
+        '@default': { getURL: 'href', 'title': 'title', 'image': 'preview_image' },
         image: { 'href': 'href', 'alt': 'title', 'url': 'preview_image' },
     },
 },
 image: {
     fieldMappings: {
-        '@default': { '@id': 'href', 'title': 'alt', 'image': 'url' },
+        '@default': { getURL: 'href', 'title': 'alt', 'image': 'url' },
         teaser: { 'href': 'href', 'title': 'alt', 'preview_image': 'url' },
     },
 },
 
 // Non-content types: use explicit hub-type mappings (NOT @default).
 // All facet types map through checkboxFacet as a hub:
-selectFacet:  { fieldMappings: { checkboxFacet: { title: 'title', field: 'field', hidden: 'hidden' } } },
+selectFacet:  { fieldMappings: { checkboxFacet: { title: 'title', field: 'field' } } },
 checkboxFacet: { fieldMappings: { selectFacet: { /* ... */ }, daterangeFacet: { /* ... */ } } },
 ```
 
@@ -888,7 +920,7 @@ checkboxFacet: { fieldMappings: { selectFacet: { /* ... */ }, daterangeFacet: { 
 
 `@target` maps a **linked** content item's attributes onto this block's own fields — the generic version of the Volto teaser's "copy from target" button. It maps *source content attributes* (`title`, `description`, `image`, …) to *this block's fields*.
 
-The item is whichever the block's **source link field** points at, and that field is **declared, never guessed**: `'@source': 'href'` in an explicit `@target`, or — for a `@default` mapping — the field the target's `'@id'` is mapped to, which already says where the link lands. A block with several link fields and no declaration is an error: picking the first one in schema order is not a rule, and in a real site config it picked a hero's *video file* over its button link, and a button's `url: 'Link (legacy)'` over the `href` the author picks with.
+The item is whichever the block's **source link field** points at, and that field is **declared, never guessed**: `'@source': 'href'` in an explicit `@target`, or — for a `@default` mapping — the field the target's `getURL` is mapped to, which already says where the link lands. A block with several link fields and no declaration is an error: picking the first one in schema order is not a rule, and in a real site config it picked a hero's *video file* over its button link, and a button's `url: 'Link (legacy)'` over the `href` the author picks with.
 
 ### Javascript
 
@@ -907,7 +939,7 @@ button: {
 },
 ```
 
-It is **available by default** for a block with a link field and a `fieldMappings['@default']`: the `@default` mapping doubles as the `@target` one (`@id` aside, since that is the link itself). Declare `@target` to map differently; either way there is no per-block enhancer wiring. Each mapped field then shows a small **🔗 pull from linked** toggle in the sidebar (only when a target is selected).
+It is **available by default** for a block with a link field and a `fieldMappings['@default']`: the `@default` mapping doubles as the `@target` one (`getURL` aside, since that is the link itself). Declare `@target` to map differently; either way there is no per-block enhancer wiring. Each mapped field then shows a small **🔗 pull from linked** toggle in the sidebar (only when a target is selected).
 
 **A block SAYS which of its fields a link owns, in `_pullFrom`:**
 
@@ -996,7 +1028,7 @@ cells: {
 
 The rule is evaluated in the same pass that applies field defaults (run on every edit): each typed item's target `@type` is re-resolved, and when it differs from the stored `@type` the item is **converted in place** via the bridge above. So moving a row to/from row 0 flips its cells between `tableHeaderCell` (a slate `value`) and `tableCell` (a `blocks` container), losslessly — no imperative "re-type the cells" code. Only meaningful on a **typed** object_list (a `typeField` item has an `@type` to rewrite); it settles in one pass (the target type re-resolves to itself once the item is in place).
 
-Each field's value is converted to the shape its destination widget expects (derived from the widget): strings copy across, an image field is assembled from the target's `image_scales` / `image_field`, multi-value fields (e.g. `Subject` → tags) pass through as-is.
+Each field's value is converted by the [mapping rule](#which-fields-map-onto-which): the conversion the entry names, else the one its destination field's widget calls for, else the one its source needs (a list into text is joined). An attribute of the linked page that isn't a catalog field takes its destination widget's.
 
 The pull is **snapshot-based** — there is no separate live fetch. When you pick or type a link, the url widget stores the target's **full** metadata onto the link field (the object browser already fetches every item with `metadata_fields: '_all'`, and the field's `selectedItemAttrs` keeps the whole canonical set), so the block carries its own source data. Every mapped field then pulls straight from that stored snapshot: **on page open** (all blocks fill at once) and again whenever you change the link.
 
@@ -1005,10 +1037,14 @@ Only an **internal** link is a pull source. An external URL has no catalog item 
 ### Conversion graph rules
 
 - Explicit `fieldMappings[typeName]` always creates a conversion edge.
-- `@default` only creates edges between types that both have valid `@default` mappings (keys from `{ @id, title, description, image }`). Types with non-canonical `@default` keys are ignored.
+- `@default` only creates edges between types that both have valid `@default` mappings (keys from the catalog fields above). A `@default` key that isn't one stops the editor loading.
 - Types without `fieldMappings` never appear in the "Convert to..." menu.
 - Transitive conversions use paths through intermediate types (e.g. hero → teaser → image).
 - Unmapped fields are kept in the data so converting back restores them.
+
+### Converting outside the editor
+
+A program that makes content without the editor (a site converter, a migration) converts a block the editor's way with `plone-content convert-block --schemas <schemas> --to <type>`: the block as JSON on stdin, the converted block as JSON on stdout. It follows the same conversion graph, so a type the block doesn't convert to is an error, never an empty block of that type. Unlike the editor it keeps only the fields the new type declares: there is no converting back, and the content check refuses a field its block doesn't declare.
 
 ### Drag and paste via conversion
 
@@ -1018,32 +1054,58 @@ The same conversion graph gives drag-and-drop (and paste) more valid destination
 
 The chooser popup survives only for the genuinely ambiguous case: a single block reachable to *several* target types, where you pick which one (cancelling leaves it untouched). Zero reachable types rejects the drop; multi-block selections are auto-only (every member must reach exactly one type). On mobile, conversion happens via cut → paste (drag/chevron move stays native-only). External-link and other type restrictions are unaffected; only the container's `allowedBlocks` gate is relaxed to "allowed or convertible".
 
+### Which fields map onto which
+
+One rule decides which source can fill which field, and with which conversion (`@volto-hydra/helpers/mappingConversions.js`). The mapping widget offers by it, the editor checks every config mapping against it when it loads, and the content check applies it to every stored listing mapping.
+
+A field's conversion is derived from its widget (`widgetToTargetType`: the one derivation converting a block, pulling from a linked page and storing a listing's mapping all use). Where that wouldn't give what the field holds, the source decides:
+
+<block type="slateTable" table.fixed table.celled>
+
+| Source | Can fill | Conversion |
+| --- | --- | --- |
+| text (`title`, `description`, a vocabulary column) | a text, textarea or slate field | `string`, `textarea`, `slate` |
+| the address (`getURL`) | a link field (`object_browser` link, `url`) | `link` |
+| the address | a text or textarea field | `string`, `textarea` |
+| an image (`image`) | an image or link field | `image_link` (its scales kept) |
+| a date (`created`, `effective`, …) | a date, text or textarea field | `string`, `textarea` |
+| a list (`Subject`) | a list field | `array` |
+| a list | a text, textarea or slate field (joined) | `string`, `textarea`, `slate` |
+| yes/no | a yes/no field | `boolean` |
+
+</block>
+
+Nothing maps onto a choice field (a result's value needn't be one of its tokens), a region, an object or a number. A `url` field holds the object-browser link list, `[{ "@id": url }]`, as the editor's url widget writes it, so it takes `link`; a field meant to hold a plain URL string is a plain string field.
+
 ### Mapping value format
 
-A mapping value is either a string (simple field rename) or `{ field, type }` (rename with type conversion):
+A value in a block config's `fieldMappings` is a field name, or `{ field, type }` to name a conversion the field's widget wouldn't call for (a list into text, an image into a link field). It is read with the schema, so the conversion of a plain field name is derived:
 
 ### Json
 
 ```json
 {
-    "@id": { "field": "href", "type": "link" },
+    "getURL": "href",
     "title": "title",
-    "description": "description",
-    "image": "preview_image"
+    "Subject": { "field": "title", "type": "string" },
+    "image": { "field": "url", "type": "image_link" }
 }
 ```
 
-When `type` is specified, the value is converted at runtime:
+A listing's stored `fieldMapping` is different: it is expanded where there is no schema, so **every entry is `{ field, type }`**, and `expandListingBlocks` refuses one without a type rather than passing its value through. The editor stores every entry that way.
 
 <block type="slateTable" table.fixed table.celled>
 
 | Type | Conversion |
 | --- | --- |
-| `string` | Arrays joined with `", "`; image objects resolved to URL string |
-| `link` | String wrapped as `[{ "@id": value }]` (Volto link format) |
-| `image` | Pass through (expects `{ "@id", image_field, image_scales }`) |
-| `array` | Non-arrays wrapped in `[value]` |
-| `(none)` | Copied as-is |
+| `string` | Text; a list joined with `", "`, slate as its text |
+| `textarea` | Text, slate as its text with line breaks |
+| `slate` | A slate value; text wrapped in a paragraph |
+| `link` | `[{ "@id": value }]` (the object-browser link list) |
+| `image_link` | `[{ "@id", image_field, image_scales }]` (an image, its scales kept) |
+| `image` | A plain image URL, for an image widget's value inside a block conversion |
+| `array` | A list; a lone value wrapped in `[value]` |
+| `boolean` | The value as it is |
 
 </block>
 
@@ -1051,16 +1113,29 @@ When `type` is specified, the value is converted at runtime:
 
 When a parent block has `mappingField` set in its `inheritSchemaFrom` recipe, the admin sidebar shows a widget that lets editors configure field mappings visually:
 
-- Shows the `@default` source fields (`@id`, `title`, `description`, `image`) on the left.
-- For each source field, lets the editor pick a field from the selected child type's schema.
-- Auto-detects the conversion `type` from the target field definition (e.g. `object_browser` with `mode=link` → `type: "link"`).
-- Saves the result as `fieldMapping` (singular) on the block data.
+- Shows the source fields on the left: the listing schema's `sourceFields` (each with a `type`: `string`, `image`, `date`, `array` or `boolean`) and the columns of the vocabulary it names.
+- A vocabulary column (a site's own catalog column, as `plone.app.vocabularies.MetadataFields` lists them) has no type of its own: the catalog fills it from the object attribute of the same name. So it holds what the content types' field of that exact name holds, as each type's `@types/<type>` schema says: the edited page's own type first, else the site's other types (an event's `start` is a field of events only). A list field gives a list, a date or datetime a date, a yes/no a boolean, any other text field text. A column no type has a field for (one an indexer fills) is text. A column whose types hold it differently, or whose field Inka has no conversion for (rich text, a number, an image), isn't offered.
+- For each source, offers only the selected child type's fields it [can fill](#which-fields-map-onto-which).
+- Saves each entry as `{ field, type }`, with the conversion from the rule, as `fieldMapping` (singular) on the block data — also when the item type changes and the mapping is reset to that type's `@default`.
 
-The saved `fieldMapping` is read at render time by `expandListingBlocks` — no block registry access needed at render time.
+The saved `fieldMapping` is read at render time by `expandListingBlocks` — no block registry access needed at render time, which is why it carries every conversion.
+
+### Checked when the editor loads
+
+The editor refuses to load a frontend config whose mappings don't make sense, listing every problem (`[HYDRA] initBridge config error`); the content check runs the same checks in CI. A mapping is refused when:
+
+- its source or destination is a field the schemas don't have, or a `@default` source isn't a catalog field;
+- it writes onto an id, a type or a template key — `@id`, `@type`, Inka's own keys, or the `idField` / `typeField` of a list its block is an item of (a region path's too);
+- its conversion isn't one Inka has, or can't give what its field holds;
+- it maps from `@id` (the address is `getURL`), or a mapping widget offers a source of a type Inka can't convert.
+
+A block field may not be **named** `@id`, at any depth (in an object field, in a list's items): Plone reads every `@id` in stored block data as a link, so it would rewrite or refuse the value. A link keeps its `@id` inside the field's value, which is fine.
 
 ## Search text
 
-A page is found by the text of its blocks. When the page is saved, Inka stores each block's text as its `searchableText`, which plone.restapi's indexer reads. It visits a block's `blocks` and `data.blocks` itself, so a block carries only its own text, plus whatever that visit can't reach: object lists, such as table cells and form questions, and regions in any other object. Search text belongs to the page, so a block a template owns (`fixed` and `readOnly`) gets none.
+A page is found by the text of its blocks. When the page is saved, Inka stores each block's text as its `searchableText`, which plone.restapi's indexer reads. It visits a block's `blocks` and `data.blocks` itself, so a block carries only its own text, plus whatever that visit can't reach: object lists, such as table cells and form questions, and regions in any other object. Search text belongs to the page, so a block a template owns (`fixed` and `readOnly`) gets none. The core text block is no exception: its paragraphs and list items are separate words, and inline formatting runs on with the words around it. Save removes the `plaintext` Volto keeps on a text block, which plone.restapi would otherwise read as an old copy of its words.
+
+Content that never goes through the editor gets its search text the same way. A markdown tree is given it as it is read, from the frontend's block schemas (`CONTENT_SCHEMAS` for the mock API, which refuses to export markdown without them), and `plone-content search-text <content-dir> --schemas <schemas>` writes it into an exported tree.
 
 A block's own text is the fields a person writes, in schema order: fields with no widget or a `text`, `textarea` or `slate` widget, with no fixed set of choices and not marked `multilingual_options.language_independent`. Mark a plain string that holds a token, such as a width or an anchor, with that flag. A field its `fieldRules` hide is left out. If another order suits your block, or its text is in a picked item's title or a list of strings, name its fields:
 
@@ -1075,4 +1150,4 @@ const initBlocks = {
 };
 ```
 
-Content that never passes through the editor, such as an import, has no `searchableText` until it's saved. To fill it, run `plone-content search-text <content-dir> --schemas <schemas>` over the content before importing it.
+Content that never passes through the editor, such as an import, has no `searchableText` until it's saved. To fill it, run `plone-content search-text <content-dir> --schemas <schemas>` over the content before importing it. It reads every page under the folder, at any depth, and writes only the pages it changes, each in its file's own indentation. Run `plone-content field-mappings` too: a listing's stored mapping is the other thing the editor stores that an import doesn't have (see [Listings › Where the mapping lives](./listings.md#where-the-mapping-lives)).

@@ -24,6 +24,8 @@
  * and it is what lets the sidebar still offer re-linking.
  */
 
+import { ADDRESS_SOURCE } from './catalogAddress.js';
+
 /**
  * Determine the hydra type of a field from its schema definition.
  * Returns 'link', 'image', or the JSON Schema type (string, number, etc.)
@@ -49,7 +51,7 @@ export function getMappingTarget(mapping) {
 export const PULL_FROM_KEY = '_pullFrom';
 
 /** Mapping keys that name machinery rather than a target attribute to copy. */
-const MAPPING_META = new Set(['@id', '@source']);
+const MAPPING_META = new Set([ADDRESS_SOURCE, '@source']);
 
 /**
  * The `@target` mapping ({ sourceAttr: destField | {field,type} }) or null.
@@ -145,7 +147,7 @@ export function getSourceField(blockConfig) {
   if (declared) return declared;
 
   const fromDefault = getMappingTarget(
-    blockConfig?.fieldMappings?.['@default']?.['@id'],
+    blockConfig?.fieldMappings?.['@default']?.[ADDRESS_SOURCE],
   );
   if (fromDefault) return fromDefault;
 
@@ -155,7 +157,7 @@ export function getSourceField(blockConfig) {
   throw new Error(
     `${blockConfig?.id || 'block'} declares several link fields (${links.join(', ')}) ` +
       `and none of them as the pull source. Name it with fieldMappings['@target']['@source'], ` +
-      `or map the target's '@id' to it in fieldMappings['@default'].`,
+      `or map the target's '${ADDRESS_SOURCE}' to it in fieldMappings['@default'].`,
   );
 }
 

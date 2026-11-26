@@ -1,3 +1,4 @@
+import { describe, test, expect } from 'vitest';
 import { getChildBlockEntries } from '@volto-hydra/helpers';
 
 /**

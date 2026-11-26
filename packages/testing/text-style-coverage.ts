@@ -202,12 +202,32 @@ export function measureStylesInPage(
 
   // What something LOOKS like, reduced to the properties that make one style
   // visibly distinct from another. No tag name on purpose.
+  //
+  // Not `display` as such: body text is the paragraph, laid out as a block, and
+  // an inline style is laid out inline, so comparing the two made every inline
+  // style differ from body text — a superscript drawn as a plain span passed.
+  // Of display, only what a reader can SEE is kept: a list marker, or nothing.
+  const visibleDisplay = (d: string) => (d === 'list-item' || d === 'none' ? d : '');
+  // A strike and a raised or lowered baseline are not inherited, yet they show
+  // on every word inside the element that draws them: a frontend that wraps each
+  // text leaf in its own span draws a format AROUND the leaf. So they are read
+  // from the element and every ancestor up to the block's root.
+  const drawnAround = (el: Element) => {
+    const decorations: string[] = [];
+    const alignments: string[] = [];
+    for (let at: Element | null = el; at; at = at === root ? null : at.parentElement) {
+      const c = getComputedStyle(at);
+      if (c.textDecorationLine && c.textDecorationLine !== 'none') decorations.push(c.textDecorationLine);
+      if (c.verticalAlign && c.verticalAlign !== 'baseline') alignments.push(c.verticalAlign);
+    }
+    return [decorations.join(' '), alignments.join(' ')];
+  };
   const signature = (el: Element) => {
     const c = getComputedStyle(el);
     return [
       c.fontSize, c.fontWeight, c.fontStyle, c.fontFamily,
-      c.textDecorationLine, c.textTransform, c.letterSpacing,
-      c.verticalAlign, c.display, c.color,
+      ...drawnAround(el), c.textTransform, c.letterSpacing,
+      visibleDisplay(c.display), c.color,
     ].join('|');
   };
 

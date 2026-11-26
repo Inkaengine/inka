@@ -9,35 +9,39 @@
     "directory": "packages/mock-api"
   },
   "license": "MIT",
+  "type": "module",
   "engines": {
-    "node": ">=20.19.0"
+    "node": "^20.19.0 || >=22.12.0"
   },
   "exports": {
-    ".": "./mock-plone-api.cjs",
-    "./server": "./mock-api-server.cjs",
-    "./tokens": "./mock-tokens.cjs"
+    ".": "./mock-plone-api.js",
+    "./server": "./mock-api-server.js",
+    "./tokens": "./mock-tokens.js",
+    "./env-port": "./env-port.js",
+    "./from-schemas": "./from-schemas.js"
   },
   "bin": {
-    "inka-mock-api": "./mock-api-server.cjs"
+    "inka-mock-api": "./mock-api-server.js"
   },
   "files": [
     "api/",
-    "env-port.cjs",
-    "mock-api-server.cjs",
-    "mock-plone-api.cjs",
-    "mock-principals-and-rules.cjs",
-    "mock-tokens.cjs",
-    "scaled-image.cjs",
-    "server-state.mjs"
+    "env-port.js",
+    "from-schemas.js",
+    "json-body.js",
+    "mock-api-server.js",
+    "mock-plone-api.js",
+    "mock-principals-and-rules.js",
+    "mock-tokens.js",
+    "scaled-image.js",
+    "server-state.js",
+    "template-owned.js"
   ],
   "dependencies": {
     "@inka/blockmd": "workspace:*",
     "@inka/content-validator": "workspace:*",
+    "@volto-hydra/helpers": "workspace:*",
     "cors": "^2.8.5",
-    "express": "4.22.1",
+    "express": "5.2.1",
     "yaml": "1.10.2"
-  },
-  "devDependencies": {
-    "@volto-hydra/helpers": "workspace:*"
   }
 }
