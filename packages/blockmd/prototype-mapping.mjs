@@ -458,6 +458,19 @@ function resolvePart(node, ref) {
       if (u === null) { if (ref.optional) return null; throw new NoFit(`no link url in ${kindOf(node)}`); }
       return u;
     }
+    // A definition list read as one entry: its first term, and that term's
+    // definition (absent when it is empty, `Name\n:`) -- a question and its hint.
+    case 'term': {
+      const t = (node.children ?? []).find((c) => kindOf(c) === 'dt');
+      return t ? phrasingText(t) : null;
+    }
+    case 'definition': {
+      const d = (node.children ?? []).find((c) => kindOf(c) === 'dd');
+      const text = d ? proseText(d) : '';
+      return text === '' ? null : text;
+    }
+    // A list's items as plain strings (a choice field's options).
+    case 'items': return (node.children ?? []).map((li) => proseText(li));
     case 'title': return findTitle(node); // `![a](u "title")` / `[t](u "title")` -> a caption/tooltip
     case 'meta': return node.meta ?? null; // a code fence's info-string after the lang
     default: throw new Error(`unhandled ref part: ${ref.part}`);
@@ -595,6 +608,13 @@ function splitAt(nodes, delim, depth) {
   return groups;
 }
 
+/** Whether a region's items are written as blocks in their own tags: an
+ *  object_list whose item prototypes have no heading to split them at (a form's
+ *  fields, a definition list each), so each item's tag is its boundary and type. */
+const taggedItems = (region) => region.widget !== 'blocks_layout' && region.protos.length > 0
+  && !isStructural(region)
+  && region.protos.every((p) => !Object.values(p.fields).some((v) => /^h([1-6])?$/.test(parseRef(v)?.node ?? '')));
+
 /** The heading ref an item repeats on (`h` relative, or `h2` absolute). */
 function delimiterOf(item) {
   for (const v of Object.values(item.fields)) {
@@ -699,6 +719,10 @@ function decodeRegion(protos, region, inner, depth) {
       if (!proto) throw new NoFit(`region "${region.name}" has no item prototype for ${kindOf(child)} ${nth}`);
       return typed(proto, decodeItemNode(protos, proto, child, depth));
     });
+  }
+  if (taggedItems(region)) {
+    const blocks = matchNodes(contentScope(protos, region), inner, depth + 1);
+    return blocks.map(({ '@type': t, ...rest }) => (typeKey == null ? rest : { [typeKey]: t, ...rest }));
   }
   const delim = delimiterOf(item); // object_list: delimiter at `depth`, content one deeper
   return splitAt(inner, delim, depth).map((group) => typed(item, decodeItem(protos, item, group, depth)));
@@ -1056,6 +1080,15 @@ function emitNode(block, entry, depth) {
   if (entry.node === 'strong' && txt) return mdOf(para({ type: 'strong', children: text(txt) }));
   if (entry.node === 'em' && txt) return mdOf(para({ type: 'emphasis', children: text(txt) }));
   if ((entry.node === 'p' || entry.node === 'dd') && txt) return mdOf(para(...text(txt))); // a dd: emitFields adds the term
+  // A definition list's term and its definition; an empty one is `Term\n:`.
+  if (entry.node === 'dl' && p.term) {
+    const def = p.definition && block[p.definition] != null && block[p.definition] !== '' ? ` ${mdOf(para(...text(p.definition)))}` : '';
+    return `${mdOf(para(...text(p.term)))}\n:${def}`;
+  }
+  if ((entry.node === 'ul' || entry.node === 'ol') && p.items) {
+    return mdOf({ type: 'list', ordered: entry.node === 'ol', spread: false,
+      children: (block[p.items] ?? []).map((item) => ({ type: 'listItem', spread: false, children: [para(...textNodes(item))] })) });
+  }
   throw new NoFit(`cannot emit node ${entry.node}`);
 }
 
@@ -1273,6 +1306,18 @@ function emitContainer(protos, proto, block, depth) {
       // <p>/<hN>. A form a cell can't take throws NoCellForm.
       if (tableForm === 'grid') return gridTableToMd(table);
       return tableToMd(table, { html: tableForm === 'html' });
+    }
+    // Only when every item's type names one of the region's item prototypes;
+    // an item that can't be typed keeps the data form, as before.
+    const tk = region.typeField;
+    const typeOf = (it) => (tk == null ? region.protos[0].type : it[tk]);
+    if (taggedItems(region) && val.every((it) => region.protos.some((p) => p.type === typeOf(it)))) {
+      const blocks = val.map((it) => {
+        if (tk == null) return { '@type': region.protos[0].type, ...it };
+        const { [tk]: t, ...rest } = it;
+        return { '@type': t, ...rest };
+      });
+      return emitSegments(contentScope(protos, region), blocks, depth + 1).join('\n\n');
     }
     return val.map((item) => emitItem(protos, region.protos[0], item, depth)).join('\n\n');
   };

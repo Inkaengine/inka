@@ -2575,3 +2575,38 @@ describe("a block inside a list is lifted out of it, as Volto's editor does", ()
     expect(emitBlocks(protos, [block])).toBe('- one\n- two');
   });
 });
+
+describe("a form's fields, each a question and its hint", () => {
+  // A form's fields are an object_list of several item types (text, choice…),
+  // with nothing like a heading to split them at, so each is written in its own
+  // tag: its question as a definition-list term, its hint as the definition,
+  // and a choice field's options as a bullet list.
+  const protos = [
+    ...parsePrototypes('<block is="slate" value="${p/slate}" />'),
+    ...parsePrototypes([
+      '<block is="form">',
+      '  <region name="subblocks" widget="object_list" idField="field_id" typeField="field_type">',
+      '    <block is="text" label="${dl/term}" description="${dl?/definition}" />',
+      '    <block is="single_choice" label="${dl/term}" description="${dl?/definition}" input_values="${ul?/items}" />',
+      '  </region>',
+      '</block>',
+    ].join('\n'), { explicit: true }),
+  ];
+  const form = { '@type': 'form', title: 'Contact us', subblocks: [
+    { field_type: 'text', label: 'Name', description: 'Your full name.', required: true },
+    { field_type: 'text', label: 'Phone' },
+    { field_type: 'single_choice', label: 'How did you hear about us?', description: 'Pick one.', input_values: ['Search', 'A friend'] },
+  ] };
+
+  it('writes each field as its question, its hint and its options', () => {
+    const md = emitBlocks(protos, [form]);
+    expect(md).toContain('<block is="text">\n\nName\n: Your full name.\n\n<fields :required="true" />\n\n</block>');
+    expect(md).toContain('Phone\n:');
+    expect(md).toContain('How did you hear about us?\n: Pick one.\n\n- Search\n- A friend');
+    expect(md).not.toContain(':subblocks');
+  });
+
+  it('reads them back', () => {
+    expect(matchBlocks(protos, emitBlocks(protos, [form]))).toEqual([form]);
+  });
+});
