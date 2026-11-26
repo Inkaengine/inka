@@ -128,8 +128,6 @@ blandit praesent luptatum zzril qui.
 :jsobject: maps
 ```
 
-<fields slotId="schema-tabs" />
-
 </block>
 
 <block is="codeExample" slotId="json-data">
@@ -141,8 +139,6 @@ blandit praesent luptatum zzril qui.
 :as: json
 ```
 
-<fields slotId="json-data-tabs" />
-
 </block>
 
 <block is="codeExample" slotId="rendering">
@@ -153,23 +149,17 @@ blandit praesent luptatum zzril qui.
 :language: jsx
 ```
 
-<fields slotId="rendering-tabs" />
-
 ### Vue
 
 ```{literalinclude} examples/vue/MapsBlock.vue
 :language: vue
 ```
 
-<fields slotId="rendering-tabs" />
-
 ### Svelte
 
 ```{literalinclude} examples/svelte/MapsBlock.svelte
 :language: svelte
 ```
-
-<fields slotId="rendering-tabs" />
 
 </block>
 

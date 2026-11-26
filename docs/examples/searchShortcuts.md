@@ -50,8 +50,6 @@ Renders a set of values as links into a faceted search — a "tag cloud" of shor
 :jsobject: searchShortcuts
 ```
 
-<fields slotId="schema-tabs" />
-
 </block>
 
 <block is="codeExample" slotId="json-data">
@@ -63,15 +61,11 @@ Renders a set of values as links into a faceted search — a "tag cloud" of shor
 :as: json
 ```
 
-<fields slotId="json-data-tabs" />
-
 </block>
 
 <fields slotId="rendering">
 
 This block has no bespoke renderer. Add its fetcher to your fetchItems map (keyed by @type) and expandListingBlocks expands it in any region you render — the same seam that powers [listings](../frontend-guide/listings.md) and other collection blocks. See [Custom Blocks](../frontend-guide/custom-blocks.md) to define the block type. Only the fetcher below is block-specific.
-
-<block is="codeExample">
 
 ### Fetcher
 
@@ -100,10 +94,6 @@ export function searchShortcutsFetcher({ apiUrl, contextPath }) {
 }
 ```
 
-<fields slotId="rendering-tabs" />
-
-</block>
-
 <block is="codeExample">
 
 ### Render
@@ -121,8 +111,6 @@ const { items } = await expandListingBlocks(regionBlockIds, {
 });
 items.forEach((item) => renderBlock(item)); // your normal per-block renderer
 ```
-
-<fields slotId="rendering-tabs" />
 
 </block>
 

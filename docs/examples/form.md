@@ -81,8 +81,6 @@ If your frontend submits from its server, read the token from the `access_token`
 :jsobject: form
 ```
 
-<fields slotId="schema-tabs" />
-
 </block>
 
 <block is="codeExample" slotId="json-data">
@@ -94,8 +92,6 @@ If your frontend submits from its server, read the token from the `access_token`
 :as: json
 ```
 
-<fields slotId="json-data-tabs" />
-
 </block>
 
 <block is="codeExample" slotId="rendering">
@@ -106,23 +102,17 @@ If your frontend submits from its server, read the token from the `access_token`
 :language: jsx
 ```
 
-<fields slotId="rendering-tabs" />
-
 ### Vue
 
 ```{literalinclude} examples/vue/FormBlock.vue
 :language: vue
 ```
 
-<fields slotId="rendering-tabs" />
-
 ### Svelte
 
 ```{literalinclude} examples/svelte/FormBlock.svelte
 :language: svelte
 ```
-
-<fields slotId="rendering-tabs" />
 
 </block>
 

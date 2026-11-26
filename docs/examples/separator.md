@@ -149,8 +149,6 @@ Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincid
 :jsobject: separator
 ```
 
-<fields slotId="schema-tabs" />
-
 </block>
 
 <block is="codeExample" slotId="json-data">
@@ -162,8 +160,6 @@ Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincid
 :as: json
 ```
 
-<fields slotId="json-data-tabs" />
-
 </block>
 
 <block is="codeExample" slotId="rendering">
@@ -174,23 +170,17 @@ Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincid
 :language: jsx
 ```
 
-<fields slotId="rendering-tabs" />
-
 ### Vue
 
 ```{literalinclude} examples/vue/SeparatorBlock.vue
 :language: vue
 ```
 
-<fields slotId="rendering-tabs" />
-
 ### Svelte
 
 ```{literalinclude} examples/svelte/SeparatorBlock.svelte
 :language: svelte
 ```
-
-<fields slotId="rendering-tabs" />
 
 </block>
 

@@ -79,8 +79,6 @@ Recognized for excellence in UX.
 :jsobject: slider
 ```
 
-<fields slotId="schema-tabs" />
-
 </block>
 
 <block is="codeExample" slotId="json-data">
@@ -92,8 +90,6 @@ Recognized for excellence in UX.
 :as: json
 ```
 
-<fields slotId="json-data-tabs" />
-
 </block>
 
 <block is="codeExample" slotId="rendering">
@@ -104,23 +100,17 @@ Recognized for excellence in UX.
 :language: jsx
 ```
 
-<fields slotId="rendering-tabs" />
-
 ### Vue
 
 ```{literalinclude} examples/vue/SliderBlock.vue
 :language: vue
 ```
 
-<fields slotId="rendering-tabs" />
-
 ### Svelte
 
 ```{literalinclude} examples/svelte/SliderBlock.svelte
 :language: svelte
 ```
-
-<fields slotId="rendering-tabs" />
 
 </block>
 

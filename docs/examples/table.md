@@ -123,8 +123,6 @@ A table with rich text (Slate) content in each cell. Supports adding/removing ro
 :jsobject: slateTable
 ```
 
-<fields slotId="schema-tabs" />
-
 </block>
 
 <block is="codeExample" slotId="json-data">
@@ -136,8 +134,6 @@ A table with rich text (Slate) content in each cell. Supports adding/removing ro
 :as: json
 ```
 
-<fields slotId="json-data-tabs" />
-
 </block>
 
 <block is="codeExample" slotId="rendering">
@@ -148,23 +144,17 @@ A table with rich text (Slate) content in each cell. Supports adding/removing ro
 :language: jsx
 ```
 
-<fields slotId="rendering-tabs" />
-
 ### Vue
 
 ```{literalinclude} examples/vue/TableBlock.vue
 :language: vue
 ```
 
-<fields slotId="rendering-tabs" />
-
 ### Svelte
 
 ```{literalinclude} examples/svelte/TableBlock.svelte
 :language: svelte
 ```
-
-<fields slotId="rendering-tabs" />
 
 </block>
 

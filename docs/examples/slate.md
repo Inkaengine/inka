@@ -104,8 +104,6 @@ Lorem ipsum dolor sit amet, consetetur sadipscing elitr, sed diam nonumy eirmod 
 :jsobject: slate
 ```
 
-<fields slotId="schema-tabs" />
-
 </block>
 
 <block is="codeExample" slotId="json-data">
@@ -117,8 +115,6 @@ Lorem ipsum dolor sit amet, consetetur sadipscing elitr, sed diam nonumy eirmod 
 :as: json
 ```
 
-<fields slotId="json-data-tabs" />
-
 </block>
 
 <fields slotId="rendering">
@@ -129,13 +125,11 @@ Lorem ipsum dolor sit amet, consetetur sadipscing elitr, sed diam nonumy eirmod 
 
 The Astro examples below omit `data-block-uid` on the block's root element because `BlockRenderer.astro` wraps every block in `<div data-block-uid={uid}>`. See [Server-rendered frontends](../frontend-guide/server-rendered-frontends.md) for why.
 
-<fields slotId="rendering-items" :fixed="false" :readOnly="false" />
+<fields :fixed="false" :readOnly="false" />
 
 </block>
 
 </block>
-
-<block is="codeExample">
 
 ### React
 
@@ -159,8 +153,6 @@ function SlateNode({ node }) {
   return <Tag {...props}>{children}</Tag>;
 }
 ```
-
-<fields slotId="rendering-tabs" />
 
 ### Vue
 
@@ -192,8 +184,6 @@ defineProps({ node: Object });
 </script>
 ```
 
-<fields slotId="rendering-tabs" />
-
 ### Svelte
 
 ```svelte
@@ -222,10 +212,6 @@ defineProps({ node: Object });
   <svelte:element this={node.type} data-node-id={node.nodeId}>{#each node.children || [] as c, i (i)}<svelte:self node={c} />{/each}</svelte:element>
 {/if}
 ```
-
-<fields slotId="rendering-tabs" />
-
-</block>
 
 </fields>
 

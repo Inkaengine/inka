@@ -79,8 +79,6 @@ This is an **important** — for a must-know gotcha.
 :jsobject: callout
 ```
 
-<fields slotId="schema-tabs" />
-
 </block>
 
 <block is="codeExample" slotId="json-data">
@@ -92,8 +90,6 @@ This is an **important** — for a must-know gotcha.
 :as: json
 ```
 
-<fields slotId="json-data-tabs" />
-
 </block>
 
 <block is="codeExample" slotId="rendering">
@@ -104,15 +100,11 @@ This is an **important** — for a must-know gotcha.
 :language: jsx
 ```
 
-<fields slotId="rendering-tabs" />
-
 ### Vue
 
 ```{literalinclude} examples/vue/CalloutBlock.vue
 :language: vue
 ```
-
-<fields slotId="rendering-tabs" />
 
 ### Svelte
 
@@ -120,15 +112,11 @@ This is an **important** — for a must-know gotcha.
 :language: svelte
 ```
 
-<fields slotId="rendering-tabs" />
-
 ### Astro
 
 ```{literalinclude} examples/astro/CalloutBlock.astro
 :language: astro
 ```
-
-<fields slotId="rendering-tabs" />
 
 </block>
 

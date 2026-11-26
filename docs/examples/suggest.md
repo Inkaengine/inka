@@ -46,8 +46,6 @@ A question whose answer is completed from a vocabulary the author picked.
 :jsobject: suggest
 ```
 
-<fields slotId="schema-tabs" />
-
 </block>
 
 <block is="codeExample" slotId="json-data">
@@ -59,8 +57,6 @@ A question whose answer is completed from a vocabulary the author picked.
 :as: json
 ```
 
-<fields slotId="json-data-tabs" />
-
 </block>
 
 <block is="codeExample" slotId="rendering">
@@ -70,21 +66,15 @@ A question whose answer is completed from a vocabulary the author picked.
 ```jsx
 ```
 
-<fields slotId="rendering-tabs" />
-
 ### Vue
 
 ```vue
 ```
 
-<fields slotId="rendering-tabs" />
-
 ### Svelte
 
 ```svelte
 ```
-
-<fields slotId="rendering-tabs" />
 
 </block>
 

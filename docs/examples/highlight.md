@@ -117,8 +117,6 @@ Lorem ipsum dolor sit amet, [consetetur sadipscing](./button.md) elitr, sed diam
 :jsobject: highlight
 ```
 
-<fields slotId="schema-tabs" />
-
 </block>
 
 <block is="codeExample" slotId="json-data">
@@ -130,8 +128,6 @@ Lorem ipsum dolor sit amet, [consetetur sadipscing](./button.md) elitr, sed diam
 :as: json
 ```
 
-<fields slotId="json-data-tabs" />
-
 </block>
 
 <block is="codeExample" slotId="rendering">
@@ -142,23 +138,17 @@ Lorem ipsum dolor sit amet, [consetetur sadipscing](./button.md) elitr, sed diam
 :language: jsx
 ```
 
-<fields slotId="rendering-tabs" />
-
 ### Vue
 
 ```{literalinclude} examples/vue/HighlightBlock.vue
 :language: vue
 ```
 
-<fields slotId="rendering-tabs" />
-
 ### Svelte
 
 ```{literalinclude} examples/svelte/HighlightBlock.svelte
 :language: svelte
 ```
-
-<fields slotId="rendering-tabs" />
 
 </block>
 

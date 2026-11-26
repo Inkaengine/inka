@@ -78,8 +78,6 @@ A vertical navigation list for grouped pages — a left sidebar on desktop and a
 :jsobject: contextNavigation
 ```
 
-<fields slotId="schema-tabs" />
-
 </block>
 
 <block is="codeExample" slotId="json-data">
@@ -91,8 +89,6 @@ A vertical navigation list for grouped pages — a left sidebar on desktop and a
 :as: json
 ```
 
-<fields slotId="json-data-tabs" />
-
 </block>
 
 <block is="codeExample" slotId="rendering">
@@ -103,23 +99,17 @@ A vertical navigation list for grouped pages — a left sidebar on desktop and a
 :language: jsx
 ```
 
-<fields slotId="rendering-tabs" />
-
 ### Vue
 
 ```{literalinclude} examples/vue/ContextNavigationBlock.vue
 :language: vue
 ```
 
-<fields slotId="rendering-tabs" />
-
 ### Svelte
 
 ```{literalinclude} examples/svelte/ContextNavigationBlock.svelte
 :language: svelte
 ```
-
-<fields slotId="rendering-tabs" />
 
 </block>
 
