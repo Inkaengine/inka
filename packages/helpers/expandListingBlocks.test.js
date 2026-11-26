@@ -92,3 +92,57 @@ describe('expandListingBlocks — the result address is getURL', () => {
     await expect(expand({ title: 'title' })).rejects.toThrow(/title.*conversion/);
   });
 });
+
+// The item type, the mapping and the item defaults are saved into the listing
+// by the editor, under the fields its recipe names. expandListingBlocks has no
+// recipe: the frontend that declared those fields passes their names.
+describe('expandListingBlocks — the listing fields the frontend names', () => {
+  const fetchItems = {
+    listing: async () => ({ items: [{ '@id': 'http://site/a', title: 'A' }], total: 1 }),
+  };
+  const mapping = { title: { field: 'heading', type: 'string' } };
+  const expand = (listing, options = {}) =>
+    expandListingBlocks([{ '@uid': 'l', '@type': 'listing', ...listing }], {
+      fetchItems,
+      itemTypeField: 'variation',
+      ...options,
+    }).then(({ items }) => items[0]);
+
+  it('reads the item defaults from the field the frontend names', async () => {
+    const item = await expand(
+      { variation: 'card', fieldMapping: mapping, cardDefaults_style: 'dark', itemDefaults_style: 'light' },
+      { defaultsField: 'cardDefaults' },
+    );
+    expect(item.style).toBe('dark');
+  });
+
+  it("reads them from the editor's own name when none is named", async () => {
+    const item = await expand({ variation: 'card', fieldMapping: mapping, itemDefaults_style: 'light' });
+    expect(item.style).toBe('light');
+  });
+
+  it('reads the mapping from the field the frontend names', async () => {
+    const item = await expand({ variation: 'card', resultMapping: mapping }, { mappingField: 'resultMapping' });
+    expect(item.heading).toBe('A');
+  });
+
+  it('refuses a call that names no item type field', async () => {
+    await expect(
+      expandListingBlocks([{ '@uid': 'l', '@type': 'listing', variation: 'card', fieldMapping: mapping }], {
+        fetchItems,
+      }),
+    ).rejects.toThrow(/itemTypeField/);
+  });
+
+  // The editor stores the type a listing's items take: picked, or the one its
+  // position allows. A listing without one is broken, not "a summary".
+  it('refuses a listing with no stored item type', async () => {
+    await expect(expand({ fieldMapping: mapping })).rejects.toThrow(/Listing l has no item type/);
+  });
+
+  it('refuses defaultItemType, which is no longer an option', async () => {
+    await expect(expand({ variation: 'card', fieldMapping: mapping }, { defaultItemType: 'summary' })).rejects.toThrow(
+      /defaultItemType/,
+    );
+  });
+});

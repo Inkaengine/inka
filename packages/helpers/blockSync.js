@@ -40,7 +40,7 @@
 import { getInjectedBlocksConfig, getSlateStyleGlobals, getSlateVocabulary } from './injectedVoltoConfig.js';
 import { normalizeSlateFields, undefinedSlateTypes } from './slateStyles.js';
 import { getContainerFieldConfig, getBlockByPath, getBlockTypeSchema, getBlockById, updateBlockById,
-  deleteBlockFromContainer, ensureEmptyBlockIfEmpty, removeReplacedPlaceholder, getChildBlockIds, getChildField, getChildBlockIdsInField, convertValueContainer, convertContainerBlock, getContainerRegionDescriptors, insertBlockInContainer, parseRegionPath, expandValueIntoRegion, collapseRegionToValue, inheritTemplateMembership } from './blockPath.js';
+  deleteBlockFromContainer, ensureEmptyBlockIfEmpty, removeReplacedPlaceholder, getChildBlockIds, getChildField, getChildBlockIdsInField, convertValueContainer, convertContainerBlock, getContainerRegionDescriptors, insertBlockInContainer, parseRegionPath, expandValueIntoRegion, collapseRegionToValue, inheritTemplateMembership, regionSlotId } from './blockPath.js';
 import { addableSiblingTypes, buildBlockPathMap, buildIdFieldMap, PAGE_BLOCK_UID } from './buildBlockPathMap.js';
 import { isObjectListRegion, regionIdField } from './regionWidgets.js';
 import {
@@ -56,6 +56,7 @@ import {
   isBlockReadonly,
   isBlockPositionLocked,
   getBlockAddability,
+  canContainAll,
 } from './index.js';
 import { getHydraSchemaContext, setHydraSchemaContext, getLiveBlockData } from './hydraSchemaContext.js';
 
@@ -89,6 +90,7 @@ export { getFieldType, getMappingTarget } from './copyFromTargetMapping.js';
 // directly). Re-exported here for backward compat; that module is the SSOT.
 export {
   DEFAULT_TYPE_FIELDS,
+  catalogSourceKinds,
   hasValidDefault,
   shapeSignature,
   getConvertibleTypes,
@@ -100,6 +102,7 @@ export {
 import {
   widgetToTargetType,
   DEFAULT_TYPE_FIELDS,
+  catalogSourceKinds,
   getConvertibleTypes,
   hasValidDefault,
 } from './conversionValidation.js';
@@ -677,22 +680,27 @@ export function applyBlockDefaultsWithContext(blockData, context) {
  * The referenced type's schema fields are added to the parent's sidebar,
  * minus any fields that are mapped to external data.
  *
- * @param {string|null} typeField - Field name containing the block type, or null to read from
- *                                  blocksConfig[blockType].itemTypeField at call time
+ * @param {string|null} typeField - Field name containing the block type, or null to find it
+ *                                  at call time (findTypeField: the blocks field's itemTypeField)
  * @param {string} mappingField - Field name containing field mappings (e.g., 'fieldMapping')
  *                                Can be null if no mapping is used
  * @param {string} defaultsField - Field name to store inherited values (e.g., 'itemDefaults')
- * @param {Object} typeFieldOptions - Options for the typeField (optional)
- * @param {string} typeFieldOptions.title - Title for the typeField (default: 'Item Type')
- * @param {string} typeFieldOptions.filterConvertibleFrom - Only show types with fieldMappings[this]
- * @param {string} typeFieldOptions.default - Default value for the typeField
+ * @param {Object} typeFieldOptions - Recipe options for the typeField (optional)
+ * @param {Object} typeFieldOptions.parentControlled - { childType: [field, …] } the parent claims
+ *
+ * The type picker's own options — `blocksField`, `filterConvertibleFrom` and a
+ * preferred `default` — are declared on the typeField itself (the
+ * blockTypeSelect field), where the picker reads them; this reads them there
+ * too, so the type offered is the type stored.
  * @returns {Function} - A schemaEnhancer function
  *
  * @example
  * // In block config:
  * config.blocks.blocksConfig.listing = {
- *   itemTypeField: 'variation',
- *   schemaEnhancer: { inheritSchemaFrom: { mappingField: 'fieldMapping' } },
+ *   blockSchema: { properties: {
+ *     variation: { widget: 'blockTypeSelect', filterConvertibleFrom: '@default', blocksField: '..' },
+ *   } },
+ *   schemaEnhancer: { inheritSchemaFrom: { typeField: 'variation', mappingField: 'fieldMapping' } },
  * };
  */
 export function inheritSchemaFrom(typeField, mappingField, defaultsField, typeFieldOptions = {}) {
@@ -731,8 +739,10 @@ export function inheritSchemaFrom(typeField, mappingField, defaultsField, typeFi
     // through hydraContext.liveBlockDataRef inside getLiveBlockData itself.
     const liveFallback = { formData: args.pageFormData, blockPathMap };
 
-    // Create or update typeField with computed choices
-    const { filterConvertibleFrom, blocksField, title, default: defaultValue } = typeFieldOptions;
+    // Create or update typeField with computed choices, from the picker's own
+    // options on the field.
+    const { filterConvertibleFrom, blocksField, default: defaultValue } =
+      schema.properties?.[typeField] || {};
     if (filterConvertibleFrom || blocksField) {
       const choices = getBlockTypeChoices(
         { filterConvertibleFrom, blocksField },
@@ -765,7 +775,7 @@ export function inheritSchemaFrom(typeField, mappingField, defaultsField, typeFi
           ...schema.properties,
           [typeField]: {
             ...priorField,
-            title: title || schema.properties?.[typeField]?.title || 'Item Type',
+            title: priorField.title || 'Item Type',
             choices,
             ...(resolvedDefault ? { default: resolvedDefault } : {}),
           },
@@ -1166,27 +1176,6 @@ export function hideParentOwnedFields() {
 }
 
 /**
- * Query result fields available for mapping in listing blocks.
- * These are the standard fields returned by @querystring-search.
- */
-export const QUERY_RESULT_FIELDS = {
-  [ADDRESS_SOURCE]: { title: 'URL', type: 'string' },
-  title: { title: 'Title', type: 'string' },
-  description: { title: 'Description', type: 'string' },
-  image: { title: 'Lead Image', type: 'image' },
-  created: { title: 'Created', type: 'date' },
-  effective: { title: 'Published', type: 'date' },
-  Creator: { title: 'Author', type: 'string' },
-  review_state: { title: 'State', type: 'string' },
-  // The keyword index behind tags/topics — a LIST, so `array`: the `string`
-  // conversion joins ['a','b'] into "a, b", and a renderer that draws one pill
-  // per category then draws none. Without this entry the widget offered no way
-  // to map categories at all, so a block whose recipe declared the mapping had
-  // one nobody could change, and every other block had none.
-  Subject: { title: 'Categories', type: 'array' },
-};
-
-/**
  * Compute smart default field mappings based on field types.
  *
  * If declaredMappings is provided (from block's top-level fieldMappings config),
@@ -1197,7 +1186,7 @@ export const QUERY_RESULT_FIELDS = {
  * - image → first image field (object_browser with mode='image')
  * - @id → first link field (object_browser with mode='link')
  *
- * @param {Object} sourceFields - Source field definitions (e.g., QUERY_RESULT_FIELDS)
+ * @param {Object} sourceFields - Source field definitions (a mapping widget's `sourceFields`)
  * @param {Object} targetSchema - Target block schema with properties
  * @param {Object} declaredMappings - Optional declared mappings from block's fieldMappings config
  * @returns {Object} - Field mapping { sourceField: targetField | { field, type }, ... }
@@ -1809,12 +1798,13 @@ export function filterAddableTypesByRule(
  * Create a schemaEnhancer function from a declarative recipe.
  *
  * New format (supports combining multiple enhancers):
- *   { inheritSchemaFrom: { typeField, defaultsField, mappingField?, parentControlled?, filterConvertibleFrom?, blocksField?, title?, default? } }
+ *   { inheritSchemaFrom: { typeField, defaultsField, mappingField?, parentControlled? } }
+ *   (the type picker's options — blocksField, filterConvertibleFrom, default — go on the typeField)
  *   { fieldRules: { fieldName: false | { set, when?, else? } | [rule, ...] } }
  *
  * Combined example:
  *   {
- *     inheritSchemaFrom: { typeField: 'variation', defaultsField: 'itemDefaults', filterConvertibleFrom: '@default' },
+ *     inheritSchemaFrom: { typeField: 'variation', defaultsField: 'itemDefaults' },
  *     fieldRules: { advancedOptions: { when: { mode: 'advanced' }, else: false } },
  *   }
  *
@@ -1959,7 +1949,20 @@ function createEnhancerByType(type, config) {
 
   switch (type) {
     case 'inheritSchemaFrom': {
-      const { typeField, mappingField, defaultsField = 'itemDefaults', filterConvertibleFrom, blocksField, title, default: defaultValue, parentControlled } = config;
+      const { typeField, mappingField, defaultsField = 'itemDefaults', parentControlled } = config;
+      // The type picker's options live on the typeField (the blockTypeSelect
+      // field), where the picker reads them. Declared here too they were a
+      // second copy that could disagree with the picker — or the only copy,
+      // which the picker never saw.
+      const pickerOptions = ['blocksField', 'filterConvertibleFrom', 'title', 'default'].filter(
+        (k) => k in config,
+      );
+      if (pickerOptions.length) {
+        throw new Error(
+          `inheritSchemaFrom recipe declares ${pickerOptions.join(', ')}: ` +
+            `declare them on the type field (${typeField || 'its typeField'}) instead`,
+        );
+      }
       // typeField is optional — if not in recipe, inheritSchemaFrom reads
       // blocksConfig[blockType].itemTypeField at call time.
       // parentControlled: { childType: ['fieldA', 'fieldB'] } — fields the
@@ -1968,9 +1971,7 @@ function createEnhancerByType(type, config) {
       // applied to every block by installChildBlockEnhancers) and also by
       // this enhancer's own inherited-fields filter so parentControlled
       // fields appear in the parent's "Item Defaults" fieldset.
-      const typeFieldOptions = (filterConvertibleFrom || blocksField || title || defaultValue || parentControlled)
-        ? { filterConvertibleFrom, blocksField, title, default: defaultValue, parentControlled }
-        : {};
+      const typeFieldOptions = parentControlled ? { parentControlled } : {};
       enhancer = inheritSchemaFrom(typeField || null, mappingField || null, defaultsField, typeFieldOptions);
       enhancer.config = { ...config, enhancerType: 'inheritSchemaFrom' };
       break;
@@ -2192,6 +2193,7 @@ export function getConversionMap(blocksConfig) {
  */
 function findConversionPath(sourceType, targetType, blocksConfig) {
   if (sourceType === targetType) return [sourceType];
+  const catalogKinds = catalogSourceKinds(blocksConfig);
 
   // BFS to find path, prioritizing direct mappings over default
   const queue = [[sourceType]];
@@ -2212,8 +2214,8 @@ function findConversionPath(sourceType, targetType, blocksConfig) {
       if (blockConfig.fieldMappings[currentType]) {
         directTargets.push(blockType);
       } else if (blockConfig.fieldMappings['@default'] &&
-                 hasValidDefault(blockConfig) &&
-                 hasValidDefault(blocksConfig[currentType])) {
+                 hasValidDefault(blockConfig, catalogKinds) &&
+                 hasValidDefault(blocksConfig[currentType], catalogKinds)) {
         defaultTargets.push(blockType);
       }
     }
@@ -2407,7 +2409,9 @@ export function convertBlockType(blockData, newType, blocksConfig, typeFieldName
     const newData = { [typeFieldName]: toType };
     // Apply mappings: source-specific first, then default as fallback
     const mappings = { ...targetMappings?.['@default'], ...targetMappings?.[fromType] };
-    for (const [sourceField, targetField] of Object.entries(mappings)) {
+    for (const [sourceField, mapping] of Object.entries(mappings)) {
+      // A `{ field, type }` mapping names its field like a bare one does.
+      const targetField = getMappingTarget(mapping);
       // Value↔region: a `region/type/field` path (parseRegionPath) on one side
       // bridges a single scalar VALUE and a container region — the same bridge
       // convertValueContainer uses, via shared helpers.
@@ -2476,7 +2480,9 @@ export function convertBlockType(blockData, newType, blocksConfig, typeFieldName
 
   // Preserve unmapped fields from the original block that aren't in the final result
   // This enables roundtrip conversion (hero → image → hero) to retain fields like buttonText
-  // that exist in source and target but aren't explicitly mapped through intermediate types
+  // that exist in source and target but aren't explicitly mapped through intermediate types.
+  // Kept for editing only: the save stores what the final type declares
+  // (withoutUndeclaredFields).
   const { [typeFieldName]: _originalType, ...originalFields } = blockData;
   const { [typeFieldName]: finalType, ...convertedFields } = currentData;
 
@@ -2593,7 +2599,27 @@ export function reshapeContainerBlock(
     intl,
     container,
   );
+  const targetProps = getBlockTypeSchema(targetType, intl, blocksConfig)?.properties || {};
   for (const region of regions) {
+    // A synced region: its item type is a same-named field, so the move carried
+    // the SOURCE's item type across, which this region may not take (a grid of
+    // cards becoming a grid of content blocks would still say "card", and then
+    // refuse its own items). Take the type field's default, or else the first
+    // item type the region allows.
+    const typeField = region.itemTypeField;
+    if (typeField && Array.isArray(region.allowedBlocks)
+        && !region.allowedBlocks.includes(container[typeField])) {
+      const preferred = targetProps[typeField]?.default;
+      const itemType = region.allowedBlocks.includes(preferred)
+        ? preferred
+        : region.allowedBlocks.find((t) => blocksConfig?.[t]?.fieldMappings?.['@default']);
+      if (!itemType) {
+        throw new Error(
+          `reshapeContainerBlock: region "${region.region}" of "${targetType}" syncs its items' type in "${typeField}" but allows no item type (allowed: ${region.allowedBlocks.join(', ')})`,
+        );
+      }
+      container[typeField] = itemType;
+    }
     // The addable set for THIS region — the SAME resolver add/DnD/type-sync use.
     const allowed = addableSiblingTypes(
       region.allowedBlocks,
@@ -2607,6 +2633,13 @@ export function reshapeContainerBlock(
     let changed = false;
     const next = entries.map(({ id, block }) => {
       const cellType = block?.['@type'];
+      // An item with an item type of its own (a listing) lists the region's
+      // type, as the container's type picker gives it (takeContainerItemType).
+      const ownTypeField = typeField && cellType && findTypeField(blocksConfig?.[cellType], intl);
+      if (ownTypeField && block[ownTypeField] !== container[typeField]) {
+        changed = true;
+        return { id, block: { ...block, [ownTypeField]: container[typeField] } };
+      }
       if (!cellType || allowed.includes(cellType)) return { id, block };
       // The cell's own fieldMappings decide the target — the first allowed type
       // it can reach (transitively). None ⇒ it can't legally live here ⇒ throw.
@@ -2627,6 +2660,89 @@ export function reshapeContainerBlock(
     if (changed) setChildBlockEntries(container, region, next);
   }
   return updateBlockById(moved, movedMap, blockId, container);
+}
+
+/**
+ * The types a block can be converted to where it stands: the types its
+ * fieldMappings reach (getConvertibleTypes), and, for a container with
+ * children, every other container whose region takes all of those children.
+ * `allowedTypes` is what the block's place allows (the pathMap's
+ * allowedSiblingTypes); null allows any. The ONE list every "change the type"
+ * control offers: the toolbar's "Convert to…", the sidebar header's type
+ * dropdown and the sidebar's block menu.
+ *
+ * @returns {Array<{type: string, title: string}>}
+ */
+export function getConvertTargets(blockData, blocksConfig, allowedTypes, intl, typeFieldName = '@type') {
+  const blockType = blockData?.[typeFieldName];
+  if (!blockType) return [];
+  const contentTargets = getConvertibleTypes(blockType, blocksConfig, allowedTypes);
+
+  // Container → container: fieldMappings are about content, so a container
+  // whose children another container takes is offered that one as well.
+  // Child types across ALL regions (blocks_layout + object_list).
+  const childTypes = getContainerRegionDescriptors(blockData['@type'], blocksConfig, intl, blockData)
+    .flatMap((d) => getChildBlockEntries(blockData, d))
+    .map((e) => e.block?.['@type'])
+    .filter(Boolean);
+  if (childTypes.length === 0) return contentTargets;
+
+  const offered = new Set(contentTargets.map((t) => t.type));
+  const containerTargets = [];
+  for (const [type, cfg] of Object.entries(blocksConfig || {})) {
+    if (type === blockType || offered.has(type)) continue;
+    if (!cfg?.blockSchema) continue;
+    if (allowedTypes && !allowedTypes.includes(type)) continue;
+    const schema = getBlockTypeSchema(type, intl, blocksConfig);
+    const region = Object.entries(schema?.properties || {}).find(
+      ([, field]) => field?.widget === 'blocks_layout',
+    );
+    if (!region) continue;
+    if (!canContainAll({ region: region[0], ...region[1] }, childTypes, 0)) continue;
+    containerTargets.push({ type, title: cfg.title || type });
+  }
+  return [...contentTargets, ...containerTargets];
+}
+
+/**
+ * Convert a block to `newType` IN PLACE, returning the new formData. A
+ * container with children goes through reshapeContainerBlock, which carries
+ * the children over AND converts each to a type the target region allows; a
+ * block without children converts its own fields. Every conversion an editor
+ * asks for goes through here, straight away: a value no field of the new type
+ * receives stays on the block (convertBlockType keeps it), so converting back
+ * brings it back.
+ */
+export function convertBlockInPlace(formData, blockPathMap, blockId, newType, blocksConfig, intl = null) {
+  const blockData = getBlockById(formData, blockPathMap, blockId);
+  if (!blockData) {
+    throw new Error(`convertBlockInPlace: block ${blockId} not found`);
+  }
+  const hasChildren = getContainerRegionDescriptors(
+    blockData['@type'], blocksConfig, intl, blockData,
+  ).some((d) => getChildBlockEntries(blockData, d).length > 0);
+  if (hasChildren) {
+    return reshapeContainerBlock(formData, blockPathMap, blockId, newType, blocksConfig, intl);
+  }
+  const typeFieldName = blockPathMap?.[blockId]?.typeField || '@type';
+  let newBlockData = convertBlockType(blockData, newType, blocksConfig, typeFieldName, intl);
+  // Converting a TEMPLATE-MEMBER block keeps it template content — carry its
+  // membership over. convertBlockType builds a fresh block from the type's
+  // fields, so without this, filling a locked empty (in template-edit-mode)
+  // would drop templateId/templateInstanceId/fixed/readOnly and the new block
+  // would become per-page (and lose its lock). No-op for normal page blocks.
+  for (const k of ['templateId', 'templateInstanceId', 'slotId', 'fixed', 'readOnly']) {
+    if (blockData[k] !== undefined) newBlockData = { ...newBlockData, [k]: blockData[k] };
+  }
+  // An object_list item is found by its idField, which is not one of its
+  // type's fields, so a conversion with no field mapping (filling an empty
+  // placeholder) drops it: the item then has no id and cannot be rendered,
+  // selected or edited. It is the same item, typed in place — keep its id.
+  const idField = blockPathMap?.[blockId]?.isObjectListItem ? blockPathMap[blockId].idField : null;
+  if (idField && blockData[idField] !== undefined) {
+    newBlockData = { ...newBlockData, [idField]: blockData[idField] };
+  }
+  return updateBlockById(formData, blockPathMap, blockId, newBlockData);
 }
 
 /**
@@ -2907,9 +3023,11 @@ function landingOf(formData, blockPathMap, blockId, blocksConfig, intl) {
 
 /**
  * Give a placed block's descendants the membership the block now has — its
- * template, instance, SLOT, fixed and readOnly (every block of a template has a
- * slot, nested ones too: docs/frontend-guide/templates.md). Leaving a template
- * takes them out with it.
+ * template, instance, fixed and readOnly. Every block of a template has a slot,
+ * nested ones too, but never the block's: a slot is one place at every depth
+ * (inka#708), so each region is a slot of its own (regionSlotId). Open blocks in
+ * a region share it; a fixed one, matched by its slot, gets one of its own
+ * (`<region slot>-<n>`). Leaving a template takes them out with it.
  *
  * Only descendants that went with the block: no membership, or the block's
  * previous instance (`fromInstanceId`). One belonging to another instance — a
@@ -2924,6 +3042,8 @@ function withDescendantMembership(block, fromInstanceId, idFieldMap) {
   for (const field of getChildFields(block, idFieldMap, { allObjectLists: true })) {
     const entries = getChildBlockEntries(out, field);
     let changed = false;
+    const regionSlot = joined && block.slotId ? regionSlotId(block.slotId, field.region) : null;
+    let fixedInRegion = 0;
     const next = entries.map(({ id, block: child }) => {
       const own = child?.templateInstanceId ?? null;
       if (!child || (own !== null && own !== fromInstanceId)) return { id, block: child };
@@ -2932,9 +3052,10 @@ function withDescendantMembership(block, fromInstanceId, idFieldMap) {
       );
       const member = joined
         ? Object.fromEntries(
-            MEMBERSHIP_FIELDS.filter((key) => block[key] !== undefined).map((key) => [key, block[key]]),
+            MEMBERSHIP_FIELDS.filter((key) => key !== 'slotId' && block[key] !== undefined).map((key) => [key, block[key]]),
           )
         : {};
+      if (regionSlot) member.slotId = member.fixed ? `${regionSlot}-${(fixedInRegion += 1)}` : regionSlot;
       const placed = withDescendantMembership({ ...rest, ...member }, fromInstanceId, idFieldMap);
       if (JSON.stringify(placed) === JSON.stringify(child)) return { id, block: child };
       changed = true;
@@ -3077,18 +3198,43 @@ export function deleteBlocks(formData, blockPathMap, blockIds, options = {}) {
     );
     out = deleteBlockFromContainer(out, map, blockId, containerConfig);
     map = buildBlockPathMap(out, blocksConfig, intl);
-    // Say which slot the block leaves empty. If this empties the region, the
-    // placeholder re-seeded there stands in for that slot — and the re-seed can't
-    // know it, it sees only a region with nothing in it.
-    emptiedContainers.push(
-      blockData?.slotId
-        ? { ...containerConfig, vacatedSlotId: blockData.slotId }
-        : containerConfig,
-    );
+    emptiedContainers.push(leftBehind(containerConfig, blockData));
     deleted.push(blockId);
   }
   const settled = settleBlockStructure(out, map, { emptiedContainers }, options);
   return { ...settled, deleted };
+}
+
+/**
+ * The region a block leaves, saying which slot it held there. If this empties
+ * the region, the placeholder re-seeded there stands in for that slot — and the
+ * re-seed can't know it, it sees only a region with nothing in it (inka#708).
+ * The one place a delete and a move say what they leave behind.
+ *
+ * @param {Object} containerConfig - the region the block was in
+ * @param {Object} [block] - the block, as it was there
+ * @returns {Object} the region, with `vacatedSlotId` when the block held a slot
+ */
+export function leftBehind(containerConfig, block) {
+  return block?.slotId ? { ...containerConfig, vacatedSlotId: block.slotId } : containerConfig;
+}
+
+/**
+ * The regions a move takes its blocks out of, for settleBlockStructure's
+ * `emptiedContainers`: the source region, unless the blocks stay in it. A move
+ * between two regions of ONE container (a layout's hero to its main) leaves a
+ * region too, which comparing parents alone missed.
+ *
+ * @param {Object|null} sourceConfig - the region the moved blocks came from
+ * @param {Object} targetConfig - the region they went to
+ * @param {Object} [movedBlock] - the first moved block, as it was in its source
+ * @returns {Object[]}
+ */
+export function emptiedByMove(sourceConfig, targetConfig, movedBlock) {
+  if (!sourceConfig) return [];
+  const same =
+    sourceConfig.parentId === targetConfig?.parentId && sourceConfig.region === targetConfig?.region;
+  return same ? [] : [leftBehind(sourceConfig, movedBlock)];
 }
 
 /**

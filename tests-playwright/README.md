@@ -51,39 +51,39 @@ pnpm test:e2e:debug
 
 ## Recommended Development Workflow
 
-**Problem**: Volto's webpack compilation takes 5+ minutes on first run, causing tests to timeout.
+Tests run against the **built** admin. A webpack dev server holds its whole
+module graph, 1.5–2 GB, and grows for as long as it runs; a built one does not.
 
-**Solution**: Keep the dev server running and reuse it for all test runs.
+### Step 1: Build the admin (once, and after admin code changes)
 
-### Step 1: Start the Servers (First Time Only)
-
-**Terminal 1** - Start Mock API:
 ```bash
-node packages/mock-api/mock-api-server.cjs
+pnpm build:test
 ```
 
-**Terminal 2** - Start Volto Dev Server:
-```bash
-RAZZLE_API_PATH=http://localhost:8888 pnpm start
-```
+The build records a stamp of the code it was built from. `pnpm start:test`
+and every test run check it, and refuse an admin built from other code,
+naming the command that rebuilds it. A stale admin is never used quietly.
 
-Wait for webpack to compile and see "🎭 Volto started at 0.0.0.0:3000 🚀" (takes ~1-5 minutes).
+### Step 2: Start the servers
 
-### Step 2: Run Tests (Instant!)
+**Terminal 1** - Mock API: `pnpm start:mock-api`
 
-**Terminal 3** - Run Tests:
+**Terminal 2** - The admin: `pnpm start:test`
+
+### Step 3: Run tests
+
 ```bash
 pnpm test:e2e
 ```
 
-Playwright will detect the running servers and reuse them (thanks to `reuseExistingServer: true` in config).
+Playwright detects the running servers and reuses them (`reuseExistingServer: true`).
 
-### Step 3: Develop & Debug
+### Changing the admin's own code
 
-1. Run tests → find a bug
-2. Fix the bug in volto-hydra code
-3. Webpack auto-recompiles (5-30 seconds)
-4. Run tests again (instant!)
+Use the webpack dev server, which recompiles as you edit:
+`pnpm start:test:dev` in Terminal 2, and `ADMIN_DEV=1 pnpm test:e2e`.
+
+Either admin stops itself after four idle hours (INKA_ADMIN_IDLE_EXIT_MINUTES).
 
 **Tips**:
 - Keep Terminal 1 & 2 running in the background
@@ -253,12 +253,12 @@ tests-playwright/
 ├── integration/
 │   ├── block-selection.spec.ts  # Block selection tests
 │   └── inline-editing.spec.ts   # Inline editing tests
-├── playwright.config.ts          # Playwright configuration
+├── playwright.config.mts          # Playwright configuration
 ├── tsconfig.json                # TypeScript config
 └── README.md                    # This file
 ```
 
-The mock API server itself is `packages/mock-api/` (`mock-api-server.cjs`,
+The mock API server itself is `packages/mock-api/` (`mock-api-server.js`,
 with its content-type schemas in `api/`). The harness these suites are built
 on — AdminUIHelper and the other Playwright helpers, block discovery, the
 sanity suites, the coverage reporter, mock-parent.html and the port block — is
@@ -343,7 +343,7 @@ npx playwright show-trace test-results/trace.zip
 
 ## Configuration
 
-### playwright.config.ts
+### playwright.config.mts
 
 Key settings:
 
@@ -357,7 +357,7 @@ Key settings:
     screenshot: 'only-on-failure',
   },
   webServer: [
-    { command: 'node packages/mock-api/mock-api-server.cjs', port: 8888 },
+    { command: 'pnpm exec inka-mock-api', port: 8888 },
     { command: 'RAZZLE_API_PATH=http://localhost:8888 pnpm start', port: 3001 },
   ],
 }
@@ -413,7 +413,7 @@ jobs:
 
 ### Tests Timeout
 
-Increase timeout in `playwright.config.ts`:
+Increase timeout in `playwright.config.mts`:
 ```typescript
 timeout: 60 * 1000, // 60 seconds
 ```
@@ -440,12 +440,12 @@ cat tests-playwright/fixtures/content/<page>/data.json
 
 Check mock server is loading it:
 ```bash
-DEBUG=1 node packages/mock-api/mock-api-server.cjs
+DEBUG=1 pnpm exec inka-mock-api
 ```
 
 ### Volto Can't Connect to Mock API
 
-Check CORS headers in mock server (`mock-api-server.cjs`):
+Check CORS headers in mock server (`mock-api-server.js`):
 ```javascript
 app.use(cors()); // Should be present
 ```
@@ -459,7 +459,7 @@ await page.waitForSelector('#element', { state: 'visible' });
 
 2. Disable parallelization:
 ```typescript
-// playwright.config.ts
+// playwright.config.mts
 workers: 1,
 ```
 

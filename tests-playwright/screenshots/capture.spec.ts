@@ -8,7 +8,7 @@
  * Editor Guide markdown pages reference those images by filename.
  *
  * Not part of normal test runs — gated to its own project (see
- * playwright.config.ts). CSS-driven re-renders are accepted; rerun the
+ * playwright.config.mts). CSS-driven re-renders are accepted; rerun the
  * --project=screenshots when the editor chrome changes.
  */
 import * as fs from 'fs';
@@ -282,8 +282,8 @@ test.describe('Editor Guide screenshots', () => {
     await helper.navigateToEdit('/template-test-page');
 
     // Select a fixed template block, then step up to the template instance — its
-    // sidebar bar shows the 🔒 lock (not editing) and the Template Settings form
-    // with Name/Location disabled.
+    // sidebar bar shows the 🔒 lock (not editing) and the locked template's
+    // explanation and Unlock template button.
     const { blockId: headerBlockId } = await helper.waitForBlockByContent('Template Header - From Template');
     await helper.clickBlockInIframe(headerBlockId);
     await helper.waitForSidebarOpen();

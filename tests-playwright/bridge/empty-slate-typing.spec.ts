@@ -190,6 +190,41 @@ test.describe('Empty slate typing', () => {
     }
   });
 
+  test('text typed into an empty slate, then made a link, shows once', async ({ helper, page }) => {
+    // Linking the whole line leaves an empty leaf before the link, where the
+    // caret target was. The text typed into the caret target is now the link's,
+    // so the frontend's node for that leaf must be drawn empty again, not left
+    // holding the typed text in front of the link.
+    const block = await helper.clickBlockInIframe('mock-empty-slate', { waitForToolbar: false });
+    const field = helper.getSlateField(block);
+    await readyToType(field);
+    await page.keyboard.type('Hello');
+    await expect.poll(() => adminText(page, 'mock-empty-slate')).toBe('Hello');
+
+    await page.evaluate(() => {
+      const mockParent = (window as any).mockParent;
+      const data = JSON.parse(JSON.stringify(mockParent.getFormData()));
+      data.blocks['mock-empty-slate'].value = [
+        {
+          type: 'p',
+          children: [
+            { text: '' },
+            { type: 'link', data: { url: 'https://example.com' }, children: [{ text: 'Hello' }] },
+            { text: '' },
+          ],
+        },
+      ];
+      (document.getElementById('previewIframe') as HTMLIFrameElement).contentWindow!.postMessage(
+        { type: 'FORM_DATA', data, blockPathMap: mockParent.buildBlockPathMap() },
+        '*',
+      );
+    });
+    await expect(field.locator('a')).toHaveText('Hello');
+    expect(await visibleText(field)).toBe('Hello');
+    const nodes = await textNodesWith(field, 'Hello');
+    expect(nodes.found, `text nodes: ${nodes.all.join(', ')}`).toHaveLength(1);
+  });
+
   test('a deletion that removes the text node reaches the admin', async ({ helper, page }) => {
     // Deleting all of a paragraph's text, the browser sometimes empties the text
     // node (a characterData change) and sometimes REMOVES it (childList, nothing

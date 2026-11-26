@@ -8,6 +8,7 @@
  * the add rules, the hint cleanup and the placeholder filter were each written
  * for `nextSlotId` alone. Every test here fails against that state.
  */
+import { describe, test, expect } from 'vitest';
 import { buildBlockPathMap } from '@volto-hydra/helpers/buildBlockPathMap.js';
 import { getBlockAddability } from '@volto-hydra/helpers';
 import { mergeTemplatesIntoPage } from '@volto-hydra/helpers/mergeTemplates.js';

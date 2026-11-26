@@ -28,6 +28,7 @@
     "./fieldRules.js": "./fieldRules.js",
     "./formDataValidation.js": "./formDataValidation.js",
     "./hydraSchemaContext.js": "./hydraSchemaContext.js",
+    "./inkaBlocks.js": "./inkaBlocks.js",
     "./injectedVoltoConfig.js": "./injectedVoltoConfig.js",
     "./mergeTemplates.js": "./mergeTemplates.js",
     "./regionWidgets.js": "./regionWidgets.js",
@@ -35,6 +36,7 @@
     "./searchableText.js": "./searchableText.js",
     "./slateMerge.js": "./slateMerge.js",
     "./storeFieldMappings.js": "./storeFieldMappings.js",
+    "./storedFields.js": "./storedFields.js",
     "./slateStyles.js": "./slateStyles.js"
   },
   "files": [
@@ -55,7 +57,8 @@
     "schemaValidation.js",
     "searchableText.js",
     "slateMerge.js",
-    "slateStyles.js"
+    "slateStyles.js",
+    "storedFields.js"
   ],
   "keywords": [],
   "author": ""

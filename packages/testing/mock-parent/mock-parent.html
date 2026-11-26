@@ -121,6 +121,14 @@
   </div>
 
   <script type="module">
+    // As the admin does (View.jsx): the frontend never takes focus by itself,
+    // so once the page has its data the admin focuses it, if nothing else has
+    // focus.
+    function focusEditingPageIfIdle() {
+      const iframe = document.getElementById('previewIframe');
+      const active = document.activeElement;
+      if (iframe && (!active || active === document.body)) iframe.focus();
+    }
     import { buildBlockPathMap, buildIdFieldMap } from '/inka-mock-parent/build-block-path-map.js';
     import { mergeTemplatesIntoPage } from '/inka-mock-parent/merge-templates.js';
     import { mergeFrontendBlock } from '/inka-mock-parent/merge-frontend-block.js';
@@ -201,6 +209,10 @@
     const frontendBlockKeys = new Set();
     // cssClasses of the style menu the frontend declares at INIT (#295).
     const styleMenuClasses = new Set();
+    // What the frontend sends about the toolbar an author picks styles from: its
+    // own button list, its declared block formats and its style menu
+    // (block-sanity's "is every offered style demonstrated" — offeredSlateStyles).
+    let frontendSlateOffer = {};
 
     // The block types the real admin has built in (Volto core's blocksConfig +
     // volto-hydra's index.js). A frontend entry for one of these ADDS to the
@@ -742,6 +754,11 @@
             message.page?.schema?.properties || mockBlocksConfig._page.schema().properties;
           {
             const menu = message.voltoConfig?.settings?.slate?.styleMenu;
+            frontendSlateOffer = {
+              toolbarButtons: message.voltoConfig?.settings?.slate?.toolbarButtons,
+              blockFormats: message.voltoConfig?.settings?.slate?.blockFormats,
+              styleMenu: menu,
+            };
             for (const d of [
               ...(menu?.blockStyles || []),
               ...(menu?.inlineStyles || []),
@@ -809,6 +826,7 @@
           console.log('[MOCK_PARENT] Sending INITIAL_DATA with blockPathMap:', response);
           event.source.postMessage(response, event.origin);
           logMessage('sent', 'INITIAL_DATA', response.data);
+          focusEditingPageIfIdle();
 
           // Auto-select the first block after a short delay to allow hydra.js to initialize
           setTimeout(() => {
@@ -863,6 +881,7 @@
           console.log('[MOCK_PARENT] Sending INITIAL_DATA:', response);
           event.source.postMessage(response, event.origin);
           logMessage('sent', 'INITIAL_DATA', response.data);
+          focusEditingPageIfIdle();
 
           setTimeout(() => {
             const firstBlockId = mockFormData.blocks_layout.items[0];
@@ -1193,7 +1212,15 @@
       // frontend knows which styles it offers — the alternative is a hardcoded
       // list that is wrong for every frontend but one.
       getStyleMenuClasses: () => Array.from(styleMenuClasses),
+      getSlateOffer: () => frontendSlateOffer,
       getFrontendBlockKeys: () => Array.from(frontendBlockKeys),
+      // The page schema in use: the frontend's (INIT `page`) merged over the
+      // baseline. Its regions name the layouts forced across them
+      // (allowedLayouts), which no page's blocks name — so discovery's
+      // integrity check needs it to know a site footer is a template in use.
+      // As data: `_page` in getBlocksConfig() is a function, which a caller
+      // reading it across page.evaluate never receives.
+      getPageSchema: () => mockBlocksConfig._page.schema(),
       getBlock: (blockId) => mockFormData.blocks[blockId],
       buildBlockPathMap: () => postableBlockPathMap(mockFormData),
       setTransformDelay: (delay) => { window.mockTransformDelay = delay; },

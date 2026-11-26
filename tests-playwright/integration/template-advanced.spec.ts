@@ -37,10 +37,12 @@ test.describe('Fixed Editable Blocks', () => {
     await headerBlock.click();
     await helper.waitForSidebarOpen();
 
-    // Verify it shows lock icon (fixed)
+    // Fixed, so no drag handle; editable, so no lock either — a lock would say
+    // it must be unlocked first, and it needn't be (inka#774).
     const toolbar = page.locator('.quanta-toolbar');
-    const lockIcon = toolbar.locator('.lock-icon');
-    await expect(lockIcon).toBeVisible();
+    await expect(toolbar).toBeVisible({ timeout: 5000 });
+    await expect(toolbar.locator('.drag-handle')).toHaveCount(0);
+    await expect(toolbar.locator('.lock-icon')).toHaveCount(0);
 
     // But the block should be editable - verify the editable field is present
     const editableField = helper.getSlateField(headerBlock);
@@ -308,7 +310,7 @@ test.describe('Template Placeholder Replacement', () => {
     const initialCount = await helper.getBlockCount();
 
     // Remove BOTH slot blocks - this is the bug scenario:
-    // all slot info for "primary" is now gone from the instance
+    // all slot info for "default" is now gone from the instance
     await helper.clickBlockInIframe('user-content-1');
     await helper.openQuantaToolbarMenu('user-content-1');
     await helper.clickQuantaToolbarMenuOption('user-content-1', 'Remove');
@@ -321,7 +323,7 @@ test.describe('Template Placeholder Replacement', () => {
 
     // All slot blocks are gone. After deleting user-content-2,
     // selection auto-moves to the previous block (the grid or its cell).
-    // The grid block (fixed) has nextPlaceholder: "primary" from the merge,
+    // The grid block (fixed) has nextPlaceholder: "default" from the merge,
     // so the add button should be visible at the page level.
 
     // Record all block IDs before adding, so we can find the new one by set difference.
@@ -364,7 +366,7 @@ test.describe('Template Placeholder Replacement', () => {
     await helper.saveContent();
 
     // In view mode the bridge runs the merge again.
-    // The new block should survive because it inherited slotId: "primary".
+    // The new block should survive because it inherited slotId: "default".
     const newContentBlock = iframe.locator('main [data-block-uid], #content [data-block-uid]').filter({ hasText: 'New slot content' });
     await expect(newContentBlock).toBeVisible({ timeout: 15000 });
 
@@ -373,13 +375,13 @@ test.describe('Template Placeholder Replacement', () => {
     await expect(iframe.locator('main [data-block-uid], #content [data-block-uid]').filter({ hasText: 'Template Footer' }).first()).toBeVisible();
   });
 
-  // Parity with containers (the root behind :203): when the template primary slot is
+  // Parity with containers (the root behind :203): when the template default slot is
   // emptied it must seed its own empty placeholder IN the slot (between the grid and
   // the slider) — the same way a container seeds one for an emptied region (see
   // container-blocks.spec.ts 'emptied container seeds an in-place empty ... (no
   // template)'). Without it there is nothing in the slot to click and the add falls
   // back to the iframe add-button path, which hangs.
-  test('emptied template primary slot seeds an in-slot empty (parity with containers)', async ({ page }) => {
+  test('emptied template default slot seeds an in-slot empty (parity with containers)', async ({ page }) => {
     const helper = new AdminUIHelper(page);
     await helper.login();
     await helper.navigateToEdit('/template-test-page');
@@ -390,7 +392,7 @@ test.describe('Template Placeholder Replacement', () => {
       iframe.locator('main [data-block-uid], #content [data-block-uid]').filter({ hasText: 'Template Header - From Template' }),
     ).toBeVisible({ timeout: 15000 });
 
-    // Empty the primary slot.
+    // Empty the default slot.
     for (const b of ['user-content-1', 'user-content-2']) {
       await helper.clickBlockInIframe(b);
       await helper.openQuantaToolbarMenu(b);
@@ -399,7 +401,7 @@ test.describe('Template Placeholder Replacement', () => {
     }
     await helper.getStableBlockCount();
 
-    // The emptied primary slot seeds its own empty placeholder (there is also a
+    // The emptied default slot seeds its own empty placeholder (there is also a
     // separate page-level empty for the footer region). The in-slot empty is
     // first in DOM order and must sit between the grid and the slider.
     const emptyBlock = iframe.locator('[data-hydra-empty]');
@@ -409,7 +411,7 @@ test.describe('Template Placeholder Replacement', () => {
     const sliderY = await iframe.locator('[data-block-uid]').filter({ hasText: 'Template Slide 1' }).first().boundingBox().then((box) => box?.y ?? -1);
     const emptyY = await emptyBlock.first().boundingBox().then((box) => box?.y ?? -1);
 
-    expect(emptyY, `in-slot empty should be in the primary slot (grid y=${gridY}, slider y=${sliderY}) but is at y=${emptyY}`).toBeGreaterThan(gridY);
+    expect(emptyY, `in-slot empty should be in the default slot (grid y=${gridY}, slider y=${sliderY}) but is at y=${emptyY}`).toBeGreaterThan(gridY);
     expect(emptyY).toBeLessThan(sliderY);
   });
 });
@@ -440,18 +442,18 @@ test.describe('Template Sidebar Placeholder Sections', () => {
     const fixedCount = await fixedItems.count();
     expect(fixedCount).toBeGreaterThanOrEqual(3); // header, grid, footer
 
-    // Placeholder section should show "Primary" header with user content blocks
-    const primarySection = page.locator('.container-field-section').filter({
-      has: page.locator('.widget-title', { hasText: 'Primary' }),
+    // Placeholder section should show "Default" header with user content blocks
+    const defaultSection = page.locator('.container-field-section').filter({
+      has: page.locator('.widget-title', { hasText: 'Default' }),
     });
-    await expect(primarySection).toBeVisible({ timeout: 5000 });
+    await expect(defaultSection).toBeVisible({ timeout: 5000 });
 
-    // Primary section should have 2 draggable child blocks (user-content-1, user-content-2)
-    const primaryItems = primarySection.locator('.child-block-item');
-    await expect(primaryItems).toHaveCount(2);
+    // Default section should have 2 draggable child blocks (user-content-1, user-content-2)
+    const defaultItems = defaultSection.locator('.child-block-item');
+    await expect(defaultItems).toHaveCount(2);
 
     // Drag handles should be visible on slot blocks (they're draggable)
-    const dragHandles = primarySection.locator('.drag-handle');
+    const dragHandles = defaultSection.locator('.drag-handle');
     await expect(dragHandles).toHaveCount(2);
 
     // Fixed blocks should NOT have drag handles
@@ -476,11 +478,11 @@ test.describe('Template Sidebar Placeholder Sections', () => {
     await page.locator('.sidebar-section-header[data-is-current="true"] .nav-back').click();
     await page.waitForTimeout(200);
 
-    // Find the Primary slot section
-    const primarySection = page.locator('.container-field-section').filter({
-      has: page.locator('.widget-title', { hasText: 'Primary' }),
+    // Find the Default slot section
+    const defaultSection = page.locator('.container-field-section').filter({
+      has: page.locator('.widget-title', { hasText: 'Default' }),
     });
-    await expect(primarySection).toBeVisible({ timeout: 5000 });
+    await expect(defaultSection).toBeVisible({ timeout: 5000 });
 
     // Verify initial order: user-content-1 before user-content-2
     await expect(iframe.locator('[data-block-uid="user-content-1"]')).toBeVisible();
@@ -494,7 +496,7 @@ test.describe('Template Sidebar Placeholder Sections', () => {
 
     // Use keyboard-based DnD (more reliable than mouse in automated tests)
     // react-beautiful-dnd: focus drag handle → Space to grab → ArrowDown to move → Space to drop
-    const firstHandle = primarySection.locator('.drag-handle').first();
+    const firstHandle = defaultSection.locator('.drag-handle').first();
     await firstHandle.focus();
     await page.keyboard.press('Space');
     await page.waitForTimeout(200);
@@ -528,21 +530,21 @@ test.describe('Template Sidebar Placeholder Sections', () => {
     await page.locator('.sidebar-section-header[data-is-current="true"] .nav-back').click();
     await page.waitForTimeout(200);
 
-    // Find the Primary slot section
-    const primarySection = page.locator('.container-field-section').filter({
-      has: page.locator('.widget-title', { hasText: 'Primary' }),
+    // Find the Default slot section
+    const defaultSection = page.locator('.container-field-section').filter({
+      has: page.locator('.widget-title', { hasText: 'Default' }),
     });
-    await expect(primarySection).toBeVisible({ timeout: 5000 });
+    await expect(defaultSection).toBeVisible({ timeout: 5000 });
 
-    // Initial count of blocks in Primary section
-    const initialItems = primarySection.locator('.child-block-item');
+    // Initial count of blocks in Default section
+    const initialItems = defaultSection.locator('.child-block-item');
     await expect(initialItems).toHaveCount(2);
 
     // Record block IDs before adding
     const blockIdsBefore = new Set(await helper.getBlockOrder());
 
-    // Click the [+] button in the Primary section header
-    const addButton = primarySection.locator('.widget-actions button');
+    // Click the [+] button in the Default section header
+    const addButton = defaultSection.locator('.widget-actions button');
     await addButton.click();
 
     // BlockChooser should appear — select slate
@@ -563,7 +565,7 @@ test.describe('Template Sidebar Placeholder Sections', () => {
     const newBlock = iframe.locator(`[data-block-uid="${newBlockId}"]`);
     await expect(newBlock).toBeVisible({ timeout: 5000 });
 
-    // Verify the new block is positioned after user-content-2 (the last block in the primary section)
+    // Verify the new block is positioned after user-content-2 (the last block in the default section)
     const finalOrder = await iframe.locator('main [data-block-uid], #content [data-block-uid]')
       .evaluateAll((els) => els.map((el) => el.getAttribute('data-block-uid')));
     const idxContent2 = finalOrder.indexOf('user-content-2');
@@ -598,8 +600,10 @@ test.describe('Template Sidebar Placeholder Sections', () => {
     await expect(topLabel).toBeVisible({ timeout: 5000 });
     await expect(nestedLabel).toHaveCount(0); // virtual sub-level is gone — that's correct
 
-    // The single instance level carries the template name; nothing virtual below it.
-    expect(await helper.hasSidebarField('title', 'Template: test-layout')).toBe(true);
+    // The single instance level is the template's: it carries the template's
+    // lock. (Its name and location are fields only while it is unlocked.)
+    const instanceHeader = page.locator('.sidebar-section-header').filter({ has: topLabel });
+    await expect(instanceHeader.locator('.edit-template-toggle')).toBeVisible();
   });
 });
 

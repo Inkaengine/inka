@@ -3,6 +3,7 @@
  * deployment's setting; the type is a plain Document unless the deployment names
  * another.
  */
+import { describe, it, expect, afterEach } from 'vitest';
 import { newTemplateSettings } from './newTemplateSettings';
 
 const saved = { ...process.env };

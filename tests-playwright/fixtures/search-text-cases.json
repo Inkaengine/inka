@@ -121,8 +121,7 @@
                   }
                 ]
               }
-            ],
-            "plaintext": "Nestedword"
+            ]
           }
         },
         "blocks_layout": {
@@ -190,8 +189,7 @@
                             }
                           ]
                         }
-                      ],
-                      "plaintext": "Cellword"
+                      ]
                     }
                   ]
                 }

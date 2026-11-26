@@ -522,22 +522,32 @@ export function calculatePaging(itemsTotal, bSize, currentPage = 0) {
  * @param {string} [options.extraCriteria.sort_on] - Override sort field
  * @param {string} [options.extraCriteria.sort_order] - Override sort order ('ascending'|'descending')
  * @param {string|string[]} [options.extraCriteria['facet.*']] - Facet filters (e.g., 'facet.portal_type': ['Document'])
- * @param {string} [options.itemTypeField='itemType'] - Field name to read item block type from (e.g., 'variation')
- * @param {string} [options.defaultItemType='summary'] - Default item type when field is not set
+ * @param {string} options.itemTypeField - The listing field that holds its item type: the
+ *   recipe's `typeField` (e.g. 'variation'). The editor stores the type there, picked or
+ *   the one the listing's position allows; a listing without one is refused.
+ * @param {string} [options.mappingField='fieldMapping'] - The listing field that holds its
+ *   mapping: the recipe's `mappingField`.
+ * @param {string} [options.defaultsField='itemDefaults'] - The prefix of the listing fields
+ *   that hold its item defaults (`<defaultsField>_<field>`): the recipe's `defaultsField`.
  * @returns {Promise<{items: Array, paging: Object}>}
  *   - items: Array of blocks, each with @uid (block ID for data-block-uid) and @type
  *   - paging: { currentPage, totalPages, totalItems, prev, next, pages }
  *
  * @example
- * // Listing block with itemType and fieldMapping:
+ * // A listing as the editor stores it (recipe: typeField 'variation',
+ * // mappingField 'fieldMapping', defaultsField 'itemDefaults'):
  * // {
  * //   '@type': 'listing',
- * //   'itemType': 'teaser',
- * //   'fieldMapping': { 'title': 'headline', getURL: 'href' },
- * //   'itemDefaults': { 'showImage': true }
+ * //   'variation': 'teaser',
+ * //   'fieldMapping': {
+ * //     title: { field: 'headline', type: 'string' },
+ * //     getURL: { field: 'href', type: 'link' },
+ * //   },
+ * //   'itemDefaults_showImage': true,
  * // }
+ * // expandListingBlocks(['l1'], { blocks, fetchItems, itemTypeField: 'variation' })
  * // Query result: { title: 'My Page', '@id': '/my-page', description: '...' }
- * // Output block: { '@type': 'teaser', headline: 'My Page', href: '/my-page', showImage: true }
+ * // Output block: { '@type': 'teaser', headline: 'My Page', href: [{ '@id': '/my-page' }], showImage: true }
  */
 
 /**
@@ -822,9 +832,23 @@ export async function expandListingBlocks(inputItems, options = {}) {
     blocks: blocksDict, // Optional: lookup dict for when items are IDs
     fetchItems, // { blockType: async (block, { start, size }) => { items, total } }
     paging: pagingIn, // { start, size } — not mutated
-    itemTypeField = 'itemType', // Field name to read item type from (e.g., 'variation')
-    defaultItemType = 'summary', // Default item type when field is not set
+    // The listing fields the editor saves into, as the frontend's recipe names
+    // them (typeField, mappingField, defaultsField). There is no recipe here.
+    itemTypeField,
+    mappingField = 'fieldMapping',
+    defaultsField = 'itemDefaults',
   } = options;
+
+  if (!itemTypeField) {
+    throw new Error(
+      'expandListingBlocks requires itemTypeField: the listing field its recipe names as typeField',
+    );
+  }
+  if ('defaultItemType' in options) {
+    throw new Error(
+      'expandListingBlocks no longer takes defaultItemType: a listing stores its item type when edited',
+    );
+  }
 
   if (!fetchItems || typeof fetchItems !== 'object') {
     throw new Error(
@@ -966,18 +990,24 @@ export async function expandListingBlocks(inputItems, options = {}) {
         // when static blocks come before the listing in the same window.
         items.push({ '@uid': blockId, '@type': 'empty', readOnly: true });
       } else if (listingResults[blockId]) {
-        const itemType = block[itemTypeField] || defaultItemType;
-        const fieldMapping = block.fieldMapping;
+        const itemType = block[itemTypeField];
+        if (!itemType) {
+          throw new Error(
+            `Listing ${blockId} has no item type in "${itemTypeField}": the editor stores one, ` +
+              `picked or the one its position allows.`,
+          );
+        }
+        const fieldMapping = block[mappingField];
         if (!fieldMapping || Object.keys(fieldMapping).length === 0) {
           throw new Error(
-            `Listing ${blockId} has no fieldMapping: the editor stores one when its item type is picked, ` +
+            `Listing ${blockId} has no ${mappingField}: the editor stores one when its item type is picked, ` +
               `and there is no schema here to make one up from.`,
           );
         }
 
         // Extract itemDefaults from flat keys (e.g., itemDefaults_overwrite -> overwrite)
         const itemDefaults = {};
-        const defaultsPrefix = 'itemDefaults_';
+        const defaultsPrefix = `${defaultsField}_`;
         for (const [key, value] of Object.entries(block)) {
           if (key.startsWith(defaultsPrefix)) {
             const fieldName = key.slice(defaultsPrefix.length);
@@ -1112,6 +1142,108 @@ async function fetchQuerystringSearch(url, headers, payload) {
  * @param {Object} [options.extraCriteria={}] - Additional query params (SearchableText, facet.*, sort_on, sort_order)
  * @returns {Function} fetchItems(block, { start, size }) => Promise<{ items, total }>
  */
+const RELATIVE_PATH = 'plone.app.querystring.operation.string.relativePath';
+const ABSOLUTE_PATH = 'plone.app.querystring.operation.string.absolutePath';
+
+const UID_NONE = 'plone.app.querystring.operation.selection.none';
+
+/**
+ * A path location as `{ path, depth, top }`: the absolute path it names for
+ * the page at `contextPath`, Plone's `::depth` (or null), and whether the
+ * folder at `path` is a result -- `'include'` when the value ends in `/`,
+ * `'exclude'` when it ends in `/*`, `null` (Plone's own rule) otherwise.
+ *
+ * A Relative value is walked from the page as Plone's `_relativePath` walks
+ * it: `..` up (stopping at the site root), `.` stays, a name goes down (Plone
+ * stays put on a name the page has no child of; this can't know). A Relative
+ * value starting with `/` counts steps of the page's breadcrumb from the top,
+ * one `*` each: `/*\/` is the page's 2nd-level section (the site root is the
+ * 1st), `/*\/*\/` its 3rd-level one; a page above that level resolves to
+ * itself. An Absolute value not starting with `/` is a folder's UID, as the
+ * editor stores the folder picked (`uid`, `uid/`, `uid/*`).
+ *
+ * @param {string} value - the criterion's value
+ * @param {string} contextPath - the page the listing is fetched for
+ * @param {{ relative: boolean }} options - whether it is a Relative path
+ * @returns {{ path: string, depth: number|null, top: 'include'|'exclude'|null }}
+ */
+export function resolveLocation(value, contextPath, { relative }) {
+  if (typeof value !== 'string') throw new Error(`a location is a string, got ${JSON.stringify(value)}`);
+  const sep = value.indexOf('::');
+  const body = sep === -1 ? value : value.slice(0, sep);
+  const depth = sep === -1 ? null : Number.parseInt(value.slice(sep + 2), 10);
+  let top = null;
+  let base = body;
+  if (body.length > 1 && body.endsWith('/')) {
+    top = 'include';
+    base = body.slice(0, -1);
+  } else if (body === '/*' || body.endsWith('/*')) {
+    top = 'exclude';
+    base = body.slice(0, -2);
+  }
+  if (top === 'exclude' && depth === 0) {
+    throw new Error(`"${value}": nothing is under a folder at depth 0`);
+  }
+  const page = (contextPath || '/').split('/').filter(Boolean);
+  let segs;
+  if (relative && body.startsWith('/')) {
+    const steps = base.split('/').slice(1);
+    if (!steps.every((step) => step === '*')) {
+      throw new Error(`a breadcrumb location takes only * steps (/*/, /*/*/…), got "${value}"`);
+    }
+    segs = page.slice(0, steps.length);
+  } else if (relative) {
+    segs = [...page];
+    for (const step of base.split('/').filter(Boolean)) {
+      if (step === '..') segs.pop();
+      else if (step !== '.') segs.push(step);
+    }
+  } else if (!body.startsWith('/')) {
+    // A folder by its UID, as the editor's Absolute path stores the one
+    // picked: Plone takes a UID there as the folder's path.
+    if (base.includes('/')) {
+      throw new Error(`a location by UID is the UID and an ending alone ("uid/", "uid/*"), got "${value}"`);
+    }
+    return { path: base, depth: Number.isNaN(depth) ? null : depth, top };
+  } else {
+    segs = base.split('/').filter(Boolean);
+    if (segs.includes('*')) {
+      throw new Error(`an absolute location takes * only as its last step ("/news/*"), got "${value}"`);
+    }
+  }
+  return { path: `/${segs.join('/')}`, depth: Number.isNaN(depth) ? null : depth, top };
+}
+
+/**
+ * The searches that answer a query's locations, asked from the site root:
+ * `query` with every path location absolute and Plone's own rule for the
+ * folder (in only at depth 1 is it left out) corrected where the location
+ * says otherwise -- left out by its UID (`exclude`; `excludeTop`, the path
+ * whose UID to look up), or fetched by itself to go first (`include` at
+ * depth 1; `topQuery`).
+ */
+function locationSearches(query, contextPath) {
+  let excludeTop = null;
+  let topQuery = null;
+  const paths = query.filter((c) => c.i === 'path' && (c.o === RELATIVE_PATH || c.o === ABSOLUTE_PATH));
+  const resolved = query.map((c) => {
+    if (!paths.includes(c)) return c;
+    const { path, depth, top } = resolveLocation(c.v, contextPath, { relative: c.o === RELATIVE_PATH });
+    const v = depth === null ? path : `${path}::${depth}`;
+    if (top !== null && paths.length > 1) {
+      throw new Error(`a query with more than one path can't say whether each folder is in: "${c.v}"`);
+    }
+    if (top === 'exclude' && depth !== 1 && path !== '/') excludeTop = path;
+    if (top === 'include' && depth === 1) topQuery = `${path}::0`;
+    return { ...c, o: ABSOLUTE_PATH, v };
+  });
+  return {
+    query: resolved,
+    excludeTop,
+    topQuery: topQuery && resolved.map((c) => (c.i === 'path' ? { ...c, v: topQuery } : c)),
+  };
+}
+
 const FOLDER_CONTENTS_CRITERION = {
   i: 'path',
   o: 'plone.app.querystring.operation.string.relativePath',
@@ -1165,11 +1297,82 @@ async function fetchFolderContents({ apiUrl, contextPath, contextContent, mapped
   };
 }
 
+/**
+ * "Is the same as this page": a listing criterion with no value of its own,
+ * whose value is the page's (its tags, its type, its author, its language, or
+ * the page itself for what relates to it). The admin offers it on the indexes
+ * named here; ploneFetchItems fills in the page's values as Plone's own "any
+ * of", and leaves the page out of what it lists. Plone itself is unchanged.
+ */
+export const THIS_PAGE = 'inka.operation.thisPage';
+/** Index → the page content field holding its value (plone.restapi's names). */
+export const THIS_PAGE_FIELDS = {
+  Subject: 'subjects',
+  portal_type: '@type',
+  Creator: 'creators',
+  Language: 'language',
+  // What relates to this page: the pages whose relations name it.
+  getRawRelatedItems: 'UID',
+};
+const SELECTION_ANY = 'plone.app.querystring.operation.selection.any';
+
+/** The querystring indexes Plone describes (`@querystring`), with "is the
+ * same as this page" offered on those THIS_PAGE_FIELDS names: last among
+ * their operations, with no value to enter. A new object; the input is left
+ * as it is. */
+export function withThisPageOperation(indexes) {
+  return Object.fromEntries(
+    Object.entries(indexes || {}).map(([name, index]) => [
+      name,
+      THIS_PAGE_FIELDS[name]
+        ? {
+            ...index,
+            operations: [...(index.operations || []), THIS_PAGE],
+            operators: { ...(index.operators || {}), [THIS_PAGE]: { title: 'Is the same as this page', widget: null } },
+          }
+        : index,
+    ]),
+  );
+}
+
+/** The page's values for each "same as this page" criterion, in place; null
+ * when one has none (the listing then matches nothing). */
+async function thisPageSearches(query, { apiUrl, contextPath, contextContent }) {
+  if (!query.some((c) => c.o === THIS_PAGE)) return query;
+  const path = contextPath.replace(/\/$/, '');
+  const own = contextContent && new URL(contextContent['@id'], 'http://x').pathname.replace(/\/$/, '').endsWith(path);
+  let page = own ? contextContent : null;
+  if (!page) {
+    const response = await fetch(`${apiUrl}${path}/++api++`, { headers: _getAuthHeaders() });
+    if (!response.ok) throw new Error(`ploneFetchItems: reading ${path} for "same as this page": ${response.status}`);
+    page = await response.json();
+  }
+  const resolved = [];
+  for (const c of query) {
+    if (c.o !== THIS_PAGE) {
+      resolved.push(c);
+      continue;
+    }
+    const field = THIS_PAGE_FIELDS[c.i];
+    if (!field) throw new Error(`"same as this page" has no page field for the index ${c.i}`);
+    const raw = page[field];
+    const values = (Array.isArray(raw) ? raw : raw == null || raw === '' ? [] : [raw]).map((v) =>
+      typeof v === 'object' && v !== null ? v.token ?? v['@id'] : v,
+    );
+    if (!values.length) return null;
+    resolved.push({ i: c.i, o: SELECTION_ANY, v: values });
+  }
+  if (page.UID) resolved.push({ i: 'UID', o: UID_NONE, v: [page.UID] });
+  return resolved;
+}
+
 export function ploneFetchItems({
   apiUrl,
   contextPath = '/',
   extraCriteria = {},
   contextContent,
+  // The listing field holding its mapping: the recipe's mappingField.
+  mappingField = 'fieldMapping',
 } = {}) {
   if (!apiUrl) {
     throw new Error('ploneFetchItems requires apiUrl');
@@ -1185,6 +1388,9 @@ export function ploneFetchItems({
       extraCriteria,
     );
     if (body === null) return { items: [], total: 0 };
+    const own = await thisPageSearches(body.query, { apiUrl, contextPath, contextContent });
+    if (own === null) return { items: [], total: 0 };
+    body.query = own;
 
     // This folder's children in folder order, and nothing else, is the
     // question plone.restapi answers for every folderish page: its content
@@ -1197,7 +1403,7 @@ export function ploneFetchItems({
         apiUrl,
         contextPath,
         contextContent,
-        mapped: Object.keys(block.fieldMapping ?? {}),
+        mapped: Object.keys(block[mappingField] ?? {}),
         start,
         size,
       });
@@ -1206,12 +1412,43 @@ export function ploneFetchItems({
     const headers = _getAuthHeaders();
     headers['Content-Type'] = 'application/json';
 
-    const path = `${contextPath}/++api++/@querystring-search`;
-    const url = `${apiUrl}${path}`;
-    const payload = JSON.stringify(body);
-    const response = await fetchQuerystringSearch(url, headers, payload);
+    // Asked from the site root: asked from a page, Plone leaves that page out
+    // whatever the query says. Its relative locations are resolved for the
+    // page first, so they mean the same.
+    const url = `${apiUrl}/++api++/@querystring-search`;
+    const { query, excludeTop, topQuery } = locationSearches(body.query, contextPath);
+    body.query = query;
+    if (excludeTop !== null) {
+      const folder = await fetchQuerystringSearch(
+        url,
+        headers,
+        JSON.stringify({
+          query: [{ i: 'path', o: ABSOLUTE_PATH, v: `${excludeTop}::0` }],
+          metadata_fields: ['UID'],
+          b_size: 1,
+        }),
+      );
+      const uid = folder.items?.[0]?.UID;
+      if (uid) body.query = [...body.query, { i: 'UID', o: UID_NONE, v: [uid] }];
+    }
+    // The folder by itself, with the listing's other criteria, to go first:
+    // at depth 1 Plone answers only what is under it.
+    let topItems = [];
+    if (topQuery) {
+      const found = await fetchQuerystringSearch(
+        url,
+        headers,
+        JSON.stringify({ ...body, query: topQuery, b_start: 0, b_size: 1 }),
+      );
+      topItems = found.items || [];
+      if (topItems.length) {
+        body.b_start = Math.max(0, start - 1);
+        body.b_size = start === 0 ? Math.max(0, size - 1) : size;
+      }
+    }
+    const response = await fetchQuerystringSearch(url, headers, JSON.stringify(body));
 
-    const rawItems = response.items || [];
+    const rawItems = [...(start === 0 && size > 0 ? topItems : []), ...(response.items || [])];
     // Normalize: package image_field + image_scales into a self-contained image
     // object (imageProps needs the @id inside as base URL for relative paths).
     let items = rawItems.map(normalizeCatalogImage);
@@ -1234,7 +1471,7 @@ export function ploneFetchItems({
 
     return {
       items,
-      total: response.items_total ?? rawItems.length,
+      total: (response.items_total ?? rawItems.length) + topItems.length,
     };
   };
 }
@@ -1256,6 +1493,18 @@ export function relatedItemsFetcher({ apiUrl, contextPath = '/' } = {}) {
     const items = size ? all.slice(start, start + size) : [];
     return { items, total: all.length };
   };
+}
+
+/**
+ * The address a link field holds. A link field stores one shape, a list of
+ * links, `[{ '@id': url }]`, for a page on the site and an outside address
+ * alike; anything else is refused rather than read a second way.
+ */
+function _linkUrl(value, field) {
+  if (!Array.isArray(value) || typeof value[0]?.['@id'] !== 'string') {
+    throw new Error(`${field}: a link is stored as [{"@id": url}], got ${JSON.stringify(value)}`);
+  }
+  return value[0]['@id'];
 }
 
 /**
@@ -1377,7 +1626,7 @@ export function searchShortcutsFetcher({ apiUrl, contextPath = '/' } = {}) {
   if (!apiUrl) throw new Error('searchShortcutsFetcher requires apiUrl');
   return async function fetchItems(block, { start, size }) {
     const index = block.index || 'Subject';
-    const searchUrl = block.searchUrl || '';
+    const searchUrl = _linkUrl(block.searchUrl, 'searchUrl');
     const headers = _getAuthHeaders();
 
     let values;
@@ -1414,7 +1663,7 @@ function _decodeXml(s) {
     .replace(/&amp;/g, '&');
 }
 
-// Dependency-free RSS parse (no DOMParser → runs in the browser AND node/jest).
+// Dependency-free RSS parse (no DOMParser → runs in the browser AND node).
 // Good enough for the example; each <item> → a raw result whose @id is the link.
 function _parseRssEntries(xml) {
   const out = [];
@@ -1449,11 +1698,15 @@ function _parseRssEntries(xml) {
  */
 export function rssFetcher() {
   return async function fetchItems(block, { start, size }) {
+    const feedUrl = _linkUrl(block.feedUrl, 'feedUrl');
     let entries = [];
     try {
-      const res = await fetch(block.feedUrl);
+      const res = await fetch(feedUrl);
       entries = _parseRssEntries(await res.text());
-    } catch {
+    } catch (err) {
+      // fetch rejects with a TypeError when the feed can't be reached (CORS,
+      // network): that degrades to an empty feed; anything else is a bug.
+      if (!(err instanceof TypeError)) throw err;
       return { items: [], total: 0 };
     }
     if (block.count != null) entries = entries.slice(0, block.count);
@@ -2071,6 +2324,26 @@ export function deterministicUUID(seed) {
   return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-4${hex.slice(13, 16)}-${variant}${hex.slice(17, 20)}-${hex.slice(20, 32)}`;
 }
 
+// A block's template machinery: never content an author wrote.
+const SYSTEM_FIELDS = new Set([
+  '@type',
+  '@uid',
+  'templateId',
+  'templateInstanceId',
+  'slotId',
+  'fixed',
+  'readOnly',
+  'fieldPlaceholders',
+  'fieldMappings',
+  'blocks',
+  'blocks_layout',
+  // The slot hints, all three: a slot name is machinery, not placeholder text
+  // an author would recognise in an empty field.
+  'nextSlotId',
+  'prevSlotId',
+  'childSlotIds',
+]);
+
 /**
  * Extract content field values from a block to use as fieldPlaceholders.
  * Skips system/template fields. Only includes fields with actual content.
@@ -2078,24 +2351,6 @@ export function deterministicUUID(seed) {
  * @returns {Object} Map of fieldName -> value for non-empty content fields
  */
 function extractFieldPlaceholders(block) {
-  const SYSTEM_FIELDS = new Set([
-    '@type',
-    '@uid',
-    'templateId',
-    'templateInstanceId',
-    'slotId',
-    'fixed',
-    'readOnly',
-    'fieldPlaceholders',
-    'fieldMappings',
-    'blocks',
-    'blocks_layout',
-    // The slot hints, all three: a slot name is machinery, not placeholder text
-    // an author would recognise in an empty field.
-    'nextSlotId',
-    'prevSlotId',
-    'childSlotIds',
-  ]);
   const placeholders = {};
   for (const [key, value] of Object.entries(block)) {
     if (SYSTEM_FIELDS.has(key)) continue;
@@ -3608,6 +3863,24 @@ export function isStarterUiField(fieldDef) {
 }
 
 /**
+ * The top-level template instance a block belongs to, or is: the outermost
+ * template instance on its path in the block path map (a template nested inside
+ * another belongs to the outer one). Null for a block in no template.
+ *
+ * @param {Object} blockPathMap - The block path map
+ * @param {string} blockId - The block
+ * @returns {string|null} The instance's id
+ */
+export function topTemplateInstanceOf(blockPathMap, blockId) {
+  let instanceId = null;
+  for (let cur = blockId; cur && blockPathMap?.[cur]; cur = blockPathMap[cur].parentId) {
+    const pathInfo = blockPathMap[cur];
+    if (pathInfo.isTemplateInstance && !pathInfo.isNestedTemplateInstance) instanceId = cur;
+  }
+  return instanceId;
+}
+
+/**
  * Check if a block should be readonly. Shared by the admin (sidebar/toolbar) and
  * the hydra.js Bridge.
  *
@@ -4003,9 +4276,10 @@ function allRegionIds(blocksLayout) {
  * menu choice.
  *
  * So look inside before letting it go. `fixed` marks the template's own
- * furniture, which the incoming layout replaces; everything else is the
- * author's and is pushed back into `pendingContent` under its own slot, exactly
- * as the flat scan does for content that sits at the top level. Template
+ * furniture, which the incoming layout replaces, and is looked inside in turn;
+ * everything else is the author's and is pushed back into `pendingContent`
+ * under its own slot, whole, exactly as the flat scan does for content that
+ * sits at the top level. Template
  * markers are left ON the harvested blocks — the flat scan leaves them there
  * too, and the apply re-stamps what it re-homes.
  *
@@ -4030,10 +4304,13 @@ export function collectNestedAuthorContent(block, pendingContent, visited = new 
         collectNestedAuthorContent(child, pendingContent, visited);
         continue;
       }
+      // The author's block, taken WHOLE: its children go with it. Recursing
+      // on collected each child a second time as content of its own, so a
+      // grid's cards were drawn twice — in the grid, and alone after it
+      // (collectContentFromTree takes content whole for the same reason).
       const slotId = child.slotId || 'default';
       if (!pendingContent.has(slotId)) pendingContent.set(slotId, []);
       pendingContent.get(slotId).push({ blockId, block: child });
-      collectNestedAuthorContent(child, pendingContent, visited);
     }
   }
 }
@@ -4286,8 +4563,8 @@ function templateSlotIds(template) {
  * - A fixed block takes the id the target already has for it (the next one in its
  *   slot), else a new one for this instance. An editable one keeps the target's fields.
  * - A slot is filled with the target's content for it, taken whole; a slot the target
- *   has nothing for is the template's slot block. One slot is one run, however many
- *   of the source's blocks it holds.
+ *   has nothing for is the template's blocks for it, each one. One slot is one run,
+ *   however many of the source's blocks it holds.
  * - Content whose slot the template doesn't have goes to the slot chosen for it
  *   (ctx.leftoverSlotId), else it is dropped.
  *
@@ -4300,6 +4577,25 @@ function fillRegionEntries(entries, templateState, options) {
   const { firstInsert } = options;
   const out = [];
   const slotOf = (block) => (block && !block.fixed ? block.slotId || 'default' : null);
+  // The slots of this region the target has nothing for: each of the template's
+  // blocks for one of them goes in, in order (a hero's three suggested topics).
+  const unfilledSlots = new Set();
+  // The target has nothing for this slot: the template's slot block, without
+  // what it holds (a slot's contents are a page's, never the template's).
+  const placeSlotBlock = (tplChildId, child, slotId) => {
+    // A template keeps a slot nobody has filled as an `empty` (inka#708): a
+    // place the editor offers to add to. A visitor's page has none — only the
+    // admin's merge asks for them (keepEmptySlots), so no frontend draws
+    // editing furniture for visitors.
+    if (child['@type'] === 'empty' && !options.keepEmptySlots) return;
+    const { blocks: _slotBlocks, blocks_layout: _slotLayout, ...childDef } = child;
+    const nb = { ...childDef, slotId, templateInstanceId: instanceId };
+    if (firstInsert) {
+      const placeholders = extractFieldPlaceholders(child);
+      if (Object.keys(placeholders).length > 0) nb.fieldPlaceholders = placeholders;
+    }
+    out.push({ id: mintChildBlockId(instanceId, tplChildId), block: nb });
+  };
   for (let idx = 0; idx < entries.length; idx++) {
     const { id: tplChildId, block: child } = entries[idx];
     if (!child || !child.templateId) continue; // not the template's: malformed, dropped
@@ -4369,25 +4665,28 @@ function fillRegionEntries(entries, templateState, options) {
     }
 
     const slotId = slotOf(child);
-    if (ctx.emittedSlotIds.has(slotId)) continue; // the rest of this slot's run
+    if (ctx.emittedSlotIds.has(slotId)) {
+      // The rest of this slot's run: the target's content is in its place, or,
+      // when the target has none, the template's blocks for the slot, each one.
+      if (unfilledSlots.has(slotId)) placeSlotBlock(tplChildId, child, slotId);
+      continue;
+    }
     ctx.emittedSlotIds.add(slotId);
     const leftovers =
       slotId === ctx.leftoverSlotId
         ? ctx.leftovers.splice(0).map((entry) => ({ ...entry, orphaned: true }))
         : [];
-    const content = [...leftovers, ...(ctx.pendingContent.get(slotId) || [])];
+    // An `empty` is never content: what a document holds for a slot when that is
+    // only its empty slot (inka#708) is nothing, so the slot's own block goes in
+    // — and a commit takes the author's block in an empty slot's place.
+    const content = [...leftovers, ...(ctx.pendingContent.get(slotId) || [])].filter(
+      ({ block }) => block?.['@type'] !== 'empty',
+    );
     ctx.pendingContent.delete(slotId);
 
     if (content.length === 0) {
-      // The target has nothing for this slot: the template's slot block, without
-      // what it holds (a slot's contents are a page's, never the template's).
-      const { blocks: _slotBlocks, blocks_layout: _slotLayout, ...childDef } = child;
-      const nb = { ...childDef, slotId, templateInstanceId: instanceId };
-      if (firstInsert) {
-        const placeholders = extractFieldPlaceholders(child);
-        if (Object.keys(placeholders).length > 0) nb.fieldPlaceholders = placeholders;
-      }
-      out.push({ id: mintChildBlockId(instanceId, tplChildId), block: nb });
+      unfilledSlots.add(slotId);
+      placeSlotBlock(tplChildId, child, slotId);
       continue;
     }
 
@@ -5558,6 +5857,22 @@ export function expandTemplatesSync(inputItems, options = {}) {
     }
   }
 
+  // What an earlier switch hid (its slot was missing from that layout) is the
+  // page's content for its slot, as if it were still drawn: a layout with the
+  // slot shows it again, and a slot with content is never given the
+  // template's block. templateState.hidden comes from mergeTemplatesIntoPage
+  // and is only read: expandTemplates re-runs a pass that met a template it
+  // hadn't loaded, so what is taken back and what is hidden are recorded by id.
+  if (ctx.previousTemplateId && templateState.hidden?.length) {
+    if (!templateState.restored) templateState.restored = new Set();
+    for (const entry of templateState.hidden) {
+      const slotId = entry.block.slotId;
+      if (!ctx.pendingContent.has(slotId)) ctx.pendingContent.set(slotId, []);
+      ctx.pendingContent.get(slotId).push(entry);
+      templateState.restored.add(entry.blockId);
+    }
+  }
+
   // Load template from pre-loaded map, falling back to sync loadTemplate callback.
   if (!ctx.template) {
     let template = adoptTemplate(templates[templateId], templateId);
@@ -5605,15 +5920,32 @@ export function expandTemplatesSync(inputItems, options = {}) {
     }
   }
 
-  // The page's region is a region like any other (fillRegionEntries). Content whose
-  // slot this template doesn't have goes to its default slot, else the bottom slot
-  // outside the last fixed block, else the top one; else it is dropped. Content in a
-  // fixed block's slot is that block's copy: the fixed block replaces it.
+  // The page's region is a region like any other (fillRegionEntries). Content with
+  // no slot, or whose slot this template doesn't have, goes to its default slot,
+  // else the bottom slot outside the last fixed block, else the top one; else it
+  // is dropped. Content in a fixed block's slot is that block's copy: the fixed
+  // block replaces it.
+  //
+  // Switching layouts, content in a named slot the incoming layout lacks is
+  // hidden instead, as a converted block keeps the fields its new type has no
+  // place for: kept with the page while it is edited (templateState.hidden), and
+  // shown again by a layout with that slot. Moved to default, it lost its slot,
+  // and switching back placed the template's block in it again. Removing the
+  // layout keeps everything, so nothing is hidden then.
   const slots = templateSlotIds(template);
   ctx.leftovers = [];
   for (const [slotId, content] of pendingContent) {
     if (!slots.has(slotId)) {
-      ctx.leftovers.push(...content);
+      if (ctx.previousTemplateId && !removingTemplate && slotId !== 'default') {
+        if (!templateState.hiding) templateState.hiding = new Map();
+        for (const { blockId, block } of content) {
+          const { '@uid': _uid, ...kept } = block;
+          templateState.restored?.delete(blockId);
+          templateState.hiding.set(blockId, { blockId, block: kept });
+        }
+      } else {
+        ctx.leftovers.push(...content);
+      }
       pendingContent.delete(slotId);
     }
   }

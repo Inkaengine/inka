@@ -5,7 +5,7 @@
  * way (tests-playwright/global-setup.ts), alongside whatever the launcher gives.
  */
 import { describe, test, expect } from 'vitest';
-import { isContainmentExempt, readContainmentRules } from './discover-blocks.cjs';
+import { isContainmentExempt, readContainmentRules } from './discover-blocks.js';
 
 // A block whose container doesn't allow its type: a containment violation
 // unless an exemption applies.

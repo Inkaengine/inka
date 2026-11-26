@@ -40,7 +40,7 @@ jobs:
           fetch-depth: 0
       - name: Setup pnpm
         run: |
-          npm install -g corepack
+          npm install -g --force corepack  # the Playwright image ships its own yarn, which corepack replaces
           corepack cache clean
           corepack enable
       - name: Use Node.js
@@ -71,15 +71,15 @@ jobs:
         # after missdev, because core/ is what it reads, and before anything
         # slow — a stale shadow is cheap to report and expensive to find later.
         run: pnpm shadows:check
-      - name: Run hydra-js unit tests
-        run: cd packages/hydra-js && pnpm test
       - name: Build workspace deps (@plone/registry, @plone/components)
         # Volto 19 reads these via workspace symlinks but its razzle.config
         # requires their built dist/ output (create-addons-loader.cjs, etc.).
         # Also needed by vitest because the addon tests import via @plone/*
         # workspace aliases and the test-setup files touch the built dist/.
         run: pnpm build:deps
-      - name: Run volto-hydra addon unit tests (vitest)
+      - name: Run unit tests
+        # The root suite (vitest), then each package under packages/ that has
+        # its own test script (hydra-js and @inka/testing, each on its own vitest config).
         run: pnpm test
       - name: Check example renderers compile
         # The examples pages embed real renderer files; check:docs parses each
@@ -97,7 +97,7 @@ jobs:
         # of every test job timing out waiting for a server that exited.
         run: pnpm check:content
       - name: Build Volto for production
-        run: pnpm build
+        run: pnpm build:test
         env:
           RAZZLE_API_PATH: http://localhost:${{ env.HYDRA_MOCK_API_PORT }}
           # RAZZLE_ vars are inlined into the CLIENT bundle at build time (webpack
@@ -358,7 +358,7 @@ jobs:
       - uses: actions/checkout@v4
       - name: Setup pnpm
         run: |
-          npm install -g corepack
+          npm install -g --force corepack  # the Playwright image ships its own yarn, which corepack replaces
           corepack cache clean
           corepack enable
       - name: Use Node.js
@@ -401,7 +401,7 @@ jobs:
     # timeout only made it fail faster. Keep the tag in step with
     # @playwright/test in package.json.
     container:
-      image: mcr.microsoft.com/playwright:v1.61.0-noble
+      image: mcr.microsoft.com/playwright:v1.65.1-noble
       options: --ipc=host
     # The job runs as root, but $HOME is /github/home, which the image's pwuser
     # owns, and Firefox refuses to start as root in a home it doesn't own.
@@ -413,7 +413,7 @@ jobs:
           fetch-depth: 0
       - name: Setup pnpm
         run: |
-          npm install -g corepack
+          npm install -g --force corepack  # the Playwright image ships its own yarn, which corepack replaces
           corepack cache clean
           corepack enable
       - name: Use Node.js
@@ -446,7 +446,7 @@ jobs:
           exec > "$RUNNER_TEMP/servers.log" 2>&1
           # Through the launcher, so PORT is set: the server requires it rather
           # than defaulting to 8888, which is the whole point of the block.
-          node scripts/with-ports.mjs --port=mockApi node packages/mock-api/mock-api-server.cjs &
+          node scripts/with-ports.mjs --port=mockApi pnpm exec inka-mock-api &
           npx vite --config tests-playwright/fixtures/test-frontend/vite.config.js &
           # Every interface (--host): in the container `localhost` is both
           # 127.0.0.1 and ::1, a server bound to "localhost" takes one, and the
@@ -466,6 +466,10 @@ jobs:
             done
           done
           echo "All servers ready"
+      - name: Comparison engine unit tests (node:test)
+        # @inka/compare. Here, not with test:api, because recording and
+        # replaying a source site needs a browser.
+        run: pnpm test:compare
       - name: Run tests
         run: pnpm exec playwright test --project=unit --project=unit-firefox --project=api-contract --project=mock --project=react --project=svelte --project=vue --project=astro
         env:
@@ -520,7 +524,7 @@ jobs:
     # timeout only made it fail faster. Keep the tag in step with
     # @playwright/test in package.json.
     container:
-      image: mcr.microsoft.com/playwright:v1.61.0-noble
+      image: mcr.microsoft.com/playwright:v1.65.1-noble
       options: --ipc=host
     # The job runs as root, but $HOME is /github/home, which the image's pwuser
     # owns, and Firefox refuses to start as root in a home it doesn't own.
@@ -532,7 +536,7 @@ jobs:
           fetch-depth: 0
       - name: Setup pnpm
         run: |
-          npm install -g corepack
+          npm install -g --force corepack  # the Playwright image ships its own yarn, which corepack replaces
           corepack cache clean
           corepack enable
       - name: Use Node.js
@@ -574,7 +578,7 @@ jobs:
           exec > "$RUNNER_TEMP/servers.log" 2>&1
           # Through the launcher, so PORT is set: the server requires it rather
           # than defaulting to 8888, which is the whole point of the block.
-          node scripts/with-ports.mjs --port=mockApi node packages/mock-api/mock-api-server.cjs &
+          node scripts/with-ports.mjs --port=mockApi pnpm exec inka-mock-api &
           npx vite --config tests-playwright/fixtures/test-frontend/vite.config.js &
           PORT=${{ env.HYDRA_VOLTO_SSR_PORT }} RAZZLE_API_PATH=http://localhost:${{ env.HYDRA_MOCK_API_PORT }} \
             RAZZLE_DEFAULT_IFRAME_URL=http://localhost:${{ env.HYDRA_TEST_FRONTEND_PORT }},http://localhost:${{ env.HYDRA_NUXT_PORT }} \
@@ -598,7 +602,6 @@ jobs:
           # A failing test's first retry records a Playwright trace (its own console,
           # network and DOM snapshots), uploaded below: what a flake needs.
           TRACE: '1'
-          USE_PREBUILT: true
       - name: Server logs
         if: failure()
         run: cat "$RUNNER_TEMP/servers.log"
@@ -640,7 +643,7 @@ jobs:
     # timeout only made it fail faster. Keep the tag in step with
     # @playwright/test in package.json.
     container:
-      image: mcr.microsoft.com/playwright:v1.61.0-noble
+      image: mcr.microsoft.com/playwright:v1.65.1-noble
       options: --ipc=host
     # The job runs as root, but $HOME is /github/home, which the image's pwuser
     # owns, and Firefox refuses to start as root in a home it doesn't own.
@@ -652,7 +655,7 @@ jobs:
           fetch-depth: 0
       - name: Setup pnpm
         run: |
-          npm install -g corepack
+          npm install -g --force corepack  # the Playwright image ships its own yarn, which corepack replaces
           corepack cache clean
           corepack enable
       - name: Use Node.js
@@ -698,7 +701,7 @@ jobs:
           exec > "$RUNNER_TEMP/servers.log" 2>&1
           # Through the launcher, so PORT is set: the server requires it rather
           # than defaulting to 8888, which is the whole point of the block.
-          node scripts/with-ports.mjs --port=mockApi node packages/mock-api/mock-api-server.cjs &
+          node scripts/with-ports.mjs --port=mockApi pnpm exec inka-mock-api &
           npx vite --config tests-playwright/fixtures/test-frontend/vite.config.js &
           PORT=${{ env.HYDRA_VOLTO_SSR_PORT }} RAZZLE_API_PATH=http://localhost:${{ env.HYDRA_MOCK_API_PORT }} \
             RAZZLE_DEFAULT_IFRAME_URL=http://localhost:${{ env.HYDRA_NEXTJS_PORT }},http://localhost:${{ env.HYDRA_TEST_FRONTEND_PORT }} \
@@ -734,7 +737,6 @@ jobs:
           # A failing test's first retry records a Playwright trace (its own console,
           # network and DOM snapshots), uploaded below: what a flake needs.
           TRACE: '1'
-          USE_PREBUILT: true
       - name: Server logs
         if: failure()
         run: cat "$RUNNER_TEMP/servers.log"
@@ -771,7 +773,7 @@ jobs:
     # timeout only made it fail faster. Keep the tag in step with
     # @playwright/test in package.json.
     container:
-      image: mcr.microsoft.com/playwright:v1.61.0-noble
+      image: mcr.microsoft.com/playwright:v1.65.1-noble
       options: --ipc=host
     # The job runs as root, but $HOME is /github/home, which the image's pwuser
     # owns, and Firefox refuses to start as root in a home it doesn't own.
@@ -783,7 +785,7 @@ jobs:
           fetch-depth: 0
       - name: Setup pnpm
         run: |
-          npm install -g corepack
+          npm install -g --force corepack  # the Playwright image ships its own yarn, which corepack replaces
           corepack cache clean
           corepack enable
       - name: Use Node.js
@@ -818,7 +820,7 @@ jobs:
           exec > "$RUNNER_TEMP/servers.log" 2>&1
           # Through the launcher, so PORT is set: the server requires it rather
           # than defaulting to 8888, which is the whole point of the block.
-          node scripts/with-ports.mjs --port=mockApi node packages/mock-api/mock-api-server.cjs &
+          node scripts/with-ports.mjs --port=mockApi pnpm exec inka-mock-api &
           npx vite --config tests-playwright/fixtures/test-frontend/vite.config.js &
           cd examples/nuxt-blog-starter && pnpm run preview:test &
           sleep 3
@@ -883,7 +885,7 @@ jobs:
     # timeout only made it fail faster. Keep the tag in step with
     # @playwright/test in package.json.
     container:
-      image: mcr.microsoft.com/playwright:v1.61.0-noble
+      image: mcr.microsoft.com/playwright:v1.65.1-noble
       options: --ipc=host
     # The job runs as root, but $HOME is /github/home, which the image's pwuser
     # owns, and Firefox refuses to start as root in a home it doesn't own.
@@ -895,7 +897,7 @@ jobs:
           fetch-depth: 0
       - name: Setup pnpm
         run: |
-          npm install -g corepack
+          npm install -g --force corepack  # the Playwright image ships its own yarn, which corepack replaces
           corepack cache clean
           corepack enable
       - name: Use Node.js
@@ -944,7 +946,7 @@ jobs:
           exec > "$RUNNER_TEMP/servers.log" 2>&1
           # Through the launcher, so PORT is set: the server requires it rather
           # than defaulting to 8888, which is the whole point of the block.
-          node scripts/with-ports.mjs --port=mockApi node packages/mock-api/mock-api-server.cjs &
+          node scripts/with-ports.mjs --port=mockApi pnpm exec inka-mock-api &
           npx vite --config tests-playwright/fixtures/test-frontend/vite.config.js &
           PORT=${{ env.HYDRA_VOLTO_SSR_PORT }} RAZZLE_API_PATH=http://localhost:${{ env.HYDRA_MOCK_API_PORT }} \
             RAZZLE_DEFAULT_IFRAME_URL=http://localhost:${{ env.HYDRA_TEST_FRONTEND_PORT }},http://localhost:${{ env.HYDRA_NUXT_PORT }} \
@@ -969,7 +971,6 @@ jobs:
           # A failing test's first retry records a Playwright trace (its own console,
           # network and DOM snapshots), uploaded below: what a flake needs.
           TRACE: '1'
-          USE_PREBUILT: true
       - name: Server logs
         if: failure()
         run: cat "$RUNNER_TEMP/servers.log"
@@ -1006,7 +1007,7 @@ jobs:
     # timeout only made it fail faster. Keep the tag in step with
     # @playwright/test in package.json.
     container:
-      image: mcr.microsoft.com/playwright:v1.61.0-noble
+      image: mcr.microsoft.com/playwright:v1.65.1-noble
       options: --ipc=host
     # The job runs as root, but $HOME is /github/home, which the image's pwuser
     # owns, and Firefox refuses to start as root in a home it doesn't own.
@@ -1018,7 +1019,7 @@ jobs:
           fetch-depth: 0
       - name: Setup pnpm
         run: |
-          npm install -g corepack
+          npm install -g --force corepack  # the Playwright image ships its own yarn, which corepack replaces
           corepack cache clean
           corepack enable
       - name: Use Node.js
@@ -1061,7 +1062,7 @@ jobs:
           exec > "$RUNNER_TEMP/servers.log" 2>&1
           # Through the launcher, so PORT is set: the server requires it rather
           # than defaulting to 8888, which is the whole point of the block.
-          node scripts/with-ports.mjs --port=mockApi node packages/mock-api/mock-api-server.cjs &
+          node scripts/with-ports.mjs --port=mockApi pnpm exec inka-mock-api &
           npx vite --config tests-playwright/fixtures/test-frontend/vite.config.js &
           cd examples/hydra-nextjs && pnpm run start:test &
           cd examples/hydra-vue-f7 && VITE_API_BASE_URL=http://localhost:${{ env.HYDRA_MOCK_API_PORT }} npx vite --port ${{ env.HYDRA_F7_PORT }} --strictPort --config vite.config.test.mjs &

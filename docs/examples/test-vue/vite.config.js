@@ -53,11 +53,6 @@ function vueExamplesPlugin() {
       if (code.includes('ploneFetchItems') && !code.includes('ploneFetchItems =')) {
         neededImports.push(`const ploneFetchItems = (...a) => window.ploneFetchItems(...a);`);
       }
-      if (code.includes('API_URL') && !code.includes('API_URL =')) {
-        neededImports.push(`const _getApiUrl = () => window._API_URL;`);
-        // Rewrite bare API_URL references to _getApiUrl() calls
-        code = code.replace(/\bAPI_URL\b/g, '_getApiUrl()');
-      }
       if (code.includes('contentPath') && !code.includes('contentPath =')) {
         neededImports.push(`const contentPath = (...a) => window._contentPath(...a);`);
       }
@@ -87,7 +82,8 @@ const HYDRA_API_URL = JSON.stringify(`http://localhost:${mockApiPort}`);
 
 export default defineConfig({
   plugins: [vue(), vueExamplesPlugin()],
-  define: { __HYDRA_API_URL__: HYDRA_API_URL },
+  // API_URL: the name the doc examples use for it (their listing blocks).
+  define: { __HYDRA_API_URL__: HYDRA_API_URL, API_URL: HYDRA_API_URL },
   resolve: {
     alias: {
       '$examples': path.resolve(__dirname, '../examples/vue'),

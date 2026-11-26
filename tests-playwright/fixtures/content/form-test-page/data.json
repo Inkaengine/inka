@@ -30,14 +30,12 @@
           "field_id": "field-name",
           "field_type": "text",
           "label": "Full Name",
-          "plaintext": "Full Name",
           "required": true
         },
         {
           "field_id": "field-email",
           "field_type": "from",
           "label": "Email Address",
-          "plaintext": "Email Address",
           "required": true,
           "use_as_reply_to": true,
           "use_as_bcc": false
@@ -46,7 +44,6 @@
           "field_id": "field-subject",
           "field_type": "select",
           "label": "Subject",
-          "plaintext": "Subject",
           "required": true,
           "input_values": [
             "General Inquiry",
@@ -58,14 +55,12 @@
           "field_id": "field-message",
           "field_type": "textarea",
           "label": "Message",
-          "plaintext": "Message",
           "required": false
         },
         {
           "field_id": "field-priority",
           "field_type": "single_choice",
           "label": "Priority",
-          "plaintext": "Priority",
           "required": false,
           "input_values": [
             "Low",
@@ -77,41 +72,35 @@
           "field_id": "field-agree",
           "field_type": "checkbox",
           "label": "I agree to the terms",
-          "plaintext": "I agree to the terms",
           "required": true
         },
         {
           "field_id": "field-quantity",
           "field_type": "number",
           "label": "Quantity",
-          "plaintext": "Quantity",
           "required": false
         },
         {
           "field_id": "field-when",
           "field_type": "date",
           "label": "Preferred date",
-          "plaintext": "Preferred date",
           "required": false
         },
         {
           "field_id": "field-note",
           "field_type": "static_text",
-          "label": "We reply within two working days.",
-          "plaintext": "We reply within two working days."
+          "label": "We reply within two working days."
         },
         {
           "field_id": "field-source",
           "field_type": "hidden",
           "label": "Source",
-          "plaintext": "Source",
           "default_value": "test-fixture"
         },
         {
           "field_id": "field-file",
           "field_type": "attachment",
           "label": "Attach a file",
-          "plaintext": "Attach a file",
           "required": false
         }
       ]

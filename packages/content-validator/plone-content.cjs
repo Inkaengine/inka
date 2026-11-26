@@ -9,6 +9,12 @@
  *   plone-content all      [<content-dir>]   — validate + check (+ schema with --schemas)
  *   plone-content search-text [<content-dir>] --schemas <schemas.json>
  *   plone-content field-mappings [<content-dir>] --schemas <schemas.json>
+ *   plone-content convert-block --schemas <schemas.json> --to <type>
+ *                                            — one block (JSON on stdin) converted to
+ *                                              <type> as the editor converts it, through
+ *                                              the site's field mappings (JSON on stdout):
+ *                                              for a program that makes content outside
+ *                                              the editor (a site converter, a migration)
  *                                            — writes each block's searchableText into the
  *                                              content, as the editor does on save: for
  *                                              content that doesn't pass through the editor
@@ -18,6 +24,10 @@
  *                                              listing it is merged. Never on a deploy.
  *   --exempt-slot <slotId>                    — (repeatable) don't check the PLACEMENT of
  *                                              blocks in that template slot
+ *   --content-types <types.json>             — the site's content types, { <type>: the schema
+ *                                              its @types/<type> serves }: what a site's own
+ *                                              catalog column holds, for a listing mapping one
+ *                                              (schema, all, field-mappings)
  *   --json <report.json>                     — also write the report as data:
  *                                              { <check>: { errors, warnings, stats } }
  *
@@ -35,12 +45,12 @@
 
 const path = require('path');
 const fs = require('fs');
-const { validate, checkIntegrity, checkBlockSchemas, checkEditorRules, checkChooserGroups, checkFieldsetCoverage, checkReservedFields, checkFieldMappings, fieldMapFromSchemas, idFieldMapFor, loadSchemas, formatReport } = require('./plone-content-validator.cjs');
+const { validate, checkIntegrity, checkBlockSchemas, checkEditorRules, checkChooserGroups, checkFieldsetCoverage, checkReservedFields, checkFieldMappings, checkUndeclaredBlocks, fieldMapFromSchemas, idFieldMapFor, loadSchemas, formatReport } = require('./plone-content-validator.js');
 
 function usage() {
   console.error(
-    'Usage: plone-content <validate|check|schema|all|search-text|field-mappings> [<content-dir>] ' +
-      '[--schemas <schemas.json>] [--exempt-slot <slot>]... [--json <report.json>] [--allow-missing-blobs]',
+    'Usage: plone-content <validate|check|schema|all|search-text|field-mappings|convert-block> [<content-dir>] ' +
+      '[--schemas <schemas.json>] [--content-types <types.json>] [--exempt-slot <slot>]... [--json <report.json>] [--allow-missing-blobs]',
   );
   process.exit(2);
 }
@@ -60,10 +70,14 @@ const fieldsPath = takeFlag('--fields');
 // The report as data — { <check>: { errors, warnings, stats } } for each
 // check run — for a program that acts on it rather than a person reading it.
 const jsonPath = takeFlag('--json');
+const contentTypesPath = takeFlag('--content-types');
+const contentTypes = contentTypesPath ? JSON.parse(fs.readFileSync(path.resolve(contentTypesPath), 'utf8')) : undefined;
 // Template slots whose blocks are placed deliberately where the editor would
 // not put them (a documentation page's examples). Repeatable.
 const allowMissingBlobs = argv.includes('--allow-missing-blobs');
 if (allowMissingBlobs) argv.splice(argv.indexOf('--allow-missing-blobs'), 1);
+// convert-block: the type to convert the block to.
+const toType = takeFlag('--to');
 const exemptSlots = [];
 for (let slot = takeFlag('--exempt-slot'); slot; slot = takeFlag('--exempt-slot')) exemptSlots.push(slot);
 
@@ -73,7 +87,82 @@ const schemas = schemasPath ? await loadSchemas(schemasPath) : null;
 const [cmd, dirArg] = argv;
 // Anything left over is a flag this CLI does not know: ignoring it would run a
 // different check from the one asked for.
-if (!cmd || !['validate', 'check', 'schema', 'all', 'search-text', 'field-mappings'].includes(cmd) || argv.length > 2) usage();
+if (!cmd || !['validate', 'check', 'schema', 'all', 'search-text', 'field-mappings', 'convert-block'].includes(cmd) || argv.length > 2) usage();
+// One block converted as the editor converts it (convertBlockType, through the
+// site's field mappings), for content made outside the editor. A type the block
+// does not convert to is an error, never a block of that type with nothing in it.
+if (cmd === 'convert-block') {
+  if (!schemas) {
+    console.error('convert-block needs --schemas <schemas.json>');
+    process.exit(2);
+  }
+  if (!toType) {
+    console.error('convert-block needs --to <type>');
+    process.exit(2);
+  }
+  const { convertBlockType } = require('@volto-hydra/helpers/blockSync.js');
+  const { getConvertibleTypes } = require('@volto-hydra/helpers/conversionValidation.js');
+  const intl = { formatMessage: (m) => m?.defaultMessage || '' };
+  const block = JSON.parse(fs.readFileSync(0, 'utf8'));
+  const fromType = block['@type'];
+  if (!schemas[toType]) {
+    console.error(`convert-block: the site has no block type ${toType}`);
+    process.exit(1);
+  }
+  const reachable = getConvertibleTypes(fromType, schemas).map((t) => t.type);
+  if (!reachable.includes(toType)) {
+    console.error(`convert-block: ${fromType} does not convert to ${toType}`);
+    process.exit(1);
+  }
+  const converted = convertBlockType(block, toType, schemas, '@type', intl);
+  // The editor keeps the old type's unmapped fields, so converting back
+  // restores them. Content made outside the editor is converted once, and the
+  // content check refuses a field its block does not declare: keep only what
+  // the new type declares, by the same reckoning the check uses.
+  const { blocks: declared, identityFields } = fieldMapFromSchemas(schemas);
+  const own = declared[toType];
+  const keeps = (field) =>
+    own.builtIn ||
+    own.fields.includes(field) ||
+    identityFields.includes(field) ||
+    field === 'blocks' ||
+    field === 'blocks_layout' ||
+    (own.defaultsPrefix && field.startsWith(`${own.defaultsPrefix}_`));
+  const kept = Object.fromEntries(Object.entries(converted).filter(([field]) => keeps(field)));
+  process.stdout.write(`${JSON.stringify(kept)}\n`);
+  return;
+}
+// Every data.json under a content tree. An export names its folders by UID, all at
+// the top; a layout names them by path, so a page can sit at any depth.
+function* pageFiles(dir) {
+  for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+    if (!entry.isDirectory()) continue;
+    const sub = path.join(dir, entry.name);
+    const file = path.join(sub, 'data.json');
+    if (fs.existsSync(file)) yield file;
+    yield* pageFiles(sub);
+  }
+}
+
+// Run `change` over every page with blocks and write back only the pages whose data it
+// changes, each in its file's own indentation: content lives in git, and a rewrite in
+// another indentation would change every line and hide what the command did. A file
+// written on one line stays on one line. Returns how many pages were written.
+function rewritePages(contentRoot, change) {
+  let pages = 0;
+  for (const file of pageFiles(contentRoot)) {
+    const before = fs.readFileSync(file, 'utf8');
+    const page = JSON.parse(before);
+    if (!page.blocks) continue;
+    const changed = change(page);
+    if (JSON.stringify(changed) === JSON.stringify(page)) continue;
+    const indent = before.match(/^\{\r?\n([ \t]*)/)?.[1] ?? '';
+    fs.writeFileSync(file, JSON.stringify(changed, null, indent) + (before.endsWith('\n') ? '\n' : ''));
+    pages += 1;
+  }
+  return pages;
+}
+
 // What the editor stores on a block with a mapping widget, for content that
 // doesn't pass through it: the widget's default where there is none, every
 // entry with its conversion, the address under getURL. Only pages it changes
@@ -85,18 +174,9 @@ if (cmd === 'field-mappings') {
   }
   const { withFieldMappings } = require('@volto-hydra/helpers/storeFieldMappings.js');
   const intl = { formatMessage: (m) => m?.defaultMessage || '' };
-  const contentRoot = path.resolve(dirArg || 'content');
-  let pages = 0;
-  for (const entry of fs.readdirSync(contentRoot, { withFileTypes: true })) {
-    const file = path.join(contentRoot, entry.name, 'data.json');
-    if (!entry.isDirectory() || !fs.existsSync(file)) continue;
-    const page = JSON.parse(fs.readFileSync(file, 'utf8'));
-    if (!page.blocks) continue;
-    const written = withFieldMappings(page, schemas, intl);
-    if (written === page) continue;
-    fs.writeFileSync(file, `${JSON.stringify(written, null, 2)}\n`);
-    pages += 1;
-  }
+  const pages = rewritePages(path.resolve(dirArg || 'content'), (page) =>
+    withFieldMappings(page, schemas, intl, contentTypes),
+  );
   console.log(`field-mappings: ${pages} page(s) written`);
   return;
 }
@@ -107,17 +187,9 @@ if (cmd === 'search-text') {
   }
   const { searchTextOptions, withSearchableText } = require('@volto-hydra/helpers/searchableText.js');
   const intl = { formatMessage: (m) => m?.defaultMessage || '' };
-  const contentRoot = path.resolve(dirArg || 'content');
-  let pages = 0;
-  for (const entry of fs.readdirSync(contentRoot, { withFileTypes: true })) {
-    const file = path.join(contentRoot, entry.name, 'data.json');
-    if (!entry.isDirectory() || !fs.existsSync(file)) continue;
-    const page = JSON.parse(fs.readFileSync(file, 'utf8'));
-    if (!page.blocks) continue;
-    const written = withSearchableText(page, searchTextOptions(schemas, intl, page));
-    fs.writeFileSync(file, `${JSON.stringify(written, null, 2)}\n`);
-    pages += 1;
-  }
+  const pages = rewritePages(path.resolve(dirArg || 'content'), (page) =>
+    withSearchableText(page, searchTextOptions(schemas, intl, page)),
+  );
   console.log(`search-text: ${pages} page(s) written`);
   return;
 }
@@ -190,7 +262,7 @@ if (cmd === 'schema' || (cmd === 'all' && (schemas || fieldsPath))) {
   // field map: placement, maxLength, required fields and region text styles.
   if (schemas) {
     console.log('');
-    const rules = await checkEditorRules(contentDir, schemas, { exemptSlots });
+    const rules = await checkEditorRules(contentDir, schemas, { exemptSlots, contentTypes });
     report.rules = rules;
     console.log(formatReport('rules', rules));
     if (rules.errors.length) hasErrors = true;
@@ -225,6 +297,14 @@ if (cmd === 'schema' || (cmd === 'all' && (schemas || fieldsPath))) {
     report.mappings = mappings;
     console.log(formatReport('mappings', mappings));
     if (mappings.errors.length) hasErrors = true;
+
+    // A region that may hold a block nobody declares: the editor refuses to
+    // load on it.
+    console.log('');
+    const undeclared = checkUndeclaredBlocks(schemas);
+    report.undeclared = undeclared;
+    console.log(formatReport('undeclared', undeclared));
+    if (undeclared.errors.length) hasErrors = true;
   }
 }
 

@@ -1,3 +1,4 @@
+import { describe, test, expect } from 'vitest';
 import {
   relatedItemsFetcher,
   searchShortcutsFetcher,
@@ -56,7 +57,7 @@ describe('searchShortcutsFetcher', () => {
     mockContent({ subjects: ['news', 'plone'] });
     const fetcher = searchShortcutsFetcher({ apiUrl: API, contextPath: '/page' });
     const { items, total } = await fetcher(
-      { pageField: 'subjects', index: 'Subject', searchUrl: '/search' },
+      { pageField: 'subjects', index: 'Subject', searchUrl: [{ '@id': '/search' }] },
       { start: 0, size: 10 },
     );
     expect(total).toBe(2);
@@ -66,32 +67,54 @@ describe('searchShortcutsFetcher', () => {
     ]);
   });
 
-  test('site-wide mode (no pageField): unique values from the index vocabulary', async () => {
-    global.fetch = async (url) => ({
-      ok: true,
-      json: async () =>
-        String(url).includes('Keywords')
-          ? { items: [{ token: 'a', title: 'a' }, { token: 'b', title: 'b' }] }
-          : {},
-    });
+  // Was "unique values from the index vocabulary", reading
+  // @vocabularies/plone.app.vocabularies.Keywords. A real Plone refuses that to
+  // an anonymous visitor (401), so the strip was empty for exactly the reader
+  // the block exists for -- silently, because `data.items` came back undefined
+  // and `[]` renders as nothing. It reads the catalog now (#762); the full
+  // behaviour is in packages/helpers/searchShortcutsFetcher.test.js.
+  test('site-wide mode (no pageField): unique values from the catalog', async () => {
+    const urls = [];
+    global.fetch = async (url) => {
+      urls.push(String(url));
+      return {
+        ok: true,
+        json: async () => ({
+          items: [{ Subject: ['a', 'b'] }, { Subject: ['b'] }],
+          items_total: 2,
+        }),
+      };
+    };
     const fetcher = searchShortcutsFetcher({ apiUrl: API, contextPath: '/page' });
     const { items, total } = await fetcher(
-      { index: 'Subject', searchUrl: '/search' },
+      { index: 'Subject', searchUrl: [{ '@id': '/search' }] },
       { start: 0, size: 10 },
     );
     expect(total).toBe(2);
     expect(items.map((i) => i.title)).toEqual(['a', 'b']);
     expect(items[0]['@id']).toBe('/search?facet.Subject=a');
+    // The point of the change: nothing asks for a vocabulary.
+    expect(urls.some((u) => u.includes('@vocabularies'))).toBe(false);
   });
 
   test('values are URL-encoded in the facet param', async () => {
     mockContent({ subjects: ['a b & c'] });
     const fetcher = searchShortcutsFetcher({ apiUrl: API, contextPath: '/page' });
     const { items } = await fetcher(
-      { pageField: 'subjects', index: 'Subject', searchUrl: '/search' },
+      { pageField: 'subjects', index: 'Subject', searchUrl: [{ '@id': '/search' }] },
       { start: 0, size: 10 },
     );
     expect(items[0]['@id']).toBe('/search?facet.Subject=a%20b%20%26%20c');
+  });
+
+  test('a search page stored as a string is refused', async () => {
+    // A link field holds [{'@id'}]; a string would be a second shape to read.
+    mockContent({ subjects: ['news'] });
+    const fetcher = searchShortcutsFetcher({ apiUrl: API, contextPath: '/page' });
+    await expect(fetcher(
+      { pageField: 'subjects', index: 'Subject', searchUrl: '/search' },
+      { start: 0, size: 10 },
+    )).rejects.toThrow(/\[\{"@id"/);
   });
 });
 
@@ -105,7 +128,7 @@ describe('rssFetcher', () => {
   test('parses feed items into raw results (@id = entry link), paged', async () => {
     global.fetch = async () => ({ ok: true, text: async () => RSS });
     const { items, total } = await rssFetcher()(
-      { feedUrl: 'http://x/feed', count: 10 },
+      { feedUrl: [{ '@id': 'http://x/feed' }], count: 10 },
       { start: 0, size: 10 },
     );
     expect(total).toBe(2);
@@ -121,19 +144,31 @@ describe('rssFetcher', () => {
   test('honours block.count as an upper bound', async () => {
     global.fetch = async () => ({ ok: true, text: async () => RSS });
     const { items, total } = await rssFetcher()(
-      { feedUrl: 'http://x/feed', count: 1 },
+      { feedUrl: [{ '@id': 'http://x/feed' }], count: 1 },
       { start: 0, size: 10 },
     );
     expect(total).toBe(1);
     expect(items).toHaveLength(1);
   });
 
+  test('a bug in reading the feed is not swallowed as an empty feed', async () => {
+    global.fetch = async () => ({ ok: true, text: async () => { throw new RangeError('boom'); } });
+    await expect(rssFetcher()({ feedUrl: [{ '@id': 'http://x/feed' }] }, { start: 0, size: 10 }))
+      .rejects.toThrow('boom');
+  });
+
+  test('a feed address stored as a string is refused', async () => {
+    global.fetch = async () => ({ ok: true, text: async () => RSS });
+    await expect(rssFetcher()({ feedUrl: 'http://x/feed' }, { start: 0, size: 10 }))
+      .rejects.toThrow(/\[\{"@id"/);
+  });
+
   test('degrades to empty on fetch failure (best-effort CORS)', async () => {
     global.fetch = async () => {
-      throw new Error('CORS');
+      throw new TypeError('Failed to fetch');
     };
     const { items, total } = await rssFetcher()(
-      { feedUrl: 'http://x/feed' },
+      { feedUrl: [{ '@id': 'http://x/feed' }] },
       { start: 0, size: 10 },
     );
     expect(items).toEqual([]);

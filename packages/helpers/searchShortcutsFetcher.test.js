@@ -38,10 +38,14 @@ afterEach(() => {
 
 const page = { start: 0, size: 10 };
 
+// `searchUrl` is a LINK field, stored as [{ '@id': url }]; `_linkUrl` throws on
+// anything else rather than guessing. Passing a bare string here failed all nine
+// of these at once, which is the behaviour working as intended.
+
 describe('searchShortcutsFetcher', () => {
   test('asks the catalog, never the vocabulary', async () => {
     const fetchItems = searchShortcutsFetcher({ apiUrl: 'http://api', contextPath: '/blog' });
-    await fetchItems({ searchUrl: '/search' }, page);
+    await fetchItems({ searchUrl: [{ '@id': '/search' }] }, page);
 
     expect(calls).toHaveLength(1);
     expect(calls[0].url).toBe('http://api/blog/++api++/@querystring-search');
@@ -52,13 +56,13 @@ describe('searchShortcutsFetcher', () => {
 
   test('asks for the metadata the values live in', async () => {
     const fetchItems = searchShortcutsFetcher({ apiUrl: 'http://api' });
-    await fetchItems({ searchUrl: '/search' }, page);
+    await fetchItems({ searchUrl: [{ '@id': '/search' }] }, page);
     expect(calls[0].body.metadata_fields).toBe('_all');
   });
 
   test('one shortcut per distinct value, in result order, as links into the search', async () => {
     const fetchItems = searchShortcutsFetcher({ apiUrl: 'http://api' });
-    const { items, total } = await fetchItems({ searchUrl: '/case-studies' }, page);
+    const { items, total } = await fetchItems({ searchUrl: [{ '@id': '/case-studies' }] }, page);
 
     expect(items).toEqual([
       { '@id': '/case-studies?facet.Subject=gov-security', title: 'gov-security' },
@@ -71,21 +75,22 @@ describe('searchShortcutsFetcher', () => {
   test('an untagged item never becomes a blank shortcut', async () => {
     globalThis.fetch = respond({ items: [{ Subject: null }, { Subject: ['', 'real'] }, {}] });
     const fetchItems = searchShortcutsFetcher({ apiUrl: 'http://api' });
-    const { items } = await fetchItems({ searchUrl: '/s' }, page);
+    const { items } = await fetchItems({ searchUrl: [{ '@id': '/s' }] }, page);
     expect(items.map((i) => i.title)).toEqual(['real']);
   });
 
   test('scopes to the search it points at, so a chip matches its destination', async () => {
     const fetchItems = searchShortcutsFetcher({ apiUrl: 'http://api', contextPath: '/blog' });
-    await fetchItems({ searchUrl: 'https://site.example/case-studies?x=1' }, page);
+    await fetchItems({ searchUrl: [{ '@id': 'https://site.example/case-studies?x=1' }] }, page);
     expect(calls[0].body.query).toEqual([
       { i: 'path', o: 'plone.app.querystring.operation.string.absolutePath', v: '/case-studies' },
     ]);
   });
 
-  test("with no search path, scopes to this page's own subtree", async () => {
+  test("when the search link names no path, scopes to this page's own subtree", async () => {
     const fetchItems = searchShortcutsFetcher({ apiUrl: 'http://api', contextPath: '/blog' });
-    await fetchItems({ searchUrl: '' }, page);
+    // A link to a site root: a real link, with nothing to scope to.
+    await fetchItems({ searchUrl: [{ '@id': 'https://site.example/' }] }, page);
     expect(calls[0].body.query).toEqual([
       { i: 'path', o: 'plone.app.querystring.operation.string.relativePath', v: '.' },
     ]);
@@ -94,7 +99,7 @@ describe('searchShortcutsFetcher', () => {
   test('a non-default index is read from the same brains', async () => {
     globalThis.fetch = respond({ items: [{ portal_type: 'CaseStudy' }, { portal_type: 'Document' }] });
     const fetchItems = searchShortcutsFetcher({ apiUrl: 'http://api' });
-    const { items } = await fetchItems({ index: 'portal_type', searchUrl: '/s' }, page);
+    const { items } = await fetchItems({ index: 'portal_type', searchUrl: [{ '@id': '/s' }] }, page);
     expect(items.map((i) => i.title)).toEqual(['CaseStudy', 'Document']);
     expect(items[0]['@id']).toBe('/s?facet.portal_type=CaseStudy');
   });
@@ -102,13 +107,13 @@ describe('searchShortcutsFetcher', () => {
   test('a failed request throws instead of rendering an empty strip', async () => {
     globalThis.fetch = respond({ error: { type: 'Not authenticated' } }, { ok: false, status: 401 });
     const fetchItems = searchShortcutsFetcher({ apiUrl: 'http://api' });
-    await expect(fetchItems({ searchUrl: '/s' }, page)).rejects.toThrow(/answered 401/);
+    await expect(fetchItems({ searchUrl: [{ '@id': '/s' }] }, page)).rejects.toThrow(/answered 401/);
   });
 
   test("pageField mode still reads the page's own field, with no search", async () => {
     globalThis.fetch = respond({ Subject: ['one', 'two'] });
     const fetchItems = searchShortcutsFetcher({ apiUrl: 'http://api', contextPath: '/blog' });
-    const { items } = await fetchItems({ pageField: 'Subject', searchUrl: '/s' }, page);
+    const { items } = await fetchItems({ pageField: 'Subject', searchUrl: [{ '@id': '/s' }] }, page);
 
     expect(calls[0].url).toBe('http://api/blog/++api++');
     expect(items.map((i) => i.title)).toEqual(['one', 'two']);

@@ -62,6 +62,40 @@ function ownTemplateMatcher(page) {
   };
 }
 
+const listedIds = (page) => new Set(Object.values(page.blocks_layout || {}).flat());
+
+/**
+ * Content a layout switch hid: in a slot the page's layout doesn't have
+ * (docs/frontend-guide/templates.md, "Switching layout"). The page's blocks
+ * that no region lists and that name a slot. No frontend draws them, as
+ * nothing lists them; the editor keeps them so that switching back shows them.
+ *
+ * @param {Object} page
+ * @returns {Array<{blockId: string, block: Object}>}
+ */
+export function hiddenBlocks(page) {
+  const listed = listedIds(page);
+  return Object.entries(page.blocks || {})
+    .filter(([id, block]) => !listed.has(id) && block?.slotId)
+    .map(([blockId, block]) => ({ blockId, block }));
+}
+
+/**
+ * The page as saved: without its hidden content, as a converted block is saved
+ * without the fields its type has no place for. The page itself when nothing
+ * is hidden.
+ *
+ * @param {Object} page
+ * @returns {Object}
+ */
+export function withoutHiddenBlocks(page) {
+  const hidden = hiddenBlocks(page);
+  if (!hidden.length) return page;
+  const blocks = { ...page.blocks };
+  for (const { blockId } of hidden) delete blocks[blockId];
+  return { ...page, blocks };
+}
+
 /**
  * Give a template definition's own blocks an instance id, so the editor treats
  * them as a template member and offers the unlock toggle. Editing a definition
@@ -128,13 +162,16 @@ export async function mergeTemplatesIntoPage(page, options = {}) {
   let result = skipOwnTemplate ? adoptUnlabelledDefinition(page, idFieldMap) : { ...page };
   const allNewTemplateIds = new Set();
 
-  // Options every expand call shares, top level and every re-entry.
+  // Options every expand call shares, top level and every re-entry. The admin
+  // merges for editing (and committing), so a template's empty slots stay: they
+  // are where an author adds to the slot, and what a commit stores.
   const expandOptions = (templateState) => ({
     templateState,
     loadTemplate,
     preloadedTemplates,
     uuidGenerator,
     firstInsert,
+    keepEmptySlots: true,
   });
 
   // READ docs/architecture.md "Merging templates: every container is expanded, by
@@ -220,6 +257,11 @@ export async function mergeTemplatesIntoPage(page, options = {}) {
   // edit and every capture the unit tests cover. Opt in, don't opt out.
   const isOwnTemplate = skipOwnTemplate ? ownTemplateMatcher(page) : () => false;
 
+  // Offered to each switch: expandTemplatesSync takes back what the incoming
+  // layout has a slot for, and hides what it hasn't.
+  const wasHidden = hiddenBlocks(result);
+  let hidden = wasHidden;
+
   for (const [fieldName, fieldDef] of Object.entries(fieldsToProcess)) {
     const blocksData = result.blocks || {};
     const layout = result.blocks_layout?.[fieldName] || [];
@@ -262,7 +304,7 @@ export async function mergeTemplatesIntoPage(page, options = {}) {
 
     // The ids the merge mints are seeded by where they are, this page's field
     // included, so another page's (or field's) differ.
-    const templateState = { scope: `${page['@id']}#${fieldName}` };
+    const templateState = { scope: `${page['@id']}#${fieldName}`, hidden };
     const { blocks: newBlocks, layout: newLayout } = await expandBlocksField(
       fieldBlocks,
       layout,
@@ -281,6 +323,22 @@ export async function mergeTemplatesIntoPage(page, options = {}) {
     }
     result.blocks = { ...updatedBlocks, ...newBlocks };
     result.blocks_layout = { ...result.blocks_layout, [fieldName]: newLayout };
+    const restored = templateState.restored || new Set();
+    hidden = [
+      ...hidden.filter(({ blockId }) => !restored.has(blockId)),
+      ...(templateState.hiding?.values() || []),
+    ];
+  }
+
+  if (wasHidden.length || hidden.length) {
+    result.blocks = { ...result.blocks };
+    // Taken back into a nested slot, it is there now; at the page's own level
+    // it keeps its id, and a region lists it.
+    const listedNow = listedIds(result);
+    for (const { blockId } of wasHidden) {
+      if (!listedNow.has(blockId)) delete result.blocks[blockId];
+    }
+    for (const { blockId, block } of hidden) result.blocks[blockId] = block;
   }
 
   return {
@@ -327,20 +385,40 @@ export function instanceContent(formData, instanceId, idFieldMap) {
 }
 
 /**
- * The page without the editor's `empty` placeholders, at any depth. A
- * placeholder is not page content, and is never stored (a page save strips
- * them too). Merged into a template it was stored as the template's own block,
- * and, counted as the `default` slot in a region the page stores before the
- * slot's own, it moved the slot there (inka#705).
+ * The slots of the page's template instances that hold real content, as
+ * `instance|slot` keys, at any depth.
  */
-function withoutPlaceholders(container, idFieldMap) {
+function filledSlots(container, idFieldMap, out = new Set()) {
+  for (const field of getChildFields(container, idFieldMap, { allObjectLists: true })) {
+    for (const { block } of getChildBlockEntries(container, field)) {
+      if (block?.slotId && block['@type'] !== 'empty') {
+        out.add(`${block.templateInstanceId || block.templateId}|${block.slotId}`);
+      }
+      filledSlots(block, idFieldMap, out);
+    }
+  }
+  return out;
+}
+
+/**
+ * The page without the editor's `empty` placeholders, at any depth, except the
+ * ones that ARE a slot: an `empty` naming a slot nothing else on the page fills
+ * is that slot, empty, and a template keeps it (inka#708) — a page never stores
+ * one, a template does. Any other placeholder is not page content: merged into
+ * a template it was stored as the template's own block, and, counted as the
+ * `default` slot in a region the page stores before the slot's own, it moved
+ * the slot there (inka#705).
+ */
+function withoutPlaceholders(container, idFieldMap, filled = filledSlots(container, idFieldMap)) {
   const fields = getChildFields(container, idFieldMap, { allObjectLists: true });
   if (!fields.length) return container;
   const out = { ...container };
+  const isEmptySlot = (block) =>
+    block.slotId && !filled.has(`${block.templateInstanceId || block.templateId}|${block.slotId}`);
   for (const field of fields) {
     const kept = getChildBlockEntries(container, field)
-      .filter(({ block }) => block?.['@type'] !== 'empty')
-      .map(({ id, block }) => ({ id, block: withoutPlaceholders(block, idFieldMap) }));
+      .filter(({ block }) => block?.['@type'] !== 'empty' || isEmptySlot(block))
+      .map(({ id, block }) => ({ id, block: withoutPlaceholders(block, idFieldMap, filled) }));
     setChildBlockEntries(out, field, kept);
   }
   // A blocks_layout region's entries are added to the shared dict, never taken
@@ -379,4 +457,43 @@ export async function mergeInstanceIntoTemplate(template, page, instanceId, { id
     uuidGenerator,
     idFieldMap,
   });
+}
+
+/**
+ * The slots of a template, at any depth: the places that hold a page's content,
+ * so every block that is not locked — an open slot, or a fixed block the page
+ * edits (a layout's title). Locked chrome holds nothing of a page's.
+ *
+ * @param {Object} template - a template document
+ * @param {Object} [idFieldMap]
+ * @returns {Set<string>}
+ */
+function slotsOf(template, idFieldMap = null) {
+  const slots = new Set();
+  const visit = (container) => {
+    for (const field of getChildFields(container, idFieldMap, { allObjectLists: true, templateChildren: true })) {
+      for (const { block } of getChildBlockEntries(container, field)) {
+        if (block?.slotId && block.readOnly !== true) slots.add(block.slotId);
+        if (block) visit(block);
+      }
+    }
+  };
+  visit(template);
+  return slots;
+}
+
+/**
+ * The slots a new version of a template no longer has (inka#708). Pages using
+ * the template may hold content in them, which the merge then has nowhere to
+ * put — so removing one is asked first. There is no index of which pages use
+ * which slots: the ask can only say they may.
+ *
+ * @param {Object} before - the template as stored
+ * @param {Object} after - the template about to be saved
+ * @param {Object} [idFieldMap]
+ * @returns {string[]} in the order the stored template has them
+ */
+export function removedSlots(before, after, idFieldMap = null) {
+  const kept = slotsOf(after, idFieldMap);
+  return [...slotsOf(before, idFieldMap)].filter((slotId) => !kept.has(slotId));
 }

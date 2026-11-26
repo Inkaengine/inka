@@ -1,3 +1,4 @@
+import { test, expect } from 'vitest';
 import fs from 'fs';
 import path from 'path';
 import { mergeTemplatesIntoPage } from '@volto-hydra/helpers/mergeTemplates.js';
@@ -12,13 +13,13 @@ const load = (p) => JSON.parse(fs.readFileSync(path.resolve(process.cwd(), '..',
 
 /**
  * Round-trip (the direction the existing reverse-merge tests miss): LOAD a page with a
- * template applied, the user empties the `primary` slot and adds ONE new block into it
- * (inheriting slotId 'primary' + the instance), then the page is RE-MERGED on save→view
+ * template applied, the user empties the `default` slot and adds ONE new block into it
+ * (inheriting slotId 'default' + the instance), then the page is RE-MERGED on save→view
  * (forward-merge again). The new user slot content must survive the re-merge.
  *
  * Mirrors integration template-advanced.spec.ts:203.
  */
-test('round-trip: a new primary slot block survives a re-merge (save → view-mode reload)', async () => {
+test('round-trip: a new default slot block survives a re-merge (save → view-mode reload)', async () => {
   const page = load('tests-playwright/fixtures/content/template-test-page/data.json');
   const template = load('tests-playwright/fixtures/content/templates/test-layout/data.json');
   let c = 0;
@@ -32,23 +33,23 @@ test('round-trip: a new primary slot block survives a re-merge (save → view-mo
     uuidGenerator,
   });
 
-  const primaryAfterLoad = Object.values(loaded.blocks).filter((b) => b.slotId === 'primary' && !b.fixed);
-  expect(primaryAfterLoad.length).toBeGreaterThan(0);
-  const instanceId = primaryAfterLoad[0].templateInstanceId;
-  const tplId = primaryAfterLoad[0].templateId;
+  const defaultAfterLoad = Object.values(loaded.blocks).filter((b) => b.slotId === 'default' && !b.fixed);
+  expect(defaultAfterLoad.length).toBeGreaterThan(0);
+  const instanceId = defaultAfterLoad[0].templateInstanceId;
+  const tplId = defaultAfterLoad[0].templateId;
 
-  // 2. EDIT (mirror :203): remove the existing primary content, add ONE new primary block.
+  // 2. EDIT (mirror :203): remove the existing default content, add ONE new default block.
   const items = [...loaded.blocks_layout.items];
   for (const id of [...items]) {
-    if (loaded.blocks[id]?.slotId === 'primary' && !loaded.blocks[id]?.fixed) {
+    if (loaded.blocks[id]?.slotId === 'default' && !loaded.blocks[id]?.fixed) {
       delete loaded.blocks[id];
       items.splice(items.indexOf(id), 1);
     }
   }
-  const newId = 'new-primary-block';
+  const newId = 'new-default-block';
   loaded.blocks[newId] = {
     '@type': 'slate',
-    slotId: 'primary',
+    slotId: 'default',
     templateId: tplId,
     templateInstanceId: instanceId,
     value: [{ type: 'p', children: [{ text: 'New slot content' }] }],

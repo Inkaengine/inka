@@ -32,7 +32,7 @@ order:
   - multilingual
   - advanced
 blocks-matched: |
-  <block type="slate" value="${p,h*,ul,ol,blockquote,strong,em,a/slate}" plaintext="${p,h*,ul,ol,blockquote,strong,em,a/text}" />
+  <block type="slate" value="${p,h*,ul,ol,blockquote,strong,em,a/slate}" />
   <block type="title" _="${h1}" />
   <block type="codeExample">
     <region name="tabs" widget="object_list" idField="@id" typeField="@type">
@@ -58,7 +58,7 @@ Add Inka to a page in your framework. Each tab is a real, working starter — th
        :data-block-uid="editing ? id : undefined">
     <!-- The card block is rendered editable; anything else is shown as raw JSON. -->
     <a v-if="page.blocks[id]['@type'] === 'card'"
-       :href="page.blocks[id].link"
+       :href="page.blocks[id].link?.[0]?.['@id']"
        :data-edit-link="editing ? 'link' : undefined">
       <!-- data-edit-media: click to pick/upload image · data-edit-text: edit text in place -->
       <img :src="page.blocks[id].image" :data-edit-media="editing ? 'image' : undefined" />
@@ -86,7 +86,7 @@ onMounted(async () => {
         image: { widget: 'image' },
         title: { type: 'string' },
         description: { type: 'string' },
-        link: { widget: 'url' },
+        link: { widget: 'object_browser', mode: 'link', allowExternals: true },
       } } } },
       // Re-render on every edit.
       onEditChange: (data) => { page.value = data },
@@ -105,9 +105,11 @@ onMounted(async () => {
 // app/[...slug]/page.jsx
 'use client'
 import { useState, useEffect } from 'react'
+import { useParams } from 'next/navigation'
 import { initBridge } from '@hydra-js/hydra.js'
 
-export default function Page({ params }) {
+export default function Page() {
+  const params = useParams()
   const [page, setPage] = useState(null)
   const [editing, setEditing] = useState(false)
 
@@ -122,7 +124,7 @@ export default function Page({ params }) {
             image: { widget: 'image' },
             title: { type: 'string' },
             description: { type: 'string' },
-            link: { widget: 'url' },
+            link: { widget: 'object_browser', mode: 'link', allowExternals: true },
           } } },
         },
         // Re-render on every edit.
@@ -147,7 +149,7 @@ export default function Page({ params }) {
       )
     return (
       <div key={id} data-block-uid={editing ? id : undefined}>
-        <a href={block.link} data-edit-link={editing ? 'link' : undefined}>
+        <a href={block.link?.[0]?.['@id']} data-edit-link={editing ? 'link' : undefined}>
           <img src={block.image} data-edit-media={editing ? 'image' : undefined} />
           <h3 data-edit-text={editing ? 'title' : undefined}>{block.title}</h3>
           <p data-edit-text={editing ? 'description' : undefined}>{block.description}</p>
@@ -179,7 +181,7 @@ export default function Page({ params }) {
           image: { widget: 'image' },
           title: { type: 'string' },
           description: { type: 'string' },
-          link: { widget: 'url' },
+          link: { widget: 'object_browser', mode: 'link', allowExternals: true },
         } } } },
         // Re-render on every edit.
         onEditChange: (data) => { page = data },
@@ -197,7 +199,7 @@ export default function Page({ params }) {
     {#if page.blocks[id]['@type'] === 'card'}
       <!-- The card block is rendered editable. -->
       <div data-block-uid={editing ? id : undefined}>
-        <a href={page.blocks[id].link} data-edit-link={editing ? 'link' : undefined}>
+        <a href={page.blocks[id].link?.[0]?.['@id']} data-edit-link={editing ? 'link' : undefined}>
           <img src={page.blocks[id].image} data-edit-media={editing ? 'image' : undefined} />
           <h3 data-edit-text={editing ? 'title' : undefined}>{page.blocks[id].title}</h3>
           <p data-edit-text={editing ? 'description' : undefined}>{page.blocks[id].description}</p>
@@ -228,7 +230,7 @@ export default function Page({ params }) {
         image: { widget: 'image' },
         title: { type: 'string' },
         description: { type: 'string' },
-        link: { widget: 'url' },
+        link: { widget: 'object_browser', mode: 'link', allowExternals: true },
       } } } },
       onEditChange: render,
     })
@@ -247,7 +249,7 @@ export default function Page({ params }) {
           return `<pre${uid}>${JSON.stringify(block, null, 2)}</pre>`
         return `
           <div${uid}>
-            <a href="${block.link}"${editing ? ' data-edit-link="link"' : ''}>
+            <a href="${block.link?.[0]?.['@id']}"${editing ? ' data-edit-link="link"' : ''}>
               <img src="${block.image}"${editing ? ' data-edit-media="image"' : ''} />
               <h3${editing ? ' data-edit-text="title"' : ''}>${block.title}</h3>
               <p${editing ? ' data-edit-text="description"' : ''}>${block.description}</p>
@@ -280,7 +282,7 @@ export default function Page({ params }) {
             image: { widget: 'image' },
             title: { type: 'string' },
             description: { type: 'string' },
-            link: { widget: 'url' },
+            link: { widget: 'object_browser', mode: 'link', allowExternals: true },
           } } } },
           // Server-render mode: the bridge POSTs each smallest-changed-unit to
           // renderEndpoint and swaps the returned HTML into renderContainer.

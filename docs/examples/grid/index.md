@@ -34,7 +34,7 @@ order:
   - teaser
   - text
 blocks-matched: |
-  <block type="slate" value="${p,h*,ul,ol,blockquote,strong,em,a/slate}" plaintext="${p,h*,ul,ol,blockquote,strong,em,a/text}" />
+  <block type="slate" value="${p,h*,ul,ol,blockquote,strong,em,a/slate}" />
   <block type="title" _="${h1}" />
   <block type="image" description="${p?/textarea}" url="${img/src}" alt="${img?/alt}" title="${img?/title}" align="center" size="l" />
   <block type="codeExample">
@@ -65,7 +65,7 @@ A responsive grid that lays out child blocks in equal-width cells. The block use
 
 <block type="teaser">
 
-### [Design](/docs/architecture)
+### [Design](../../architecture.md)
 
 We craft beautiful interfaces that users love.
 
@@ -75,7 +75,7 @@ We craft beautiful interfaces that users love.
 
 <block type="teaser">
 
-### [Learn More](/docs)
+### [Learn More](../../index.md)
 
 Explore the full documentation.
 

@@ -5,6 +5,7 @@ changed items (the classifier's plan), leaving everything else — including liv
 editor edits on untouched pages — alone:
 
   create / update -> subset plone.exportimport ContentImporter (upsert by path)
+  state           -> plone.api.content.transition (no re-import)
   move            -> plone.api.content.move (preserves UID + version history)
   delete          -> plone.api.content.delete
   redirect        -> IRedirectionStorage (physical-path prefixed)
@@ -88,7 +89,9 @@ def apply_upserts(
 def apply_review_states(
     site, cs: ChangeSet, dist_content_dir: Path, report: dict[str, Any], dir_for=None
 ) -> None:
-    """Transition upserted items to the review_state declared in their data.json.
+    """Transition upserted items, and the change-set's `states` (items whose
+    state alone changed, which are not imported), to the review_state declared
+    in their data.json.
 
     ContentImporter restores workflow state from `workflow_history`, but the
     deploy strips that as a volatile field — so a publish/retract (review_state
@@ -98,16 +101,21 @@ def apply_review_states(
     workflow (get_state -> None) or already in the target state are skipped.
     """
     done: list[str] = []
-    for rel in cs.upsert_rels():
-        resolve = dir_for or (lambda r: r)
+    resolve = dir_for or (lambda r: r)
+    state_only = set(cs.states)
+    for rel in [*cs.upsert_rels(), *cs.states]:
         data_file = Path(dist_content_dir) / resolve(rel) / "data.json"
-        if not data_file.exists():
+        # A state-only item was not imported, so nothing else would carry its
+        # state: one the layout or the site lacks is an error, not a skip.
+        if not data_file.exists() and rel not in state_only:
             continue
         desired = json.loads(data_file.read_text()).get("review_state")
         if not desired:
             continue
         obj = _traverse(site, rel)
         if obj is None:
+            if rel in state_only:
+                raise LookupError(f"state change for {rel}: not on the site")
             continue
         current = api.content.get_state(obj=obj, default=None)
         target = review_state_action(desired, current)

@@ -143,8 +143,9 @@ def test_deleted_from_disk():
     base = doc("services/old", UID_Y)
     plan = classify(tree(("services/old", base)), tree(), tree(("services/old", base)))
     assert plan.actions_for("services/old") == Action.DELETE
-    # 301 the removed path to its parent
-    assert ("/services/old", "/services") in plan.redirects
+    # A deleted page is gone: its address answers 404, not a redirect to
+    # somewhere the visitor didn't ask for.
+    assert plan.redirects == []
 
 
 def test_move_same_uid_different_path():
@@ -215,6 +216,7 @@ def test_to_changeset_shape():
         "redirects",
         "warnings",
         "base_tid",
+        "states",
     }
     assert cs["moves"] == [{"src": "build", "dst": "services/build", "uid": UID_X}]
     assert ["/build", "/services/build"] in cs["redirects"]
@@ -521,11 +523,11 @@ def test_an_item_on_its_types_default_view_is_unset():
 def test_the_site_root_is_the_export_root_whatever_the_site_is_called(tmp_path):
     """The root is the item the export keeps in `plone_site_root`, the export
     format's own name for it. Not a site called `Plone` (a site's id is its
-    own: `/lecc`), and not a type name: a page whose id is `Plone` is a page."""
+    own: `/agency`), and not a type name: a page whose id is `Plone` is a page."""
     import json as _json
 
     items = (
-        ("plone_site_root", {"@id": "/lecc", "@type": "SiteRootOfAnyType", "UID": "root"}),
+        ("plone_site_root", {"@id": "/agency", "@type": "SiteRootOfAnyType", "UID": "root"}),
         ("aaa", {"@id": "/Plone", "@type": "Document", "UID": "aaa"}),
     )
     for dirname, data in items:
@@ -535,3 +537,101 @@ def test_the_site_root_is_the_export_root_whatever_the_site_is_called(tmp_path):
     assert tree["plone_site_root"]["UID"] == "root"
     assert tree["Plone"]["UID"] == "aaa"
     assert dirs == {"plone_site_root": "plone_site_root", "Plone": "aaa"}
+
+
+def test_a_field_at_its_types_default_is_unset():
+    """The live serializer writes a field its type gives a default
+    (`exclude_from_nav: false`) where a layout leaves it out. The default and
+    unset are the same state, as `null`, `""` and `[]` are; any other value is
+    a choice and still counts. Matched by type too: `0` is not `false`."""
+    rules = CompareRules(field_defaults={"Document": {"exclude_from_nav": False, "count": 0}})
+    disk = {k: v for k, v in doc("components/form", UID_X).items() if k != "exclude_from_nav"}
+    at_default = doc("components/form", UID_X, exclude_from_nav=False)
+    chosen = doc("components/form", UID_X, exclude_from_nav=True)
+    assert cleaned_for_compare(at_default, rules) == cleaned_for_compare(disk, rules)
+    assert cleaned_for_compare(chosen, rules) != cleaned_for_compare(disk, rules)
+    not_the_default = doc("components/form", UID_X, count=False)
+    assert "count" in cleaned_for_compare(not_the_default, rules)
+    # Another type's defaults are not this one's.
+    other = doc("components/form", UID_X, **{"@type": "News Item", "exclude_from_nav": False})
+    assert "exclude_from_nav" in cleaned_for_compare(other, rules)
+
+
+def test_a_default_the_live_page_writes_is_not_an_editor_edit():
+    """A deploy refused a docs page as a live editor edit over this alone: the
+    base, recorded from the layout, has no `exclude_from_nav`; the live page,
+    never edited, serializes its default `false`; the layout changed something
+    else. That is an update, not a clobber. A page an editor really hid still
+    warns."""
+    rules = CompareRules(field_defaults={"Document": {"exclude_from_nav": False}})
+    base = {k: v for k, v in doc("components/form", UID_X).items() if k != "exclude_from_nav"}
+    disk = dict(base, title="Forms, revised")
+    live = dict(base, exclude_from_nav=False)
+    plan = classify(
+        tree(("components/form", base)),
+        tree(("components/form", disk)),
+        tree(("components/form", live)),
+        rules,
+    )
+    assert plan.actions_for("components/form") == Action.UPDATE
+    assert plan.warnings == []
+
+    hidden = dict(base, exclude_from_nav=True)
+    plan = classify(
+        tree(("components/form", base)),
+        tree(("components/form", disk)),
+        tree(("components/form", hidden)),
+        rules,
+    )
+    assert plan.warnings == ["components/form"]
+
+
+def test_a_change_of_state_alone_is_a_state_change_not_an_update():
+    # A file the layout now says is published, and nothing else about it
+    # changed. Re-importing it reindexes its whole text, a PDF's included: a
+    # site with hundreds of files ran out of time doing that for a state.
+    base = doc("files/x", UID_X)
+    del base["review_state"]
+    disk = doc("files/x", UID_X, review_state="published")
+    live = doc("files/x", UID_X, review_state="published")
+    plan = classify(
+        tree(("files/x", base)), tree(("files/x", disk)), tree(("files/x", live))
+    )
+    assert plan.actions_for("files/x") == Action.STATE
+    assert plan.states == ["files/x"]
+    assert plan.updates == []
+    assert plan.warnings == []
+    assert plan.to_changeset()["states"] == ["files/x"]
+
+
+def test_a_change_of_state_and_content_is_an_update():
+    base = doc("files/x", UID_X, review_state="private")
+    disk = doc("files/x", UID_X, review_state="published", title="X v2")
+    plan = classify(
+        tree(("files/x", base)), tree(("files/x", disk)), tree(("files/x", base))
+    )
+    assert plan.actions_for("files/x") == Action.UPDATE
+    assert plan.states == []
+
+
+def test_a_change_of_state_warns_over_an_editor_s_change_of_state():
+    base = doc("files/x", UID_X, review_state="private")
+    disk = doc("files/x", UID_X, review_state="published")
+    live = doc("files/x", UID_X, review_state="pending")
+    plan = classify(
+        tree(("files/x", base)), tree(("files/x", disk)), tree(("files/x", live))
+    )
+    assert plan.actions_for("files/x") == Action.STATE
+    assert plan.warnings == ["files/x"]
+
+
+def test_a_change_of_state_does_not_warn_over_an_editor_s_content_edit():
+    # Only the state is applied, so the editor's text stays as it is.
+    base = doc("files/x", UID_X, review_state="private")
+    disk = doc("files/x", UID_X, review_state="published")
+    live = doc("files/x", UID_X, review_state="private", title="X edited")
+    plan = classify(
+        tree(("files/x", base)), tree(("files/x", disk)), tree(("files/x", live))
+    )
+    assert plan.actions_for("files/x") == Action.STATE
+    assert plan.warnings == []

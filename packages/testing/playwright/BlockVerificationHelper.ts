@@ -7,10 +7,12 @@
  * Accepts blocksConfig in the same format frontends pass to initBridge():
  *   { hero: { blockSchema: { properties: { ... } } }, slider: { ... } }
  */
+import { uidsShownAsText } from './uidsShownAsText';
 import { expect } from '@playwright/test';
 import type { Page, FrameLocator, Locator, ElementHandle } from '@playwright/test';
 import { AdminUIHelper } from './AdminUIHelper';
 import { recordSlateFieldContainer, recordFieldEditable } from '../field-coverage';
+import { canvasFieldKind, canvasFieldsSet, drawnAsItself } from '../canvas-fields.js';
 import {
   usesAvailableSizes, resolveImageEntry, availableWidths, isProportionate,
 } from '../imageSizes.mjs';
@@ -354,6 +356,17 @@ export async function makeEditable(
       // No toggle, or already unlocked — report what is actually there.
     }
   }
+
+  // 4. EMPTY OPTIONAL FIELDS the frontend marked optionalOnCanvas: drawn only
+  //    once the editor presses reveal (inka#765), so press it, as they would.
+  const revealed = await block.evaluate((_el, blockUid) => {
+    const bridge = (window as any).__hydraBridge;
+    if (!bridge?.revealableFields?.(blockUid)?.length) return false;
+    if (bridge.revealedBlocks.has(blockUid)) return false;
+    bridge.toggleOptionalFields(blockUid);
+    return true;
+  }, uid);
+  if (revealed) acted = true;
   return acted;
 }
 
@@ -601,20 +614,9 @@ export async function checkEditAnnotations(
           const host = [...el.querySelectorAll(`[data-edit-media="${field}"]`)]
             .find((n) => !n.closest('[data-block-readonly]'));
           if (!host) {
-            // An image drawn as a CSS BACKGROUND is drawn, with nothing on the
-            // canvas to click: a band behind other blocks can't be the media
-            // field without taking their clicks, so it is picked in the
-            // sidebar. Recognised by its file: the field's path inside the
-            // url() of the block's, or a descendant's, background-image.
-            const ref = Array.isArray(value) ? value[0] : value;
-            const raw = typeof ref === 'string' ? ref : (ref as { '@id'?: string } | null)?.['@id'];
-            const path = raw ? new URL(raw, location.href).pathname.replace(/\/$/, '') : '';
-            const asBackground = !!path && [el, ...el.querySelectorAll('*')].some((n) => {
-              const bg = getComputedStyle(n).backgroundImage;
-              return bg !== 'none' && [...bg.matchAll(/url\("?([^")]+)"?\)/g)]
-                .some((m) => new URL(m[1], location.href).pathname.startsWith(path));
-            });
-            imageFields.push({ field, rendered: asBackground, srcset: null });
+            // Possibly drawn as a CSS background — decided after this pass by
+            // backgroundFieldsOf, the one place that recognises it.
+            imageFields.push({ field, rendered: false, srcset: null });
             continue;
           }
           // Only an <img> can carry a srcset. A frontend may render a media
@@ -692,9 +694,13 @@ export async function checkEditAnnotations(
   //
   // Conditional on the data, deliberately: a single-scale image rendering one
   // candidate is correct and must not be failed for it.
+  const unannotated = r.imageFields.filter((f) => f.srcset === null && !f.rendered).map((f) => f.field);
+  const backgrounds = unannotated.length && blockData
+    ? await backgroundFieldsOf(block, blockData, unannotated)
+    : new Set<string>();
   for (const { field, rendered, srcset, boxWidth, actualWidth, currentSrc } of r.imageFields) {
     const entry = resolveImageEntry(blockData as Record<string, unknown>, field);
-    if (srcset === null && rendered) continue;   // CSS background: nothing to judge
+    if (backgrounds.has(field)) continue;   // CSS background: nothing to judge
     const verdict = usesAvailableSizes({ field, entry, srcset: srcset ?? '', rendered });
     expect(verdict.ok, verdict.reason).toBe(true);
 
@@ -806,23 +812,6 @@ function slateEqualIgnoringIds(a: unknown, b: unknown): boolean {
  * Values are normalised for the leading slash some renderers emit
  * (`data-edit-media="/image"`).
  */
-/**
- * The annotation a schema field is edited through, if any. `image` /
- * `object_browser` say what kind of picker the field wants; text and textarea
- * are deliberately absent (an image's `alt` is a sidebar attribute, and a
- * textarea is not uniformly canvas content).
- */
-function annotationFor(
-  prop: Record<string, unknown>,
-): { kind: 'text' | 'media' | 'link'; attr: string } | null {
-  const w = prop?.widget;
-  const mode = (prop as { mode?: string })?.mode;
-  if (w === 'image' || (w === 'object_browser' && mode === 'image'))
-    return { kind: 'media', attr: 'data-edit-media' };
-  if (w === 'object_browser' && mode === 'link')
-    return { kind: 'link', attr: 'data-edit-link' };
-  return null;
-}
 
 /** One annotated element: which attribute declares it, which field, and where. */
 interface EditableField {
@@ -927,17 +916,25 @@ async function settleAnnotations(
       const { wanted, settle } = args as { wanted: Array<[string, string]>; settle: number };
       const bridge = (window as unknown as { __hydraBridge?: any }).__hydraBridge;
       const uid = el.getAttribute('data-block-uid');
-      // Nothing advertises these fields → nothing to reveal, and nothing that
-      // could arrive later either. Say so rather than spending the block's test
-      // budget waiting (a container multiplies that by every child).
-      const revealed = wanted
-        .map(([, field]) => bridge?.revealFieldPlace?.(uid, field) ?? false)
-        .some(Boolean);
+      // Nothing advertises these fields, and none was revealed with the eye →
+      // nothing could arrive later. Say so rather than spending the block's
+      // test budget waiting (a container multiplies that by every child).
+      const pressedEye =
+        !!bridge?.revealedBlocks?.has(uid) &&
+        wanted.some(([, field]) => bridge.revealableFields(uid).includes(field));
+      const revealed =
+        wanted
+          .map(([, field]) => bridge?.revealFieldPlace?.(uid, field) ?? false)
+          .some(Boolean) || pressedEye;
       if (!revealed) return false;
 
+      // The block as it is NOW: a container redraws its children, so the
+      // element this started with may have been replaced.
+      const current = () =>
+        el.ownerDocument.querySelector(`[data-block-uid="${uid}"]`) || el;
       const arrived = () =>
         wanted.every(([attr, field]) => {
-          if (el.querySelector(`[${attr}="${field}"]`)) return true;
+          if (current().querySelector(`[${attr}="${field}"]`)) return true;
           const onHandles = bridge?.fieldsOnHandlesFor?.(uid, { attr, fieldName: field }) ?? [];
           return onHandles.length > 0;
         });
@@ -1009,6 +1006,75 @@ async function advertisedFieldsOf(block: Locator): Promise<Set<string>> {
     .map((t) => t.slice(uid.length + 1))
     .filter(Boolean);
   return new Set(fields);
+}
+
+/**
+ * Every address the block points at: its links, forms, embeds and images
+ * (sources, srcset candidates and video posters), from each element carrying
+ * its uid, so a block drawn as several elements is read whole.
+ */
+async function addressesDrawnBy(block: Locator): Promise<string[]> {
+  const uid = await block.getAttribute('data-block-uid');
+  return block.evaluate((el, blockUid) => {
+    const roots = blockUid
+      ? [...el.ownerDocument.querySelectorAll(`[data-block-uid="${blockUid}"]`)]
+      : [el];
+    const out: string[] = [];
+    for (const root of roots) {
+      for (const n of [root, ...root.querySelectorAll('*')]) {
+        for (const attr of ['href', 'action', 'src', 'poster']) {
+          const v = n.getAttribute(attr);
+          if (v) out.push(new URL(v, n.ownerDocument.baseURI).href);
+        }
+        const srcset = n.getAttribute('srcset');
+        if (srcset) {
+          for (const candidate of srcset.split(',')) {
+            const u = candidate.trim().split(/\s+/)[0];
+            if (u) out.push(new URL(u, n.ownerDocument.baseURI).href);
+          }
+        }
+      }
+    }
+    return out;
+  }, uid);
+}
+
+/**
+ * Which of these media fields the block draws as a CSS BACKGROUND.
+ *
+ * A background is drawn, with nothing on the canvas to click: a band behind
+ * other blocks can't be the media field without taking their clicks, so the
+ * image is picked in the sidebar on purpose. Recognised by its file: the
+ * field's path inside the url() of the block's, or a descendant's,
+ * background-image. The render check uses this to accept the image as drawn,
+ * and the coverage rule to count the field as reachable.
+ */
+async function backgroundFieldsOf(
+  block: Locator,
+  blockData: Record<string, unknown>,
+  fields: string[],
+): Promise<Set<string>> {
+  const paths = fields.flatMap((field): Array<[string, string]> => {
+    const value = blockData[field];
+    const ref = Array.isArray(value) ? value[0] : value;
+    const raw = typeof ref === 'string' ? ref : (ref as { '@id'?: string } | null)?.['@id'];
+    return raw ? [[field, raw]] : [];
+  });
+  if (!paths.length) return new Set();
+  const drawn: string[] = await block.evaluate((el, wanted) => {
+    const urls = [el, ...el.querySelectorAll('*')].flatMap((n) => {
+      const bg = getComputedStyle(n).backgroundImage;
+      return bg === 'none' ? [] : [...bg.matchAll(/url\("?([^")]+)"?\)/g)]
+        .map((m) => new URL(m[1], location.href).pathname);
+    });
+    return wanted
+      .filter(([, raw]) => {
+        const path = new URL(raw, location.href).pathname.replace(/\/$/, '');
+        return !!path && urls.some((u) => u.startsWith(path));
+      })
+      .map(([field]) => field);
+  }, paths);
+  return new Set(drawn);
 }
 
 async function revealableFieldsOf(block: Locator): Promise<Set<string>> {
@@ -1093,7 +1159,7 @@ export async function checkSlateAnnotations(
   // one settle below covers every kind.
   const annotatedFields: Array<[string, { kind: 'text' | 'media' | 'link'; attr: string }, unknown]> = [];
   for (const [field, prop] of Object.entries(blockSchema?.properties ?? {})) {
-    const a = annotationFor(prop as Record<string, unknown>);
+    const a = canvasFieldKind(prop as Record<string, unknown>);
     if (a) annotatedFields.push([field, a, prop]);
   }
   const expected: Array<[string, string]> = [
@@ -1113,11 +1179,11 @@ export async function checkSlateAnnotations(
   let { found, present, revealable, advertised } = await look();
 
   // Everything the editor would do to make this block's fields editable — see
-  // makeEditable. Anything still missing afterwards is genuinely missing.
+  // makeEditable, which presses reveal for the fields marked optionalOnCanvas.
+  // Anything still missing afterwards is genuinely missing: an empty field
+  // counts only once it is drawn, not because it could be revealed.
   const missing = () =>
-    slateFields.some(
-      (f) => !present['data-edit-text'].has(f) && !revealable.has(f),
-    );
+    expected.some(([attr, f]) => !present[attr].has(f) && !advertised.has(f));
   if (missing() && (await makeEditable(block, blockData, iframe))) {
     ({ found, present, revealable, advertised } = await look());
   }
@@ -1130,8 +1196,7 @@ export async function checkSlateAnnotations(
     // From the one search — no second look, and so no chance of a different
     // answer than the coverage question just got.
     const foundField = found.find((f) => f.attr === 'data-edit-text' && f.field === field);
-    const hasContainer =
-      !!foundField || present['data-edit-text'].has(field) || revealable.has(field);
+    const hasContainer = !!foundField || present['data-edit-text'].has(field);
     const container = foundField
       ? foundField.element
       : blockHasAttr
@@ -1152,10 +1217,9 @@ export async function checkSlateAnnotations(
     // stand-in with no field in it at all. The annotation is real and the author
     // can reach it; it is simply not a descendant of this element.
     //
-    // The sibling recording path already accepted that (a field is editable if
-    // present OR revealable OR advertised). This one did not, so a slate field
-    // drawn elsewhere still read as uneditable everywhere — which is exactly
-    // what `cookieConsent.message` kept reporting after the first fix.
+    // The sibling recording path accepts that too (a field is editable if
+    // present OR advertised), so a slate field drawn elsewhere does not read as
+    // uneditable everywhere, as `cookieConsent.message` once did.
     if (!hasContainer && advertised.has(field)) {
       recordSlateFieldContainer(blockType, field, true, `[${coverageUid}] advertised`);
       continue;
@@ -1172,7 +1236,7 @@ export async function checkSlateAnnotations(
         blockType,
         field,
         false,
-        `[${coverageUid}] absent even after pressing reveal; own data-edit-text: ${context.self ?? '(none)'}; ` +
+        `[${coverageUid}] absent${revealable.has(field) ? ', marked optionalOnCanvas but not drawn when revealed' : ''}; own data-edit-text: ${context.self ?? '(none)'}; ` +
           `descendants: ${context.descendants.length ? context.descendants.join(', ') : '(none)'}; ` +
           `html: ${context.outer}`,
       );
@@ -1245,19 +1309,45 @@ export async function checkSlateAnnotations(
   // for them. Displayed plain text is covered by the DOM-gated check above; slate
   // (always canvas rich-text) is recorded by the loop above.
   if (blockSchema?.properties) {
+    // A media field drawn as a CSS background is picked in the sidebar on
+    // purpose (see backgroundFieldsOf), so it is reachable without a canvas
+    // annotation.
+    const backgrounds = await backgroundFieldsOf(
+      block,
+      blockData,
+      annotatedFields
+        .filter(([f, a]) => a.kind === 'media' && !present[a.attr].has(f) && !advertised.has(f))
+        .map(([f]) => f),
+    );
+    // A field with a value that is never drawn as itself is a setting, edited in
+    // the sidebar like the block's other settings: a listing's search page,
+    // drawn only as the start of each result's search address. There is
+    // nothing on the canvas to annotate, so this example says nothing about it
+    // — as plain text is checked only where it is displayed. An empty field
+    // still counts as missing, so a field no example sets is still reported.
+    const set = new Set(canvasFieldsSet(blockSchema, blockData));
+    const drawn = await addressesDrawnBy(block);
+    const base = await block.evaluate((el) => el.ownerDocument.location.href);
     for (const [field, a, prop] of annotatedFields) {
+      if (backgrounds.has(field)) {
+        recordFieldEditable(a.kind, blockType, field, true, `[${coverageUid}] drawn as a CSS background`);
+        continue;
+      }
+      const reachable = present[a.attr].has(field) || advertised.has(field);
+      if (!reachable && set.has(field) && !drawnAsItself(a.kind, blockData[field], drawn, base)) continue;
       recordFieldEditable(
         a.kind,
         blockType,
         field,
-        // Three ways a field is genuinely reachable: its annotation is in the
-        // block; it is an empty optional field with nothing yet to annotate; or
-        // the block advertises a control that reaches it, because the element
-        // itself is drawn outside the block by design system JavaScript.
-        present[a.attr].has(field) ||
-          revealable.has(field) ||
-          advertised.has(field),
-        `[${coverageUid}] widget=${(prop as { widget?: string })?.widget}`,
+        // Two ways a field is genuinely reachable: its annotation is in the
+        // block (an empty one marked optionalOnCanvas once reveal is pressed),
+        // or the block advertises a control that reaches it, because the
+        // element itself is drawn outside the block by design system JavaScript.
+        present[a.attr].has(field) || advertised.has(field),
+        `[${coverageUid}] widget=${(prop as { widget?: string })?.widget}` +
+          (revealable.has(field) && !present[a.attr].has(field)
+            ? ', marked optionalOnCanvas but not drawn when revealed'
+            : ''),
       );
     }
   }
@@ -1368,6 +1458,35 @@ export async function verifyPathMapCoverage(
  * and tip over a 20s budget. Every such failure named `locator.count`, on a
  * line whose only job was to skip the block.
  */
+/**
+ * The blocks on the page that drew their own raw data: a block whose uid shows
+ * in the text of its own element, leaving out the blocks nested in it
+ * (uidsShownAsText). A uid is an internal key, so shown there it means the
+ * block's data was drawn in place of the block, however the frontend chose to
+ * fail (a placeholder dumping its JSON, an error naming it). A uid in another
+ * block's text is that block's content: a code example showing a block's JSON,
+ * or authored words that happen to match.
+ */
+export async function blockUidsShownAsText(iframe: FrameLocator): Promise<string[]> {
+  const own = await iframe.locator('body').evaluate(() => {
+    const b = (window as any).__hydraBridge;
+    if (!b?.blockPathMap) throw new Error('blockUidsShownAsText: __hydraBridge.blockPathMap not available');
+    const known = new Set(Object.keys(b.blockPathMap).filter((uid) => !uid.startsWith('_')));
+    const out: Array<{ uid: string; text: string }> = [];
+    for (const el of document.querySelectorAll('[data-block-uid]')) {
+      const uid = el.getAttribute('data-block-uid')!;
+      if (!known.has(uid)) continue;
+      const copy = el.cloneNode(true) as Element;
+      for (const nested of copy.querySelectorAll('[data-block-uid]')) {
+        if (nested.getAttribute('data-block-uid') !== uid) nested.remove();
+      }
+      out.push({ uid, text: copy.textContent ?? '' });
+    }
+    return out;
+  });
+  return [...new Set(own.flatMap(({ uid, text }) => uidsShownAsText(text, [uid])))];
+}
+
 /**
  * How many drawn blocks a render test will check, split by who pays for them:
  * the sample's OWN descendants (verifyBlockRendering walks them, with their
@@ -1576,9 +1695,13 @@ export async function verifyBlockRendering(
   // alone can't tell an intentional multi-element block from an accidental
   // duplicate anyway. Verify the block renders + carries its edit annotations via
   // the first match, then return — the assertions below use the multi-match
-  // `block` locator and would trip Playwright strict mode on >1 element.
+  // `block` locator and would trip Playwright strict mode on >1 element. Its
+  // fields are still recorded for coverage: the bridge collects a block's fields
+  // from every element carrying its uid, so asking from the first finds them all
+  // (a search shortcut's link to its search page is on each of its results).
   if ((await settledCount(block)) > 1) {
     await checkEditAnnotations(block.first(), blockData);
+    await checkSlateAnnotations(block.first(), blockData, undefined, iframe);
     return;
   }
 

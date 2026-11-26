@@ -123,7 +123,7 @@ const withUpperDefault = {
   },
 };
 
-/** A footer template with its mega-footer columns region empty, as LECC's is. */
+/** A footer template with its mega-footer columns region empty, as a real site's often is. */
 const footerTemplate = ({ readOnly }) => ({
   '@id': FOOTER_TEMPLATE_PATH,
   '@type': 'Template',

@@ -48,6 +48,9 @@ ENV PNPM_HOME="/pnpm"
 # Volto's `*` route, and the admin exited on start.
 ENV ADMIN="volto-hydra-dev..."
 ENV PATH="$PNPM_HOME:$PATH"
+# Cypress comes in as a dev dependency of Volto core, but nothing here runs
+# it, so its test browser is not downloaded.
+ENV CYPRESS_INSTALL_BINARY=0
 COPY ${INKA_PATH}/ /app
 RUN npm install -g corepack && corepack cache clean && corepack enable
 WORKDIR /app
@@ -101,6 +104,12 @@ RUN pnpm run build
 # after it. EXTRA_PLUGINS goes into package.json BEFORE this install for the
 # same reason it does in the build stage. Addons themselves are plain
 # `dependencies`, so --prod keeps them.
+#
+# --filter-prod, not --filter: --filter follows devDependencies when it selects
+# the admin's workspace packages, so the root's dev-only ones (@inka/mock-api,
+# @inka/testing, razzle) were selected too, and --prod still installed THEIR
+# dependencies -- mock-api's Express 5 among them. --filter-prod selects what
+# the admin depends on to run.
 FROM base AS prod-deps
 ARG VOLTO_PLUGINS=""
 ARG EXTRA_PLUGINS=""
@@ -109,9 +118,9 @@ RUN --mount=type=cache,id=pnpm,target=/pnpm/store \
     pnpm dlx mrs-developer missdev --no-config --fetch-https \
  && if [ -n "$EXTRA_PLUGINS" ]; then \
       echo "EXTRA_PLUGINS set -- installing unfrozen (see the note above)"; \
-      node docker/add-plugins.cjs "$EXTRA_PLUGINS" && pnpm install --prod --no-frozen-lockfile --filter "$ADMIN"; \
+      node docker/add-plugins.cjs "$EXTRA_PLUGINS" && pnpm install --prod --no-frozen-lockfile --filter-prod "$ADMIN"; \
     else \
-      pnpm install --prod --frozen-lockfile --filter "$ADMIN"; \
+      pnpm install --prod --frozen-lockfile --filter-prod "$ADMIN"; \
     fi
 
 FROM base

@@ -234,6 +234,7 @@ test.describe('slate style allow-list', () => {
     await helper.waitForSidebarSlateToolbar();
     await expect(toolbar.locator('[title*="Link" i]')).toBeVisible();
 
+    await helper.cancelEdit();
     await helper.navigateToEdit('/restricted-styles-page');
     await helper.waitForIframeReady();
     await selectAllInSidebar(helper, 'target');

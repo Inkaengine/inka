@@ -284,3 +284,52 @@ def test_a_layouts_relations_are_applied(deployed, tmp_path):
     assert report["apply"]["relations"]["restored"] == 1
     related = [rel.to_object for rel in portal["kept"].relatedItems]
     assert related == [portal["changed"]]
+
+
+def test_a_type_reports_its_fields_defaults(functional):
+    """What a field holds when nobody set it, from the type's schema and
+    behaviors: the compare takes a field at its default for unset."""
+    from inkaengine.inka.content_deploy.delta import field_defaults_of
+
+    defaults = field_defaults_of(functional["portal"])
+    assert defaults["Document"]["exclude_from_nav"] is False
+
+
+@pytest.fixture
+def deployed_from_a_thin_layout(functional, tmp_path):
+    """A site whose base was recorded from a layout that leaves out a field at
+    its default (`exclude_from_nav`), as a hand-kept distribution does, while
+    the live serializer writes it."""
+    portal, request = functional["portal"], functional["request"]
+    with api.env.adopt_roles(["Manager"]):
+        api.content.create(container=portal, type="Document", id="changed", title="Before")
+        transaction.commit()
+        live = serialize_live_candidates(portal, request, {}, {}, extra=("changed",))
+        assert live["changed"]["exclude_from_nav"] is False
+        thin = {k: v for k, v in live["changed"].items() if k != "exclude_from_nav"}
+        first = write_layout(tmp_path / "first", {"root": ROOT, "changed": thin})
+        record_base(portal, first)
+    transaction.commit()
+    return portal, request, thin
+
+
+def test_a_default_the_page_writes_is_not_an_editors_edit(deployed_from_a_thin_layout, tmp_path):
+    """Nobody edited the page; only its default reads differently from the
+    layout's. A deploy that changes the page applies."""
+    portal, request, thin = deployed_from_a_thin_layout
+    second = write_layout(tmp_path / "second", {"root": ROOT, "changed": {**thin, "title": "After"}})
+    with api.env.adopt_roles(["Manager"]):
+        report = deploy_content(portal, request, second, commit=True)
+    assert report["apply"]["committed"] is True, report["apply"]
+    assert portal["changed"].title == "After"
+
+
+def test_a_page_an_editor_hid_is_still_their_edit(deployed_from_a_thin_layout, tmp_path):
+    portal, request, thin = deployed_from_a_thin_layout
+    portal["changed"].exclude_from_nav = True
+    transaction.commit()
+    second = write_layout(tmp_path / "second", {"root": ROOT, "changed": {**thin, "title": "After"}})
+    with api.env.adopt_roles(["Manager"]):
+        refused = deploy_content(portal, request, second, commit=True)
+    assert refused["apply"]["committed"] is False
+    assert refused["apply"]["must_merge"] == ["changed"]

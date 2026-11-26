@@ -2,11 +2,11 @@
  * The MCP server end to end: an MCP client starts it over stdio, as an agent's
  * host would, and it drives its own headless admin against the mock API.
  */
-import { writeFileSync } from 'node:fs';
+import { mintToken } from '@inka/mock-api/tokens';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
-import { test, expect } from '../fixtures';
-import { mintToken } from '../../packages/mock-api/mock-tokens.cjs';
-import { connect, CALL } from '../helpers/mcpClient';
+import { writeFileSync } from 'node:fs';
+import { expect, test } from '../fixtures';
+import { CALL, connect } from '../helpers/mcpClient';
 import { freshPage } from '../helpers/otherUser';
 
 const PAGE = '/_test_data/test-page';
@@ -275,7 +275,7 @@ test.describe('MCP server', () => {
     // placeholder, and stayed lost through every save after.
     test.setTimeout(240000);
     const USES = '/_test_data/template-test-page';
-    const slotOf = (page: any) => page.blocks.filter((b: any) => b.slotId === 'primary').map((b: any) => b.value?.md);
+    const slotOf = (page: any) => page.blocks.filter((b: any) => b.slotId === 'default').map((b: any) => b.value?.md);
     const read = (await call('get_page', { path: USES })).json();
     const before = slotOf(read);
     expect(before).toEqual(['User content - different from template default', 'Second user content block in placeholder']);
@@ -393,7 +393,16 @@ test.describe('MCP server', () => {
 
     const image = (await call('create_page', { parent: '/_test_data', type: 'Image', title: 'Team photo', file: photo.media })).json();
     expect(image.version).toBeTruthy();
-    expect(image.reviewState).toBeTruthy();
+    // An Image has NO review state, so create_page reports none.
+    //
+    // Plone's workflows.xml binds File, Image and Plone Site to no workflow at
+    // all, and a real Plone answers null for their review_state. This asserted
+    // a truthy state, which held only while the mock called them `published` —
+    // a state they cannot be in.
+    //
+    // `?? null` because JSON cannot carry undefined: whether the answer omits
+    // the field or sends it as null, it is saying the same thing.
+    expect(image.reviewState ?? null).toBeNull();
     const madeImage = await stored(image.path);
     expect(madeImage['@type']).toBe('Image');
     expect(madeImage.title).toBe('Team photo');
@@ -402,6 +411,7 @@ test.describe('MCP server', () => {
     expect(new URL(image.media[photo.media]).pathname).toBe(image.path);
 
     const file = (await call('create_page', { parent: '/_test_data', type: 'File', title: 'Annual report', file: report.media })).json();
+    expect(file.reviewState ?? null).toBeNull();
     const madeFile = await stored(file.path);
     expect(madeFile['@type']).toBe('File');
     expect(madeFile.file).toMatchObject({ filename: 'report.png', 'content-type': report.type });

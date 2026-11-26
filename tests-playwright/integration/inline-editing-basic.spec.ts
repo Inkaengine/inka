@@ -293,6 +293,37 @@ test.describe('Inline Editing - Basic', () => {
     await helper.waitForEditorText(editor, /^First Second$/);
   });
 
+  // Redo is Ctrl+Shift+Z on the canvas; it is in the sidebar too. Undo moves
+  // the focus while the block re-renders, so a redo pressed straight after
+  // it can land in the sidebar or the page around the canvas: it must still
+  // redo, not do nothing.
+  test('redo with Ctrl+Shift+Z works from the sidebar too', async ({ page }) => {
+    const helper = new AdminUIHelper(page);
+    await helper.login();
+    await helper.navigateToEdit('/test-page');
+
+    const editor = await helper.enterEditMode('block-1-uuid');
+    await helper.selectAllTextInEditor(editor);
+    await editor.pressSequentially('First', { delay: 10 });
+    await helper.openSidebarTab('Block');
+    await helper.waitForFieldValueToBe('value', 'First');
+    await editor.pressSequentially(' Second', { delay: 10 });
+    await helper.waitForFieldValueToBe('value', 'First Second');
+
+    await page.keyboard.press('Control+z');
+    await helper.waitForFieldValueToBe('value', 'First');
+
+    // Into the sidebar's copy of the text, then redo from there.
+    const sidebarText = page.locator(
+      '#sidebar-properties .field-wrapper-value [contenteditable="true"]',
+    );
+    await sidebarText.click();
+    await expect(sidebarText).toBeFocused();
+    await page.keyboard.press('Control+Shift+z');
+    await helper.waitForFieldValueToBe('value', 'First Second');
+    await helper.waitForEditorText(editor, /^First Second$/);
+  });
+
   test('pressing Enter at end of line creates new Slate block', async ({ page }) => {
     // This test verifies the expected Volto behavior where pressing Enter
     // creates a new Slate block (like standard Volto does via withSplitBlocksOnBreak).

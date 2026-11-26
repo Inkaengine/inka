@@ -12,7 +12,7 @@
  * Pure.
  */
 import { ADDRESS_SOURCE, RETIRED_ADDRESS_SOURCE } from './catalogAddress.js';
-import { isAccepted, conversionFor, sourceKind } from './mappingConversions.js';
+import { columnKind, isAccepted, conversionFor, sourceKind } from './mappingConversions.js';
 
 const MISSING =
   'This block has no field mapping, so its results have nothing to show. Pick its item type again to set one.';
@@ -43,9 +43,11 @@ function itemTypeOf(blocksConfig, blockData) {
  * @param {Object} args.schema - the block's effective schema
  * @param {Object} args.blockData - the block as stored
  * @param {Object} args.blocksConfig - the block registry (the item type's schema)
+ * @param {Object} [args.site] - { contentTypes, pageType }: what a site's own
+ *   column holds (columnKind); needed only by a mapping that maps one
  * @returns {Object} fieldName → [messages]; empty when every mapping is valid
  */
-export function fieldMappingErrors({ schema, blockData, blocksConfig }) {
+export function fieldMappingErrors({ schema, blockData, blocksConfig, site }) {
   const errors = {};
   for (const [name, def] of Object.entries(schema?.properties || {})) {
     if (def?.widget !== 'field_mapping') continue;
@@ -72,14 +74,17 @@ export function fieldMappingErrors({ schema, blockData, blocksConfig }) {
         messages.push(`"${source}" stores no conversion: each entry is { field, type }.`);
         continue;
       }
-      // A vocabulary's columns are offered beside the declared sources, as text.
-      const kind = sources[source]
-        ? sourceKind(source, sources[source])
-        : def.vocabulary
-          ? 'text'
-          : undefined;
-      if (!kind) {
+      if (!sources[source] && !def.vocabulary) {
         messages.push(`"${source}" isn't a source this mapping offers (${Object.keys(sources).join(', ')}).`);
+        continue;
+      }
+      // A vocabulary's columns are offered beside the declared sources, each
+      // holding what its field on the content types holds.
+      const { kind, problem } = sources[source]
+        ? { kind: sourceKind(source, sources[source]) }
+        : columnKind(source, site);
+      if (!kind) {
+        messages.push(problem);
         continue;
       }
       const target = itemProps[field];

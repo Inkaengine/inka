@@ -1,0 +1,1 @@
+blockmd decodes markdown from the page alone: it no longer takes block schemas. Filling link summaries and a codeExample's schema tab, which need the frontend's schemas, moved to the mock API (`from-schemas.mjs`), which runs them after reading a mount. A guard test keeps schemas out of blockmd and its tests. `readTree` no longer takes `schemaFor`.

@@ -13,16 +13,35 @@ import { isObjectListRegion, regionIdField } from './regionWidgets.js';
 
 export const joined = (parts) => parts.map((part) => part.trim()).filter(Boolean).join(' ');
 
-// Slate's words. Its own shape says where one word can end: an element holds either
-// blocks (only elements: paragraphs, list items) or inline content (text leaves, with
-// any inline element between them). Blocks are separate words; inline content runs on,
-// so a bold syllable stays inside its word.
+// Slate's words. Its own shape says where one word can end: blocks (paragraphs, list
+// items, lists) are separate words; inline content (text leaves, with any inline
+// element between them) runs on, so a bold syllable stays inside its word. An element
+// holding blocks is a block even after text: a list item holds its words and then the
+// list nested under it.
 function slateText(nodes) {
   if (!Array.isArray(nodes)) return '';
   const inline = nodes.some((node) => typeof node?.text === 'string');
-  const parts = nodes.map((node) => (typeof node?.text === 'string' ? node.text : slateText(node?.children)));
-  return inline ? parts.join('') : joined(parts);
+  const parts = [];
+  let run = '';
+  for (const node of nodes) {
+    if (typeof node?.text === 'string') run += node.text;
+    else if (!inline || holdsBlocks(node)) {
+      parts.push(run, slateText(node?.children));
+      run = '';
+    } else run += inlineText(node?.children);
+  }
+  parts.push(run);
+  return joined(parts);
 }
+
+// Inline content, as it runs on: a space at a link's edge still parts two words.
+const inlineText = (nodes) =>
+  (Array.isArray(nodes) ? nodes : []).map((node) => (typeof node?.text === 'string' ? node.text : inlineText(node?.children))).join('');
+
+// Blocks hold only elements; an inline element (a link, bold) holds text.
+const holdsBlocks = (node) =>
+  Array.isArray(node?.children) && node.children.length > 0
+  && !node.children.some((child) => typeof child?.text === 'string');
 
 // A string, slate, a list of strings, or what a block names from a picked item
 // (`[{ '@id', title }]`).

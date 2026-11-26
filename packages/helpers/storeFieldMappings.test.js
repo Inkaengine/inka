@@ -90,6 +90,28 @@ describe('withFieldMappings', () => {
     ).toThrow(/Subject.*url/);
   });
 
+  test("a site's own column gets the conversion its field on the content types calls for", () => {
+    const config = {
+      ...blocksConfig,
+      listing: {
+        blockSchema: {
+          properties: {
+            ...blocksConfig.listing.blockSchema.properties,
+            fieldMapping: { ...blocksConfig.listing.blockSchema.properties.fieldMapping, vocabulary: { '@id': 'plone.app.vocabularies.MetadataFields' } },
+          },
+        },
+      },
+    };
+    const contentTypes = { Document: { properties: { Topic: { type: 'array', items: { type: 'string' } } } } };
+    const out = withFieldMappings(
+      { ...page({ variation: 'card', fieldMapping: { Topic: 'tags' } }), '@type': 'Document' },
+      config,
+      intl,
+      contentTypes,
+    );
+    expect(stored(out)).toEqual({ Topic: { field: 'tags', type: 'array' } });
+  });
+
   test('the page passed in is not changed', () => {
     const input = page({ variation: 'card' });
     withFieldMappings(input, blocksConfig, intl);

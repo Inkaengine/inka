@@ -650,6 +650,92 @@ test.describe('Image upload and drag-drop', () => {
     await expect(heroImage).toHaveAttribute('src', /999x999/, { timeout: 5000 });
   });
 
+  test('the replace box stays open when the page scrolls', async ({ page }) => {
+    // Scrolling hides the block's outline and toolbar until the scroll settles.
+    // An open replace box is the editor's own: hiding the outline must not
+    // close it, or an image that a scroll moves (a player loading, the page
+    // settling) can never be replaced.
+    const helper = new AdminUIHelper(page);
+    await helper.login();
+    await helper.navigateToEdit('/test-page');
+
+    const iframe = helper.getIframe();
+    const heroImage = iframe.locator(
+      '[data-block-uid="block-4-hero"] [data-edit-media="image"]',
+    );
+    await heroImage.click();
+    await helper.getQuantaToolbarFormatButton('image').click();
+    const imageOverlay = page.locator('.empty-image-overlay');
+    const urlInput = imageOverlay.locator('input[name="link"]');
+    await urlInput.fill('https://placehold.co/999x999');
+    const topBefore = (await imageOverlay.boundingBox())!.y;
+
+    await iframe.locator('body').evaluate(() => window.scrollBy(0, 40));
+
+    // Once the scroll settles the box follows the image, still open, with what
+    // was typed in it, and still replaces the image.
+    await expect
+      .poll(async () => (await imageOverlay.boundingBox())?.y)
+      .toBeLessThan(topBefore - 20);
+    await expect(urlInput).toHaveValue('https://placehold.co/999x999');
+    await imageOverlay.locator('button[aria-label="Submit"]').click();
+    await expect(heroImage).toHaveAttribute('src', /999x999/);
+  });
+
+  test('the replace box stays open when the frontend moves focus by itself', async ({
+    page,
+  }) => {
+    // The bridge selects blocks in the frontend on its own (after a re-render,
+    // the block the author was in; as it settles, the block it opened with).
+    // That never takes focus from the admin, so it neither closes what the
+    // author opened nor moves their caret out of it.
+    const helper = new AdminUIHelper(page);
+    await helper.login();
+    await helper.navigateToEdit('/test-page');
+
+    const iframe = helper.getIframe();
+    const heroImage = iframe.locator(
+      '[data-block-uid="block-4-hero"] [data-edit-media="image"]',
+    );
+    await heroImage.click();
+    await helper.getQuantaToolbarFormatButton('image').click();
+    const imageOverlay = page.locator('.empty-image-overlay');
+    const urlInput = imageOverlay.locator('input[name="link"]');
+    await urlInput.click();
+    await expect(urlInput).toBeFocused();
+
+    await iframe.locator('body').evaluate(() => {
+      const bridge = (window as any).__hydraBridge;
+      // Re-selecting the block the box is for, as after a re-render: its
+      // heading is a field the bridge would have focused.
+      bridge.selectedBlockUid = null;
+      bridge.selectBlock('block-4-hero');
+    });
+    await page.evaluate(() => new Promise((r) => setTimeout(r, 500)));
+    await expect(urlInput, 'the caret stays in the box').toBeFocused();
+
+    await urlInput.fill('https://placehold.co/999x999');
+    await imageOverlay.locator('button[aria-label="Submit"]').click();
+    await expect(heroImage).toHaveAttribute('src', /999x999/);
+  });
+
+  test('a click in the frontend closes the replace box', async ({ page }) => {
+    const helper = new AdminUIHelper(page);
+    await helper.login();
+    await helper.navigateToEdit('/test-page');
+
+    const iframe = helper.getIframe();
+    await iframe
+      .locator('[data-block-uid="block-4-hero"] [data-edit-media="image"]')
+      .click();
+    await helper.getQuantaToolbarFormatButton('image').click();
+    const urlInput = page.locator('.empty-image-overlay input[name="link"]');
+    await expect(urlInput).toBeVisible();
+
+    await iframe.locator('[data-block-uid="block-1-uuid"]').click();
+    await expect(urlInput).toHaveCount(0);
+  });
+
   test('shows error toast when upload fails', async ({ page }) => {
     const helper = new AdminUIHelper(page);
 

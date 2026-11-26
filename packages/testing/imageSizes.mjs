@@ -89,6 +89,17 @@ export function scalesAvailable(entry, field) {
 }
 
 /**
+ * Whether any image field of the block offers more than one width — the only
+ * case the size rule can judge. Image fields are those the render check reads
+ * (`widget: 'image'`).
+ */
+export function offersSeveralWidths(schema, blockData) {
+  return Object.entries(schema?.properties ?? {})
+    .filter(([, prop]) => prop?.widget === 'image')
+    .some(([field]) => scalesAvailable(resolveImageEntry(blockData, field), field) >= 2);
+}
+
+/**
  * Distinct images a srcset actually offers.
  *
  * Keyed on the URL, NOT the width descriptor. A srcset may advertise nine

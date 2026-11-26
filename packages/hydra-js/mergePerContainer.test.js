@@ -1,3 +1,4 @@
+import { describe, test, expect } from 'vitest';
 import { assertAllExpanded, expandTemplatesSync } from '@volto-hydra/helpers';
 
 /**

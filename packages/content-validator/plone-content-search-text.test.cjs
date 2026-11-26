@@ -23,14 +23,16 @@ describe('plone-content search-text', () => {
     const dir = site({
       blocks: {
         a: { '@type': 'card', title: 'Card text' },
-        b: { '@type': 'slate', value: [{ type: 'p', children: [{ text: 'Typed' }] }] },
+        b: { '@type': 'slate', value: [{ type: 'p', children: [{ text: 'Typed' }] }], plaintext: 'Old' },
       },
       blocks_layout: { items: ['a', 'b'] },
     });
     execFileSync('node', [CLI, 'search-text', ...run(dir)]);
     const { blocks } = JSON.parse(fs.readFileSync(path.join(dir, 'content', 'page', 'data.json'), 'utf8'));
     assert.equal(blocks.a.searchableText, 'Card text');
+    // A Text block's words are its searchableText, and the old copy restapi would read goes.
     assert.equal(blocks.b.searchableText, 'Typed');
+    assert.equal('plaintext' in blocks.b, false);
   });
 
   it('fails on a block type the schemas do not hold', () => {
@@ -52,6 +54,36 @@ describe('plone-content search-text', () => {
     execFileSync('node', [path.join(copy, 'plone-content.cjs'), 'search-text', ...run(dir)]);
     const { blocks } = JSON.parse(fs.readFileSync(path.join(dir, 'content', 'page', 'data.json'), 'utf8'));
     assert.equal(blocks.a.searchableText, 'Card text');
+  });
+
+  // A layout names its folders by path, so a page can sit at any depth; an export names
+  // them by UID, all at the top. Both are content trees.
+  it('writes a page at any depth', () => {
+    const dir = site({ blocks: {}, blocks_layout: { items: [] } });
+    const nested = path.join(dir, 'content', 'page', 'child', 'grandchild');
+    fs.mkdirSync(nested, { recursive: true });
+    fs.writeFileSync(
+      path.join(nested, 'data.json'),
+      JSON.stringify({ blocks: { a: { '@type': 'card', title: 'Deep' } }, blocks_layout: { items: ['a'] } }),
+    );
+    execFileSync('node', [CLI, 'search-text', ...run(dir)]);
+    const { blocks } = JSON.parse(fs.readFileSync(path.join(nested, 'data.json'), 'utf8'));
+    assert.equal(blocks.a.searchableText, 'Deep');
+  });
+
+  // A site keeps its content in git: a rewrite in another indentation would change
+  // every line of every page, and hide the change the command made.
+  it("keeps each file's own indentation, and leaves a page it doesn't change alone", () => {
+    const dir = site({ blocks: { a: { '@type': 'card', title: 'Card text' } }, blocks_layout: { items: ['a'] } });
+    const file = path.join(dir, 'content', 'page', 'data.json');
+    fs.writeFileSync(file, `${JSON.stringify(JSON.parse(fs.readFileSync(file, 'utf8')), null, 4)}\n`);
+    const out = execFileSync('node', [CLI, 'search-text', ...run(dir)], { encoding: 'utf8' });
+    assert.match(out, /1 page\(s\) written/);
+    const written = fs.readFileSync(file, 'utf8');
+    assert.equal(written, `${JSON.stringify(JSON.parse(written), null, 4)}\n`);
+    const again = execFileSync('node', [CLI, 'search-text', ...run(dir)], { encoding: 'utf8' });
+    assert.match(again, /0 page\(s\) written/);
+    assert.equal(fs.readFileSync(file, 'utf8'), written);
   });
 
   it('needs the schemas', () => {

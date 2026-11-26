@@ -17,7 +17,6 @@
     },
     "intro": {
       "@type": "slate",
-      "plaintext": "This is the showcase page. Try clicking this link or use the data-edit-text attribute on your frontend.",
       "value": [
         {
           "type": "p",
@@ -52,7 +51,6 @@
           "blocks": {
             "left-text": {
               "@type": "slate",
-              "plaintext": "Content in the left column.",
               "value": [
                 {
                   "type": "p",
@@ -69,7 +67,6 @@
           "blocks": {
             "right-text": {
               "@type": "slate",
-              "plaintext": "Content in the right column.",
               "value": [
                 {
                   "type": "p",
@@ -85,7 +82,6 @@
     },
     "after-columns": {
       "@type": "slate",
-      "plaintext": "A paragraph after the columns — adjacent block, useful for edge-drag and multi-select demos.",
       "value": [
         {
           "type": "p",
@@ -99,7 +95,6 @@
     },
     "another-paragraph": {
       "@type": "slate",
-      "plaintext": "A second adjacent paragraph for range-selection screenshots.",
       "value": [
         {
           "type": "p",
@@ -113,7 +108,6 @@
     },
     "empty-slate": {
       "@type": "slate",
-      "plaintext": "",
       "value": [
         {
           "type": "p",

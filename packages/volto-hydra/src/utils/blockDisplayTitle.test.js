@@ -23,28 +23,16 @@ describe('blockDisplayTitle', () => {
     expect(blockDisplayTitle(data, { labelField: 'label' })).toBe('Your name');
   });
 
-  test('title, then label, then the indexed text', () => {
+  test('title, then label, then its rich text', () => {
     expect(blockDisplayTitle({ '@type': 'text', title: 'A' })).toBe('A');
     expect(blockDisplayTitle({ '@type': 'text', label: 'B' })).toBe('B');
-    expect(blockDisplayTitle({ '@type': 'text', plaintext: 'C' })).toBe('C');
+    expect(blockDisplayTitle({ '@type': 'text', value: slate('C') })).toBe('C');
   });
 
-  test('rich text being edited beats the plaintext left by the last save', () => {
-    // Nothing in the editor writes `plaintext` — the backend serializer does,
-    // at save time. Preferring it would name a heading by its previous wording
-    // for as long as the author kept typing.
-    const data = {
-      '@type': 'text',
-      plaintext: 'Old heading',
-      value: slate('New heading'),
-    };
+  test('a stored plaintext names nothing: it is an old copy of the words', () => {
+    const data = { '@type': 'text', plaintext: 'Old heading', value: slate('New heading') };
     expect(blockDisplayTitle(data)).toBe('New heading');
-  });
-
-  test('the stored plaintext still names a block whose text is not slate', () => {
-    expect(
-      blockDisplayTitle({ '@type': 'text', plaintext: 'From the server' }),
-    ).toBe('From the server');
+    expect(blockDisplayTitle({ '@type': 'text', plaintext: 'Old heading' })).toBe('Text');
   });
 
   test('an emptied rich-text field does not name a block', () => {
