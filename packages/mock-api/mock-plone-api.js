@@ -4295,291 +4295,78 @@ function collectSubjectValues() {
  * Get querystring schema (available indexes, operators, sortable indexes)
  * Used by QuerystringWidget to populate criteria and sort dropdowns
  */
+/**
+ * GET /@querystring — the query vocabulary, from a real Plone's own answer.
+ *
+ * This used to be written out by hand here, and it drifted from the thing it
+ * was imitating. Measured against a live Plone and against
+ * plone.app.querystring's own registry profile, it served 11 of the 22
+ * indexes, offered `string.is` on Creator — an operation Plone has never
+ * registered — claimed Title was sortable when Plone says it is not, and had
+ * none of the relative-date operations (afterToday, beforeToday, today,
+ * between) on created, modified or effective.
+ *
+ * That is not cosmetic. The admin builds its query builder, its rearrange menu
+ * and its contents columns from this answer, so each missing index is a
+ * feature with nothing to test it, and each invented operation is one a
+ * frontend can be built against, pass its contract, and have refused by the
+ * CMS — exactly how the @order endpoint happened.
+ *
+ * So the structure is captured rather than authored: api/querystring.json is a
+ * real Plone's response (scripts/capture-querystring.mjs). What is NOT captured
+ * is each selection index's `values` — the portal types a site holds, the
+ * review states its workflows define, the subjects its authors typed. Those
+ * belong to whoever is answering, so the capture strips them and this mock
+ * fills in its own below.
+ */
+const QUERYSTRING = JSON.parse(
+  fs.readFileSync(path.join(import.meta.dirname, 'api', 'querystring.json'), 'utf-8'),
+);
+
+/**
+ * This mock's own vocabulary for the indexes that have one: Plone's stock
+ * types, and the three states of simple_publication_workflow.
+ */
+const QUERYSTRING_VALUES = {
+  portal_type: {
+    'Document': { 'title': 'Page' },
+    'News Item': { 'title': 'News Item' },
+    'Event': { 'title': 'Event' },
+    'Image': { 'title': 'Image' },
+    'File': { 'title': 'File' },
+    'Link': { 'title': 'Link' },
+  },
+  review_state: {
+    'private': { 'title': 'Private' },
+    'pending': { 'title': 'Pending' },
+    'published': { 'title': 'Published' },
+  },
+};
+
 app.get('{/*path}/@querystring', (req, res) => {
+  const indexes = {};
+  for (const [name, index] of Object.entries(QUERYSTRING.indexes)) {
+    indexes[name] = QUERYSTRING_VALUES[name]
+      ? { ...index, values: QUERYSTRING_VALUES[name] }
+      : { ...index };
+  }
+  // The fork, ADDED to what stock Plone answers rather than replacing it.
+  //
+  // `string.search` is not core: it comes from a plone.app.querystring fork
+  // (raw, un-munged terms for collective.elasticsearch) that some production
+  // sites run, and MOCK_QUERYSTRING_SEARCH=1 makes this mock one of them. The
+  // captured answer above is stock — which is why the flag layers on top of
+  // it, and why a site without the fork keeps offering `contains` alone.
+  const operations = searchableTextOperations();
+  indexes.SearchableText = {
+    ...indexes.SearchableText,
+    operations,
+    operators: Object.fromEntries(operations.map((op) => [op, TEXT_OPERATORS[op]])),
+  };
   res.json({
     '@id': `${API_ORIGIN}/@querystring`,
-    'indexes': {
-      'portal_type': {
-        'title': 'Type',
-        'description': 'Content type',
-        'group': 'Metadata',
-        'enabled': true,
-        'sortable': false,
-        // portal_type is a FieldIndex (one value per item) — real Plone
-        // offers only .any / .none for it; .all is KeywordIndex-only.
-        'operations': [
-          'plone.app.querystring.operation.selection.any',
-          'plone.app.querystring.operation.selection.none',
-        ],
-        'operators': {
-          'plone.app.querystring.operation.selection.any': {
-            'title': 'Matches any of',
-            'description': 'Matches any of the selected values',
-            'widget': 'MultipleSelectionWidget',
-            'operation': 'plone.app.querystring.operation.selection.any',
-          },
-          'plone.app.querystring.operation.selection.none': {
-            'title': 'Matches none of',
-            'description': 'Matches none of the selected values',
-            'widget': 'MultipleSelectionWidget',
-            'operation': 'plone.app.querystring.operation.selection.none',
-          },
-        },
-        'values': {
-          'Document': { 'title': 'Page' },
-          'News Item': { 'title': 'News Item' },
-          'Event': { 'title': 'Event' },
-          'Image': { 'title': 'Image' },
-          'File': { 'title': 'File' },
-          'Link': { 'title': 'Link' },
-        },
-      },
-      'path': {
-        'title': 'Location',
-        'description': 'Location in the site structure',
-        'group': 'Metadata',
-        'enabled': true,
-        'sortable': false,
-        // All three the path index really takes, copied from a live Plone 6.2's
-        // @querystring (titles, descriptions, widgets and queryparser names as
-        // it gives them). `string.path` was missing, so a site storing it --
-        // one stores it in 9 of its 12 path criteria -- was configured with an
-        // operation this mock said the site did not have.
-        'operations': [
-          'plone.app.querystring.operation.string.absolutePath',
-          'plone.app.querystring.operation.string.path',
-          'plone.app.querystring.operation.string.relativePath',
-        ],
-        'operators': {
-          'plone.app.querystring.operation.string.absolutePath': {
-            'title': 'Absolute path',
-            'description': 'Location in the site structure',
-            'widget': 'ReferenceWidget',
-            'operation': 'plone.app.querystring.queryparser._absolutePath',
-          },
-          'plone.app.querystring.operation.string.path': {
-            'title': 'Navigation path',
-            'description': 'Location in the navigation structure',
-            'widget': 'ReferenceWidget',
-            'operation': 'plone.app.querystring.queryparser._navigationPath',
-          },
-          'plone.app.querystring.operation.string.relativePath': {
-            'title': 'Relative path',
-            'description': "Use '../' to navigate to parent objects.",
-            'widget': 'RelativePathWidget',
-            'operation': 'plone.app.querystring.queryparser._relativePath',
-          },
-        },
-      },
-      'review_state': {
-        'title': 'Review state',
-        'description': 'Workflow state',
-        'group': 'Metadata',
-        'enabled': true,
-        'sortable': true,
-        'operations': [
-          'plone.app.querystring.operation.selection.any',
-          'plone.app.querystring.operation.selection.none',
-        ],
-        'operators': {
-          'plone.app.querystring.operation.selection.any': {
-            'title': 'Matches any of',
-            'widget': 'MultipleSelectionWidget',
-            'operation': 'plone.app.querystring.operation.selection.any',
-          },
-          'plone.app.querystring.operation.selection.none': {
-            'title': 'Matches none of',
-            'widget': 'MultipleSelectionWidget',
-            'operation': 'plone.app.querystring.operation.selection.none',
-          },
-        },
-        'values': {
-          'private': { 'title': 'Private' },
-          'pending': { 'title': 'Pending' },
-          'published': { 'title': 'Published' },
-        },
-      },
-      'created': {
-        'title': 'Creation date',
-        'description': 'Date created',
-        'group': 'Dates',
-        'enabled': true,
-        'sortable': true,
-        'operations': [
-          'plone.app.querystring.operation.date.lessThan',
-          'plone.app.querystring.operation.date.largerThan',
-          'plone.app.querystring.operation.date.between',
-        ],
-        'operators': {
-          'plone.app.querystring.operation.date.lessThan': {
-            'title': 'Before',
-            'widget': 'DateWidget',
-            'operation': 'plone.app.querystring.operation.date.lessThan',
-          },
-          'plone.app.querystring.operation.date.largerThan': {
-            'title': 'After',
-            'widget': 'DateWidget',
-            'operation': 'plone.app.querystring.operation.date.largerThan',
-          },
-          'plone.app.querystring.operation.date.between': {
-            'title': 'Between',
-            'widget': 'DateRangeWidget',
-            'operation': 'plone.app.querystring.operation.date.between',
-          },
-        },
-      },
-      'effective': {
-        'title': 'Effective date',
-        'description': 'Publication date',
-        'group': 'Dates',
-        'enabled': true,
-        'sortable': true,
-        'operations': [
-          'plone.app.querystring.operation.date.lessThan',
-          'plone.app.querystring.operation.date.largerThan',
-        ],
-        'operators': {
-          'plone.app.querystring.operation.date.lessThan': {
-            'title': 'Before',
-            'widget': 'DateWidget',
-            'operation': 'plone.app.querystring.operation.date.lessThan',
-          },
-          'plone.app.querystring.operation.date.largerThan': {
-            'title': 'After',
-            'widget': 'DateWidget',
-            'operation': 'plone.app.querystring.operation.date.largerThan',
-          },
-        },
-      },
-      'modified': {
-        'title': 'Modification date',
-        'description': 'Date last modified',
-        'group': 'Dates',
-        'enabled': true,
-        'sortable': true,
-        'operations': [
-          'plone.app.querystring.operation.date.lessThan',
-          'plone.app.querystring.operation.date.largerThan',
-        ],
-        'operators': {
-          'plone.app.querystring.operation.date.lessThan': {
-            'title': 'Before',
-            'widget': 'DateWidget',
-            'operation': 'plone.app.querystring.operation.date.lessThan',
-          },
-          'plone.app.querystring.operation.date.largerThan': {
-            'title': 'After',
-            'widget': 'DateWidget',
-            'operation': 'plone.app.querystring.operation.date.largerThan',
-          },
-        },
-      },
-      'Creator': {
-        'title': 'Creator',
-        'description': 'Content author',
-        'group': 'Metadata',
-        'enabled': true,
-        'sortable': true,
-        'operations': [
-          'plone.app.querystring.operation.string.is',
-        ],
-        'operators': {
-          'plone.app.querystring.operation.string.is': {
-            'title': 'Is',
-            'widget': null,
-            'operation': 'plone.app.querystring.operation.string.is',
-          },
-        },
-      },
-      'Subject': {
-        'title': 'Tag',
-        'description': 'Subject/tag',
-        'group': 'Text',
-        'enabled': true,
-        'sortable': false,
-        'vocabulary': 'plone.app.vocabularies.Keywords',
-        'operations': [
-          'plone.app.querystring.operation.selection.any',
-          'plone.app.querystring.operation.selection.all',
-          'plone.app.querystring.operation.selection.none',
-        ],
-        'operators': {
-          'plone.app.querystring.operation.selection.any': {
-            'title': 'Matches any of',
-            'widget': 'autocomplete',
-            'operation': 'plone.app.querystring.operation.selection.any',
-          },
-          'plone.app.querystring.operation.selection.all': {
-            'title': 'Matches all of',
-            'widget': 'autocomplete',
-            'operation': 'plone.app.querystring.operation.selection.all',
-          },
-          'plone.app.querystring.operation.selection.none': {
-            'title': 'Matches none of',
-            'widget': 'autocomplete',
-            'operation': 'plone.app.querystring.operation.selection.none',
-          },
-        },
-        'values': collectSubjectValues(),
-      },
-      'Title': {
-        'title': 'Title',
-        'description': 'Content title',
-        'group': 'Text',
-        'enabled': true,
-        'sortable': true,
-        'operations': [
-          'plone.app.querystring.operation.string.contains',
-        ],
-        'operators': {
-          'plone.app.querystring.operation.string.contains': {
-            'title': 'Contains',
-            'widget': null,
-            'operation': 'plone.app.querystring.operation.string.contains',
-          },
-        },
-      },
-      'Description': {
-        'title': 'Description',
-        'description': 'Content description',
-        'group': 'Text',
-        'enabled': true,
-        'sortable': false,
-        'operations': [
-          'plone.app.querystring.operation.string.contains',
-        ],
-        'operators': {
-          'plone.app.querystring.operation.string.contains': {
-            'title': 'Contains',
-            'widget': null,
-            'operation': 'plone.app.querystring.operation.string.contains',
-          },
-        },
-      },
-      'SearchableText': {
-        'title': 'Searchable text',
-        'description': 'All text content',
-        'group': 'Text',
-        'enabled': true,
-        'sortable': false,
-        'operations': searchableTextOperations(),
-        'operators': Object.fromEntries(
-          searchableTextOperations().map((op) => [op, TEXT_OPERATORS[op]]),
-        ),
-      },
-    },
-    'sortable_indexes': {
-      'effective': { 'title': 'Effective date', 'description': 'Publication date' },
-      'created': { 'title': 'Creation date', 'description': 'Date created' },
-      'modified': { 'title': 'Modification date', 'description': 'Date last modified' },
-      'sortable_title': { 'title': 'Title', 'description': 'Title (sortable)' },
-      'Creator': { 'title': 'Creator', 'description': 'Content author' },
-      'review_state': { 'title': 'Review state', 'description': 'Workflow state' },
-      // Position in the parent folder — used by navigation listings.
-      // ploneFetchItems detects path+getObjPositionInParent and routes
-      // the call to @navigation instead of @querystring-search.
-      'getObjPositionInParent': { 'title': 'Position in parent', 'description': 'Order within parent folder (navigation order)' },
-    },
+    indexes,
+    sortable_indexes: QUERYSTRING.sortable_indexes,
   });
 });
 
