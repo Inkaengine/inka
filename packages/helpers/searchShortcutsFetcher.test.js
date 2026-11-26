@@ -79,20 +79,16 @@ describe('searchShortcutsFetcher', () => {
     expect(items.map((i) => i.title)).toEqual(['real']);
   });
 
-  test('scopes to the search it points at, so a chip matches its destination', async () => {
+  test('asks the whole site, because that is what site-wide means', async () => {
     const fetchItems = searchShortcutsFetcher({ apiUrl: 'http://api', contextPath: '/blog' });
-    await fetchItems({ searchUrl: [{ '@id': 'https://site.example/case-studies?x=1' }] }, page);
+    await fetchItems({ searchUrl: [{ '@id': '/search' }] }, page);
+    // NOT scoped to the search page's path. It was, briefly, on the theory that
+    // a chip should only offer what its destination can return -- and a search
+    // page is where results are SHOWN, not where content lives, so `/search`
+    // has nothing beneath it and site-wide mode returned nothing. An admin
+    // integration test caught that; this keeps it caught.
     expect(calls[0].body.query).toEqual([
-      { i: 'path', o: 'plone.app.querystring.operation.string.absolutePath', v: '/case-studies' },
-    ]);
-  });
-
-  test("when the search link names no path, scopes to this page's own subtree", async () => {
-    const fetchItems = searchShortcutsFetcher({ apiUrl: 'http://api', contextPath: '/blog' });
-    // A link to a site root: a real link, with nothing to scope to.
-    await fetchItems({ searchUrl: [{ '@id': 'https://site.example/' }] }, page);
-    expect(calls[0].body.query).toEqual([
-      { i: 'path', o: 'plone.app.querystring.operation.string.relativePath', v: '.' },
+      { i: 'path', o: 'plone.app.querystring.operation.string.absolutePath', v: '/' },
     ]);
   });
 

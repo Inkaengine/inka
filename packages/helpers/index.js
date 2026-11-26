@@ -1522,21 +1522,6 @@ function _linkUrl(value, field) {
 const SHORTCUT_VALUE_SCAN = 500;
 
 /**
- * Site path of a search URL, or null when it names no path we can query.
- * Accepts `/case-studies`, a full URL, and either with a query string.
- */
-function _searchTargetPath(searchUrl) {
-  if (!searchUrl || typeof searchUrl !== 'string') return null;
-  const withoutQuery = searchUrl.split('?')[0].split('#')[0];
-  const path = /^https?:\/\//.test(withoutQuery)
-    ? new URL(withoutQuery).pathname
-    : withoutQuery;
-  if (!path.startsWith('/')) return null;
-  const trimmed = path.replace(/\/+$/, '');
-  return trimmed === '' ? null : trimmed;
-}
-
-/**
  * The values an index actually HOLDS, read from the catalog.
  *
  * This used to read the index's vocabulary — `@vocabularies/<vocab>` — and for
@@ -1557,29 +1542,23 @@ function _searchTargetPath(searchUrl) {
  * value with nothing behind it is a link to an empty page; and a keyword
  * vocabulary includes the keywords of private content, which this cannot leak.
  *
- * Scope: the content the search these chips point at would return, when
- * `searchUrl` names a path — so the chips match their destination. Otherwise
- * this page's own subtree.
+ * Scope: the whole site, which is what "site-wide mode" means and what reading
+ * the index's vocabulary used to give.
+ *
+ * It briefly scoped to `searchUrl`'s path instead, on the theory that a chip
+ * should only offer values its destination can return. That is wrong, and an
+ * integration test caught it: a search page is where results are SHOWN, not
+ * where content lives. `/search` has nothing beneath it, so site-wide mode
+ * returned nothing at all.
  */
-async function _indexValuesFromCatalog({
-  apiUrl,
-  contextPath,
-  index,
-  searchUrl,
-  headers,
-}) {
-  const target = _searchTargetPath(searchUrl);
-  const criterion = target
-    ? {
-        i: 'path',
-        o: 'plone.app.querystring.operation.string.absolutePath',
-        v: target,
-      }
-    : {
-        i: 'path',
-        o: 'plone.app.querystring.operation.string.relativePath',
-        v: '.',
-      };
+async function _indexValuesFromCatalog({ apiUrl, contextPath, index, headers }) {
+  // The site root, recursively: `absolutePath` with `/` is every object the
+  // caller may see (checked against a live Plone 6.2 — 213 of them).
+  const criterion = {
+    i: 'path',
+    o: 'plone.app.querystring.operation.string.absolutePath',
+    v: '/',
+  };
 
   const url = `${apiUrl}${contextPath}/++api++/@querystring-search`;
   const response = await fetch(url, {
@@ -1636,13 +1615,7 @@ export function searchShortcutsFetcher({ apiUrl, contextPath = '/' } = {}) {
       const v = content?.[block.pageField];
       values = Array.isArray(v) ? v : v == null ? [] : [v];
     } else {
-      values = await _indexValuesFromCatalog({
-        apiUrl,
-        contextPath,
-        index,
-        searchUrl,
-        headers,
-      });
+      values = await _indexValuesFromCatalog({ apiUrl, contextPath, index, headers });
     }
 
     const all = values.map((value) => ({

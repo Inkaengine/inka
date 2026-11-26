@@ -7,7 +7,13 @@
  *
  * Fixture (example-listings-page): relatedItems summaries (Related A/B),
  * subjects [news, plone]; a this-page search-shortcuts (news, plone) and a
- * site-wide one (Keywords = news/plone/events), and an RSS block → the mock stub.
+ * site-wide one, and an RSS block → the mock stub.
+ *
+ * Site-wide mode reads the CATALOG now, not the keyword vocabulary (#762: that
+ * vocabulary 401s an anonymous visitor, so the strip was empty for the reader
+ * the block is for). So the values it offers are the ones content actually
+ * carries: [news, plone] on this page, plus [events] on clear-formatting-page,
+ * which exists to give site-wide mode something this page does not have.
  */
 import { test, expect } from '../fixtures';
 import { AdminUIHelper } from '../helpers/AdminUIHelper';
@@ -27,10 +33,13 @@ test.describe('Example listing blocks', () => {
     await helper.login();
     await helper.navigateToEdit('/example-listings-page');
     const iframe = helper.getIframe();
-    // ss-page (this page's subjects: news, plone) + ss-site (every keyword the
-    // index knows: news, newsletter, newsroom, plone, events) = 7 facet links.
-    await expect(iframe.locator('a[href^="/search?facet.Subject="]')).toHaveCount(7);
-    // `events` exists only in the index vocabulary → proves site-wide mode.
+    // ss-page (this page's subjects: news, plone) + ss-site (every Subject value
+    // the site's content carries: events, news, plone) = 5 facet links.
+    await expect(iframe.locator('a[href^="/search?facet.Subject="]')).toHaveCount(5);
+    // `events` is carried by OTHER content and not by this page → proves
+    // site-wide mode went past the page it is on. It used to prove that by
+    // existing only in the keyword vocabulary, which is what this block stopped
+    // reading: the vocabulary is closed to anonymous visitors (#762).
     await expect(iframe.locator('a[href="/search?facet.Subject=events"]')).toHaveCount(1);
     // `news` comes from BOTH blocks → proves this-page mode also rendered.
     await expect(iframe.locator('a[href="/search?facet.Subject=news"]')).toHaveCount(2);
