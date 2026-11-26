@@ -27,6 +27,12 @@ describe('words in markdown', () => {
     const r = pageReadability(page(`<block type="video" data-json='${json}' />`));
     expect(r.words).toEqual({ markdown: 0, tags: 4 });
   });
+
+  it("a bound attribute is JSON too: its text counts, its keys don't", () => {
+    const value = JSON.stringify([{ type: 'p', children: [{ text: 'Words hidden in JSON' }] }]);
+    const r = pageReadability(page(`<block type="alert" :copy='${value}' />`));
+    expect(r.words).toEqual({ markdown: 0, tags: 4 });
+  });
 });
 
 describe('how each block is written', () => {
