@@ -1284,7 +1284,7 @@ function renderVideoBlock(block) {
     const preview = block.preview_image ? getImageUrl(block.preview_image) : '';
     if (ytMatch && preview) {
         return `<div class="video-block" data-edit-link="url">
-            <a href="https://www.youtube.com/watch?v=${ytMatch[1]}">
+            <a href="https://www.youtube.com/watch?v=${ytMatch[1]}" data-edit-link="url">
                 <img data-edit-media="preview_image" src="${preview}" alt="Play video" style="width:100%">
             </a>
         </div>`;
