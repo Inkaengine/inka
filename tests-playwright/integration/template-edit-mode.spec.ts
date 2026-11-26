@@ -144,6 +144,12 @@ test.describe('Template Creation', () => {
 
     // Save. saveContent waits for redirect out of /edit so any POSTs
     // dispatched as part of the save will have been observed by then.
+    // A new template is saved by locking it, like any other: it is created
+    // then, and a page can't be saved with a template unlocked.
+    const unlockedToggle = page.locator('.edit-template-toggle[aria-pressed="true"]');
+    await unlockedToggle.click();
+    await expect(unlockedToggle).toHaveCount(0);
+
     await helper.saveContent();
 
     // EXPECTED: at least one POST whose body @type is Template — that's
@@ -163,6 +169,25 @@ test.describe('Template Creation', () => {
     // not a baked-in literal in the bridge).
     expect(tplPost.url, 'template POST URL must come from the sidebar folder, not a hard-coded /templates/ literal')
       .not.toMatch(/\/templates\/$/);
+  });
+
+  test('a just-made template must be locked before the page saves', async ({ page }) => {
+    // No exception for a new template: it is saved, and its slots checked, by
+    // locking it, like any other.
+    const helper = new AdminUIHelper(page);
+    await helper.login();
+    await helper.navigateToEdit('/test-page');
+
+    await helper.clickBlockInIframe('block-1-uuid');
+    await helper.waitForBlockSelectedInAdmin('block-1-uuid');
+    await helper.openQuantaToolbarMenu('block-1-uuid');
+    await page.locator('.volto-hydra-dropdown-menu .volto-hydra-dropdown-item')
+      .filter({ hasText: /make.*template/i }).click();
+    await helper.waitForSidebarOpen();
+
+    await page.locator('#toolbar-save').click();
+    await expect(page.locator('.template-save-gate-modal')).toBeVisible();
+    await expect(page).toHaveURL(/\/edit$/);
   });
 
   // TDD (task #21): the template's URL id/filename is editable via a "Short name"
@@ -207,7 +232,13 @@ test.describe('Template Creation', () => {
     await expect(shortName).toBeEnabled({ timeout: 5000 });
     await shortName.fill('my-new-layout');
 
-    // Save (creates the template + writes the page).
+    // Lock (creates the template), then save (writes the page).
+    // A new template is saved by locking it, like any other: it is created
+    // then, and a page can't be saved with a template unlocked.
+    const unlockedToggle = page.locator('.edit-template-toggle[aria-pressed="true"]');
+    await unlockedToggle.click();
+    await expect(unlockedToggle).toHaveCount(0);
+
     await helper.saveContent();
 
     // (1) The template document is POSTed at the chosen id — not untitled-template-N.
@@ -429,7 +460,7 @@ test.describe('Template Creation', () => {
 test.describe('Template Edit Mode - Save', () => {
   // v2: templates commit when you LOCK them (Change on all pages), not with the
   // page. Locking a CHANGED template writes the template document.
-  test('locking a template (Change on all pages) saves the template document', async ({ page, urls }) => {
+  test('locking a template (Change on all pages), then saving the page, saves the template document', async ({ page, urls }) => {
     const helper = new AdminUIHelper(page);
     await helper.login();
     await helper.navigateToEdit('/template-test-page');
@@ -448,7 +479,7 @@ test.describe('Template Edit Mode - Save', () => {
     });
 
     // Unlock the template, make a change (delete the footer block), then lock with
-    // "Change on all pages" — the changed template is written.
+    // "Change on all pages" and save the page — the changed template is written.
     const { blockId: headerBlockId } = await helper.waitForBlockByContent(TEMPLATE_HEADER_CONTENT);
     const { blockId: footerBlockId } = await helper.waitForBlockByContent(TEMPLATE_FOOTER_CONTENT);
     await helper.unlockTemplate(headerBlockId);
@@ -458,12 +489,13 @@ test.describe('Template Edit Mode - Save', () => {
       document.dispatchEvent(new CustomEvent('hydra-delete-blocks', { detail: { blockIds: [id] } }));
     }, footerBlockId);
     await helper.lockTemplate(headerBlockId, 'commit');
+    await helper.saveContent();
 
     // A write whose URL is NOT the page itself = the template document being saved.
     const pageEnds = (u: string) => u.replace(/\/$/, '').endsWith('/template-test-page');
     await expect
       .poll(() => writes.filter((w) => !pageEnds(w.url)).length, {
-        message: `expected the template document to be saved on lock; observed: ${JSON.stringify(writes)}`,
+        message: `expected the template document to be saved with the page; observed: ${JSON.stringify(writes)}`,
         timeout: 5000,
       })
       .toBeGreaterThanOrEqual(1);
@@ -472,7 +504,7 @@ test.describe('Template Edit Mode - Save', () => {
     // template saved without its slot leaves every page using it nowhere to show its own.
     const saved = writes.find((w) => !pageEnds(w.url))!.body;
     const slots = saved.blocks_layout.items.map((id: string) => saved.blocks[id]);
-    expect(slots.filter((b: any) => !b.fixed).map((b: any) => b.slotId)).toEqual(['primary']);
+    expect(slots.filter((b: any) => !b.fixed).map((b: any) => b.slotId)).toEqual(['default']);
     expect(JSON.stringify(saved.blocks)).not.toContain('User content - different from template default');
   });
 
@@ -511,9 +543,9 @@ test.describe('Template Edit Mode - Save', () => {
 
   // v2: unlocking re-fetches the template fresh (structure), then locking with
   // "Change on all pages" COMMITS what you edited — reverse-merging the page's
-  // current content into that re-fetched template and PATCHing it. This guards the
-  // whole unlock(re-fetch) → edit → lock(commit) round trip: the edit reaches the
-  // saved template document.
+  // current content into that re-fetched template — and the page save PATCHes it.
+  // This guards the whole unlock(re-fetch) → edit → lock(commit) → save round
+  // trip: the edit reaches the saved template document.
   test('locking (Change on all pages) persists the edit made after the re-fetch', async ({ page }) => {
     const helper = new AdminUIHelper(page);
     const iframe = helper.getIframe();
@@ -540,8 +572,9 @@ test.describe('Template Edit Mode - Save', () => {
     await page.keyboard.type(` ${MARKER}`);
     await expect(iframe.locator(`[data-block-uid="${headerBlockId}"]`)).toContainText(MARKER, { timeout: 5000 });
 
-    // Lock with "Change on all pages" — the edit must reach the saved template.
+    // Lock with "Change on all pages" and save — the edit must reach the saved template.
     await helper.lockTemplate(headerBlockId, 'commit');
+    await helper.saveContent();
     await expect
       .poll(() => templatePatchBodies.join('\n'), {
         message: 'the commit must persist the edit into the template document',
@@ -1087,12 +1120,12 @@ test.describe('Template Edit Mode - Drag and Drop', () => {
     await expect(iframe.locator(`[data-block-uid="${STANDALONE_BLOCK_1}"]`)).toBeVisible({ timeout: 15000 });
     await helper.unlockTemplate(headerBlockId);
 
-    // First check what slotId value user-content-1 has (should be "primary")
+    // First check what slotId value user-content-1 has (should be "default")
     await helper.clickBlockInIframe(USER_CONTENT_1);
     await helper.waitForSidebarOpen();
     const neighborPlaceholder = page.locator('.field-wrapper-slotId input');
     const expectedPlaceholder = await neighborPlaceholder.inputValue();
-    expect(expectedPlaceholder).toBe('primary');
+    expect(expectedPlaceholder).toBe('default');
 
     // Drag standalone block into template (between user-content-1 and user-content-2)
     await helper.dragBlockAfter(STANDALONE_BLOCK_1, USER_CONTENT_1);
@@ -1105,7 +1138,7 @@ test.describe('Template Edit Mode - Drag and Drop', () => {
     const slotIdInput = page.locator('.field-wrapper-slotId input');
     await expect(slotIdInput).toBeVisible({ timeout: 5000 });
 
-    // The slotId should match the neighbors (all are "primary" in this region)
+    // The slotId should match the neighbors (all are "default" in this region)
     const actualSlotId = await slotIdInput.inputValue();
     expect(actualSlotId).toBe(expectedPlaceholder);
   });
@@ -1114,13 +1147,13 @@ test.describe('Template Edit Mode - Drag and Drop', () => {
 test.describe('Template Edit Mode - Validation', () => {
   test('non-contiguous slot groups prevent exit from edit mode', async ({ page }) => {
     // Rule: all blocks with the same slotId must be adjacent.
-    //   Valid:   [header] [primary] [primary] [primary] [footer]
-    //   Invalid: [header] [primary] [secondary] [primary] [footer]  <- "primary" split in two
+    //   Valid:   [header] [default] [default] [default] [footer]
+    //   Invalid: [header] [default] [secondary] [default] [footer]  <- "default" split in two
     //
     // A block dragged out of a slot now EXITS the template (it can't be left as a stranded
-    // "primary" separated by the footer), so the split is created the way editing still can —
-    // re-slot the MIDDLE of three primary blocks. The validation must refuse the lock. (The
-    // fixture starts with three CONTIGUOUS primary blocks, valid on load.)
+    // "default" separated by the footer), so the split is created the way editing still can —
+    // re-slot the MIDDLE of three default blocks. The validation must refuse the lock. (The
+    // fixture starts with three CONTIGUOUS default blocks, valid on load.)
 
     const helper = new AdminUIHelper(page);
 
@@ -1133,8 +1166,8 @@ test.describe('Template Edit Mode - Validation', () => {
     await expect(iframe.locator('[data-block-uid="ss-content-2"]')).toBeVisible({ timeout: 15000 });
     await helper.unlockTemplate(headerBlockId);
 
-    // Split the contiguous "primary" group by re-slotting the MIDDLE block to "secondary":
-    // [primary] [secondary] [primary] — "primary" is no longer contiguous.
+    // Split the contiguous "default" group by re-slotting the MIDDLE block to "secondary":
+    // [default] [secondary] [default] — "default" is no longer contiguous.
     await helper.clickBlockInIframe('ss-content-2');
     await helper.waitForSidebarOpen();
     await page.locator('.field-wrapper-slotId input').fill('secondary');
@@ -1152,16 +1185,16 @@ test.describe('Template Edit Mode - Validation', () => {
     const errorMessage = page.locator('.toast-error, .Toastify__toast--error').filter({ hasText: /slot|contiguous|adjacent|position/i });
     await expect(errorMessage).toBeVisible({ timeout: 5000 });
 
-    // Still unlocked — the commit was refused.
-    await expect(editToggle).toHaveAttribute('aria-pressed', 'true');
+    // Still unlocked — the commit was refused (the refusal selects the block at fault).
+    await expect(page.locator('.sidebar-section-header .edit-template-toggle')).toHaveAttribute('aria-pressed', 'true');
   });
 
   test('adjacent slot groups without fixed block prevent exit from edit mode', async ({ page }) => {
     // Rule: Different slot groups must be separated by a fixed block.
     // Having two different slot groups adjacent is invalid.
     //
-    // Valid:   [header-fixed] [primary] [primary] [footer-fixed]
-    // Invalid: [header-fixed] [primary] [secondary] [footer-fixed]  <- no fixed block between groups
+    // Valid:   [header-fixed] [default] [default] [footer-fixed]
+    // Invalid: [header-fixed] [default] [secondary] [footer-fixed]  <- no fixed block between groups
 
     const helper = new AdminUIHelper(page);
 
@@ -1183,7 +1216,7 @@ test.describe('Template Edit Mode - Validation', () => {
     await helper.clickBlockInIframe(USER_CONTENT_2);
     await helper.waitForSidebarOpen();
 
-    // Change slotId in sidebar from "primary" to "secondary"
+    // Change slotId in sidebar from "default" to "secondary"
     const slotIdField = page.locator('.field-wrapper-slotId input');
     await slotIdField.fill('secondary');
 
@@ -1199,14 +1232,73 @@ test.describe('Template Edit Mode - Validation', () => {
     const errorMessage = page.locator('.toast-error, .Toastify__toast--error').filter({ hasText: /slot|fixed|separated/i });
     await expect(errorMessage).toBeVisible({ timeout: 5000 });
 
-    // Still unlocked — the commit was refused.
-    await expect(editToggle).toHaveAttribute('aria-pressed', 'true');
+    // Still unlocked — the commit was refused (the refusal selects the block at fault).
+    await expect(page.locator('.sidebar-section-header .edit-template-toggle')).toHaveAttribute('aria-pressed', 'true');
+  });
+
+  test('a refused lock opens the block at fault, with the problem on its Slot ID', async ({ page }) => {
+    // The slot rules are checked when a template is locked: the one place they
+    // can be fixed, since its Slot ID fields show only while it is unlocked. A
+    // refusal goes through the same error display a page save uses, so the
+    // author is taken to the block, not left with a sentence.
+    const helper = new AdminUIHelper(page);
+
+    await helper.login();
+    await helper.navigateToEdit('/template-test-page');
+
+    const iframe = helper.getIframe();
+    const { blockId: headerBlockId } = await helper.waitForBlockByContent(TEMPLATE_HEADER_CONTENT);
+    await expect(iframe.locator(`[data-block-uid="${USER_CONTENT_2}"]`)).toBeVisible({ timeout: 15000 });
+    await helper.unlockTemplate(headerBlockId);
+
+    // Two slot groups with no fixed block between them.
+    await helper.clickBlockInIframe(USER_CONTENT_2);
+    await helper.waitForSidebarOpen();
+    await page.locator('.field-wrapper-slotId input').fill('secondary');
+
+    await helper.clickBlockInIframe(headerBlockId);
+    await helper.waitForSidebarOpen();
+    await helper.escapeToParent();
+    const editToggle = page.locator('.sidebar-section-header[data-is-current="true"] .edit-template-toggle');
+    await editToggle.click();
+    await page.locator('.template-lock-modal .template-commit').click();
+
+    // The refusal links to the block…
+    const open = page.locator('.Toastify__toast--error .block-save-error-link');
+    await expect(open).toHaveText(/Open the .* block/);
+    await open.click();
+    await helper.waitForBlockSelectedInAdmin(USER_CONTENT_2);
+    // …and says what is wrong where it is fixed.
+    await expect(page.locator('.field-wrapper-slotId .form-error-label')).toContainText(/separated by a fixed block/);
+
+    // Still unlocked — the commit was refused (the refusal selects the block at fault).
+    await expect(page.locator('.sidebar-section-header .edit-template-toggle')).toHaveAttribute('aria-pressed', 'true');
+  });
+
+  test('a page saves with its templates locked, whatever slots it was saved with', async ({ page }) => {
+    // Slots are checked when a template is locked, and a page can't be saved
+    // with a template unlocked, so the page save doesn't check them again. A
+    // page saved before a block and a block inside it could share no slot (its
+    // group and the group's child both name "default") still saves an edit to
+    // its own content.
+    const helper = new AdminUIHelper(page);
+
+    await helper.login();
+    await helper.navigateToEdit('/template-old-shared-slot-page');
+
+    const iframe = helper.getIframe();
+    await expect(iframe.locator('[data-block-uid="old-grp-child"]')).toBeVisible({ timeout: 15000 });
+
+    await helper.editBlockTextInIframe('standalone-block-1', 'Edited outside the template');
+    await helper.saveContent();
+
+    await expect(page.locator('.Toastify__toast--error')).toHaveCount(0);
   });
 
   test('while editing a template, dragging a block to a different slot region keeps its slotId', async ({ page }) => {
     // In template edit mode the slotId is EXPLICIT — you rename slots, you don't change them
-    // by dragging. Dragging ts-p2 ("primary") into the "secondary" region (still inside the
-    // template) must KEEP it "primary" — NOT silently re-slot it to "secondary". (The author
+    // by dragging. Dragging ts-p2 ("default") into the "secondary" region (still inside the
+    // template) must KEEP it "default" — NOT silently re-slot it to "secondary". (The author
     // now has an invalid arrangement to fix, or save-time validation catches it.) This is the
     // template-edit half of the edit-mode-gated membership rule; the normal-mode half (content
     // takes the slot it lands in / exits) is covered by template-edit-mode:691 and :746.
@@ -1221,14 +1313,14 @@ test.describe('Template Edit Mode - Validation', () => {
     await expect(iframe.locator('[data-block-uid="ts-p2"]')).toBeVisible({ timeout: 15000 });
     await helper.unlockTemplate(headerBlockId);
 
-    // Drag ts-p2 (primary) into the secondary region: after ts-s1 (secondary), still inside
+    // Drag ts-p2 (default) into the secondary region: after ts-s1 (secondary), still inside
     // the template (between it and the fixed footer).
     await helper.dragBlockAfter('ts-p2', 'ts-s1');
 
-    // It moved into the secondary region but KEPT its authored slotId "primary".
+    // It moved into the secondary region but KEPT its authored slotId "default".
     await helper.clickBlockInIframe('ts-p2');
     await helper.waitForSidebarOpen();
-    await expect(page.locator('.field-wrapper-slotId input')).toHaveValue('primary');
+    await expect(page.locator('.field-wrapper-slotId input')).toHaveValue('default');
   });
 
   test('saved template changes persist and appear on other pages using the template', async ({ page }) => {
@@ -1396,23 +1488,23 @@ test.describe('Template Edit Mode - Block Settings', () => {
 
     // slotId input should be visible and have initial value from block data.
     const slotIdInput = page.locator('.field-wrapper-slotId input');
-    await expect(slotIdInput).toHaveValue('primary', { timeout: 5000 });
+    await expect(slotIdInput).toHaveValue('default', { timeout: 5000 });
     await helper.expectTemplateSettingsCount(1);
 
     // CRITICAL — wait for the sidebar form to STOP re-rendering before
-    // typing. Just-asserting toHaveValue('primary') above only catches
+    // typing. Just-asserting toHaveValue('default') above only catches
     // the first poll where the value matches; Volto's TextWidget can
     // still be receiving Redux dispatches from schema-inheritance
     // recompute / template state churn for several hundred ms after.
     // If we start typing during that window the input unmounts and our
     // keystrokes go nowhere (or land on the next mount with leftover
-    // text). Gate on N consecutive same-value polls of 'primary' before
+    // text). Gate on N consecutive same-value polls of 'default' before
     // touching it. (Cheap on the fast path: passes after ~300ms.)
     {
       let prev = '', stable = 0;
       await expect.poll(async () => {
         const v = await slotIdInput.inputValue();
-        if (v === prev && v === 'primary') stable++;
+        if (v === prev && v === 'default') stable++;
         else { stable = 0; prev = v; }
         return stable >= 3;
       }, { timeout: 5000, intervals: [100, 150, 200] }).toBe(true);
@@ -1921,7 +2013,11 @@ test.describe('Template Edit Mode - Permissions', () => {
       .click();
     await helper.waitForSidebarOpen();
 
-    // The save's can_add check GETs the folder; can_add=false blocks the create.
+    // Lock it (a page can't be saved with a template unlocked); it's created by
+    // the page save, whose can_add check GETs the folder; can_add=false blocks it.
+    const unlockedToggle = page.locator('.edit-template-toggle[aria-pressed="true"]');
+    await unlockedToggle.click();
+    await expect(unlockedToggle).toHaveCount(0);
     const folderCheck = page.waitForRequest(
       (r) => r.method() === 'GET' && new URL(r.url()).pathname.endsWith('/templates'),
       { timeout: 15000 },
@@ -1940,34 +2036,15 @@ test.describe('Template Edit Mode - Permissions', () => {
 });
 
 test.describe('Template Edit Mode - Lock affordance + metadata gating', () => {
-  // Sub-issue #1: the lock icon on a template block's Quanta toolbar is the
-  // discoverable way into template edit mode — clicking it enters edit mode for
-  // that block's template (no need to hunt for the sidebar toggle).
-  test('clicking the lock icon on a template block enters template edit mode', async ({ page }) => {
-    const helper = new AdminUIHelper(page);
-    await helper.login();
-    await helper.navigateToEdit('/template-test-page');
-
-    // A fixed template block is position-locked in normal mode, so its toolbar
-    // shows the lock icon.
-    const { blockId: headerBlockId } = await helper.waitForBlockByContent(TEMPLATE_HEADER_CONTENT);
-    await helper.clickBlockInIframe(headerBlockId);
-    await helper.waitForBlockSelectedInAdmin(headerBlockId);
-
-    const lockIcon = page.locator('.quanta-toolbar .lock-icon');
-    await expect(lockIcon).toBeVisible({ timeout: 5000 });
-
-    // Clicking the lock offers to unlock the template (v2: warns first); confirming
-    // enters edit mode → the fixed block becomes editable.
-    await lockIcon.click();
-    await page.locator('.template-unlock-modal .template-confirm').click();
-    await helper.waitForBlockEditable(headerBlockId);
-  });
+  // Sub-issue #1 (the lock as the way in) is now: the lock opens the template,
+  // and unlocking is done in its sidebar section — see "Template lock: only
+  // where locked, unlocked from the sidebar" (inka#774).
 
   // Sub-issue #2: you must be editing the template to change its name / save
-  // location. When NOT in edit mode the metadata fields render READ-ONLY (static
-  // text, no inputs); entering edit mode swaps them for editable widgets.
-  test('template name and save location are read-only unless editing the template', async ({ page }) => {
+  // location. Locked, the section shows what the template is and how to unlock
+  // it, not the fields again as read-only text (inka#774); unlocked, they are
+  // editable widgets.
+  test('template name and save location appear only when editing the template', async ({ page }) => {
     const helper = new AdminUIHelper(page);
     await helper.login();
     await helper.navigateToEdit('/template-test-page');
@@ -1978,16 +2055,15 @@ test.describe('Template Edit Mode - Lock affordance + metadata gating', () => {
     await helper.waitForSidebarOpen();
     await helper.escapeToParent();
 
-    // Template Settings form is shown (name + save location). Scope by label —
-    // there is also a page-level "Title" field with the same #field-title id.
+    // Scope by label — there is also a page-level "Title" field with the same
+    // #field-title id.
     const nameField = page.locator('.field').filter({ hasText: 'Template Name' });
     const folderField = page.locator('.field').filter({ hasText: 'Save Location' });
-    await expect(nameField).toBeVisible({ timeout: 5000 });
 
-    // Locked → read-only: no editable input / browse control, value shown as text.
-    await expect(nameField.locator('input')).toHaveCount(0);
-    await expect(nameField.locator('.readonly-field-value')).toBeVisible();
-    await expect(folderField.locator('button.action')).toHaveCount(0);
+    // Locked → the template's explanation and Unlock button; no fields.
+    await expect(page.locator('.template-locked-info')).toBeVisible({ timeout: 5000 });
+    await expect(nameField).toHaveCount(0);
+    await expect(folderField).toHaveCount(0);
 
     // Enter template edit mode via the sidebar toggle (v2: warns first).
     await page.locator('.sidebar-section-header[data-is-current="true"] .edit-template-toggle').click();
@@ -2183,7 +2259,7 @@ test.describe('Template Edit Mode v2 - multi-unlock, no page lock, lock-to-commi
     await expect(sidebar).toBeVisible({ timeout: 5000 });
   });
 
-  test('a template unlocks AND saves from the toolbar lock toggle — consistent spot, no sidebar', async ({ page, urls }) => {
+  test('an unlocked template saves from the toolbar lock toggle — consistent spot, no sidebar', async ({ page, urls }) => {
     const helper = new AdminUIHelper(page);
     await helper.login();
     await helper.navigateToEdit('/template-test-page');
@@ -2207,11 +2283,9 @@ test.describe('Template Edit Mode v2 - multi-unlock, no page lock, lock-to-commi
     const toolbar = page.locator('.quanta-toolbar');
     const toggle = toolbar.locator('.template-lock-toggle');
 
-    // Locked → the toggle shows the lock; clicking it UNLOCKS (via the warning modal).
-    await expect(toggle).toBeVisible({ timeout: 5000 });
-    await expect(toggle).toHaveAttribute('aria-pressed', 'false');
-    await toggle.click();
-    await page.locator('.template-unlock-modal .template-confirm').click();
+    // Unlocking is done in the template's sidebar section (inka#774); locking
+    // again is right here on the canvas.
+    await helper.unlockTemplate(headerBlockId);
     await helper.waitForBlockEditable(headerBlockId);
 
     // Make a change (delete the footer) so locking prompts to save.
@@ -2222,13 +2296,16 @@ test.describe('Template Edit Mode v2 - multi-unlock, no page lock, lock-to-commi
       document.dispatchEvent(new CustomEvent('hydra-delete-blocks', { detail: { blockIds: [id] } }));
     }, footerBlockId);
 
-    // Editing → the toggle is in the SAME spot but now LOCKS; clicking → decision
-    // modal → "Change on all pages" saves the template. The sidebar is never opened.
+    // Editing → the toggle is in the lock's spot and LOCKS; clicking → decision
+    // modal → "Change on all pages", and the page save writes the template. The
+    // sidebar isn't needed for this.
     await helper.clickBlockInIframe(headerBlockId);
     await helper.waitForBlockSelectedInAdmin(headerBlockId);
     await expect(toggle).toHaveAttribute('aria-pressed', 'true');
     await toggle.click();
     await page.locator('.template-lock-modal .template-commit').click();
+    await expect(toggle).toHaveAttribute('aria-pressed', 'false');
+    await helper.saveContent();
 
     await expect
       .poll(() => templateWrites.length, { timeout: 5000 })
@@ -2439,7 +2516,7 @@ test.describe('Template Edit Mode v2 - multi-unlock, no page lock, lock-to-commi
     await expect(iframe.locator(`[data-block-uid="${PAGE_BOTTOM}"]`)).toHaveCount(0);
   });
 
-  test('Change on all pages saves the template document at LOCK time', async ({ page, urls }) => {
+  test('Change on all pages writes nothing at LOCK time; the page save writes the template', async ({ page, urls }) => {
     const helper = new AdminUIHelper(page);
     await helper.login();
     await helper.navigateToEdit('/two-template-page');
@@ -2468,10 +2545,12 @@ test.describe('Template Edit Mode v2 - multi-unlock, no page lock, lock-to-commi
       document.dispatchEvent(new CustomEvent('hydra-delete-blocks', { detail: { blockIds: [id] } }));
     }, i1Footer);
 
-    // Locking with "Change on all pages" writes the template document now —
-    // before (and independently of) any page save. Lock via the fixed chrome header.
+    // Locking with "Change on all pages" checks the template and keeps the edit;
+    // nothing is written until the page is saved. Lock via the fixed chrome header.
     await helper.lockTemplate(i1Header, 'commit');
-    await expect.poll(() => templateWrites.length, { timeout: 5000 }).toBeGreaterThanOrEqual(1);
+    expect(templateWrites, 'locking writes nothing').toEqual([]);
+    await helper.saveContent();
+    await expect.poll(() => templateWrites.length, { timeout: 5000 }).toBe(1);
   });
 
   test('saving the page while a template is unlocked is blocked with a lock-first prompt', async ({ page }) => {
@@ -2498,5 +2577,98 @@ test.describe('Template Edit Mode v2 - multi-unlock, no page lock, lock-to-commi
     await expect(gate).toBeVisible({ timeout: 5000 });
     await expect(gate).toContainText(/lock/i);
     expect(pagePatched).toBe(false);
+  });
+});
+
+// A lock says "this block is locked". Only a block the page may not edit shows
+// one; clicking it takes the author to the template's own sidebar section, which
+// says what the template is and what unlocking it does, and holds the Unlock
+// button. Unlocking never happens from the canvas by accident (inka#774).
+test.describe('Template lock: only where locked, unlocked from the sidebar', () => {
+  test('the toolbar shows a lock on a locked block, and none on an editable one', async ({ page }) => {
+    const helper = new AdminUIHelper(page);
+    const toolbarLock = page.locator('.quanta-toolbar .template-lock-toggle');
+    await helper.login();
+    await helper.navigateToEdit('/template-test-page');
+
+    // Locked (fixed + read-only): a lock.
+    const { blockId: headerBlockId } = await helper.waitForBlockByContent(TEMPLATE_HEADER_CONTENT);
+    await helper.clickBlockInIframe(headerBlockId);
+    await helper.waitForBlockSelectedInAdmin(headerBlockId);
+    await expect(toolbarLock).toBeVisible({ timeout: 5000 });
+
+    // The template's open slot: page content, moved like any other. No lock.
+    await helper.clickBlockInIframe(USER_CONTENT_1);
+    await helper.waitForBlockSelectedInAdmin(USER_CONTENT_1);
+    await expect(page.locator('.quanta-toolbar .drag-handle')).toBeVisible();
+    await expect(page.locator('.quanta-toolbar .lock-icon')).toHaveCount(0);
+
+    // Fixed but editable: it stays where the template puts it, but the page
+    // edits it. No lock.
+    await helper.cancelEdit();
+    await helper.navigateToEdit('/another-page');
+    await helper.waitForIframeReady();
+    await page.locator('.sidebar-section-header .section-title').click();
+    await page.locator('.layout-selector select').selectOption('Editable Fixed Layout');
+    await page.locator('.apply-layout-btn').click();
+    const { blockId: editableHeaderId } = await helper.waitForBlockByContent('Editable Header');
+    await helper.clickBlockInIframe(editableHeaderId);
+    await helper.waitForBlockSelectedInAdmin(editableHeaderId);
+    await expect(page.locator('.quanta-toolbar .lock-icon')).toHaveCount(0);
+  });
+
+  test('the lock opens the template in the sidebar, which explains unlocking and does it', async ({ page }) => {
+    const helper = new AdminUIHelper(page);
+    await helper.login();
+    await helper.navigateToEdit('/template-test-page');
+
+    const { blockId: headerBlockId } = await helper.waitForBlockByContent(TEMPLATE_HEADER_CONTENT);
+    await helper.clickBlockInIframe(headerBlockId);
+    await helper.waitForBlockSelectedInAdmin(headerBlockId);
+    await page.locator('.quanta-toolbar .template-lock-toggle').click();
+
+    // Not unlocked, not even asked: the template is selected instead, and its
+    // section says what unlocking means.
+    await expect(page.locator('.template-unlock-modal')).toHaveCount(0);
+    const current = page.locator('.sidebar-section-header[data-is-current="true"]');
+    await expect(current.locator('.nav-title')).toContainText('Template', { timeout: 5000 });
+    const about = page.locator('.template-locked-info');
+    await expect(about).toBeVisible();
+    await expect(about).toContainText(/every page using this template/i);
+    await helper.waitForBlockReadonly(headerBlockId);
+
+    // Unlocking is done there, and asked first.
+    await about.locator('.template-unlock-button').click();
+    await page.locator('.template-unlock-modal .template-confirm').click();
+    await helper.waitForBlockEditable(headerBlockId);
+    await expect(about).toHaveCount(0);
+  });
+
+  test('the template section offers the region\'s other layouts', async ({ page }) => {
+    const helper = new AdminUIHelper(page);
+    const iframe = helper.getIframe();
+    await helper.login();
+    await helper.navigateToEdit('/another-page');
+    await helper.waitForIframeReady();
+    await page.locator('.sidebar-section-header .section-title').click();
+    await page.locator('.layout-selector select').selectOption('Header Footer Layout');
+    await page.locator('.apply-layout-btn').click();
+
+    // From a block in the layout, up to the layout itself.
+    const { blockId: headerBlockId } = await helper.waitForBlockByContent('Layout Header');
+    await helper.clickBlockInIframe(headerBlockId);
+    await helper.waitForBlockSelectedInAdmin(headerBlockId);
+    await page.locator('.quanta-toolbar .template-lock-toggle').click();
+
+    const layout = page.locator('.template-locked-info .layout-selector select');
+    await expect(layout).toBeVisible({ timeout: 5000 });
+    await layout.selectOption('Header Only Layout');
+    await page.locator('.template-locked-info .apply-layout-btn').click();
+    await expect(
+      iframe.locator('main [data-block-uid], #content [data-block-uid]').filter({ hasText: 'Header Only' }),
+    ).toBeVisible({ timeout: 10000 });
+    await expect(
+      iframe.locator('main [data-block-uid], #content [data-block-uid]').filter({ hasText: 'Layout Footer' }),
+    ).toHaveCount(0);
   });
 });

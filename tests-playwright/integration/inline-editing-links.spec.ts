@@ -85,6 +85,47 @@ test.describe('Inline Editing - Links', () => {
     expect(blockHtml).toContain('https://plone.org');
   });
 
+  test('text typed into a new paragraph, then linked, is drawn and saved once', async ({ page }) => {
+    // Typing into an empty paragraph, selecting what was typed and linking it
+    // makes it a link, once. No plain copy of the text is left in front of it.
+    const helper = new AdminUIHelper(page);
+    await helper.login();
+    await helper.navigateToEdit('/test-page');
+    const iframe = helper.getIframe();
+
+    await helper.clickBlockInIframe('block-1-uuid');
+    await helper.enterEditMode('block-1-uuid');
+    const first = await helper.getEditorLocator('block-1-uuid');
+    await first.press('End');
+    await first.press('Enter');
+    const fresh = iframe.locator('[contenteditable=true]:focus').first();
+    await expect(fresh).toHaveText('');
+    await page.keyboard.type('link');
+    await expect(fresh).toHaveText('link');
+
+    await helper.selectAllTextInEditor(fresh);
+    await helper.clickFormatButton('link');
+    await helper.waitForLinkEditorPopup();
+    const linkUrlInput = await helper.getLinkEditorUrlInput();
+    await linkUrlInput.fill('https://plone.org');
+    await linkUrlInput.press('Enter');
+    await helper.waitForLinkEditorToClose();
+
+    await expect(fresh.locator('a')).toHaveText('link');
+    await expect(fresh).toHaveText('link');
+
+    const patchRequest = page.waitForRequest(
+      (req) => req.method() === 'PATCH' && new URL(req.url()).pathname.endsWith('/test-page'),
+    );
+    await helper.saveContent();
+    const body = JSON.parse((await patchRequest).postData() || '{}');
+    const text = (n: any): string =>
+      Array.isArray(n) ? n.map(text).join('') : typeof n?.text === 'string' ? n.text : text(n?.children ?? []);
+    const linked = Object.values(body.blocks).filter((b: any) => savedLinks(b).length);
+    expect(linked).toHaveLength(1);
+    expect(text((linked[0] as any).value).replace(/\u200B/g, '')).toBe('link');
+  });
+
   test('can clear a link', async ({ page }) => {
     const helper = new AdminUIHelper(page);
 

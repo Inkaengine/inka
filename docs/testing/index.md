@@ -16,7 +16,7 @@ order:
   - blockmd
   - testing-content
 blocks-matched: |
-  <block type="slate" value="${p,h*,ul,ol,blockquote,strong,em,a/slate}" plaintext="${p,h*,ul,ol,blockquote,strong,em,a/text}" />
+  <block type="slate" value="${p,h*,ul,ol,blockquote,strong,em,a/slate}" />
   <block type="title" _="${h1}" />
   <block type="codeExample">
     <region name="tabs" widget="object_list" idField="@id" typeField="@type">
@@ -31,7 +31,7 @@ Inka's mock API serves content as a Plone-style REST API, from Markdown files or
 
 ## In this section
 
-<block type="listing" data-json='{"headlineTag":"h2","variation":"summary","querystring":{"query":[{"i":"path","o":"plone.app.querystring.operation.string.relativePath","v":".::1"},{"i":"exclude_from_nav","o":"plone.app.querystring.operation.boolean.isFalse","v":""}],"sort_on":"getObjPositionInParent","sort_order":"ascending","depth":1},"fieldMapping":{"@id":"href","title":"title","description":"description","image":"image"}}' />
+<block type="listing" data-json='{"headlineTag":"h2","variation":"summary","querystring":{"query":[{"i":"path","o":"plone.app.querystring.operation.string.relativePath","v":".::1"},{"i":"exclude_from_nav","o":"plone.app.querystring.operation.boolean.isFalse","v":""}],"sort_on":"getObjPositionInParent","sort_order":"ascending","depth":1},"fieldMapping":{"getURL":{"field":"href","type":"link"},"title":{"field":"title","type":"string"},"description":{"field":"description","type":"textarea"},"image":{"field":"image","type":"image_link"}}}' />
 
 ## Test your blocks in your own CI
 
@@ -132,7 +132,7 @@ export default defineConfig({
 });
 ```
 
-`npm run dev` stands for however your front end starts, told the mock API's URL as its API. The same module has `defineEmptyRegionTests`, `defineListingContainerTests` and `definePageIntegrityTests`, for the other checks on the rendered page.
+`npm run dev` stands for however your front end starts, told the mock API's URL as its API. That one call is all of sanity: every block discovery found, the template slots, every container region emptied as the editor empties it, every listing in the containers that allow one, and every discovered page whole (no broken images, no links to the backend's origin).
 
 ### GitHub Actions
 

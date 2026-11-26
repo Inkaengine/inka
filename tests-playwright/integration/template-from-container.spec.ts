@@ -32,6 +32,12 @@ test('a template made from a section saves its children as the template\'s own',
     .click();
   await helper.waitForSidebarOpen();
 
+  // A new template is saved by locking it, like any other: it is created
+  // then, and a page can't be saved with a template unlocked.
+  const unlockedToggle = page.locator('.edit-template-toggle[aria-pressed="true"]');
+  await unlockedToggle.click();
+  await expect(unlockedToggle).toHaveCount(0);
+
   await helper.saveContent();
 
   await expect.poll(() => posts.length, { message: 'the new template is saved' }).toBeGreaterThanOrEqual(1);
@@ -40,7 +46,7 @@ test('a template made from a section saves its children as the template\'s own',
   expect(sections).toHaveLength(1);
   const section = sections[0];
   const children = section.blocks_layout.items.map((id: string) => section.blocks[id]);
-  expect(children.map((c: any) => c.plaintext)).toEqual(['Inside the section']);
+  expect(children.map((c: any) => c.value[0].children.map((n: any) => n.text).join(""))).toEqual(['Inside the section']);
   expect(children.map((c: any) => c.templateId), 'each child is the template\'s own').toEqual([section.templateId]);
 });
 
@@ -77,6 +83,12 @@ test('a new template saves the kind chosen before its first save', async ({ page
   await page.locator('.react-select__menu .react-select__option', { hasText: 'Fixed, read-only' }).click();
   await expect(kindField.locator('.react-select__single-value')).toContainText('Fixed, read-only');
 
+  // A new template is saved by locking it, like any other: it is created
+  // then, and a page can't be saved with a template unlocked.
+  const unlockedToggle = page.locator('.edit-template-toggle[aria-pressed="true"]');
+  await unlockedToggle.click();
+  await expect(unlockedToggle).toHaveCount(0);
+
   await helper.saveContent();
 
   await expect.poll(() => posts.length, { message: 'the new template is saved' }).toBeGreaterThanOrEqual(1);
@@ -85,5 +97,5 @@ test('a new template saves the kind chosen before its first save', async ({ page
   expect(sections).toHaveLength(1);
   expect(sections[0]).toMatchObject({ fixed: true, readOnly: true });
   const children = sections[0].blocks_layout.items.map((id: string) => sections[0].blocks[id]);
-  expect(children.map((c: any) => c.plaintext)).toEqual(['Inside the section']);
+  expect(children.map((c: any) => c.value[0].children.map((n: any) => n.text).join(""))).toEqual(['Inside the section']);
 });

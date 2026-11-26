@@ -581,7 +581,7 @@
     </template>
   </div>
 
-  <component v-else-if="block['@type'] == 'heading'" :is="block.tag || 'h2'"
+  <component v-else-if="block['@type'] == 'heading'" :is="block.tag"
     :data-block-uid="block_uid" data-edit-text="heading"
     :class="{ 'text-center': block.alignment === 'center', 'text-right': block.alignment === 'right' }">
     {{ block.heading }}
@@ -640,21 +640,28 @@
     </NuxtLink>
   </div>
 
-  <div v-else-if="block['@type'] == 'video'" :data-block-uid="block_uid" class="my-4">
-    <div v-if="getYouTubeId(block.url)" class="relative w-full pb-[56.25%]">
+  <div v-else-if="block['@type'] == 'video'" :data-block-uid="block_uid" data-edit-link="url" class="my-4">
+    <!-- The preview image shows before the video plays: the <video>'s poster,
+         or for YouTube a picture linked to the video. Empty means absent. -->
+    <a v-if="getYouTubeId(linkUrl(block.url)) && imageProps(block.preview_image).url"
+       :href="`https://www.youtube.com/watch?v=${getYouTubeId(linkUrl(block.url))}`" data-edit-link="url">
+      <img data-edit-media="preview_image" :src="imageProps(block.preview_image).url" alt="Play video" class="w-full h-auto rounded-lg" />
+    </a>
+    <div v-else-if="getYouTubeId(linkUrl(block.url))" class="relative w-full pb-[56.25%]">
       <iframe class="absolute inset-0 w-full h-full rounded-lg"
-          :src="`https://www.youtube.com/embed/${getYouTubeId(block.url)}`"
+          :src="`https://www.youtube.com/embed/${getYouTubeId(linkUrl(block.url))}`"
           frameborder="0" allowfullscreen></iframe>
     </div>
-    <video v-else-if="block.url"
+    <video v-else-if="linkUrl(block.url)"
            class="w-full h-auto max-w-full rounded-lg"
-           data-edit-media="url"
            :controls="block.controls !== false"
            :autoplay="!!block.autoplay"
            :loop="!!block.loop"
            :muted="!!block.muted || !!block.autoplay"
+           :poster="imageProps(block.preview_image).url || undefined"
+           :data-edit-media="imageProps(block.preview_image).url ? 'preview_image' : undefined"
            playsinline>
-      <source :src="getVideoSrc(block.url)" type="video/mp4">
+      <source :src="getVideoSrc(linkUrl(block.url))" type="video/mp4">
     </video>
   </div>
 
@@ -955,11 +962,11 @@
     <span class="text-sm text-gray-500 dark:text-gray-400">Follow us:</span>
     <a v-for="link in expand(block.links || [], null, '@id')" :key="link['@uid']"
        :data-block-uid="link['@uid']" data-block-add="right"
-       :href="link.url" target="_blank" rel="noopener"
+       :href="linkUrl(link.url)" target="_blank" rel="noopener"
        data-edit-link="url"
-       :title="socialInfo(link.url).name"
+       :title="socialInfo(linkUrl(link.url)).name"
        class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 transition-colors">
-      <span v-html="socialInfo(link.url).svg" />
+      <span v-html="socialInfo(linkUrl(link.url)).svg" />
     </a>
   </div>
 
@@ -967,7 +974,7 @@
   <div v-else-if="block['@type'] == 'maps'" :data-block-uid="block_uid"
        :class="['maps-block my-4', { 'mx-auto max-w-2xl': block.align === 'center', 'float-left mr-4': block.align === 'left', 'float-right ml-4': block.align === 'right' }]">
     <h3 v-if="block.title" data-edit-text="title" class="text-lg font-semibold mb-2">{{ block.title }}</h3>
-    <iframe v-if="block.url" :src="block.url" data-edit-link="url"
+    <iframe v-if="linkUrl(block.url)" :src="linkUrl(block.url)" data-edit-link="url"
       :class="{ 'w-full': block.align === 'full' || block.align === 'center', 'w-96': block.align === 'left' || block.align === 'right' }"
       height="450" style="border:0;" allowfullscreen="" loading="lazy" referrerpolicy="no-referrer-when-downgrade"></iframe>
     <p v-else class="text-gray-400 italic">No map URL configured</p>
@@ -1548,10 +1555,12 @@ const tocEntries = computed(() => {
     const b = blocks[id];
     if (!b) continue;
     if (b['@type'] === 'heading' && b.heading) {
-      result.push({ id, level: parseInt((b.tag || 'h2').slice(1)), text: b.heading });
+      result.push({ id, level: parseInt(b.tag.slice(1)), text: b.heading });
     } else if (b['@type'] === 'slate' && b.value?.[0]?.type?.match(/^h[1-6]$/)) {
       const level = parseInt(b.value[0].type.slice(1));
-      const text = b.plaintext || b.value[0].children?.map(c => c.text).join('') || '';
+      // The heading's own words: inline ones (bold, a link) hold theirs in children.
+      const words = (nodes) => nodes.map((n) => (typeof n.text === 'string' ? n.text : words(n.children))).join('');
+      const text = words(b.value[0].children);
       if (text.trim()) result.push({ id, level, text });
     }
   }

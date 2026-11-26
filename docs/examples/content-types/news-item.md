@@ -21,7 +21,7 @@ subjects:
   - news
 title: News Item
 blocks-matched: |
-  <block type="slate" value="${p,h*,ul,ol,blockquote,strong,em,a/slate}" plaintext="${p,h*,ul,ol,blockquote,strong,em,a/text}" />
+  <block type="slate" value="${p,h*,ul,ol,blockquote,strong,em,a/slate}" />
   <block type="title" _="${h1}" />
   <block type="separator" _="${hr}" styles={"align":"full"} />
   <block type="image" description="${p?/textarea}" url="${img/src}" alt="${img?/alt}" title="${img?/title}" align="center" size="l" />
@@ -45,7 +45,7 @@ blocks-tagged: |
 
 </fields>
 
-<fields slotId="content" fixed=false readOnly=false>
+<fields slotId="default" fixed=false readOnly=false>
 
 <block type="image">
 
@@ -71,7 +71,7 @@ Der Inhaltstyp Bild kann verwendet werden um ein Bild in verschiedenen Formate (
 
 Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincidunt ut laoreet dolore magna aliquam erat volutpat. Ut wisi enim ad minim veniam, quis nostrud exerci tation ullamcorper suscipit lobortis nisl ut aliquip ex ea commodo consequat.&#x20;
 
-<fields templateId="/inka-templates/newsitem-view" templateInstanceId="tpl-ni-def" slotId="content" fixed=false readOnly=false>
+<fields templateId="/inka-templates/newsitem-view" templateInstanceId="tpl-ni-def" slotId="default" fixed=false readOnly=false>
 
 ---
 

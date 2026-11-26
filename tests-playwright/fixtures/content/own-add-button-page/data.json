@@ -18,7 +18,6 @@
       "submit_label": "Submit",
       "subblocks": [
         {
-          "@id": "empty-1",
           "field_id": "empty-1",
           "field_type": "empty",
           "label": ""

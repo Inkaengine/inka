@@ -20,9 +20,25 @@
  *  - `order:` frontmatter on a folder index -> a `{toctree}` of its children
  *  - heavy frontmatter (@type, UID, blocks-*, prototypes, …) -> dropped
  */
-import { readFileSync, writeFileSync, readdirSync, mkdirSync, existsSync, rmSync, cpSync, statSync } from 'fs';
-import { join, dirname, relative, basename } from 'path';
-import { folderExcludes, resolveCodeExampleSources, schemaRegistryFromBlockDefinitions } from '../packages/blockmd/markdown-mount.mjs';
+import {
+  resolveSchemaExamples,
+  schemaRegistryFromBlockDefinitions,
+} from '@inka/mock-api/from-schemas';
+import {
+  cpSync,
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from 'node:fs';
+import { basename, dirname, join, relative } from 'node:path';
+import {
+  folderExcludes,
+  resolveCodeExampleSources,
+} from '../packages/blockmd/markdown-mount.mjs';
 import { decodePage } from '../packages/blockmd/prototype-mapping.mjs';
 import { sharedBlocksConfig } from '../tests-playwright/fixtures/shared-block-schemas.js';
 
@@ -119,7 +135,8 @@ for (const f of walk(SRC)) {
   if (fm) {
     const page = decodePage(raw);
     if (page.blocks) {
-      resolveCodeExampleSources(page, { schemaFor });
+      resolveCodeExampleSources(page);
+      resolveSchemaExamples(page, { schemaFor });
       for (const b of Object.values(page.blocks)) {
         if (b['@type'] === 'codeExample' && b.source && b.tabs && b.tabs[0]) {
           sourceMap.set(`${b.source}|${b.format}`, { label: b.tabs[0].label, code: b.tabs[0].code });

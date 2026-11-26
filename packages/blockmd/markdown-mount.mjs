@@ -93,16 +93,34 @@ export function resolveMediaUrl(url, base, prefix = '') {
   return prefix && prefix !== '/' ? prefix + (treePath === '/' ? '' : treePath) : treePath;
 }
 
+/** An `@id` written as a path relative to the page (`./x`, `../x`, `x.md`), not
+ *  an object list item's own id (`link-1`). */
+const isRelativePath = (id) => /^\.\.?\//.test(id) || id.split('#')[0].endsWith('.md');
+
+/** A link's relative address: a `.md` target is a page, anything else a file. */
+const resolveLinkId = (id, base, prefix) => {
+  if (!isRelativePath(id)) return id;
+  return id.split('#')[0].endsWith('.md') ? resolveMarkdownLink(id, base, prefix) : resolveMediaUrl(id, base, prefix);
+};
+
+/** A list of `{ '@id' }` entries: a link field's value (the one shape a link is stored in). */
+const isLinkList = (value) => Array.isArray(value) && value.length > 0
+  && value.every((v) => v && typeof v === 'object' && !Array.isArray(v) && typeof v['@id'] === 'string');
+
 /** Walk a decoded page and rewrite hand-authored relative references against
  *  `base`, prefixed by the mount path so they match the served @ids: every
- *  slate link's `.md` url, and every image/video block's media `url`. */
+ *  slate link's `.md` url, every link list's `@id`, and every image block's
+ *  media `url`. */
 export function resolveMarkdownLinksInBlocks(node, base, prefix = '') {
   if (Array.isArray(node)) { node.forEach((n) => resolveMarkdownLinksInBlocks(n, base, prefix)); return node; }
   if (!node || typeof node !== 'object') return node;
   if (node.type === 'link' && node.data && typeof node.data.url === 'string') {
     node.data.url = resolveMarkdownLink(node.data.url, base, prefix);
   }
-  if ((node['@type'] === 'image' || node['@type'] === 'video') && typeof node.url === 'string') {
+  for (const [key, value] of Object.entries(node)) {
+    if (isLinkList(value)) node[key] = value.map((link) => ({ ...link, '@id': resolveLinkId(link['@id'], base, prefix) }));
+  }
+  if (node['@type'] === 'image' && typeof node.url === 'string') {
     node.url = resolveMediaUrl(node.url, base, prefix);
   }
   for (const value of Object.values(node)) resolveMarkdownLinksInBlocks(value, base, prefix);
@@ -316,8 +334,12 @@ function sliceJsObject(code, name) {
  *  engine (and the rendered docs) show the referenced file's real code with no
  *  copy in the markdown. Honors :language:, :start-after:/:end-before:, :lines:,
  *  matching Sphinx so both renderers show the identical slice. Paths are relative
- *  to `baseDir` (the markdown file's directory). Fails loudly on a missing file. */
-export function resolveLiteralIncludes(text, baseDir) {
+ *  to `baseDir` (the markdown file's directory). Fails loudly on a missing file.
+ * @param {{ root: string, prefix?: string }} [mount] - where the tree is served
+ *   from: with it, an `:as: json` include shows its links as the site serves
+ *   them (as readTree resolves the page's own); without it, as authored.
+ */
+export function resolveLiteralIncludes(text, baseDir, mount) {
   return text.replace(/```\{literalinclude\}[ \t]+(\S+)[ \t]*\n([\s\S]*?)```/g, (_m, relPath, body) => {
     const opts = {};
     for (const line of body.split('\n')) {
@@ -328,7 +350,7 @@ export function resolveLiteralIncludes(text, baseDir) {
     if (!existsSync(file)) throw new Error(`literalinclude: file not found: ${relPath} (from ${baseDir})`);
     const full = readFileSync(file, 'utf8');
     // `:jsobject: <name>` — include one object literal (a block definition from
-    // shared-block-schemas.js) by brace-matching, the `:pyobject:` analog. Just
+    // a JS module) by brace-matching, the `:pyobject:` analog. Just
     // slices text; no evaluation.
     if (opts.jsobject) {
       const lang = opts.language || LANG_BY_EXT[extname(relPath).toLowerCase()] || 'javascript';
@@ -351,6 +373,7 @@ export function resolveLiteralIncludes(text, baseDir) {
       const fm = fmMatch ? fmMatch[0] : '---\n---\n';
       const body = fmMatch ? full.slice(fmMatch[0].length) : full;
       const decoded = decodePage(`${fm}${sliceInclude(body, opts)}\n`, { ignoreAssignments: true });
+      if (mount && decoded.blocks) resolveMarkdownLinksInBlocks(decoded.blocks, relative(mount.root, dirname(file)), mount.prefix ?? '');
       const entries = Object.values(decoded.blocks || {});
       // `:block: <uid-or-@type>` selects one block by identity (the `:pyobject:`
       // analog) — source= parity with no text anchors, robust across re-emit.
@@ -372,31 +395,14 @@ export function resolveLiteralIncludes(text, baseDir) {
   });
 }
 
-/** Build a `schemaFor(type) -> blockSchema` lookup from a block-schema registry.
- *  Handles both shapes the project uses:
- *   - FLAT (`shared-block-schemas` `sharedBlocksConfig`): `{ type: { blockSchema } }`
- *     — the complete registry the frontends register from (every block type).
- *   - PAGE-GROUPED (`block-definitions.json`): `{ pageKey: { blocks: { type: { blockSchema } } } }`.
- *  Using the same registry the frontends use means a schema shown on a doc page
- *  is the one that actually renders. */
-export function schemaRegistryFromBlockDefinitions(registry) {
-  const byType = new Map();
-  for (const [key, def] of Object.entries(registry || {})) {
-    if (def && def.blockSchema) byType.set(key, def.blockSchema);          // flat
-    for (const [type, d] of Object.entries((def && def.blocks) || {})) {   // page-grouped
-      if (d && d.blockSchema) byType.set(type, d.blockSchema);
-    }
-  }
-  return (type) => byType.get(type);
-}
-
 /**
  * Resolve `<block type="codeExample" source="<selector>" format="json|schema">`
  * blocks on a decoded page — the single-source example views. Instead of a
  * hand-written copy that drifts, a codeExample POINTS at the real thing:
  *   - format="json"   -> the data of the block on this page whose uid or @type
  *                        matches `source` (the live example instance itself).
- *   - format="schema" -> the registry blockSchema for `source` (@type).
+ *   - format="schema" -> left for whoever has the frontend's schemas (the mock
+ *                        API fills it after decode): it isn't on the page.
  * Its `tabs` are filled with that, so the code the reader sees IS the object that
  * renders / the schema that validates. Resolved at load/build time (mount +
  * gen-myst), so it works for served docs and static Sphinx alike, with no
@@ -442,7 +448,7 @@ export function normalizeNestedUids(data) {
   return clone;
 }
 
-export function resolveCodeExampleSources(page, { schemaFor } = {}) {
+export function resolveCodeExampleSources(page) {
   const blocks = page && page.blocks;
   if (!blocks) return page;
   const byType = (t) => Object.entries(blocks).find(([, b]) => b['@type'] === t);
@@ -458,9 +464,9 @@ export function resolveCodeExampleSources(page, { schemaFor } = {}) {
       const shown = filters.has('uids') ? normalizeNestedUids(data) : data;
       b.tabs = [{ '@id': `${id}-json`, '@type': 'tab', label: 'JSON', language: 'json', code: JSON.stringify(shown, null, 2) }];
     } else if (format === 'schema') {
-      const schema = schemaFor && schemaFor(source);
-      if (!schema) throw new Error(`codeExample ${id}: no schema for "${source}" in the block-definitions registry`);
-      b.tabs = [{ '@id': `${id}-schema`, '@type': 'tab', label: 'Schema', language: 'json', code: JSON.stringify(schema, null, 2) }];
+      // A schema isn't on the page: whoever serves it with the frontend's schemas
+      // fills it (the mock API's schema step), so decode needs only the markdown.
+      continue;
     } else {
       throw new Error(`codeExample ${id}: source "${source}" set but format="${format}" (expected json|schema)`);
     }
@@ -473,7 +479,7 @@ export function resolveCodeExampleSources(page, { schemaFor } = {}) {
   return page;
 }
 
-export function readTree(root, { decode = decodeAuto, prefix = '', schemaFor, isFolderish } = {}) {
+export function readTree(root, { decode = decodeAuto, prefix = '', isFolderish } = {}) {
   // Which types are folderish is the site's (Plone computes it from the type),
   // so the caller says; the mount keeps no list of type names.
   if (typeof isFolderish !== 'function') {
@@ -493,7 +499,7 @@ export function readTree(root, { decode = decodeAuto, prefix = '', schemaFor, is
     if (!file.endsWith('.md')) continue;
     // `{literalinclude}` references are resolved to inline code before decoding,
     // so a codeExample tab shows the referenced file's real code with no copy.
-    const page = decode(resolveLiteralIncludes(readFileSync(file, 'utf8'), dirname(file)));
+    const page = decode(resolveLiteralIncludes(readFileSync(file, 'utf8'), dirname(file), { root, prefix }));
     const id = idFor(root, file);
     page['@id'] = id;
     if (/(?:^|[/\\])(index|README)\.md$/i.test(file)) folderForm.add(id);
@@ -501,11 +507,10 @@ export function readTree(root, { decode = decodeAuto, prefix = '', schemaFor, is
     // Rewrite hand-authored .md cross-links to served paths, against this page's
     // own directory relative to the root (root '' for the site root).
     if (page.blocks) resolveMarkdownLinksInBlocks(page.blocks, relative(root, dirname(file)), prefix);
-    // Fill any `source=`/`format=` codeExample from the live instance / registry,
-    // so an example page's shown JSON/schema IS what renders (single source). It
-    // reads the AUTHORED block (a link is its lean `[{'@id'}]` reference), which
+    // Fill a `source=` codeExample that shows a block on this page, so its shown
+    // JSON IS what renders (single source). It reads the AUTHORED block (a link is its lean `[{'@id'}]` reference), which
     // is exactly what a reader should see — the served summary is resolved later.
-    if (page.blocks) resolveCodeExampleSources(page, { schemaFor });
+    if (page.blocks) resolveCodeExampleSources(page);
 
     // `order:`, `exclude:` and `blobs:` describe the FOLDER (nav order, which
     // children are not pages, attached bytes) — not the page's own content, so
@@ -585,100 +590,8 @@ export function readTree(root, { decode = decodeAuto, prefix = '', schemaFor, is
   }
 
   normalizeInstanceTemplateFields(items);
-  resolveLinkSummaries(items, { schemaFor, prefix });
   deriveServerState(items, order, isFolderish);
   return { items, blobFiles, order, folderForm };
-}
-
-// The markdown mount stores a link to a local object as the bare, non-stale
-// reference `[{'@id':'/path'}]` — the readable form, and the one that can't go
-// stale because the label lives on the target, not the link. Volto snapshots a
-// block link's summary at edit time and NEVER re-resolves it, so the
-// DISTRIBUTION this builds (what gets imported) must already carry the summary,
-// or the deployed teaser/link ships with no title/description. So fill it here,
-// at decode, from the local target — driven by the WIDGET (an `object_browser`
-// field), never the field name: `href` is object_browser on a teaser but a
-// plain url string on a card, so only the schema knows which is a link. A
-// `url`-widget field is an external string and is left alone; an `@id` that
-// resolves to no local object (external / not in this tree) stays bare.
-function resolveLinkSummaries(items, { schemaFor, prefix = '' } = {}) {
-  if (!schemaFor) return items; // widget-driven: no schema, nothing to key on
-  const localId = (id) => (prefix && id.startsWith(prefix) ? id.slice(prefix.length) : id) || '/';
-  const isBareLink = (o) => o && typeof o === 'object' && !Array.isArray(o)
-    && typeof o['@id'] === 'string' && Object.keys(o).length === 1;
-
-  const summary = (id, target) => {
-    // Mirror the server serializer's teaser summary. image_field names WHICH
-    // field a teaser pulls its preview from: an Image / a lead `image` field ->
-    // 'image'; a `preview_image` -> 'preview_image'; nothing -> '' (no preview).
-    const leadImage = !!(target.image && (target.image.blob_path || target.image.width));
-    const hasPreview = !!(target.preview_image || target['@type'] === 'Image');
-    const imageField = (target['@type'] === 'Image' || leadImage) ? 'image'
-      : (hasPreview ? 'preview_image' : '');
-    return {
-      '@id': id,
-      '@type': target['@type'],
-      Title: target.title ?? null,
-      Description: target.description ?? '',
-      title: target.title ?? null,
-      head_title: target.head_title ?? null,
-      getRemoteUrl: target.getRemoteUrl ?? null,
-      hasPreviewImage: hasPreview,
-      image_field: imageField,
-    };
-  };
-
-  // Fill a single object_browser field value in place. The widget stores the
-  // object-list-of-one shape Volto uses, `[{'@id'}]`; a value already carrying a
-  // summary (the snapshot form) is left untouched, so this only ever ENRICHES a
-  // bare reference and can't overwrite authored data.
-  const fillField = (value) => {
-    if (!Array.isArray(value)) return value;
-    return value.map((el) => {
-      if (!isBareLink(el)) return el;
-      const target = items.get(localId(el['@id']));
-      return target ? summary(el['@id'], target) : el; // unresolvable -> keep bare
-    });
-  };
-
-  const fillBlock = (block) => {
-    if (!block || typeof block !== 'object') return;
-    const schema = block['@type'] ? schemaFor(block['@type']) : null;
-    if (schema && schema.properties) {
-      for (const [field, def] of Object.entries(schema.properties)) {
-        const v = block[field];
-        if (v == null) continue;
-        if (def.widget === 'object_browser') {
-          block[field] = fillField(v);
-        } else if (def.widget === 'object_list' && Array.isArray(v) && def.schema && def.schema.properties) {
-          // Items are block instances; fill THEIR object_browser fields, and
-          // recurse into any content blocks they hold (a teaser inside a panel).
-          const itemProps = def.schema.properties;
-          for (const item of v) {
-            if (!item || typeof item !== 'object') continue;
-            for (const [f, d] of Object.entries(itemProps)) {
-              if (d.widget === 'object_browser' && item[f] != null) item[f] = fillField(item[f]);
-            }
-            if (item.blocks && typeof item.blocks === 'object') {
-              for (const child of Object.values(item.blocks)) fillBlock(child);
-            }
-          }
-        }
-      }
-    }
-    // A container block holds its children in a shared `blocks` dict; recurse so
-    // a link nested in a column / accordion panel is filled too.
-    if (block.blocks && typeof block.blocks === 'object' && !Array.isArray(block.blocks)) {
-      for (const child of Object.values(block.blocks)) fillBlock(child);
-    }
-  };
-
-  for (const [, page] of items) {
-    if (page.blocks && typeof page.blocks === 'object') {
-      for (const block of Object.values(page.blocks)) fillBlock(block);
-    }
-  }
-  return items;
 }
 
 /**

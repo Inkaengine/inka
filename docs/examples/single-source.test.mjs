@@ -1,7 +1,11 @@
-import { describe, it, expect, beforeAll } from 'vitest';
-import { fileURLToPath } from 'node:url';
+import {
+  resolveSchemaExamples,
+  schemaRegistryFromBlockDefinitions,
+} from '@inka/mock-api/from-schemas';
 import { dirname, join } from 'node:path';
-import { readTree, schemaRegistryFromBlockDefinitions } from '../../packages/blockmd/markdown-mount.mjs';
+import { fileURLToPath } from 'node:url';
+import { beforeAll, describe, expect, it } from 'vitest';
+import { readTree } from '../../packages/blockmd/markdown-mount.mjs';
 import { sharedBlocksConfig } from '../../tests-playwright/fixtures/shared-block-schemas.js';
 
 // Every block example page carries the block-reference-layout template. Find
@@ -27,7 +31,9 @@ let examplePages;
 beforeAll(() => {
   // Inka's docs use Plone's own types, folderish as Plone makes them.
   const isFolderish = (type) => !['Image', 'File', 'Link', 'Collection'].includes(type);
-  const { items } = readTree(DOCS, { schemaFor, isFolderish });
+  // Decoded from the markdown alone, then given its schemas as the mock serves it.
+  const { items } = readTree(DOCS, { isFolderish });
+  for (const page of items.values()) resolveSchemaExamples(page, { schemaFor });
   examplePages = [...items].filter(([id, p]) => id.startsWith('/examples/') && usesTemplate(p));
 });
 

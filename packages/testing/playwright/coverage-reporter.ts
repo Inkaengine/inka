@@ -79,6 +79,28 @@ function unexercisedOptions(
     }));
 }
 
+/**
+ * Styles an author is offered that no content demonstrates, from
+ * .discovered-blocks.json (discovery's undemonstratedStyles). A corpus question
+ * like the options above, so the same partial-corpus switch turns it off.
+ */
+function undemonstratedStyles(
+  options: CoverageReporterOptions,
+): Array<{ style: string; blockType: string; pagePath: string; frontend: string }> {
+  if (!options.discoveryDir) return [];
+  const blocks =
+    readDiscovery<{
+      style: string;
+      blockType: string;
+      pagePath: string;
+      frontend?: string;
+      unexercisedStyle?: boolean;
+    }>(options.discoveryDir, 'blocks') ?? [];
+  return blocks
+    .filter((b) => b.unexercisedStyle)
+    .map((b) => ({ style: b.style, blockType: b.blockType, pagePath: b.pagePath, frontend: b.frontend || '(unknown)' }));
+}
+
 export interface CoverageReporterOptions extends ContractScope {
   /**
    * Where discovery wrote its files (the same directory given to global setup
@@ -172,6 +194,19 @@ export default class CoverageReporter implements Reporter {
           `(choosing them changes nothing an author or reader can see):\n` +
           flat
             .map((n) => `  - ${n.style} (in ${n.blockType} on ${n.pagePath})\n      text: ${JSON.stringify(n.text.slice(0, 60))}`)
+            .join('\n'),
+      );
+    }
+
+    const undemonstrated =
+      process.env.SANITY_OPTION_EXAMPLES !== 'false' ? undemonstratedStyles(this.options) : [];
+    if (undemonstrated.length > 0) {
+      problems.push(
+        `Text styles an author is offered that no content demonstrates. Nothing ` +
+          `renders them, so one that does nothing passes unseen. Add an example ` +
+          `of each, or stop offering it:\n` +
+          undemonstrated
+            .map((u) => `  - [${u.frontend}] ${u.style} (offered in ${u.blockType} on ${u.pagePath})`)
             .join('\n'),
       );
     }

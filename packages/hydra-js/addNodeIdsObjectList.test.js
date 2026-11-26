@@ -1,3 +1,4 @@
+import { describe, test, expect } from 'vitest';
 import { Bridge } from './hydra.src.js';
 
 /**

@@ -9,18 +9,16 @@
   },
   "scripts": {
     "build": "esbuild hydra.src.js --bundle --format=esm --outfile=hydra.js --sourcemap",
-    "test": "NODE_OPTIONS='--experimental-vm-modules' npx jest"
+    "test": "vitest run"
   },
   "type": "module",
   "keywords": [],
   "author": "",
   "license": "MIT",
   "devDependencies": {
-    "@jest/globals": "^30.0.0",
     "esbuild": "^0.28.0",
-    "jest": "^30.0.0",
-    "jest-environment-node": "^30.0.0",
-    "jsdom": "^22.0.0"
+    "jsdom": "^31.0.1",
+    "vitest": "^5.1.0"
   },
   "dependencies": {
     "@volto-hydra/helpers": "workspace:*",

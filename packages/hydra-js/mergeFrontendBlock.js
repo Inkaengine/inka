@@ -23,7 +23,9 @@
  *
  * A block the admin does NOT have takes the frontend entry as it is, and
  * needs a `title` and a `group` from it — compulsory, never made up from the
- * key: a chooser entry with an invented name is a bug hidden, not fixed.
+ * key: a chooser entry with an invented name is a bug hidden, not fixed. It
+ * needs a `blockSchema` too: without one the editor can't tell what the block
+ * holds, and the first save that indexes its text fails.
  *
  * Every `allowedBlocks` list the entry carries, at any depth of its schema,
  * must be block type names only: a gap (a stray comma) or a null would offer
@@ -41,6 +43,12 @@ export function mergeFrontendBlock(blockType, adminEntry, frontendEntry) {
       throw new Error(
         `Block "${blockType}" from the frontend needs a \`title\` and a \`group\` ` +
           `(got title: ${JSON.stringify(frontendEntry.title)}, group: ${JSON.stringify(frontendEntry.group)})`,
+      );
+    }
+    if (!frontendEntry.blockSchema && !frontendEntry.schema) {
+      throw new Error(
+        `Block "${blockType}" from the frontend needs a \`blockSchema\`: the editor ` +
+          `reads what a block holds from it (its form, its searchable text)`,
       );
     }
     return { entry: frontendEntry, previousEnhancer: undefined };

@@ -1,4 +1,4 @@
-import { jest } from '@jest/globals';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { JSDOM } from 'jsdom';
 import { Bridge } from './hydra.src.js';
 
@@ -29,7 +29,7 @@ describe('a multi-selection takes over from the selected block', () => {
   const reported = (src) => bridge.sent.filter((message) => message.src === src);
 
   beforeEach(() => {
-    jest.useFakeTimers();
+    vi.useFakeTimers();
     frames = new Map();
     let nextFrame = 1;
     const { window } = new JSDOM('<!DOCTYPE html><body><div data-block-uid="a"></div><div data-block-uid="b"></div></body>');
@@ -64,7 +64,7 @@ describe('a multi-selection takes over from the selected block', () => {
   });
 
   afterEach(() => {
-    jest.useRealTimers();
+    vi.useRealTimers();
     restore();
   });
 
@@ -78,7 +78,7 @@ describe('a multi-selection takes over from the selected block', () => {
     bridge._handleMultiSelectClick('b', { ctrlKey: true });
     expect(bridge.sent.map((message) => message.src)).toEqual(['multiSelect']);
 
-    jest.advanceTimersByTime(600);
+    vi.advanceTimersByTime(600);
     rect.top = 50;
     runFrames(2);
 

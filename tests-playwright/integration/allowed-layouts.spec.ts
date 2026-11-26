@@ -87,6 +87,42 @@ test.describe('allowedLayouts', () => {
     });
   });
 
+  // Layouts are page settings, beside Preview image and SEO, and there whatever
+  // is selected. The page's Regions list holds the regions' blocks only.
+  test.describe('Layouts in page settings', () => {
+    test('a Layouts section switches a region\'s layout, with or without a block selected', async ({ page }) => {
+      const helper = new AdminUIHelper(page);
+      const iframe = helper.getIframe();
+      await helper.login();
+      await helper.navigateToEdit('/test-page');
+      await helper.waitForIframeReady();
+      await page.locator('.sidebar-section-header .section-title').click();
+
+      // The regions list is labelled, and offers no layouts of its own.
+      const regions = page.locator('#sidebar-order .page-blocks-fields');
+      await expect(regions.locator('.regions-heading')).toHaveText('Regions');
+      await expect(regions.locator('.layout-selector')).toHaveCount(0);
+
+      // Page settings have a Layouts section, one row per region with layouts.
+      const layouts = page.locator('#sidebar-layouts .page-layouts');
+      await expect(layouts.locator('.title')).toContainText('Layouts');
+      const blocksRow = layouts.locator('.page-layout-row').filter({ hasText: 'Blocks' });
+      await blocksRow.locator('.layout-selector select').selectOption('Header Footer Layout');
+      await blocksRow.locator('.apply-layout-btn').click();
+      const { blockId: headerBlockId } = await helper.waitForBlockByContent('Layout Header');
+
+      // Still there with a block selected.
+      await helper.clickBlockInIframe('block-1-uuid');
+      await helper.waitForBlockSelectedInAdmin('block-1-uuid');
+      await blocksRow.locator('.layout-selector select').selectOption('Header Only Layout');
+      await blocksRow.locator('.apply-layout-btn').click();
+      await expect(
+        iframe.locator('main [data-block-uid], #content [data-block-uid]').filter({ hasText: 'Header Only' }),
+      ).toBeVisible({ timeout: 10000 });
+      await expect(iframe.locator(`[data-block-uid="${headerBlockId}"]`)).toHaveCount(0);
+    });
+  });
+
   test.describe('allowedLayouts vs allowedTemplates Independence', () => {
     test('template in allowedLayouts appears in Layout dropdown', async ({ page }) => {
       const helper = new AdminUIHelper(page);
@@ -476,6 +512,66 @@ test.describe('allowedLayouts', () => {
 
       // User content preserved in default placeholder
       expect(allBlocks.some(t => t.includes(originalContent))).toBe(true);
+    });
+  });
+
+  // A slot the incoming layout doesn't have: its content is hidden, as a
+  // converted block's unmapped fields are. Switching back shows it again; the
+  // save drops it. Moved into default instead, it lost its slot, and each
+  // switch back placed the template's block in the slot again.
+  test.describe('Switching to a layout without a slot', () => {
+    const switchTo = async (page: Page, title: string) => {
+      await page.locator('.sidebar-section-header .section-title').click();
+      const layoutSelector = page.locator('.layout-selector select');
+      await expect(layoutSelector).toBeVisible({ timeout: 10000 });
+      await layoutSelector.selectOption(title);
+      await page.locator('.apply-layout-btn').click();
+    };
+
+    test('its content is hidden, with a toast, and comes back on switching back', async ({ page }) => {
+      const helper = new AdminUIHelper(page);
+      const iframe = helper.getIframe();
+      await helper.login();
+      await helper.navigateToEdit('/aside-layout-page');
+      await helper.waitForIframeReady();
+      const blocks = iframe.locator('main [data-block-uid], #content [data-block-uid]');
+      await expect(blocks.filter({ hasText: 'A note in the aside' })).toBeVisible();
+
+      await switchTo(page, 'Header Only Layout');
+      await expect(blocks.filter({ hasText: 'Header Only' }).first()).toBeVisible({ timeout: 5000 });
+      await expect(page.locator('.Toastify__toast')).toContainText('1 block is hidden');
+      await expect(blocks.filter({ hasText: 'Main paragraph of the page' })).toBeVisible();
+      await expect(blocks.filter({ hasText: 'A note in the aside' })).toHaveCount(0);
+
+      await switchTo(page, 'Aside Layout');
+      await expect(blocks.filter({ hasText: 'Aside Header' }).first()).toBeVisible({ timeout: 5000 });
+      await expect(blocks.filter({ hasText: 'A note in the aside' })).toHaveCount(1);
+      await expect(blocks.filter({ hasText: 'Main paragraph of the page' })).toHaveCount(1);
+    });
+
+    test('saving drops the hidden content', async ({ page }) => {
+      const helper = new AdminUIHelper(page);
+      const iframe = helper.getIframe();
+      await helper.login();
+      await helper.navigateToEdit('/aside-layout-page');
+      await helper.waitForIframeReady();
+      const blocks = iframe.locator('main [data-block-uid], #content [data-block-uid]');
+      await expect(blocks.filter({ hasText: 'A note in the aside' })).toBeVisible();
+
+      await switchTo(page, 'Header Only Layout');
+      await expect(blocks.filter({ hasText: 'Header Only' }).first()).toBeVisible({ timeout: 5000 });
+      await page.keyboard.press('Control+s');
+      await expect(page.locator('.toolbar-actions .edit, [aria-label="Edit"]')).toBeVisible({ timeout: 10000 });
+
+      const token = (await page.context().cookies()).find((c) => c.name === 'auth_token')!.value;
+      const saved = await (
+        await page.request.get(`${URLS.mockApi}/_test_data/aside-layout-page`, {
+          headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
+        })
+      ).json();
+      const texts = JSON.stringify(saved.blocks);
+      expect(texts).toContain('Main paragraph of the page');
+      expect(texts).not.toContain('A note in the aside');
     });
   });
 
@@ -874,10 +970,13 @@ test.describe('allowedLayouts', () => {
         .join(' ');
       expect(boxContents, 'the saved footer box holds the placed container').toContain(movedText);
       expect(placed).toMatchObject({ '@type': 'convGroupDst', fixed: true, slotId: 'convGroupDst-1', templateId: footerTemplateId });
-      // Every block of a template has a slot, nested ones too: the child joins the
-      // slot the block landed in.
+      // Every block of a template has a slot, nested ones too, but never the
+      // block's own: a slot is one place at every depth (inka#708). The child is
+      // fixed, so its region gives it a slot of its own.
       const child = Object.values<any>(placed.blocks).find((c) => c.title === movedText);
-      expect(child).toMatchObject({ fixed: true, templateId: footerTemplateId, slotId: placed.slotId });
+      const region = Object.entries<any>(placed.blocks_layout).find(([, ids]) => ids.includes(
+        Object.keys(placed.blocks).find((id) => placed.blocks[id] === child)))![0];
+      expect(child).toMatchObject({ fixed: true, templateId: footerTemplateId, slotId: `${placed.slotId}-${region}-1` });
       // A template nested inside it — a snippet — is its own: its blocks keep the
       // snippet's template, instance and slots, not the footer's.
       // (Its template is recorded by the path it was loaded from. Instance ids are

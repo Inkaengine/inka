@@ -62,3 +62,100 @@ test.describe('sidebar widgets and the preview caret', () => {
     expect((await field.textContent())?.trim(), 'typing lands in the clicked field').not.toBe(before);
   });
 });
+
+// Choosing a block in the sidebar's block list selects it in the page — and
+// doesn't take the keyboard into the page. Selecting from the sidebar is
+// working in the sidebar: a keyboard author must not be thrown into the page. A block the page can take the
+// caret in (text) and one it can't (an image) both went: the bridge focused the
+// text field, or the block itself, whenever the admin selected a block.
+test.describe('choosing a block in the sidebar', () => {
+  // Each listed by what it shows: block-3's text, block-2 the first Image.
+  for (const { label, uid, item } of [
+    { label: 'Text', uid: 'block-3-uuid', item: 'Another paragraph for testing' },
+    { label: 'Image', uid: 'block-2-uuid', item: 'Image' },
+  ]) {
+    test(`a ${label} block: focus stays in the sidebar`, async ({ page }) => {
+      const helper = new AdminUIHelper(page);
+      await helper.login();
+      await helper.navigateToEdit('/test-page');
+      await helper.clickBlockInIframe('block-1-uuid');
+      await helper.waitForSidebarOpen();
+      await page.locator('.sidebar-section-header .nav-back').click();
+
+      const list = page.locator('#sidebar-order .child-blocks-widget');
+      await list.locator('.child-block-item', { hasText: item }).first().click();
+      await helper.waitForBlockSelectedInAdmin(uid);
+      // The bridge's focus came two frames after the selection; let it.
+      await page.evaluate(() => new Promise((r) => setTimeout(r, 500)));
+
+      expect(
+        await page.evaluate(() => document.activeElement?.tagName),
+        'focus is not taken into the page',
+      ).not.toBe('IFRAME');
+    });
+  }
+});
+
+// Choosing a block in the sidebar leaves focus there, not in the page, so the
+// page's block shortcuts can't hear the keys: the admin answers them itself.
+test.describe('block shortcuts with focus in the sidebar', () => {
+  const text = 'Another paragraph for testing';
+
+  async function chooseInSidebar(page, helper: AdminUIHelper) {
+    await helper.login();
+    await helper.navigateToEdit('/test-page');
+    await helper.clickBlockInIframe('block-1-uuid');
+    await helper.waitForSidebarOpen();
+    await page.locator('.sidebar-section-header .nav-back').click();
+    await page
+      .locator('#sidebar-order .child-blocks-widget .child-block-item', { hasText: text })
+      .first()
+      .click();
+    await helper.waitForBlockSelectedInAdmin('block-3-uuid');
+    expect(
+      await page.evaluate(() => document.activeElement?.tagName),
+      'focus is in the admin',
+    ).not.toBe('IFRAME');
+  }
+
+  test('copy and paste the chosen block', async ({ page }) => {
+    const helper = new AdminUIHelper(page);
+    await chooseInSidebar(page, helper);
+    const copies = helper.getIframe().locator('[data-block-uid]', { hasText: text });
+    await expect(copies).toHaveCount(1);
+
+    await page.keyboard.press('ControlOrMeta+c');
+    await expect(page.locator('#toolbar-paste-blocks'), 'it is on the clipboard').toBeVisible();
+
+    await page.keyboard.press('ControlOrMeta+v');
+    await expect(copies, 'pasted after it').toHaveCount(2);
+  });
+
+  test('cut the chosen block', async ({ page }) => {
+    const helper = new AdminUIHelper(page);
+    await chooseInSidebar(page, helper);
+
+    await page.keyboard.press('ControlOrMeta+x');
+    const copies = helper.getIframe().locator('[data-block-uid]', { hasText: text });
+    await expect(copies, 'cut from the page').toHaveCount(0);
+
+    // It is on the clipboard: paste it back after the first block.
+    await helper.clickBlockInIframe('block-1-uuid');
+    await page.keyboard.press('Escape');
+    await page.keyboard.press('ControlOrMeta+v');
+    await expect(copies, 'pasted back').toHaveCount(1);
+  });
+
+  test('in a sidebar field, the keys are the field’s', async ({ page }) => {
+    const helper = new AdminUIHelper(page);
+    await chooseInSidebar(page, helper);
+    const field = page.locator('#sidebar-properties #field-anchor');
+    await field.fill('anchor text');
+    await field.selectText();
+
+    await page.keyboard.press('ControlOrMeta+c');
+    await page.keyboard.press('ControlOrMeta+x');
+    await expect(page.locator('#toolbar-paste-blocks'), 'no block copied').toHaveCount(0);
+    await expect(helper.getIframe().locator('[data-block-uid="block-3-uuid"]'), 'no block cut').toHaveCount(1);
+  });
+});

@@ -19,11 +19,11 @@
     },
     "video-embed-1": {
       "@type": "video",
-      "url": "https://www.youtube.com/watch?v=aqz-KE-bpKQ"
+      "url": [{"@id": "https://www.youtube.com/watch?v=aqz-KE-bpKQ"}]
     },
     "maps-embed-1": {
       "@type": "maps",
-      "url": "http://localhost:8888/embedded-document.html",
+      "url": [{"@id": "http://localhost:8888/embedded-document.html"}],
       "title": "Sydney"
     }
   },

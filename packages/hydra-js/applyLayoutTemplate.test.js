@@ -1,3 +1,4 @@
+import { describe, test, expect, beforeEach } from 'vitest';
 import { expandEveryContainer } from './expandEveryContainer.testutil.js';
 import { expandTemplates, expandTemplatesSync } from '@volto-hydra/helpers';
 import { mergeTemplatesIntoPage, mergeInstanceIntoTemplate } from '@volto-hydra/helpers/mergeTemplates.js';
@@ -1189,7 +1190,7 @@ describe('nextSlotId and childSlotIds on fixed blocks', () => {
     expect(result.blocks.intro).not.toHaveProperty('childSlotIds');
   });
 
-  test("switching layout keeps the page's editable text where the new layout has that slot, drops the rest of the old layout's fixed blocks, and keeps its slot content", async () => {
+  test("switching layout keeps the page's editable text where the new layout has that slot, drops the rest of the old layout's fixed blocks, and hides slot content the new layout has no slot for", async () => {
     const A = {
       '@id': '/templates/a',
       blocks: {
@@ -1229,10 +1230,14 @@ describe('nextSlotId and childSlotIds on fixed blocks', () => {
     expect(onB.blocks_layout.items.map((id) => [onB.blocks[id].slotId, onB.blocks[id].text])).toEqual([
       ['header', 'B head'],
       ['intro', 'Page intro'],
-      ['default', 'Page aside'],
       ['default', 'Mine'],
     ]);
     expect(onB.blocks_layout.items[1]).toBe(introId);
+    // B has no aside: the page's aside is hidden, kept in its blocks but in no
+    // region, until a layout with an aside shows it again.
+    const listed = new Set(onB.blocks_layout.items);
+    const hidden = Object.entries(onB.blocks).filter(([id]) => !listed.has(id)).map(([, b]) => [b.slotId, b.text]);
+    expect(hidden).toEqual([['aside', 'Page aside']]);
   });
 
   test("removing the layout leaves the page's content without any of the merge's marks", async () => {
@@ -1386,7 +1391,7 @@ describe('a layout menu must not re-home a page', () => {
       blocks: {
         'ev-title': { '@type': 'title', templateId: '/inka-templates/event-view', templateInstanceId: 'tpl-ev', slotId: 'title', readOnly: true, fixed: true },
         'ev-meta': { '@type': 'eventMetadata', templateId: '/inka-templates/event-view', templateInstanceId: 'tpl-ev', slotId: 'event-metadata', fixed: true },
-        'ev-body': { '@type': 'slate', templateId: '/inka-templates/event-view', templateInstanceId: 'tpl-ev', slotId: 'content', value: [{ type: 'p', children: [{ text: 'Body' }] }] },
+        'ev-body': { '@type': 'slate', templateId: '/inka-templates/event-view', templateInstanceId: 'tpl-ev', slotId: 'default', value: [{ type: 'p', children: [{ text: 'Body' }] }] },
       },
       blocks_layout: { items: ['ev-title', 'ev-meta', 'ev-body'] },
     };
@@ -1399,7 +1404,7 @@ describe('a layout menu must not re-home a page', () => {
       blocks: {
         't-title': { '@type': 'title', templateId: '/inka-templates/event-view', slotId: 'title', readOnly: true, fixed: true },
         't-meta': { '@type': 'eventMetadata', templateId: '/inka-templates/event-view', slotId: 'event-metadata', fixed: true },
-        't-content': { '@type': 'slate', templateId: '/inka-templates/event-view', slotId: 'content', value: [] },
+        't-content': { '@type': 'slate', templateId: '/inka-templates/event-view', slotId: 'default', value: [] },
       },
       blocks_layout: { items: ['t-title', 't-meta', 't-content'] },
     };

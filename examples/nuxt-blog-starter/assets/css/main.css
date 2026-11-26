@@ -65,6 +65,10 @@ p {
     @apply float-left text-5xl leading-none font-bold mr-2;
 }
 
+.list-spaced > li {
+    @apply my-3;
+}
+
 /* Image sizes — applied to block wrapper, constrain the img inside */
 .image-size-l img { max-width: 100%; }
 .image-size-m img { max-width: 50%; }

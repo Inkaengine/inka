@@ -24,7 +24,7 @@ subjects:
   - frontend
 title: Listings & Dynamic Blocks
 blocks-matched: |
-  <block type="slate" value="${p,h*,ul,ol,blockquote,strong,em,a/slate}" plaintext="${p,h*,ul,ol,blockquote,strong,em,a/text}" />
+  <block type="slate" value="${p,h*,ul,ol,blockquote,strong,em,a/slate}" />
   <block type="title" _="${h1}" />
   <block type="separator" _="${hr}" styles={"align":"full"} />
   <block type="codeExample">
@@ -48,6 +48,8 @@ blocks-tagged: |
 # Listings & Dynamic Blocks
 
 A listing block fetches content from the server (e.g. latest news) and renders each result as a separate block, repeating each block once per result entry. This means a listing can be moved between containers and reuse normal blocks for what it repeats.
+
+Inka has no listing of its own: your frontend declares it, like any block, with a `title`, a `group` and a `blockSchema` (see [Item Type Selection](#item-type-selection) for the whole declaration).
 
 `expandListingBlocks(layout, options)` is a helper in hydra.js that handles fetching, paging, and mapping results to block objects. It walks a layout, fetches results for each listing-type block, and returns `{ items, paging }` where `items` is an array of block objects with `@uid` and `@type`.
 
@@ -118,7 +120,7 @@ async function ListingItems({ id, blocks, paging, seen, fetchItems, onPaging }) 
 }
 ```
 
-**Worked example:** [Listing Block](../examples/listing.md) — the built-in block, with renderers for all four stacks.
+**Worked example:** [Listing Block](../examples/listing.md) — the declaration, with renderers for all four stacks.
 
 ## expandListingBlocks Options
 
@@ -126,12 +128,15 @@ async function ListingItems({ id, blocks, paging, seen, fetchItems, onPaging }) 
 - **\`fetchItems\`** — Required. Map of `{ blockType: async (block, { start, size }) => { items, total } }`. Keys declare which block types to expand; values are fetcher functions. Use `ploneFetchItems()` for Plone backends.
 - **\`paging\`** — Paging input `{ start, size }` (not mutated). Computed values are returned in the response.
 - **\`seen\`** — Number of items already seen by prior calls (default: 0). Chain `paging.seen` from one call to the next for grids.
-- **\`itemTypeField\`** — Field on the listing block that holds the item type (default: `'itemType'`)
-- **\`defaultItemType\`** — Fallback type when field is not set (default: `'summary'`)
+- **\`itemTypeField\`** — Required. Field on the listing block that holds the item type: the recipe's `typeField` (e.g. `'variation'`). The editor stores the type there, picked or the one the listing's position allows; a listing without one throws.
+- **\`mappingField\`** — Field on the listing block that holds its mapping: the recipe's `mappingField` (default: `'fieldMapping'`).
+- **\`defaultsField\`** — Prefix of the listing fields that hold its item defaults, `<defaultsField>_<field>`: the recipe's `defaultsField` (default: `'itemDefaults'`).
+
+The editor saves the item type, the mapping and the item defaults into the listing under the fields its recipe names. `expandListingBlocks` has no recipe, so the frontend that declared those fields passes their names.
 
 ## ploneFetchItems Helper
 
-`ploneFetchItems({ apiUrl, contextPath, extraCriteria })` creates a fetcher function for Plone's `@querystring-search` endpoint, suitable as a value in the `fetchItems` map.
+`ploneFetchItems({ apiUrl, contextPath, extraCriteria, mappingField })` creates a fetcher function for Plone's `@querystring-search` endpoint, suitable as a value in the `fetchItems` map.
 
 <block type="slateTable" table.fixed table.celled>
 
@@ -140,6 +145,7 @@ async function ListingItems({ id, blocks, paging, seen, fetchItems, onPaging }) 
 | `apiUrl` | — | Plone site URL (e.g. `'http://localhost:8080/Plone'`) |
 | `contextPath` | `'/'` | Path for relative queries |
 | `extraCriteria` | `{}` | Additional query params — `SearchableText`, `sort_on`, `sort_order`, `facet.*` keys |
+| `mappingField` | `'fieldMapping'` | Field on the listing block that holds its mapping (the recipe's `mappingField`); a folder-contents listing checks the page's own items carry every mapped field |
 
 </block>
 
@@ -179,9 +185,64 @@ This self-contained object has everything needed to resolve image URLs with scal
 
 For non-Plone backends (RSS feeds, external APIs, etc.), write your own fetcher: `async (block, { start, size }) => ({ items, total })`. `start` is the zero-based offset, `size` is the number of items to return (or `0` for total-only), and `total` in the return value is the full count, not just this page.
 
+### Locations: what the path criterion lists
+
+A path criterion's value (Absolute path or Relative path) says where to look, and its last character says whether the folder there is a result:
+
+<block type="slateTable" table.fixed table.celled>
+
+| Value | Lists |
+| --- | --- |
+| `/news/` | `/news` and everything under it |
+| `/news/*` | everything under `/news`, not `/news` |
+| `./`, `./*` | this page and everything under it / only what is under it |
+| `../`, `../*` | the page's parent and everything under it / only what is under it (the page and its siblings) |
+| `/*/` (Relative path) | the page's 2nd-level section (the site root's child it is under; the site root is the 1st level) and everything under it |
+| `/*/*/`, `/*/*` (Relative path) | the page's 3rd-level section and everything under it / the 2nd-level section's contents, not the section |
+| `<uid>/`, `<uid>/*` (Absolute path) | the folder with that UID, as the editor stores the one picked, and everything under it / only what is under it |
+
+</block>
+
+Plone's `::depth` goes after it as usual (`/news/*::1`, the folder's children only). A value with neither ending (`.`, `..`, `/news`, `.::1`) means what it means to Plone, so everything Volto writes keeps its meaning.
+
+A breadcrumb step (`*` before a `/`, in a Relative path starting with `/`) counts from the top of the page's breadcrumb, so one stored location lists the same section for every page in it; `..` counts from the page instead. A page above the level resolves to itself. Anything but `*` steps there, and a `*` anywhere but last in an Absolute path, throws.
+
+Plone can't say all of this in one search. Whether its folder is a result depends on the depth: in with no depth, `::0` (the folder alone) and `::2` or more; out only at `::1`. So `ploneFetchItems` sends the searches that give the location:
+
+<block type="slateTable" table.fixed table.celled>
+
+| Location | Sent to Plone |
+| --- | --- |
+| folder in, no depth or `::2`+ | the path, as it is |
+| folder in, `::1` | the path `::1`, and the folder alone (`::0`, with the listing's other criteria) put first |
+| folder out, `::1` | the path `::1` |
+| folder out, no depth or `::2`+ | the path, and the folder left out by its UID (`UID` `selection.none`) |
+
+</block>
+
+`resolveLocation(value, contextPath, { relative })` is exported for a fetcher of your own.
+
+In the editor, a listing's Location criterion is the place, its Depth, and **Children only**:
+
+- **Absolute path**: a folder picked. A first pick is Volto's: its children, depth 1.
+- **Relative path**: **2nd level**, **3rd level**, **4th level** (the section of the site the page is in at that level), **Parent** or **Here**. A place the menu doesn't offer (`../news`) is shown as it is.
+- **Children only** writes `/*` (only what is under the place) or `/` (the place too). At depth 0 there is only the place, so it isn't offered.
+
+A value Volto wrote (`.::1`, `..`, `<uid>::1`) is shown as Plone reads it (children only at depth 1), and an edit writes it with the ending that keeps that meaning.
+
+### Is the same as this page
+
+A "related" or "more like this" listing compares other pages with the one it is on. The query editor offers **Is the same as this page** as an operation on the indexes a page has a value for: Tags (`Subject`), Type (`portal_type`), Creator, Language, and `getRawRelatedItems` (the pages whose relations name this one). It takes no value: *Tag · Is the same as this page* lists the pages that share any of this page's tags.
+
+`ploneFetchItems` fills it in before it queries. It reads the page's own values (from `contextContent` when that is the page, else by reading the page), sends them as Plone's own "any of", and leaves the page itself out of the results. A page with no value for the index lists nothing, and nothing is asked of Plone. Plone itself needs nothing: the operation, `THIS_PAGE` (`inka.operation.thisPage`), never reaches it. The indexes it is offered on, and the page field each reads, are `THIS_PAGE_FIELDS`; `withThisPageOperation(indexes)` adds it to the indexes Plone describes, as the query editor does.
+
+### Asked from the site root
+
+Plone's `@querystring-search` leaves out the page it is asked from (every page but the site root), whatever the query. `ploneFetchItems` asks every search from the site root, with its relative locations resolved for the page first, so a listing lists exactly what its criteria say. A page in its own section's navigation is listed there; a news item in a listing of `/news/*` is listed too.
+
 ## Example fetchers
 
-The same `fetchItems` seam powers other "collection" blocks — each is just a fetcher that returns raw result objects (`expandListingBlocks` maps `@id → href` etc. and repeats an item block per result, so they need **no bespoke renderer**; they render via the standard item types on every frontend). `@hydra-js/helpers` ships three reference fetchers:
+The same `fetchItems` seam powers other "collection" blocks — each is just a fetcher that returns raw result objects (`expandListingBlocks` maps each result's address, `getURL`, to `href` etc. and repeats an item block per result, so they need **no bespoke renderer**; they render via the standard item types on every frontend). `@hydra-js/helpers` ships three reference fetchers:
 
 <block type="slateTable" table.fixed table.celled>
 
@@ -213,9 +274,11 @@ The **Search Shortcuts** link target reads the search block's facet params — a
 
 ## Field Mapping
 
-`fieldMapping` on a listing block controls which fields appear on expanded items — only mapped fields are included. Default: `{ @id → href, title → title, description → description, image → image }`. Values can be a string (rename) or `{ field, type }` for conversions:
+`fieldMapping` on a listing block controls which fields appear on expanded items — only mapped fields are included. Each entry is `{ field, type }`: the item field it fills and the conversion that gets it there. Default: `getURL` → `href` (link), `title` → `title` and `description` → `description` (string), `image` → `image` (image_link).
 
-Built-in item types and the fields they expose:
+A result's address is mapped from `getURL`, the catalog's name for it, never `@id`: Plone reads every `@id` in a block's stored data as a link, so a stored mapping keyed `@id` with a `{ field, type }` value can't be saved, and a config that maps from `@id` stops the editor loading. A listing saved before the rename keeps its `@id` key and is still read as the address.
+
+The example item types and the fields they expose:
 
 <block type="slateTable" table.fixed table.celled>
 
@@ -231,13 +294,16 @@ Built-in item types and the fields they expose:
 
 ```json
 "fieldMapping": {
-  "@id": { "field": "href", "type": "link" },
-  "title": "title",
-  "image": { "field": "preview_image", "type": "image" },
-  "Subject": { "field": "tags", "type": "string" }
+  "getURL": { "field": "href", "type": "link" },
+  "title": { "field": "title", "type": "string" },
+  "image": { "field": "preview_image", "type": "image_link" },
+  "Subject": { "field": "tags", "type": "array" }
 }
 
-Types: string (array→join, image→URL), link (→[{@id}]), image (pass through)
+Every entry carries its conversion: the listing is expanded where there is no
+schema to work one out, so an entry without one is refused. Types: string
+(a list is joined), textarea, slate, link (→ [{@id}]), image_link (the image
+with its scales), array, boolean.
 ```
 
 **Worked example:** [RSS Feed Block](../examples/rssFeed.md) — feed entries mapped onto the item schema by a fetcher you provide.
@@ -250,12 +316,19 @@ Use `variation` on the listing block to control what `@type` expanded items get.
 
 ```javascript
 listing: {
+    id: 'listing',
+    title: 'Listing',
+    group: 'common',
     blockSchema: {
         properties: {
             variation: {
+                title: 'Item type',
                 widget: 'blockTypeSelect',
                 filterConvertibleFrom: '@default',  // only offer types with @default mappings
+                blocksField: '..',                  // ...that the listing's container allows
+                default: 'summary',                 // preferred, where the container allows it
             },
+            querystring: { title: 'Search criteria', widget: 'querystring' },
             // The mapping widget, and what a result offers to map: the
             // fields YOUR fetcher returns (here @querystring-search's). A
             // listing of another kind — related items, a feed — lists the
@@ -264,7 +337,7 @@ listing: {
                 title: 'Field mapping',
                 widget: 'field_mapping',
                 sourceFields: {
-                    '@id': { title: 'URL', type: 'string' },
+                    getURL: { title: 'URL', type: 'string' },
                     title: { title: 'Title', type: 'string' },
                     description: { title: 'Description', type: 'string' },
                     image: { title: 'Lead Image', type: 'image' },
@@ -282,7 +355,9 @@ listing: {
 }
 ```
 
-`filterConvertibleFrom: '@default'` restricts the dropdown to types that have a `fieldMappings['@default']` entry — i.e. types that can be populated from the canonical content fields (`@id`, `title`, `description`, `image`) that listing queries return. Each item type's `fieldMappings['@default']` (on its own block config) defines how those source fields land on its schema. Adding `mappingField` to the enhancer fills the declared `field_mapping` widget with its smart defaults for the chosen item type, so the editor can override the mapping per listing instance. The widget and its `sourceFields` are yours to declare: a listing schema you send is the whole schema, so nothing from the admin's own listing is added to it.
+The type picker's options go on the type field, never on the recipe: the picker and the recipe both read them there. `blocksField: '..'` takes the choices from the listing's container — a link list that allows only links offers only `link` — and `default` is a preference, kept where the container allows it and otherwise the container's first choice (see [Type field options](./container-blocks.md#type-field-options)). The editor stores the resulting type as the listing lands, so a listing always has one: picked, or the one its position allows.
+
+`filterConvertibleFrom: '@default'` restricts the dropdown to types that have a `fieldMappings['@default']` entry — i.e. types that can be populated from the canonical content fields (`getURL`, `title`, `description`, `image`) that listing queries return. Each item type's `fieldMappings['@default']` (on its own block config) defines how those source fields land on its schema. Adding `mappingField` to the enhancer fills the declared `field_mapping` widget with its smart defaults for the chosen item type, so the editor can override the mapping per listing instance. The widget and its `sourceFields` are yours to declare, as is every other field: the schema you send is the listing's whole schema.
 
 **Worked example:** [Related Items Block](../examples/relatedItemsListing.md) — the page's relation field, drawn with a configurable item type.
 
@@ -300,16 +375,14 @@ listing: {
 
 </block>
 
-The registry mapping is an *editing-time* input: it decides what the widget proposes for the selected `variation`. `expandListingBlocks` never reads a block config — it reads `block.fieldMapping`, and when that is absent falls back to its own default, `{ @id → href, title, description, image }`.
+The registry mapping is an *editing-time* input: it decides what the widget proposes for the selected `variation`. `expandListingBlocks` never reads a block config — it reads the listing's stored item type and mapping (from the fields the frontend names: `itemTypeField`, `mappingField`), and converts each result by exactly what is stored, so a listing carries its item type and mapping in its own data:
 
-That fallback targets `href`, which suits `link`-shaped item types and not others. A `card`, for example, renders its link from `url`, so a listing of cards with no saved `fieldMapping` produces cards with no link at all.
+- **The item type is stored as the listing lands.** Picked, or the one its position allows; a listing without one makes `expandListingBlocks` throw, naming it. There is no render-time default.
+- **Picking the item type stores its mapping.** The widget's default for that type (the registry mapping, kept to the sources the widget offers) is saved with the block, every entry `{ field, type }` with its conversion from the [mapping rule](./custom-blocks.md#which-fields-map-onto-which). Changing the item type stores the new type's default.
+- **There is no fallback.** A listing with no stored `fieldMapping`, or an entry without a `type`, makes `expandListingBlocks` throw, naming the listing: the renderer has no schema to work one out from.
+- **It is checked.** A block whose schema has a mapping widget must have a mapping, and every entry must name a source the widget offers, a field the item type has, and a conversion that gives what that field holds. The editor refuses to save one that doesn't, and the content check reports it.
 
-Two ways to end up with no saved mapping:
-
-- **Hand-authored content.** A listing block written directly into a distribution or fixture JSON never passes through the widget, so nothing is saved. Author `fieldMapping` explicitly.
-- **An untouched widget.** `FieldMappingWidget` *displays* `{ ...smartDefaults, ...saved }`, but only persists rows the editor actually changes. Accepting every proposed default without touching a row leaves `fieldMapping` empty — the sidebar shows one mapping while the page renders with another.
-
-If the item type's fields don't match the render-time fallback, set `fieldMapping` on the block rather than relying on the defaults shown in the sidebar.
+Content that never passes through the editor — a conversion, an import, a fixture — gets what the editor would have stored by running `plone-content field-mappings <content-dir> --schemas <schemas>` over it: the item type's default where there is no mapping, a conversion for every entry without one, and the address under `getURL`. A listing with no item type has no default and is reported. A listing that maps a site's own catalog column needs the site's content types as well, `--content-types <types.json>` (`{ <type>: <its @types/<type> schema> }`), since that is where a column's kind comes from; `plone-content schema` takes the same option.
 
 ## Combining Listings with Container Syncing
 

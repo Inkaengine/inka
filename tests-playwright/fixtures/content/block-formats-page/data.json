@@ -26,8 +26,7 @@
             }
           ]
         }
-      ],
-      "plaintext": "Some text to format"
+      ]
     },
     "list-target": {
       "@type": "slate",
@@ -45,8 +44,7 @@
             }
           ]
         }
-      ],
-      "plaintext": "A list item to style"
+      ]
     }
   },
   "blocks_layout": {

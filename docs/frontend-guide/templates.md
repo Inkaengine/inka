@@ -23,7 +23,7 @@ subjects:
   - templates
 title: Templates & Layouts
 blocks-matched: |
-  <block type="slate" value="${p,h*,ul,ol,blockquote,strong,em,a/slate}" plaintext="${p,h*,ul,ol,blockquote,strong,em,a/text}" />
+  <block type="slate" value="${p,h*,ul,ol,blockquote,strong,em,a/slate}" />
   <block type="title" _="${h1}" />
   <block type="separator" _="${hr}" styles={"align":"full"} />
   <block type="codeExample">
@@ -34,7 +34,7 @@ blocks-matched: |
 blocks-tagged: |
   <block type="callout">
     <region name="items" widget="blocks_layout">
-      <block type="slate" value="${p,h*,ul,ol,blockquote,strong,em,a/slate}" plaintext="${p,h*,ul,ol,blockquote,strong,em,a/text}" />
+      <block type="slate" value="${p,h*,ul,ol,blockquote,strong,em,a/slate}" />
     </region>
   </block>
   <block type="slateTable">
@@ -69,7 +69,8 @@ Templates are analogous to blocks themselves but are made up of blocks with spec
 
 - **Fixed + ReadOnly** — can't be edited or moved (e.g. branded headers/footers). Similar to fixed hard-coded HTML in a block.
 - **Fixed** — can be edited but not moved (e.g. required sections). Similar to a block field.
-- **Slot** (`fixed: false` / unset) — a named region (`slotId`) where editors can add their own blocks. Similar to a block field. The `"default"` slot receives leftover content.
+- **Slot** (`fixed: false` / unset) — a named region (`slotId`) where editors can add their own blocks. Similar to a block field. The `"default"` slot receives leftover content, so a layout's main content slot must be called `"default"`: it is the one slot every layout shares.
+- **Empty slot** — a slot nobody has filled yet: an `@type: "empty"` block naming it, `{ "@type": "empty", "slotId": "links", "fixed": false }`. A template stores it, so the slot keeps its place (a hero's links before any page has added one); a page never does. The editor shows it as a place to add to. A visitor's page never receives one: the merge a frontend runs leaves it out.
 
 The slot a block lives in is identified by its `slotId`. This is the field name used by `expandTemplates` / `expandTemplatesSync` and by the merge rules below — not `placeholder`.
 
@@ -89,7 +90,9 @@ The slot a block lives in is identified by its `slotId`. This is the field name 
 
 <block type="callout" variation="important">
 
-**Every block in a template must declare a `slotId`** — not just slot blocks, but **`fixed` and `fixed+readOnly` blocks too, and every block *nested* inside a container.** The recursive merge keeps a nested block only when it has a `slotId` (or a `templateId`): `if (nested.slotId || nested.templateId)`. A block without one is **silently dropped** — the container survives but renders empty, with no error. This is the most common reason a template "half renders". The editor keeps this true for blocks an author places: an added, pasted or moved block, and everything nested in it, takes its slot from where it lands — one rule, described in [Template membership](../architecture.md#template-membership-edit-side-slot-assignment).
+**Every block in a template must declare a `slotId`** — not just slot blocks, but **`fixed` and `fixed+readOnly` blocks too, and every block *nested* inside a container.** Locking a template (a new one from Make template included) refuses a template block that names no slot: the refusal opens the block, with the problem on its Slot ID. A page can't be saved with a template unlocked, so the page save, which writes the templates that changed, doesn't check slots again. The content check reports one too. The recursive merge keeps a nested block only when it has a `slotId` (or a `templateId`): `if (nested.slotId || nested.templateId)`. A block without one is **silently dropped** — the container survives but renders empty, with no error. This is the most common reason a template "half renders". The editor keeps this true for blocks an author places: an added, pasted or moved block, and everything nested in it, takes its slot from where it lands — one rule, described in [Template membership](../architecture.md#template-membership-edit-side-slot-assignment).
+
+**A slot is in one place.** The same `slotId` in two regions of one template is refused the same way: the merge would put the slot's content in whichever region it meets first. That holds at every depth: a block and a block inside it never share a slot, or the merge finds the block as content of its own slot. Each region inside a template block is a slot of its own, named from the block's slot and the region (`primary-items`): open blocks in it share that slot, and a fixed one, which is matched by its slot, gets one of its own (`primary-items-1`). A region of a template with nothing in it has lost its slot; store an empty slot there instead. Emptying a slot in the editor keeps it: the placeholder left behind names the slot.
 
 </block>
 
@@ -358,15 +361,15 @@ A merge puts a template's blocks into a **target** document. Opening a page merg
    - A **fixed, readOnly** block is the template's.
    - A **fixed** block that is editable is the template's, with the target's fields over it.
    - A fixed block's regions are filled by these same rules.
-   - A **slot** is replaced by the target's content for that slot, in order. A slot name that appears more than once is filled where it first appears. A template inside that content, such as a snippet, is merged in place by these same rules, with its own instance and ids.
-   - A slot the target has nothing for is the template's slot block, without anything it holds.
+   - A **slot** is replaced by the target's content for that slot, in order. A slot name that appears more than once in one region is filled where it first appears (in two regions, a template is refused: see above). A template inside that content, such as a snippet, is merged in place by these same rules, with its own instance and ids.
+   - A slot the target has nothing for is the template's blocks for that slot, each one, in order (a hero's three suggested topics), without anything they hold. An empty slot is placed only by the admin's merge (`mergeTemplatesIntoPage`, which passes `keepEmptySlots`): a frontend's merge leaves it out, so a visitor never gets one.
 3. **Place the leftovers.** Content with no slot, or whose slot the template doesn't have, goes to the start of the first of these that exists:
 
    - the `"default"` slot;
    - the slot after the template's last fixed block;
    - the slot before its first fixed block.
 
-   If none exists, it is dropped. Content takes the `slotId` of the slot it lands in. Any other target block in a fixed block's slot is a stale copy of that block, and is replaced.
+   If none exists, it is dropped. Content takes the `slotId` of the slot it lands in. Any other target block in a fixed block's slot is a stale copy of that block, and is replaced. Switching layouts, content in a named slot the new layout doesn't have is hidden instead (see **Switching layout** below).
 4. **Keep the ids.**
    - Every block the target already has keeps its id.
    - Fixed blocks match the target's by slot. Where two share a slot name, they match in order.
@@ -387,7 +390,11 @@ Applied in each direction, the rules give:
 
 What a page puts in a slot, or writes in an editable fixed block, is never written to the template. To change an editable block's text for every page, edit the template itself.
 
-**Switching layout** treats the old layout's blocks as the target's. Its slot content is kept and lands by slot as above. An editable fixed block takes over the new layout's editable fixed block in the same slot, with its id and fields. The old layout's other fixed blocks are dropped, including any the page edited. **Removing a layout** (`null`) keeps the content and strips every template mark from it.
+**Removing a slot asks first.** Pages using the template may have content in it, which the merge then has nowhere to put. Nothing records which pages use which slots, so when **Change on all pages** would save a template without a slot it had (an open slot, or a fixed block a page edits), the editor names the slots and asks. Keeping on editing saves nothing and leaves the template unlocked.
+
+**Switching layout** treats the old layout's blocks as the target's. Its slot content is kept and lands by slot as above. An editable fixed block takes over the new layout's editable fixed block in the same slot, with its id and fields. The old layout's other fixed blocks are dropped, including any the page edited.
+
+Content in a named slot the new layout doesn't have (a sidebar, a hero's intro) is **hidden**, as a converted block keeps the fields its new type has no place for. The page keeps it while it is edited, with its `slotId`, in its `blocks` but in no region, so no frontend draws it. A later switch to a layout with that slot shows it again, and since that slot has content, the template's block is not placed in it. Saving drops whatever is still hidden, and the editor says how many blocks a switch hid. Only content with no slot, or in `"default"`, moves to the new layout's default slot. Removing a layout (`null`) hides nothing. **Removing a layout** (`null`) keeps the content and strips every template mark from it.
 
 ### Diagram: opening a page
 

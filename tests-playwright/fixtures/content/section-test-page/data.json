@@ -17,29 +17,25 @@
     },
     "slate-before": {
       "@type": "slate",
-      "value": [{"type": "p", "children": [{"text": "Loose slate before section"}]}],
-      "plaintext": "Loose slate before section"
+      "value": [{"type": "p", "children": [{"text": "Loose slate before section"}]}]
     },
     "section-1": {
       "@type": "section",
       "blocks": {
         "section-child-1": {
           "@type": "slate",
-          "value": [{"type": "p", "children": [{"text": "Inside the section"}]}],
-          "plaintext": "Inside the section"
+          "value": [{"type": "p", "children": [{"text": "Inside the section"}]}]
         }
       },
       "blocks_layout": {"items": ["section-child-1"]}
     },
     "slate-after": {
       "@type": "slate",
-      "value": [{"type": "p", "children": [{"text": "Loose slate after section"}]}],
-      "plaintext": "Loose slate after section"
+      "value": [{"type": "p", "children": [{"text": "Loose slate after section"}]}]
     },
     "slate-after-2": {
       "@type": "slate",
-      "value": [{"type": "p", "children": [{"text": "Second loose slate after section"}]}],
-      "plaintext": "Second loose slate after section"
+      "value": [{"type": "p", "children": [{"text": "Second loose slate after section"}]}]
     }
   },
   "blocks_layout": {

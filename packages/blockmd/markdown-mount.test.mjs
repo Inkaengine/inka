@@ -2,7 +2,7 @@ import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'fs';
 import { join } from 'path';
 import { tmpdir } from 'os';
-import { resolveLiteralIncludes, readTree, resolveMarkdownLink, resolveMediaUrl, resolveMarkdownLinksInBlocks, isMarkdownTree, resolveCodeExampleSources, schemaRegistryFromBlockDefinitions, decodeAuto, normalizeNestedUids } from './markdown-mount.mjs';
+import { resolveLiteralIncludes, readTree, resolveMarkdownLink, resolveMediaUrl, resolveMarkdownLinksInBlocks, isMarkdownTree, resolveCodeExampleSources, decodeAuto, normalizeNestedUids } from './markdown-mount.mjs';
 
 // The site says which types are folderish; these tests stand in for it as
 // Plone 6 with plone.volto does.
@@ -103,6 +103,22 @@ describe('resolveLiteralIncludes', () => {
       expect(shown['@uid']).toBeUndefined();     // runtime uid filtered out
     });
 
+    it('shows a link as the site serves it, given where the tree is mounted', () => {
+      // The JSON is what a frontend receives, so a link authored relative to the
+      // included file reads as its served path, not as `./page.md`.
+      const docs = join(mdDir, 'docs', 'examples');
+      mkdirSync(docs, { recursive: true });
+      writeFileSync(join(docs, 'teaser.md'), [
+        '---', 'title: T', 'blocks-tagged: |', '  <block type="teaser" title="${h/text}" href="${h/link}" />', '---', '',
+        '<block type="teaser">', '', '## [Go](./content-types/page.md)', '', '</block>', '',
+      ].join('\n'));
+      const directive = '```{literalinclude} ./teaser.md\n:block: teaser\n:as: json\n```';
+      const served = parseFence(resolveLiteralIncludes(directive, docs, { root: join(mdDir, 'docs'), prefix: '/docs' }));
+      expect(served.href).toEqual([{ '@id': '/docs/examples/content-types/page' }]);
+      // Without a mount, the link is shown as authored.
+      expect(parseFence(resolveLiteralIncludes(directive, docs)).href).toEqual([{ '@id': './content-types/page.md' }]);
+    });
+
     it('a .md include WITHOUT :as: json still inlines the raw markdown text', () => {
       const out = resolveLiteralIncludes(
         '```{literalinclude} example.md\n:start-after: <!-- example:start -->\n:end-before: <!-- example:end -->\n```',
@@ -201,86 +217,29 @@ describe('resolveMediaUrl', () => {
     for (const u of ['https://x.io/a.png', 'data:image/svg+xml,<svg/>', '/architecture.svg', '/docs/static/demo.mp4'])
       expect(resolveMediaUrl(u, 'examples', '/docs')).toBe(u);
   });
-  it('rewrites image and video block urls when walking blocks', () => {
+  it('rewrites image block urls when walking blocks', () => {
     const blocks = {
-      'v-1': { '@type': 'video', url: './docs/static/demo.mp4' },
       'i-1': { '@type': 'image', url: '/architecture.svg' },
       'i-2': { '@type': 'image', url: 'shot.png' },
     };
     resolveMarkdownLinksInBlocks(blocks, '');
-    expect(blocks['v-1'].url).toBe('/docs/static/demo.mp4');
     expect(blocks['i-1'].url).toBe('/architecture.svg'); // absolute untouched
     expect(blocks['i-2'].url).toBe('/shot.png');
   });
-});
-
-describe('readTree fills object_browser link summaries from the local target', () => {
-  // The markdown mount stores a link to a local object as the bare, non-stale
-  // reference `[{'@id':'/path'}]`. Volto snapshots the summary at edit time and
-  // never re-resolves, so the DISTRIBUTION readTree builds (what gets imported)
-  // must already carry the summary — otherwise the deployed teaser ships with no
-  // title/description. The mock server re-resolves on serve, which would hide
-  // this: the fill has to happen at decode/readTree, driven by the WIDGET (an
-  // object_browser field), not the field name (`href` is object_browser on a
-  // teaser but a plain url string on a card).
-  const schemaFor = (t) =>
-    t === 'teaser' ? { properties: { href: { widget: 'object_browser', mode: 'link' }, title: { type: 'string' } } }
-    : t === 'card' ? { properties: { href: { widget: 'url' } } }
-    : null;
-
-  const seed = () => {
-    const root = mkdtempSync(join(tmpdir(), 'mm-link-'));
-    writeFileSync(join(root, 'target.md'),
-      `---\n"@type": Document\nUID: tgtuid1234567\nid: target\ntitle: Target Page\ndescription: A described target\n---\n`);
-    writeFileSync(join(root, 'source.md'), [
-      '---', '"@type": Document', 'UID: srcuid1234567', 'id: source', '---', '',
-      `<block type="teaser" data-json='{"href":[{"@id":"/target"}],"title":"See"}' />`, '',
-    ].join('\n'));
-    return root;
-  };
-
-  it('fills @type/Title/Description onto a bare object_browser link', () => {
-    const root = seed();
-    const { items } = readTree(root, { schemaFor, isFolderish });
-    rmSync(root, { recursive: true, force: true });
-    const teaser = Object.values(items.get('/source').blocks)[0];
-    expect(teaser.href[0]['@id']).toBe('/target');
-    expect(teaser.href[0].Title).toBe('Target Page');
-    expect(teaser.href[0].Description).toBe('A described target');
-    expect(teaser.href[0]['@type']).toBe('Document');
-  });
-
-  it('reproduces the exact Volto snapshot shape for a preview-bearing target', () => {
-    // The fill must reconstitute the SAME object Volto snapshots at edit time,
-    // so a source stripped to the bare `@id` deploys byte-identical to the fat
-    // form it replaces. Mirrors the real `/docs/examples/content-types/page`
-    // target (a Document with a preview_image).
-    const root = mkdtempSync(join(tmpdir(), 'mm-link-full-'));
-    writeFileSync(join(root, 'page.md'),
-      `---\n"@type": Document\nUID: pageuid12345678\nid: page\ntitle: Page\ndescription: The Page content type.\npreview_image:\n  blob_path: page/preview.png\n---\n`);
-    writeFileSync(join(root, 'source.md'), [
-      '---', '"@type": Document', 'UID: srcuid1234567', 'id: source', '---', '',
-      `<block type="teaser" data-json='{"href":[{"@id":"/page"}]}' />`, '',
-    ].join('\n'));
-    const { items } = readTree(root, { schemaFor, isFolderish });
-    rmSync(root, { recursive: true, force: true });
-    const teaser = Object.values(items.get('/source').blocks)[0];
-    expect(teaser.href[0]).toEqual({
-      '@id': '/page', '@type': 'Document', Title: 'Page', Description: 'The Page content type.',
-      title: 'Page', head_title: null, getRemoteUrl: null, hasPreviewImage: true, image_field: 'preview_image',
-    });
-  });
-
-  it('leaves a url-widget field (an external string) untouched', () => {
-    const root = mkdtempSync(join(tmpdir(), 'mm-url-'));
-    writeFileSync(join(root, 'source.md'), [
-      '---', '"@type": Document', 'UID: srcuid1234567', 'id: source', '---', '',
-      `<block type="card" data-json='{"href":"https://example.com"}' />`, '',
-    ].join('\n'));
-    const { items } = readTree(root, { schemaFor, isFolderish });
-    rmSync(root, { recursive: true, force: true });
-    const card = Object.values(items.get('/source').blocks)[0];
-    expect(card.href).toBe('https://example.com');
+  it('rewrites a relative link in any link list, whatever block or field holds it', () => {
+    // A link field holds [{'@id'}]; the reader goes by that shape, not by the
+    // block's type, so a video, a teaser or a custom block's link all resolve.
+    const blocks = {
+      'v-1': { '@type': 'video', url: [{ '@id': './static/demo.mp4' }] },
+      'c-1': { '@type': 'anyBlock', target: [{ '@id': '../other.md#part' }], keep: [{ '@id': 'https://keep.me' }] },
+      // An object list's items carry their own id in `@id`: not an address.
+      's-1': { '@type': 'socialLinks', links: [{ '@id': 'link-1', url: [{ '@id': 'https://github.com' }] }] },
+    };
+    resolveMarkdownLinksInBlocks(blocks, 'docs/examples', '');
+    expect(blocks['v-1'].url).toEqual([{ '@id': '/docs/examples/static/demo.mp4' }]);
+    expect(blocks['c-1'].target).toEqual([{ '@id': '/docs/other#part' }]);
+    expect(blocks['c-1'].keep).toEqual([{ '@id': 'https://keep.me' }]);
+    expect(blocks['s-1'].links[0]['@id']).toBe('link-1');
   });
 });
 
@@ -348,10 +307,7 @@ describe('readTree honors a top-level `.blockmdignore` (gitignore syntax)', () =
   });
 });
 
-describe('resolveCodeExampleSources — a codeExample derives from a sibling block / schema registry', () => {
-  const schemaFor = schemaRegistryFromBlockDefinitions({
-    accordion: { blocks: { accordion: { blockSchema: { properties: { panels: { widget: 'object_list' } } } } } },
-  });
+describe('resolveCodeExampleSources: a codeExample shows a block from the same page', () => {
   const page = () => ({
     blocks: {
       'accordion-4': { '@type': 'accordion', panels: [{ '@id': 'p1', title: 'FAQ' }], right_arrows: true },
@@ -361,43 +317,35 @@ describe('resolveCodeExampleSources — a codeExample derives from a sibling blo
     blocks_layout: { items: ['accordion-4', 'ce-json', 'ce-schema'] },
   });
 
-  it('format=json shows the referenced block data; format=schema shows the registry schema — no hand copy', () => {
+  it('format=json shows the referenced block data: no hand copy', () => {
     const p = page();
-    resolveCodeExampleSources(p, { schemaFor });
+    resolveCodeExampleSources(p);
     const jsonTab = p.blocks['ce-json'].tabs[0];
     expect(jsonTab.language).toBe('json');
     expect(JSON.parse(jsonTab.code)).toEqual({ '@type': 'accordion', panels: [{ '@id': 'p1', title: 'FAQ' }], right_arrows: true });
-    const schemaTab = p.blocks['ce-schema'].tabs[0];
-    expect(JSON.parse(schemaTab.code)).toEqual({ properties: { panels: { widget: 'object_list' } } });
+  });
+
+  it('format=schema is left for whoever has the schemas: it is not on the page', () => {
+    const p = page();
+    resolveCodeExampleSources(p);
+    expect(p.blocks['ce-schema']).toEqual(page().blocks['ce-schema']);
   });
 
   it('resolves a selector by block uid too', () => {
     const p = page();
     p.blocks['ce-json'].source = 'accordion-4'; // uid, not @type
-    resolveCodeExampleSources(p, { schemaFor });
+    resolveCodeExampleSources(p);
     expect(JSON.parse(p.blocks['ce-json'].tabs[0].code)['@type']).toBe('accordion');
   });
 
-  it('fails loud on a selector that matches no block, or a type with no schema', () => {
-    const p1 = page(); p1.blocks['ce-json'].source = 'nope';
-    expect(() => resolveCodeExampleSources(p1, { schemaFor })).toThrow(/nope/);
-    const p2 = page(); p2.blocks['ce-schema'].source = 'video';
-    expect(() => resolveCodeExampleSources(p2, { schemaFor })).toThrow(/video/);
-  });
-
-  it('builds the registry from the flat sharedBlocksConfig shape too', () => {
-    const flat = schemaRegistryFromBlockDefinitions({
-      listing: { id: 'listing', blockSchema: { fieldsets: [{ id: 'default' }] } },
-      accordion: { blockSchema: { properties: { panels: {} } } },
-    });
-    expect(flat('listing')).toEqual({ fieldsets: [{ id: 'default' }] });
-    expect(flat('accordion')).toEqual({ properties: { panels: {} } });
-    expect(flat('nope')).toBeUndefined();
+  it('fails loud on a selector that matches no block', () => {
+    const p = page(); p.blocks['ce-json'].source = 'nope';
+    expect(() => resolveCodeExampleSources(p)).toThrow(/nope/);
   });
 
   it('leaves a literalinclude/literal codeExample (no source) untouched', () => {
     const p = { blocks: { 'ce-lit': { '@type': 'codeExample', tabs: [{ language: 'jsx', code: 'x' }] } }, blocks_layout: { items: ['ce-lit'] } };
-    resolveCodeExampleSources(p, { schemaFor });
+    resolveCodeExampleSources(p);
     expect(p.blocks['ce-lit'].tabs).toEqual([{ language: 'jsx', code: 'x' }]);
   });
 });

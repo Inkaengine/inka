@@ -39,7 +39,7 @@ export default defineConfig({
 
   // Only start the mock API server (no Volto)
   webServer: {
-    command: 'node packages/mock-api/mock-api-server.cjs',
+    command: 'pnpm exec inka-mock-api',
     env: {
       // Inka's own content, and the schemas of the test frontend it is written for.
       CONTENT_MOUNTS: '/docs:docs,/_test_data:tests-playwright/fixtures/content,/:tests-playwright/fixtures/site-root',

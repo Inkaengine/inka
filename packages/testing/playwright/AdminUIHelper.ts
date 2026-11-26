@@ -15,7 +15,7 @@ export class AdminUIHelper {
   // test into one session — saves in one test then leak into others
   // running in parallel. A unique token per AdminUIHelper instance (one
   // per test) gives each test its own isolated mock-api session.
-  // Minted as the mock site's own (mock-tokens.cjs): it accepts no other.
+  // Minted as the mock site's own (mock-tokens.js): it accepts no other.
   readonly authToken = mintToken('admin');
 
   // Demo pacing (./demoPacing): one glance in ms from DEMO_PACING, so recorded
@@ -337,6 +337,40 @@ export class AdminUIHelper {
   }
 
   /**
+   * An author can't go from one page's editor to another page: in the editor a
+   * link does nothing unless it opts in for an in-page action, and the site's
+   * navigation leaves through the leave warning to the other page's VIEW. They
+   * save or cancel, then click Edit. A helper that jumps anyway puts the
+   * editor in a state no author reaches (the previous page's form, its edit
+   * counter, its draft baseline), and tests then find, or need code for, bugs
+   * nobody can hit. So: save (saveContent) or cancel (cancelEdit) first.
+   */
+  private refuseToLeaveAnEditor(call: string, contentPath: string): void {
+    const current = this.page.url();
+    if (!current.startsWith(this.adminUrl)) return;
+    const { pathname } = new URL(current);
+    const editing = pathname.match(/^(.*)\/(edit|add)\/?$/);
+    // Not in an editor, or in THIS page's: staying, or out to its own view
+    // (Back does that), hands no editor a different page.
+    if (!editing || (editing[2] === 'edit' && editing[1] === contentPath)) return;
+    throw new Error(
+      `${call}: the browser is in the editor at ${pathname}. An author can't ` +
+        'leave an editor for another page; save (saveContent) or cancel ' +
+        '(cancelEdit) first, as they would.',
+    );
+  }
+
+  /** Cancel the edit, as the toolbar's Cancel does, and wait for the view. */
+  async cancelEdit(): Promise<void> {
+    await this.page.locator('#toolbar button.cancel').click();
+    await this.page.waitForURL(
+      (url) => !/\/(edit|add)\/?$/.test(url.pathname),
+      { timeout: 15000 },
+    );
+    await this.waitForIframeReady();
+  }
+
+  /**
    * Navigate to the edit page for a piece of content.
    * Goes directly via page.goto() — Volto SSR reads the auth_token cookie
    * and forwards it as Authorization: Bearer to the API.
@@ -353,6 +387,7 @@ export class AdminUIHelper {
     const editPath = `${contentPath}/edit`;
     const currentUrl = this.page.url();
     const isOnVoltoPage = currentUrl.startsWith(this.adminUrl);
+    this.refuseToLeaveAnEditor(`navigateToEdit('${contentPath}')`, contentPath);
 
     if (isOnVoltoPage) {
       // Already on a Volto page — use client-side navigation (no SSR round-trip).
@@ -481,17 +516,10 @@ export class AdminUIHelper {
 
     const currentUrl = this.page.url();
     const isOnVoltoPage = currentUrl.startsWith(this.adminUrl);
+    this.refuseToLeaveAnEditor(`navigateToView('${contentPath}')`, contentPath);
 
-    // Navigate to edit mode first (reliable), then switch to view.
-    // Direct pushState to view mode triggers Volto SSR which may crash
-    // with "window is not defined" on pages with iframe components.
+    // Already in the admin: straight to the view, as following a link does.
     if (isOnVoltoPage) {
-      await this.page.evaluate((path) => {
-        window.history.pushState({}, '', path + '/edit');
-        window.dispatchEvent(new PopStateEvent('popstate'));
-      }, contentPath);
-      await this.page.waitForURL(`${this.adminUrl}${contentPath}/edit`, { timeout: 10000 });
-      // Switch to view mode
       await this.page.evaluate((path) => {
         window.history.pushState({}, '', path);
         window.dispatchEvent(new PopStateEvent('popstate'));
@@ -1409,21 +1437,30 @@ export class AdminUIHelper {
   }
 
   /**
-   * v2 template edit: UNLOCK a template for editing via the ON-CANVAS Quanta toolbar
-   * lock toggle (🔒). No sidebar on any width — `toolbarTemplateInstanceId` is derived
-   * from the selected block's ancestry, so tapping the toggle targets the template
-   * even from a deeply-nested member, and the "changes show on every page" warning
-   * modal renders on the canvas (visible, not buried in a settings sheet). Select a
-   * FIXED (locked) member so the toggle shows. demoPacingMs (opt-in) holds on the
-   * modal so recordings can read it.
-   * @param memberBlockId - a fixed/locked block belonging to the template instance
+   * v2 template edit: UNLOCK a template for editing, the way an author does
+   * (inka#774): the canvas lock on a locked member (or, on a member with no lock,
+   * the toolbar ⋯ "Edit template") opens the template's own sidebar section —
+   * the sheet, on a phone — whose Unlock button raises the "changes show on every
+   * page" warning. `toolbarTemplateInstanceId` comes from the selected block's
+   * ancestry, so any member, however deep, reaches its template. demoPacingMs
+   * (opt-in) holds on the explanation and the warning so recordings can read them.
+   * @param memberBlockId - any block belonging to the template instance
    */
   async unlockTemplate(memberBlockId: string): Promise<void> {
     await this.clickBlockInIframe(memberBlockId);
     const toggle = this.page.locator('.quanta-toolbar .template-lock-toggle');
-    await expect(toggle).toBeVisible({ timeout: 5000 });
-    await expect(toggle).toHaveAttribute('aria-pressed', 'false');
-    await toggle.click();
+    await this.page.locator('.quanta-toolbar').waitFor({ state: 'visible', timeout: 5000 });
+    if (await toggle.isVisible()) {
+      await expect(toggle).toHaveAttribute('aria-pressed', 'false');
+      await toggle.click();
+    } else {
+      await this.openQuantaToolbarMenu(memberBlockId);
+      await this.page.locator('.volto-hydra-dropdown-item.edit-template-item').click();
+    }
+    const about = this.page.locator('.template-locked-info');
+    await expect(about).toBeVisible({ timeout: 5000 });
+    if (this.demoPacingMs) await holdOn(this.page, readFor(await about.innerText()));
+    await about.locator('.template-unlock-button').click();
     const confirm = this.page.locator('.template-unlock-modal .template-confirm');
     await expect(confirm).toBeVisible({ timeout: 5000 });
     // Demo pacing: long enough to read the warning before confirming.
@@ -1432,7 +1469,11 @@ export class AdminUIHelper {
     }
     await confirm.click();
     await expect(this.page.locator('.template-unlock-modal')).toHaveCount(0, { timeout: 5000 });
-    await expect(toggle).toHaveAttribute('aria-pressed', 'true');
+    await expect(about).toHaveCount(0, { timeout: 5000 });
+    // Back to the canvas (a phone's sheet covers it), on the member, unlocked.
+    await this.closeSidebar();
+    await this.clickBlockInIframe(memberBlockId);
+    await expect(toggle).toHaveAttribute('aria-pressed', 'true', { timeout: 5000 });
   }
 
   /**

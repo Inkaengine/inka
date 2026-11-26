@@ -5,6 +5,7 @@
  * Strict TDD: each `it` below must fail before its implementation exists.
  */
 
+import { describe, test, expect } from 'vitest';
 import {
   canContain,
   findConversionPath,

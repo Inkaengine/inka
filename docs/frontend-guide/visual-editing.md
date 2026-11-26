@@ -20,7 +20,7 @@ subjects:
   - editing
 title: Visual Editing
 blocks-matched: |
-  <block type="slate" value="${p,h*,ul,ol,blockquote,strong,em,a/slate}" plaintext="${p,h*,ul,ol,blockquote,strong,em,a/text}" />
+  <block type="slate" value="${p,h*,ul,ol,blockquote,strong,em,a/slate}" />
   <block type="title" _="${h1}" />
   <block type="codeExample">
     <region name="tabs" widget="object_list" idField="@id" typeField="@type">
@@ -173,13 +173,27 @@ import { isEmptySlate } from '@hydra-js/helpers';
 
 A slate field your block always shows needs no check at all — render its nodes, and the empty paragraph is what the author types into.
 
-To fill an empty field from the canvas, the editor selects the block and presses **reveal optional fields** in the block toolbar. Inka feeds your renderer a placeholder value for each empty field, so your own `&&` guard (or `isEmptySlate` check) produces the element and it becomes editable. For a slate field the placeholder is its own empty paragraph holding a zero-width space, so it keeps its `data-node-id`. The placeholder exists only in the data handed to your renderer: it is never stored, so fields left unfilled leave no trace in saved content and render nothing in view. Your renderer needs no code for this.
+To fill an empty field from the canvas, the editor selects the block and presses the eye, **Show empty fields**, in the block toolbar (or in the block's ⋯ menu). It offers the fields you mark `optionalOnCanvas: true` in the block's schema, and only those:
+
+### Javascript
+
+```javascript
+properties: {
+  heading: { title: 'Heading', optionalOnCanvas: true },
+  alt: { title: 'Alt text' }, // edited in the sidebar: not marked
+}
+```
+
+Inka feeds your renderer a placeholder value for each empty field, so your own `&&` guard (or `isEmptySlate` check) produces the element and it becomes editable. For a slate field the placeholder is its own empty paragraph holding a zero-width space, so it keeps its `data-node-id`. The placeholder exists only in the data handed to your renderer: it is never stored, so fields left unfilled leave no trace in saved content and render nothing in view. Your renderer needs no code for this.
 
 **A required image is shown without the toggle.** While an image field your schema lists in `required` is empty, such as an image block's `url`, Inka always feeds your renderer a placeholder image, so the editor has something to click straight away. Render it with the same guard. Don't draw a grey box of your own: it would show on the published page too. A required link, such as a teaser's `href`, is filled through the editor's own "select a target" overlay instead.
 
-Reveal is best-effort. Inka offers any field whose type could be edited inline, which it cannot always tell apart from a field you keep in the sidebar (alt text and css classes are strings too). Fields you don't render inline simply don't appear — the editor fills those from the sidebar as usual.
+Mark a field only if you draw it on the page when it has a value. Inka can't tell that from the field's type: alt text and a heading are both strings. A block with no marked empty field shows no eye, so pressing it always reveals something. `block-sanity` presses it on your examples and reports a marked field that never appears. A field can't be both `required` and `optionalOnCanvas`: a required field is always there, so Inka refuses the pair, naming the field.
 
-Reveal replaces a per-block boolean only where "has data" and "should render" are the same thing. When they genuinely differ — the author has content but wants it hidden, or a field should appear only in certain configurations — add your own field and drive it with [\`fieldRules\`](./custom-blocks.md#schema-enhancers).
+### Two ways to make part of a block optional
+
+1. **A toggle in the sidebar.** Add a boolean field ("Show image") that shows or hides the part, and drive the part's fields with [\`fieldRules\`](./custom-blocks.md#schema-enhancers). Use it when having content and showing it differ: the author keeps the content but hides it, or the part appears only in some configurations.
+2. **Reveal.** Mark the field `optionalOnCanvas: true` and render it only when it has a value (empty means absent). To make the part appear, the author either types a value into the field in the sidebar, or presses the eye to show the empty field on the canvas and fills it there. Use it when having a value *is* showing the part.
 
 ## Allowed Navigation (data-linkable-allow)
 

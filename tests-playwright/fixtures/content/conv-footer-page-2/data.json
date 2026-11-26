@@ -25,8 +25,7 @@
             }
           ]
         }
-      ],
-      "plaintext": "This is the second conv-footer page"
+      ]
     },
     "conv-footer-page-2-footer": {
       "@type": "slate",
@@ -39,8 +38,7 @@
             }
           ]
         }
-      ],
-      "plaintext": "Second conv footer page footer content"
+      ]
     }
   },
   "blocks_layout": {

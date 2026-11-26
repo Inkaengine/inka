@@ -1,0 +1,1 @@
+A table of contents lists a text block's heading by its own words, bold or linked ones included. It read the block's `plaintext` first, which is the whole block's text and can be out of date, and dropped any word inside bold or a link.
