@@ -107,37 +107,36 @@ export class BridgeApi {
     // Answering with the token the admin already has is what a successful
     // renewal returns, and leaves its state exactly as it was.
     //
-    // KNOWN GAP, and it is not fixed by asking the adapter. Renewal is also the
-    // only thing that ever checks whether the site still accepts the token the
-    // browser holds, and /connect-agent is built on that: it offers Allow only
-    // once renewal has answered, because a deploy that resets the site stops
-    // accepting every token it issued, and the agent would be handed that dead
-    // one and fail on every call (mcp-connect.spec.ts:79, red for that reason).
+    // Renewal is also the only thing that ever checks whether the site still
+    // accepts the token the browser holds, and /connect-agent is built on that:
+    // it offers Allow only once renewal has answered, because a deploy that
+    // resets the site stops accepting every token it issued, and the agent
+    // would be handed that dead one and fail on every call. So where the
+    // adapter can carry the question, ask — with the admin's OWN token, which
+    // is the token the answer is about. The passthrough's `http` intent takes
+    // headers, and a Plone adapter lets a caller's Authorization override its
+    // own. Without passthrough there is nobody to ask, and the token the admin
+    // holds is the honest answer.
     //
-    // Confirming it with the adapter was tried and reverted. It asks the wrong
-    // party: the adapter's credential is not the admin's cookie, and a relayed
-    // @login-renew is answered about whichever token the ADAPTER carries. In
-    // CI that broke the sign-in flow itself — "Checking your sign-in…" for a
-    // perfectly good session — in both the mock and the nuxt admin, and every
-    // MCP test that signs in through that page failed behind it.
-    //
-    // Sending the admin's own token with the question was tried too — the
-    // passthrough's `http` intent takes headers and a Plone adapter lets a
-    // caller's Authorization override its own — and it failed in exactly the
-    // same way, which means the first explanation was at best incomplete.
-    //
-    // The lead for a third attempt, from the one thing that was measured: the
-    // site answers a renewal with a FRESH token (verified against the mock:
-    // 200, and a different jwt). ConnectAgent's effect depends on `token`, so
-    // a renewal that changes it re-runs the effect, where answering from the
-    // cookie returns the same token and settles at once. That is a loop to
-    // watch for, and watching means instrumenting ConnectAgent's renewal
-    // promise in a browser — whether it resolves, rejects or never settles —
-    // on a machine quiet enough for the timing to mean something. Two CI runs
-    // have now said "it breaks" without saying why, which is the wrong tool
-    // for this question.
+    // Two earlier attempts at this were reverted for CI failures that looked
+    // like the ASKING was broken — "Checking your sign-in…" for a perfectly
+    // good session, every MCP test that signs in through that page failing
+    // behind it. Neither was: the site answers a renewal with a FRESH token,
+    // ConnectAgent's effect depended on `token`, and so a successful renewal
+    // re-ran the effect and renewed again. See the loop measured in
+    // ConnectAgent.jsx, which is where it is fixed.
     if (op === 'post' && String(path).split('?')[0].endsWith('@login-renew')) {
-      return { token: currentAuthToken() };
+      const held = currentAuthToken();
+      if (held && this.supportsPassthrough(info)) {
+        return this.rpc.request('http', {
+          op,
+          path,
+          data,
+          headers: { ...headers, Authorization: `Bearer ${held}` },
+          params,
+        });
+      }
+      return { token: held };
     }
 
     // @querystring is a DECLARATION, not content.

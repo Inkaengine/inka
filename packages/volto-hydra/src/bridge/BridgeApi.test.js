@@ -75,21 +75,54 @@ describe('BridgeApi', () => {
   });
 
   /**
-   * Renewal is answered from the admin's own cookie: in bridge mode the adapter
-   * owns the CMS session, so there is nothing to renew, and a successful
-   * renewal returns the token the admin already has.
+   * Renewal is the only thing that ever asks whether the site still ACCEPTS
+   * the token the browser holds, and /connect-agent offers Allow on the
+   * answer — so where the adapter can carry the question, it is asked, with
+   * the admin's own token, which is the token the answer is about.
    *
-   * There is a known gap behind this, written up where the code is: renewal is
-   * also the only thing that ever asks whether the site still ACCEPTS that
-   * token, and /connect-agent depends on the answer. Confirming it with the
-   * adapter was tried and reverted — it asks about the adapter's credential,
-   * not the admin's cookie, and broke the sign-in flow for a good session.
+   * Setting document.cookie is not decoration: without it currentAuthToken()
+   * returns undefined and every one of these takes the no-token branch, which
+   * is how the old single test passed while asserting nothing about the relay.
    */
   describe('@login-renew', () => {
-    it('answers with the token the admin already holds', async () => {
-      const r = rpc({});
-      await passthroughApi(r).post('/@login-renew');
-      expect(r.request).not.toHaveBeenCalled();
+    const withCookie = (token) => {
+      document.cookie = `auth_token=${token}`;
+      return () => {
+        document.cookie = 'auth_token=; max-age=0';
+      };
+    };
+
+    it("asks the site, carrying the admin's own token", async () => {
+      const clear = withCookie('held-token');
+      try {
+        const r = rpc({ token: 'fresh-token' });
+        const res = await passthroughApi(r).post('/@login-renew');
+        expect(r.request).toHaveBeenCalledWith(
+          'http',
+          expect.objectContaining({
+            op: 'post',
+            path: '/@login-renew',
+            headers: expect.objectContaining({
+              Authorization: 'Bearer held-token',
+            }),
+          }),
+        );
+        expect(res).toEqual({ token: 'fresh-token' });
+      } finally {
+        clear();
+      }
+    });
+
+    it('answers from the cookie when no adapter can be asked', async () => {
+      const clear = withCookie('held-token');
+      try {
+        const r = rpc({});
+        const res = await semanticApi(r).post('/@login-renew');
+        expect(r.request).not.toHaveBeenCalled();
+        expect(res).toEqual({ token: 'held-token' });
+      } finally {
+        clear();
+      }
     });
 
     it('is not pressed as a login provider called "renew"', async () => {
