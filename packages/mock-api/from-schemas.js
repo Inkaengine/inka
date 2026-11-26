@@ -8,7 +8,9 @@
 import { searchTextOptions, withSearchableText } from '@volto-hydra/helpers/searchableText.js';
 import { linkItemSnapshot } from '@volto-hydra/helpers/linkItem.js';
 import { buildBlockPathMap } from '@volto-hydra/helpers/buildBlockPathMap.js';
-import { getBlockById, updateBlockById } from '@volto-hydra/helpers/blockPath.js';
+import { getBlockById, updateBlockById, regionSlotId } from '@volto-hydra/helpers/blockPath.js';
+import { buildIdFieldMap } from '@volto-hydra/helpers/buildBlockPathMap.js';
+import { getChildFields, getChildBlockEntries, setChildBlockEntries } from '@volto-hydra/helpers';
 import { resolveEffectiveBlockSchema } from '@volto-hydra/helpers/blockSync.js';
 
 /** Build a `schemaFor(type) -> blockSchema` lookup from a block-schema registry.
@@ -264,4 +266,52 @@ export function withSchemaDefaults(page, blocksConfig) {
     }
     return out;
   });
+}
+
+/**
+ * Each block of the page rewritten, at every depth, with `fn(child, slot)` for a
+ * child of the same template instance as its block, `slot` being the name the
+ * editor gives it (regionSlotId: the block's slot and the region). `outward`:
+ * rewrite a child after what is inside it (its slot names its own children's),
+ * else before.
+ */
+function mapInstanceChildren(page, blocksConfig, fn, outward) {
+  if (!page.blocks) return page;
+  const idFieldMap = buildIdFieldMap(blocksConfig, SEARCH_INTL);
+  const visit = (block) => {
+    if (!block || typeof block !== 'object') return block;
+    let out = block;
+    for (const field of getChildFields(block, idFieldMap, { allObjectLists: true })) {
+      let changed = false;
+      const entries = getChildBlockEntries(out, field).map(({ id, block: child }) => {
+        const ours = child && block.templateInstanceId && block.slotId && child.templateInstanceId === block.templateInstanceId;
+        const slot = ours ? regionSlotId(block.slotId, field.region) : null;
+        const next = !ours ? visit(child) : outward ? fn(visit(child), slot) : visit(fn(child, slot));
+        if (next !== child) changed = true;
+        return { id, block: next };
+      });
+      if (changed) {
+        if (out === block) out = { ...block };
+        setChildBlockEntries(out, field, entries);
+      }
+    }
+    return out;
+  };
+  return { ...page, blocks: Object.fromEntries(Object.entries(page.blocks).map(([id, b]) => [id, visit(b)])) };
+}
+
+/** The page without each template child's slot named from its region: what a
+ *  markdown export leaves out (withRegionSlots names it again). */
+export function withoutRegionSlots(page, blocksConfig) {
+  return mapInstanceChildren(page, blocksConfig, (child, slot) => {
+    if (child.slotId !== slot) return child;
+    const { slotId, ...rest } = child;
+    return rest;
+  }, true);
+}
+
+/** The page with each template child that has no slot given the one the editor
+ *  names from its region, as inheritTemplateMembershipDeep does. */
+export function withRegionSlots(page, blocksConfig) {
+  return mapInstanceChildren(page, blocksConfig, (child, slot) => (child.slotId ? child : { ...child, slotId: slot }), false);
 }

@@ -221,3 +221,46 @@ describe('a markdown export leaves out a value its schema declares as the defaul
     assert.equal(out.blocks.a.required, false);
   });
 });
+
+describe("a markdown export leaves out a template child's slot named from its region", () => {
+  // The editor names the slot of a block inside a template's block from that
+  // block's slot and the region it sits in (regionSlotId: `example-items`), so
+  // the Markdown leaves that name out and loading names it again. A slot named
+  // otherwise (a fixed child's own) is kept, as is any outside an instance.
+  let withoutRegionSlots, withRegionSlots;
+  before(async () => { ({ withoutRegionSlots, withRegionSlots } = await import('./from-schemas.js')); });
+  const blocksConfig = {
+    group: { blockSchema: { properties: { items: { widget: 'blocks_layout' } } } },
+    slate: { blockSchema: { properties: {} } },
+  };
+  const I = { templateId: '/t', templateInstanceId: 'i1' };
+  const stored = () => ({
+    blocks: {
+      g: {
+        '@type': 'group', ...I, slotId: 'example',
+        blocks: {
+          a: { '@type': 'group', ...I, slotId: 'example-items',
+            blocks: { x: { '@type': 'slate', ...I, slotId: 'example-items-items' } }, blocks_layout: { items: ['x'] } },
+          b: { '@type': 'slate', ...I, slotId: 'example-items-2', fixed: true },
+          c: { '@type': 'slate', templateId: '/s', templateInstanceId: 's1', slotId: 'snip-body' },
+        },
+        blocks_layout: { items: ['a', 'b', 'c'] },
+      },
+    },
+    blocks_layout: { items: ['g'] },
+  });
+
+  it('drops a slot named from its region, at every depth, and keeps any other', () => {
+    const out = withoutRegionSlots(stored(), blocksConfig);
+    const g = out.blocks.g;
+    assert.equal(g.slotId, 'example');
+    assert.equal('slotId' in g.blocks.a, false);
+    assert.equal('slotId' in g.blocks.a.blocks.x, false);
+    assert.equal(g.blocks.b.slotId, 'example-items-2');
+    assert.equal(g.blocks.c.slotId, 'snip-body');
+  });
+
+  it('loading names it again, so the round trip is exact', () => {
+    assert.deepEqual(withRegionSlots(withoutRegionSlots(stored(), blocksConfig), blocksConfig), stored());
+  });
+});

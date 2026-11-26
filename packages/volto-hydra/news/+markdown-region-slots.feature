@@ -1,0 +1,1 @@
+A Markdown export leaves out the slot of a block inside a template's block when it is the name the editor gives it (the block's slot and its region, `example-items`), and loading names it again. @djay

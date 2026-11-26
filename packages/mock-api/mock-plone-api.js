@@ -2844,9 +2844,11 @@ function loadMarkdownMount(mount) {
   // editor's save writes it, and a tree read from disk was never saved.
   if (contentSchemas) {
     for (const [p, page] of items) {
-      // A value the export left out for being its schema's default, put back as
-      // the editor saves it; then the search text, which reads the full block.
-      const full = mdRuntime.fromSchemas.withSchemaDefaults(page, contentSchemas);
+      // A value the export left out for being its schema's default, and a
+      // template child's slot named from its region, put back as the editor
+      // saves them; then the search text, which reads the full block.
+      const full = mdRuntime.fromSchemas.withRegionSlots(
+        mdRuntime.fromSchemas.withSchemaDefaults(page, contentSchemas), contentSchemas);
       items.set(p, mdRuntime.fromSchemas.withMissingSearchText(full, contentSchemas));
     }
   }
@@ -2983,8 +2985,8 @@ function reloadMount(mount) {
 async function getEngine() {
   if (!engine) {
     const { emitPage, parsePrototypes } = await import('@inka/blockmd/prototype-mapping.mjs');
-    const { withoutDefaultSearchText, withoutSchemaDefaults } = await import('./from-schemas.js');
-    engine = { emitPage, parsePrototypes, withoutDefaultSearchText, withoutSchemaDefaults };
+    const { withoutDefaultSearchText, withoutSchemaDefaults, withoutRegionSlots } = await import('./from-schemas.js');
+    engine = { emitPage, parsePrototypes, withoutDefaultSearchText, withoutSchemaDefaults, withoutRegionSlots };
   }
   return engine;
 }
@@ -3670,7 +3672,7 @@ async function exportContent(req, res) {
   const { format = 'json', prototypes = {}, allowMissingBlobs = false, sitePath } = jsonBody(req);
 
   if (format === 'markdown') {
-    const { emitPage, parsePrototypes, withoutDefaultSearchText, withoutSchemaDefaults } = await getEngine();
+    const { emitPage, parsePrototypes, withoutDefaultSearchText, withoutSchemaDefaults, withoutRegionSlots } = await getEngine();
     const YAML = (await import('yaml')).default;
     const { SERVER_STATE } = await import('./server-state.js');
     const { BLOB_FIELD, blobDefaults } = await import('@inka/blockmd/markdown-mount.mjs');
@@ -3861,9 +3863,12 @@ async function exportContent(req, res) {
         });
         // Search text the frontend would give the page anyway stays out of the markdown
         // (loading fills it again); search text set to something else is kept. So
-        // does a value its schema declares as the default (loading puts it back).
+        // does a value its schema declares as the default, and a template child's
+        // slot the editor names from its region (loading puts each back).
         const own = contentSchemas
-          ? withoutSchemaDefaults(withoutDefaultSearchText(ownBlocks, contentSchemas), contentSchemas, { keep: statedByPrototype(protos) })
+          ? withoutRegionSlots(
+            withoutSchemaDefaults(withoutDefaultSearchText(ownBlocks, contentSchemas), contentSchemas, { keep: statedByPrototype(protos) }),
+            contentSchemas)
           : ownBlocks;
         const blocks = structuredClone(own.blocks);
         unresolveBlocks(blocks, baseSegs, m);
