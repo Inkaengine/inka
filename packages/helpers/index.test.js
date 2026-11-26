@@ -6,6 +6,7 @@ import {
   isSlateFieldType,
   isTextareaFieldType,
   loadTemplates,
+  templateSearchParams,
 } from './index.js';
 
 // Unit tests for buildQuerystringSearchBody — the pure builder that turns a
@@ -629,6 +630,90 @@ describe('loadTemplates — uses the templates the page response already carries
     expect(cache['/templates/one']).toBe(one);
   });
 });
+
+describe('loadTemplates — uses the templates a search expansion carries', () => {
+  // A frontend knows its forced templates before it asks for a page, so it asks for them
+  // in the same request (collective.restapi.searchexpansion: `expand=search` with the
+  // templates' paths). They arrive as search results under @components.search, keyed by
+  // nothing but their @id, a URL whose path ends with the template id.
+  const template = (refs = [], title = 'T') => ({
+    title,
+    blocks: Object.fromEntries(refs.map((id, i) => [`b${i}`, { templateId: id }])),
+    blocks_layout: { items: refs.map((_, i) => `b${i}`) },
+  });
+  const result = (url, t) => ({ '@id': url, ...t });
+  const pageWith = (items, refs = []) => ({
+    ...template(refs),
+    '@components': { search: { items } },
+  });
+  const recordingLoader = (available = {}) => {
+    const calls = [];
+    const load = async (id) => {
+      calls.push(id);
+      if (!(id in available)) throw new Error(`HTTP 404 for ${id}`);
+      return available[id];
+    };
+    return { load, calls };
+  };
+
+  it('makes no request for a forced template the search carries', async () => {
+    const page = pageWith([result('https://site.example/templates/footer', template([], 'Footer'))]);
+    const { load, calls } = recordingLoader();
+
+    const { templates, errors } = await loadTemplates(page, load, {}, ['/templates/footer']);
+
+    expect(calls).toEqual([]);
+    expect(templates['/templates/footer'].title).toBe('Footer');
+    expect(errors).toEqual([]);
+  });
+
+  it('matches by path whatever the site is mounted under', async () => {
+    const page = pageWith(
+      [result('https://host.example/Plone/templates/one', template([], 'One'))],
+      ['/templates/one'],
+    );
+    const { load, calls } = recordingLoader();
+
+    const { templates } = await loadTemplates(page, load);
+
+    expect(calls).toEqual([]);
+    expect(templates['/templates/one'].title).toBe('One');
+  });
+
+  it('fetches what the search lacks, nested templates included', async () => {
+    const page = pageWith(
+      [result('https://site.example/templates/one', template(['/templates/two'], 'One'))],
+      ['/templates/one'],
+    );
+    const { load, calls } = recordingLoader({ '/templates/two': template([], 'Two') });
+
+    const { templates } = await loadTemplates(page, load);
+
+    expect(calls).toEqual(['/templates/two']);
+    expect(templates['/templates/two'].title).toBe('Two');
+  });
+
+  it("takes the search's copy over the caller's cache: it came with this response", async () => {
+    const page = pageWith([result('https://site.example/templates/one', template([], 'Fresh'))], ['/templates/one']);
+    const cache = { '/templates/one': template([], 'Stale') };
+
+    const { templates } = await loadTemplates(page, recordingLoader().load, cache);
+
+    expect(templates['/templates/one'].title).toBe('Fresh');
+    expect(cache['/templates/one'].title).toBe('Fresh');
+  });
+
+  it('builds the request parameters for a set of template paths', () => {
+    expect(templateSearchParams(['/templates/a', '/templates/b'])).toEqual([
+      ['expand.search.path.query', '/templates/a'],
+      ['expand.search.path.query', '/templates/b'],
+      ['expand.search.path.depth', '0'],
+      ['expand.search.fullobjects', '1'],
+      ['expand.search.b_size', '2'],
+    ]);
+  });
+});
+
 
 // ---------------------------------------------------------------------------
 
