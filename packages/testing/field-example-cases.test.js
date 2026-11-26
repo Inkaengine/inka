@@ -39,6 +39,24 @@ describe('canvasFieldsSet', () => {
     expect(canvasFieldsSet(schema, { image: '', href: [], picked: null })).toEqual([]);
   });
 
+  // A list's items are drawn inside their block and checked with it, so a picture
+  // or link an item sets is the block's to show: an example whose items set it.
+  test("a list's items' link and media fields, named by the list", () => {
+    const withList = {
+      properties: {
+        image: { widget: 'image' },
+        items: {
+          widget: 'object_list',
+          schema: { properties: { iconImage: { widget: 'image' }, link: { widget: 'object_browser', mode: 'link' }, title: { type: 'string' } } },
+        },
+      },
+    };
+    expect(
+      canvasFieldsSet(withList, { items: [{ title: 'A' }, { iconImage: [{ '@id': '/i.png' }] }, { link: [{ '@id': '/x' }] }] }),
+    ).toEqual(['items.iconImage', 'items.link']);
+    expect(canvasFieldsSet(withList, { items: [{ title: 'A', iconImage: [] }] })).toEqual([]);
+  });
+
   test('no schema, no fields', () => {
     expect(canvasFieldsSet(null, { image: '/a.png' })).toEqual([]);
   });

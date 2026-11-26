@@ -24,9 +24,21 @@ export function canvasFieldKind(prop) {
 
 const hasValue = (v) => v !== undefined && v !== null && v !== '' && !(Array.isArray(v) && v.length === 0);
 
-/** The canvas fields (canvasFieldKind) `blockData` gives a value, in schema order. */
+/**
+ * The canvas fields (canvasFieldKind) `blockData` gives a value, in schema order.
+ *
+ * A list's items (an object_list whose items share one schema) are drawn inside
+ * the block and checked with it, so a field any item sets counts too, named
+ * `<list>.<field>`: an example whose items set a picture is the only way that
+ * picture's annotation is ever seen.
+ */
 export function canvasFieldsSet(schema, blockData) {
-  return Object.entries(schema?.properties ?? {})
-    .filter(([field, prop]) => canvasFieldKind(prop) && hasValue(blockData?.[field]))
-    .map(([field]) => field);
+  return Object.entries(schema?.properties ?? {}).flatMap(([field, prop]) => {
+    if (canvasFieldKind(prop)) return hasValue(blockData?.[field]) ? [field] : [];
+    const items = blockData?.[field];
+    if (prop?.widget !== 'object_list' || !prop.schema || !Array.isArray(items)) return [];
+    return Object.entries(prop.schema.properties ?? {})
+      .filter(([itemField, itemProp]) => canvasFieldKind(itemProp) && items.some((item) => hasValue(item?.[itemField])))
+      .map(([itemField]) => `${field}.${itemField}`);
+  });
 }
