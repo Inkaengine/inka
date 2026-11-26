@@ -59,5 +59,8 @@
       "target",
       "plain"
     ]
-  }
+  },
+  "subjects": [
+    "events"
+  ]
 }

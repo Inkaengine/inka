@@ -88,7 +88,9 @@
         }
       },
       "sortable": true,
-      "title": "Creation date"
+      "title": "Creation date",
+      "vocabulary": null,
+      "fetch_vocabulary": true
     },
     "Creator": {
       "description": "The person that created an item",
@@ -120,7 +122,9 @@
         }
       },
       "sortable": true,
-      "title": "Creator"
+      "title": "Creator",
+      "vocabulary": "plone.app.vocabularies.Users",
+      "fetch_vocabulary": true
     },
     "Description": {
       "description": "An item's description",
@@ -138,7 +142,9 @@
         }
       },
       "sortable": false,
-      "title": "Description"
+      "title": "Description",
+      "vocabulary": null,
+      "fetch_vocabulary": true
     },
     "effective": {
       "description": "The time and date an item was first published",
@@ -219,7 +225,9 @@
         }
       },
       "sortable": true,
-      "title": "Effective date"
+      "title": "Effective date",
+      "vocabulary": null,
+      "fetch_vocabulary": true
     },
     "effectiveRange": {
       "description": "Querying this is undefined",
@@ -228,7 +236,9 @@
       "operations": [],
       "operators": {},
       "sortable": false,
-      "title": "Effective range"
+      "title": "Effective range",
+      "vocabulary": null,
+      "fetch_vocabulary": true
     },
     "end": {
       "description": "The end date and time of an event",
@@ -309,7 +319,9 @@
         }
       },
       "sortable": true,
-      "title": "Event end date"
+      "title": "Event end date",
+      "vocabulary": null,
+      "fetch_vocabulary": true
     },
     "expires": {
       "description": "The time and date an item was expired",
@@ -390,7 +402,9 @@
         }
       },
       "sortable": true,
-      "title": "Expiration date"
+      "title": "Expiration date",
+      "vocabulary": null,
+      "fetch_vocabulary": true
     },
     "getId": {
       "description": "The short name of an item (used in the url)",
@@ -415,7 +429,9 @@
         }
       },
       "sortable": true,
-      "title": "Short name (id)"
+      "title": "Short name (id)",
+      "vocabulary": null,
+      "fetch_vocabulary": true
     },
     "getObjPositionInParent": {
       "description": "The order of an item in its parent folder",
@@ -447,7 +463,9 @@
         }
       },
       "sortable": true,
-      "title": "Order in folder"
+      "title": "Order in folder",
+      "vocabulary": null,
+      "fetch_vocabulary": true
     },
     "getRawRelatedItems": {
       "description": "Find items related to the selected items",
@@ -465,7 +483,9 @@
         }
       },
       "sortable": false,
-      "title": "Related To"
+      "title": "Related To",
+      "vocabulary": null,
+      "fetch_vocabulary": true
     },
     "isDefaultPage": {
       "description": "Find items that are the default view for their containing folder.",
@@ -490,7 +510,9 @@
         }
       },
       "sortable": false,
-      "title": "Default Page"
+      "title": "Default Page",
+      "vocabulary": null,
+      "fetch_vocabulary": true
     },
     "isFolderish": {
       "description": "Find items that can contain other objects",
@@ -515,7 +537,9 @@
         }
       },
       "sortable": false,
-      "title": "Folder-like"
+      "title": "Folder-like",
+      "vocabulary": null,
+      "fetch_vocabulary": true
     },
     "modified": {
       "description": "The time and date an item was last modified",
@@ -596,7 +620,9 @@
         }
       },
       "sortable": true,
-      "title": "Modification date"
+      "title": "Modification date",
+      "vocabulary": null,
+      "fetch_vocabulary": true
     },
     "path": {
       "description": "The location of an item ",
@@ -628,7 +654,9 @@
         }
       },
       "sortable": false,
-      "title": "Location"
+      "title": "Location",
+      "vocabulary": null,
+      "fetch_vocabulary": true
     },
     "portal_type": {
       "description": "An item's type (e.g. Event)",
@@ -653,7 +681,9 @@
         }
       },
       "sortable": false,
-      "title": "Type"
+      "title": "Type",
+      "vocabulary": "plone.app.vocabularies.ReallyUserFriendlyTypes",
+      "fetch_vocabulary": true
     },
     "review_state": {
       "description": "An item's workflow state (e.g.published)",
@@ -678,7 +708,9 @@
         }
       },
       "sortable": true,
-      "title": "Review state"
+      "title": "Review state",
+      "vocabulary": "plone.app.vocabularies.WorkflowStates",
+      "fetch_vocabulary": true
     },
     "SearchableText": {
       "description": "Text search of an item's contents",
@@ -696,7 +728,9 @@
         }
       },
       "sortable": false,
-      "title": "Searchable text"
+      "title": "Searchable text",
+      "vocabulary": null,
+      "fetch_vocabulary": true
     },
     "show_inactive": {
       "description": "Select which roles have the permission to view inactive objects",
@@ -714,7 +748,9 @@
         }
       },
       "sortable": false,
-      "title": "Show Inactive"
+      "title": "Show Inactive",
+      "vocabulary": "plone.app.vocabularies.Roles",
+      "fetch_vocabulary": true
     },
     "sortable_title": {
       "description": "The item's title, transformed for sorting",
@@ -746,7 +782,9 @@
         }
       },
       "sortable": true,
-      "title": "Sortable Title"
+      "title": "Sortable Title",
+      "vocabulary": null,
+      "fetch_vocabulary": true
     },
     "start": {
       "description": "The start date and time of an event",
@@ -827,7 +865,9 @@
         }
       },
       "sortable": true,
-      "title": "Event start date"
+      "title": "Event start date",
+      "vocabulary": null,
+      "fetch_vocabulary": true
     },
     "Subject": {
       "description": "Tags are used for organization of content",
@@ -859,7 +899,9 @@
         }
       },
       "sortable": false,
-      "title": "Tag"
+      "title": "Tag",
+      "vocabulary": "plone.app.vocabularies.Keywords",
+      "fetch_vocabulary": true
     },
     "Title": {
       "description": "Text search of an item's title",
@@ -877,7 +919,9 @@
         }
       },
       "sortable": false,
-      "title": "Title"
+      "title": "Title",
+      "vocabulary": null,
+      "fetch_vocabulary": true
     }
   },
   "sortable_indexes": {

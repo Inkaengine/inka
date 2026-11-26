@@ -123,14 +123,24 @@ describe('searchShortcutsFetcher', () => {
     ]);
   });
 
-  test('site-wide mode (no pageField): unique values from the index vocabulary', async () => {
-    global.fetch = async (url) => ({
-      ok: true,
-      json: async () =>
-        String(url).includes('Keywords')
-          ? { items: [{ token: 'a', title: 'a' }, { token: 'b', title: 'b' }] }
-          : {},
-    });
+  // Was "unique values from the index vocabulary", reading
+  // @vocabularies/plone.app.vocabularies.Keywords. A real Plone refuses that to
+  // an anonymous visitor (401), so the strip was empty for exactly the reader
+  // the block exists for -- silently, because `data.items` came back undefined
+  // and `[]` renders as nothing. It reads the catalog now (#762); the full
+  // behaviour is in packages/helpers/searchShortcutsFetcher.test.js.
+  test('site-wide mode (no pageField): unique values from the catalog', async () => {
+    const urls = [];
+    global.fetch = async (url) => {
+      urls.push(String(url));
+      return {
+        ok: true,
+        json: async () => ({
+          items: [{ Subject: ['a', 'b'] }, { Subject: ['b'] }],
+          items_total: 2,
+        }),
+      };
+    };
     const fetcher = searchShortcutsFetcher({ apiUrl: API, contextPath: '/page' });
     const { items, total } = await fetcher(
       { index: 'Subject', searchUrl: [{ '@id': '/search' }] },
@@ -139,6 +149,8 @@ describe('searchShortcutsFetcher', () => {
     expect(total).toBe(2);
     expect(items.map((i) => i.title)).toEqual(['a', 'b']);
     expect(items[0]['@id']).toBe('/search?facet.Subject=a');
+    // The point of the change: nothing asks for a vocabulary.
+    expect(urls.some((u) => u.includes('@vocabularies'))).toBe(false);
   });
 
   test('values are URL-encoded in the facet param', async () => {

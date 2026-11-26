@@ -1527,12 +1527,6 @@ export function relatedItemsFetcher({ apiUrl, contextPath = '/' } = {}) {
   };
 }
 
-// Catalog index → vocabulary of its unique values (site-wide mode). Extend as
-// needed; falls back to a same-named vocabulary.
-const SEARCH_SHORTCUT_INDEX_VOCAB = {
-  Subject: 'plone.app.vocabularies.Keywords',
-};
-
 /**
  * The address a link field holds. A link field stores one shape, a list of
  * links, `[{ '@id': url }]`, for a page on the site and an outside address
@@ -1551,9 +1545,100 @@ function _linkUrl(value, field) {
  * `${searchUrl}?facet.${index}=${value}` so expandListingBlocks' default
  * @id→href mapping renders it as a link item — no special renderer.
  *
- * A linked `pageField` ⇒ THIS page's values of that field; no `pageField` ⇒ all
- * unique values of the index, site-wide (from the index's vocabulary).
+ * A linked `pageField` ⇒ THIS page's values of that field; no `pageField` ⇒ the
+ * values the index actually holds, read from the catalog (see
+ * `_indexValuesFromCatalog` — it used to read the index's vocabulary, which an
+ * anonymous visitor may not be allowed to, #762).
  */
+/** How many brains a shortcuts strip scans for an index's values. */
+const SHORTCUT_VALUE_SCAN = 500;
+
+/**
+ * The values an index actually HOLDS, read from the catalog.
+ *
+ * This used to read the index's vocabulary — `@vocabularies/<vocab>` — and for
+ * the default index, `Subject`, that is `plone.app.vocabularies.Keywords`, which
+ * a real Plone refuses to an anonymous visitor:
+ *
+ *   GET /++api++/@vocabularies/plone.app.vocabularies.Keywords
+ *   401  "You need to be authenticated to access the vocabulary '...'."
+ *
+ * `_getAuthHeaders()` supplies a token when there is one, so the strip worked in
+ * the editor and for a signed-in user, and was EMPTY for the visitor the block
+ * exists for — silently, because `data.items` was undefined and `[]` renders as
+ * nothing (#762).
+ *
+ * The catalog answers the same question anonymously, and answers it better: the
+ * values of items the caller may actually see, rather than every term in a
+ * site-wide keyword vocabulary. A chip is a link into a faceted search, so a
+ * value with nothing behind it is a link to an empty page; and a keyword
+ * vocabulary includes the keywords of private content, which this cannot leak.
+ *
+ * Scope: the whole site, which is what "site-wide mode" means and what reading
+ * the index's vocabulary used to give.
+ *
+ * It briefly scoped to `searchUrl`'s path instead, on the theory that a chip
+ * should only offer values its destination can return. That is wrong, and an
+ * integration test caught it: a search page is where results are SHOWN, not
+ * where content lives. `/search` has nothing beneath it, so site-wide mode
+ * returned nothing at all.
+ */
+async function _indexValuesFromCatalog({ apiUrl, index, headers }) {
+  // The site root, recursively: `absolutePath` with `/` is every object the
+  // caller may see (checked against a live Plone 6.2 — 213 of them).
+  const criterion = {
+    i: 'path',
+    o: 'plone.app.querystring.operation.string.absolutePath',
+    v: '/',
+  };
+
+  // Asked from the SITE ROOT, not from `contextPath`. plone.restapi's
+  // @querystring-search leaves out the page it is asked from — "Exclude 'self'
+  // content item" (services/querystringsearch/get.py) — and exempts the site
+  // root. Asked from the page the block sits on, site-wide mode could not
+  // report that page's OWN keywords: an integration test saw `news` once where
+  // both blocks should have offered it.
+  const url = `${apiUrl}/++api++/@querystring-search`;
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: { ...headers, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      query: [criterion],
+      b_start: 0,
+      b_size: SHORTCUT_VALUE_SCAN,
+      // The brains carry every catalog column, so `index` is on each one.
+      metadata_fields: '_all',
+    }),
+  });
+
+  // Loudly: the silent `[]` is the whole defect this replaces.
+  if (!response.ok) {
+    throw new Error(
+      `searchShortcutsFetcher: ${url} answered ${response.status} ` +
+        `asking for the values of '${index}'`,
+    );
+  }
+
+  const items = (await response.json())?.items || [];
+  // Distinct, in the result set's own order. Not sorted: a token is not its
+  // label (`gov-security` may read "Government Security"), so sorting tokens
+  // would order the strip by something the reader cannot see. A keyword column
+  // is a list; a single-valued index is a scalar; both are accepted.
+  const seen = [];
+  const known = new Set();
+  for (const item of items) {
+    const raw = item?.[index];
+    if (raw === null || raw === undefined) continue;
+    for (const value of Array.isArray(raw) ? raw : [raw]) {
+      if (typeof value !== 'string' || value === '') continue;
+      if (known.has(value)) continue;
+      known.add(value);
+      seen.push(value);
+    }
+  }
+  return seen;
+}
+
 export function searchShortcutsFetcher({ apiUrl, contextPath = '/' } = {}) {
   if (!apiUrl) throw new Error('searchShortcutsFetcher requires apiUrl');
   return async function fetchItems(block, { start, size }) {
@@ -1568,10 +1653,7 @@ export function searchShortcutsFetcher({ apiUrl, contextPath = '/' } = {}) {
       const v = content?.[block.pageField];
       values = Array.isArray(v) ? v : v == null ? [] : [v];
     } else {
-      const vocab = SEARCH_SHORTCUT_INDEX_VOCAB[index] || index;
-      const res = await fetch(`${apiUrl}/++api++/@vocabularies/${vocab}`, { headers });
-      const data = await res.json();
-      values = (data?.items || []).map((t) => t.token);
+      values = await _indexValuesFromCatalog({ apiUrl, index, headers });
     }
 
     const all = values.map((value) => ({

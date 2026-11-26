@@ -22,7 +22,18 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
-const PER_SITE = ['values', 'vocabulary', 'fetch_vocabulary'];
+// Only `values` is the site's own. `vocabulary` (WHICH vocabulary an index
+// draws on) and `fetch_vocabulary` (whether the server inlines its terms or
+// expects the client to go and get them) are plone.app.querystring's registry
+// — the same on every stock site, and the shape a consumer has to cope with.
+//
+// Stripping them is what hid a user-visible bug. Without them the mock said
+// "no values, no vocabulary", which reads as "this index has no terms"; a real
+// Plone says "fetch_vocabulary: true, vocabulary: ...Keywords, values: {}" and
+// then refuses that vocabulary to an anonymous visitor. A facet UI that reads
+// `index.values` therefore worked here and rendered one empty strip in
+// production. Keep them.
+const PER_SITE = ['values'];
 const OUT = path.resolve(
   import.meta.dirname,
   '../packages/mock-api/api/querystring.json',
