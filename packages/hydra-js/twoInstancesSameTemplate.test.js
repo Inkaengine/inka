@@ -1,3 +1,4 @@
+import { test, expect } from 'vitest';
 import { expandEveryContainer } from './expandEveryContainer.testutil.js';
 import { expandTemplatesSync } from '@volto-hydra/helpers';
 

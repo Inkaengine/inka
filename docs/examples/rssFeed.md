@@ -20,7 +20,7 @@ subjects:
   - listings
 title: RSS Feed Block
 blocks-matched: |
-  <block type="slate" value="${p,h*,ul,ol,blockquote,strong,em,a/slate}" plaintext="${p,h*,ul,ol,blockquote,strong,em,a/text}" />
+  <block type="slate" value="${p,h*,ul,ol,blockquote,strong,em,a/slate}" />
   <block type="title" _="${h1}" />
   <block type="codeExample">
     <region name="tabs" widget="object_list" idField="@id" typeField="@type">
@@ -35,7 +35,7 @@ Renders entries from an external RSS feed. Its items are fetched at render time 
 
 ## Live example
 
-<block type="rssFeed" feedUrl="https://pypi.org/rss/project/plone/releases.xml" variation="default" />
+<block type="rssFeed" data-json='{"feedUrl":[{"@id":"https://pypi.org/rss/project/plone/releases.xml"}],"variation":"default","fieldMapping":{"getURL":{"field":"href","type":"link"},"title":{"field":"title","type":"string"},"description":{"field":"description","type":"textarea"}}}' />
 
 <fields templateId="/inka-templates/block-reference-layout" templateInstanceId="tpl-inst-rssFeed" fixed=false readOnly=false>
 
@@ -70,12 +70,14 @@ This block has no bespoke renderer. Add its fetcher to your fetchItems map (keye
 // packages/helpers — client-side, best-effort (CORS-permitting feeds).
 export function rssFetcher() {
   return async function fetchItems(block, { start, size }) {
+    const feedUrl = block.feedUrl[0]['@id'];       // a link field: [{ '@id': url }]
     let entries = [];
     try {
-      const res = await fetch(block.feedUrl);
+      const res = await fetch(feedUrl);
       entries = parseRssEntries(await res.text()); // → [{ '@id': link, title, description, pubDate }]
-    } catch {
-      return { items: [], total: 0 };              // CORS / parse failure → empty feed, never throws
+    } catch (err) {
+      if (!(err instanceof TypeError)) throw err;   // only an unreachable feed (CORS, network)
+      return { items: [], total: 0 };              // degrades to an empty feed
     }
     if (block.count != null) entries = entries.slice(0, block.count);
     return { items: entries.slice(start, start + size), total: entries.length };

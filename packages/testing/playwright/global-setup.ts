@@ -14,20 +14,34 @@
  * MOCK_PARENT_URL, FRONTEND_URL, …) are read here, so every suite answers to
  * the same ones; an option given in code wins.
  */
-import * as fs from 'node:fs';
-import { createRequire } from 'node:module';
 import { chromium } from '@playwright/test';
-import { harnessUrls } from '../ports';
+import * as fs from 'node:fs';
+import * as path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { checkRunningAdmin } from '../admin-build-stamp.js';
+import {
+  buildEmptyRegionCases,
+  collectListingContainerIssues,
+  discoverBlocks,
+} from '../discover-blocks.js';
 import { discoveryPath } from '../discovery';
+import { harnessUrls } from '../ports';
 
-const require = createRequire(import.meta.url);
-const { discoverBlocks, buildEmptyRegionCases, collectListingContainerIssues } =
-  require('../discover-blocks.cjs');
+/** The Inka checkout this harness is part of: the admin a consumer runs is built from it. */
+const INKA_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../..');
 
 export interface FrontendRegistry {
   blocksConfig: Record<string, any>;
   frontendKeys: string[];
   styleMenuClasses: string[];
+  /** The frontend's page schema (`{ properties }`), as the mock parent uses it. */
+  pageSchema: { properties: Record<string, any> };
+  /** What the frontend sends about the toolbar: its own buttons, declared block formats and style menu. */
+  slateOffer: {
+    toolbarButtons?: string[];
+    blockFormats?: Array<{ type: string }>;
+    styleMenu?: Record<string, any>;
+  };
 }
 
 /**
@@ -55,7 +69,7 @@ export async function fetchBlocksConfig(
         const sm = mp?.getStyleMenuClasses?.() || [];
         // Wait past mock-parent's own baseline (~10 types) for the frontend's INIT to land
         return c && Object.keys(c).length > 10
-          ? { blocksConfig: c, frontendKeys: fk, styleMenuClasses: sm }
+          ? { blocksConfig: c, frontendKeys: fk, styleMenuClasses: sm, pageSchema: mp.getPageSchema(), slateOffer: mp.getSlateOffer() }
           : null;
       });
       if (result) return result;
@@ -66,7 +80,7 @@ export async function fetchBlocksConfig(
   } finally {
     await browser.close();
   }
-  return { blocksConfig: {}, frontendKeys: [], styleMenuClasses: [] };
+  return { blocksConfig: {}, frontendKeys: [], styleMenuClasses: [], pageSchema: { properties: {} }, slateOffer: {} };
 }
 
 /** Is a frontend actually serving in this job? */
@@ -147,7 +161,13 @@ export interface DiscoveryOptions {
 export interface PerFrontendSteps {
   reachable: (url: string) => Promise<boolean>;
   fetchRegistry: (url: string) => Promise<FrontendRegistry>;
-  discover: (blocksConfig: Record<string, any>, frontendKeys: string[], styleMenuClasses: string[]) => Promise<any[]>;
+  discover: (
+    blocksConfig: Record<string, any>,
+    frontendKeys: string[],
+    styleMenuClasses: string[],
+    pageSchema: FrontendRegistry['pageSchema'],
+    slateOffer: FrontendRegistry['slateOffer'],
+  ) => Promise<any[]>;
 }
 
 /**
@@ -171,12 +191,12 @@ export async function discoverPerFrontend(
   let frontendKeys: string[] = [];
   for (const [project, url] of targets) {
     if (!(await isUp(url))) continue;
-    const { blocksConfig: cfg, frontendKeys: keys, styleMenuClasses } = await fetchRegistry(url);
+    const { blocksConfig: cfg, frontendKeys: keys, styleMenuClasses, pageSchema, slateOffer } = await fetchRegistry(url);
     if (Object.keys(cfg).length === 0) {
       console.warn(`[SETUP] ${project} (${url}) returned no schemas — skipped`);
       continue;
     }
-    const found = await discover(cfg, keys, styleMenuClasses);
+    const found = await discover(cfg, keys, styleMenuClasses, pageSchema, slateOffer);
     for (const b of found) blocks.push({ ...b, frontend: project });
     perFrontend[project] = found.length;
     blocksConfig = cfg;      // last one wins for the single-config uses below
@@ -236,7 +256,7 @@ export async function discoverForFrontends(options: DiscoveryOptions): Promise<v
   const { blocks, perFrontend, blocksConfig, frontendKeys } = await discoverPerFrontend(targets, {
     reachable,
     fetchRegistry: (url) => fetchBlocksConfig(mockParent, url, schemaApi),
-    discover: (cfg, keys, menu) => discoverBlocks(discoverApi, maxPages, cfg, keys, menu),
+    discover: (cfg, keys, menu, page, offer) => discoverBlocks(discoverApi, maxPages, cfg, keys, menu, page, offer),
   });
   if (blocks.length === 0) {
     throw new Error(
@@ -299,13 +319,29 @@ export async function discoverForFrontends(options: DiscoveryOptions): Promise<v
 export interface AdminOptions {
   /**
    * The URL to poll. Default: VOLTO_HEALTH_URL, else the admin itself when
-   * prebuilt (USE_PREBUILT=true) or its webpack dev server's /health.
+   * built, or its webpack dev server's /health (ADMIN_DEV=1).
    */
   healthUrl?: string;
-  /** A production build: any 200 means ready. Default: USE_PREBUILT=true. */
+  /**
+   * A built admin (`pnpm build:test`): ready on any 200, and refused unless
+   * it was built from this checkout. Default: built, unless ADMIN_DEV=1.
+   */
   prebuilt?: boolean;
+  /** The Inka checkout the admin is built from. Default: the one holding this harness. */
+  inkaRoot?: string;
   /** Give up after this long. Default: 5 minutes. */
   timeoutMs?: number;
+}
+
+/**
+ * Was this fetch refused because nothing is listening yet? Node's fetch throws
+ * `TypeError: fetch failed` with the code on its `cause` (an AggregateError
+ * when localhost resolves to both IPv4 and IPv6, which carries the code too);
+ * a bare socket error has it on the error itself.
+ */
+function connectionRefused(error: unknown): boolean {
+  const { code, cause } = error as { code?: unknown; cause?: { code?: unknown } };
+  return (code ?? cause?.code) === 'ECONNREFUSED';
 }
 
 /**
@@ -316,7 +352,7 @@ export async function waitForAdmin(options: AdminOptions = {}): Promise<void> {
   const retryDelay = 5000;
   const maxRetries = Math.ceil((options.timeoutMs ?? 5 * 60_000) / retryDelay);
 
-  const usePrebuilt = options.prebuilt ?? process.env.USE_PREBUILT === 'true';
+  const usePrebuilt = options.prebuilt ?? process.env.ADMIN_DEV !== '1';
   const healthUrl =
     options.healthUrl ??
     process.env.VOLTO_HEALTH_URL ??
@@ -333,7 +369,11 @@ export async function waitForAdmin(options: AdminOptions = {}): Promise<void> {
       if (usePrebuilt) {
         // For production server, any 200 response means ready
         if (response.status === 200) {
-          console.log('[SETUP] ✓ Volto production server ready');
+          // A server left running from before a pull or a branch switch
+          // answers too, and reuseExistingServer would use it: refuse one
+          // built from other code (admin-build-stamp.js).
+          await checkRunningAdmin(healthUrl, options.inkaRoot ?? INKA_ROOT);
+          console.log('[SETUP] ✓ Volto production server ready, built from this checkout');
           return;
         }
       } else {
@@ -348,8 +388,8 @@ export async function waitForAdmin(options: AdminOptions = {}): Promise<void> {
           throw new Error(`Webpack compilation failed: ${text}`);
         }
       }
-    } catch (error: any) {
-      if (error.code === 'ECONNREFUSED') {
+    } catch (error) {
+      if (connectionRefused(error)) {
         console.log(`[SETUP] Waiting for Volto ${serverType} to start...`);
       } else {
         throw error;

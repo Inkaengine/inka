@@ -12,7 +12,7 @@
         image: { widget: 'image' },
         title: { type: 'string' },
         description: { type: 'string' },
-        link: { widget: 'url' },
+        link: { widget: 'object_browser', mode: 'link', allowExternals: true },
       } } } },
       onEditChange: render,
     })
@@ -31,7 +31,7 @@
           return `<pre${uid}>${JSON.stringify(block, null, 2)}</pre>`
         return `
           <div${uid}>
-            <a href="${block.link}"${editing ? ' data-edit-link="link"' : ''}>
+            <a href="${block.link?.[0]?.['@id']}"${editing ? ' data-edit-link="link"' : ''}>
               <img src="${block.image}"${editing ? ' data-edit-media="image"' : ''} />
               <h3${editing ? ' data-edit-text="title"' : ''}>${block.title}</h3>
               <p${editing ? ' data-edit-text="description"' : ''}>${block.description}</p>

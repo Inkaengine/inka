@@ -1,5 +1,5 @@
-import { test, expect } from '../fixtures';
-import { mintToken } from '../../packages/mock-api/mock-tokens.cjs';
+import { mintToken } from '@inka/mock-api/tokens';
+import { expect, test } from '../fixtures';
 
 /**
  * The endpoints the admin's Publishing and Sharing views read.

@@ -12,6 +12,8 @@
  *
  * Playwright collects spec files from a project's testDir, so the suites are
  * functions a consumer's own spec calls rather than spec files of their own.
+ * That one call is all of sanity: block sanity, template slots, emptied
+ * regions, listings in containers and page integrity all come with it.
  *
  * Env vars, read at run time:
  *   DISCOVER_BLOCKS_API  - Plone API URL the pages are loaded from
@@ -22,14 +24,14 @@
  *                        - comma-separated template slot ids where a block may
  *                          sit outside its container's allowedBlocks on purpose
  *                          (e.g. a docs site's component showcase slot). See
- *                          readContainmentRules in discover-blocks.cjs.
+ *                          readContainmentRules in discover-blocks.js.
  *
  * Works against any Plone API — mock or remote.
  */
 import { test as playwrightTest, type FrameLocator } from '@playwright/test';
 import { test as base, expect } from './fixtures';
 import { AdminUIHelper } from './AdminUIHelper';
-import { verifyBlockRendering, revealBlock, checkEveryBlockOnPage, blocksToCheck } from './BlockVerificationHelper';
+import { verifyBlockRendering, revealBlock, checkEveryBlockOnPage, blocksToCheck, blockUidsShownAsText } from './BlockVerificationHelper';
 import { verifyPageIntegrity } from './PageIntegrityHelper';
 import { drainFieldCoverage } from '../field-coverage';
 import { measureTextStyles, recordTextStyles, slateStyles, drainStyleCoverage } from '../text-style-coverage';
@@ -104,6 +106,8 @@ interface DiscoveredBlock {
   frontend?: string;
   integrityIssue?: boolean;
   unexercisedOption?: boolean;
+  /** A style the toolbar offers that no content demonstrates (reporter-only). */
+  unexercisedStyle?: boolean;
   undeclaredField?: boolean;
   /** Here only to show this text style, which no block case carries. */
   forStyle?: string;
@@ -162,7 +166,7 @@ export function defineBlockSanityTests(options: SanityOptions): void {
   // are checked once however many samples it holds, and always by the same test.
   const isRenderSample = (b: DiscoveredBlock) =>
     !b.unregistered && !b.noExample && !b.allowedBlocksViolation && !b.integrityIssue &&
-    !b.shapeIssue && !b.slateIssue && !b.unexercisedOption && !b.undeclaredField;
+    !b.shapeIssue && !b.slateIssue && !b.unexercisedOption && !b.unexercisedStyle && !b.undeclaredField;
   const checksItsPage = new Set<DiscoveredBlock>();
   {
     const pages = new Set<string>();
@@ -174,7 +178,10 @@ export function defineBlockSanityTests(options: SanityOptions): void {
     }
   }
 
-  base.beforeEach(async ({}, testInfo) => {
+  // Registered inside each of this suite's describes, never at file level: the
+  // other sanity suites share the spec file, and a file-level hook would gate
+  // their tests on this suite's discovery (and theirs on this).
+  const scopeAndDiscovery = async ({}, testInfo: import('@playwright/test').TestInfo) => {
     // Scope BEFORE environment: a project this spec doesn't cover is a decision,
     // and no CI change would make it run — so it skips even on CI. Discovery
     // missing is the opposite, hence requireEnvironment below.
@@ -186,7 +193,7 @@ export function defineBlockSanityTests(options: SanityOptions): void {
       discoveredBlocks.length > 0,
       'no .discovered-blocks.json — discovery needs DISCOVER_BLOCKS_API=<mock api url> in this job',
     );
-  });
+  };
 
   const test = base.extend<{ helper: AdminUIHelper }>({
     helper: async ({ page }, use) => {
@@ -195,6 +202,7 @@ export function defineBlockSanityTests(options: SanityOptions): void {
   });
 
   test.describe('Block sanity (auto-discovered)', () => {
+    test.beforeEach(scopeAndDiscovery);
     for (const block of discoveredBlocks) {
       // Run each discovered case only on the frontend it came from. Discovery is
       // per-frontend because they do not register the same blocks — one found via
@@ -304,7 +312,7 @@ export function defineBlockSanityTests(options: SanityOptions): void {
       // reaches the render checks — skip it here. The coverage reporter reads these
       // straight from .discovered-blocks.json (they are identical in every worker)
       // and reports them alongside the never-editable fields.
-      if (block.unexercisedOption) {
+      if (block.unexercisedOption || block.unexercisedStyle) {
         continue;
       }
       // A field present in stored data but not declared in the block schema — one
@@ -349,10 +357,10 @@ export function defineBlockSanityTests(options: SanityOptions): void {
         : '';
       const labelKind = block.kind ? ` [${block.kind}]` : '';
       const label = `${block.blockType}${labelVariation}${labelKind}`;
-      // A listing whose query matches nothing has no results to draw, but while
-      // editing it must still draw SOMETHING with its uid: otherwise the author has
-      // nothing to click to select it and fix the query. (Published, it may draw
-      // nothing — that is the frontend's edit-only placeholder.) Every listing
+      // While editing, a listing always draws at least one element with its uid,
+      // even when its query matches nothing: otherwise the author has nothing to
+      // click to select it and fix the query. What it draws is the frontend's
+      // choice, and so is what a visitor sees (nothing, typically). Every listing
       // example, with its query swapped for one that matches no content.
       if (block.isListing) {
         test(`${label} with no results still shows something to click while editing${src}`, async ({ page, helper }, testInfo) => {
@@ -375,29 +383,35 @@ export function defineBlockSanityTests(options: SanityOptions): void {
           test.skip(!queryDriven, `${block.blockId}'s results don't come from a query`);
           const iframe = helper.getIframe();
           const drawn = iframe.locator(`[data-block-uid="${block.blockId}"]`);
-          const textNow = () => drawn.evaluateAll((els) => els.map((e) => (e as HTMLElement).innerText).join('|'));
-          await expect(drawn.first(), `${label} [${block.blockId}] did not render with its results`).toBeAttached({ timeout: 15000 });
-          const before = await textNow();
+          await expect(drawn.first(), `${label} [${block.blockId}] did not render`).toBeAttached({ timeout: 15000 });
 
+          const noMatch = 'zzqx-no-content-matches-this';
           const stored = (block.blockData?.querystring ?? {}) as Record<string, unknown>;
           await page.evaluate(([id, querystring]) => (window as any).mockParent.updateBlock(id, { querystring }), [
             block.blockId,
             {
               ...stored,
-              query: [{
-                i: 'SearchableText',
-                o: 'plone.app.querystring.operation.string.contains',
-                v: 'zzqx-no-content-matches-this',
-              }],
+              query: [{ i: 'SearchableText', o: 'plone.app.querystring.operation.string.contains', v: noMatch }],
             },
           ] as const);
 
-          // The old results are still drawn until the frontend re-renders; wait for
-          // what the listing shows to change before judging it.
-          if (before) {
-            await expect.poll(textNow, { message: `${label} [${block.blockId}] never re-rendered after its query changed`, timeout: 15000 })
-              .not.toBe(before);
-          }
+          // Judge the render that used the emptied query, once it has finished:
+          // the bridge records the data the frontend last rendered with.
+          await expect
+            .poll(
+              () =>
+                iframe.locator('body').evaluate(
+                  (_, [id, v]) => {
+                    const bridge = (window as any).__hydraBridge;
+                    const query = bridge?.getRenderedBlockData?.(id)?.querystring?.query;
+                    return !bridge?._renderInProgress && Array.isArray(query) && query.some((c: any) => c?.v === v);
+                  },
+                  [block.blockId, noMatch] as const,
+                ),
+              { message: `${label} [${block.blockId}] was never rendered with its emptied query`, timeout: 15000 },
+            )
+            .toBe(true);
+
           await expect(
             drawn.first(),
             `${label} [${block.blockId}] with no results drew nothing while editing — the author has nothing to click to select it`,
@@ -568,6 +582,13 @@ export function defineBlockSanityTests(options: SanityOptions): void {
           checkEditTextClicks: true,
         });
 
+        // No block on the page drew its raw data instead of itself: a uid, an
+        // internal key, never reaches a reader's eye (blockUidsShownAsText).
+        expect(
+          await blockUidsShownAsText(iframe),
+          `blocks on ${block.pagePath} drew as their raw data (their uid shows as text)`,
+        ).toEqual([]);
+
         // The page is drawn: check every other block on it too (see
         // checkEveryBlockOnPage). Before the text-style and a11y passes, which
         // judge the sample alone.
@@ -664,6 +685,7 @@ export function defineBlockSanityTests(options: SanityOptions): void {
    * carrying a multi-slot template have anything to check.
    */
   test.describe('Template slots', () => {
+    test.beforeEach(scopeAndDiscovery);
     const pagesWithTemplates = [
       ...new Set(discoveredBlocks.map((b) => b.pagePath).filter(Boolean)),
     ].sort();
@@ -710,6 +732,15 @@ export function defineBlockSanityTests(options: SanityOptions): void {
       });
     }
   });
+
+  // The rest of sanity, from the same discovery: every emptied region draws
+  // what the editor seeds, every container that allows a listing has one in an
+  // example, and every discovered page is whole. One call gives a frontend all
+  // of it — a suite a consumer had to register separately was a suite most of
+  // them never ran (PretaGov and the DDS docs site ran none of the three).
+  defineEmptyRegionTests(options);
+  defineListingContainerTests(options);
+  definePageIntegrityTests(options);
 }
 
 interface EmptyRegionCase {
@@ -776,24 +807,12 @@ function contentOfEmptyPlaceholder(root: Element): string[] {
   return found;
 }
 
-export function defineEmptyRegionTests(options: SanityOptions): void {
+function defineEmptyRegionTests(options: SanityOptions): void {
   const projects = new Set(options.projects);
   const where = addresses(options);
   const onlyOn = describeProjects(projects);
   const cases = (readDiscovery<EmptyRegionCase>(options.discoveryDir, 'emptyRegions') ?? [])
     .filter((c) => inContract(c.parentType, options));
-
-  base.beforeEach(async ({}, testInfo) => {
-    // Scope first, environment second — see block-sanity for why the order matters.
-    if (!projects.has(testInfo.project.name)) {
-      testInfo.skip(true, `empty-region sanity only runs on ${onlyOn} (skipping ${testInfo.project.name})`);
-    }
-    requireEnvironment(
-      testInfo,
-      cases.length > 0,
-      'no .discovered-empty-regions.json — discovery needs DISCOVER_BLOCKS_API=<mock api url> in this job',
-    );
-  });
 
   const test = base.extend<{ helper: AdminUIHelper }>({
     helper: async ({ page }, use) => {
@@ -802,6 +821,18 @@ export function defineEmptyRegionTests(options: SanityOptions): void {
   });
 
   test.describe('Empty container region renders (auto-discovered)', () => {
+    // Inside the describe: block sanity shares the spec file (see there).
+    test.beforeEach(async ({}, testInfo) => {
+      // Scope first, environment second — see block-sanity for why the order matters.
+      if (!projects.has(testInfo.project.name)) {
+        testInfo.skip(true, `empty-region sanity only runs on ${onlyOn} (skipping ${testInfo.project.name})`);
+      }
+      requireEnvironment(
+        testInfo,
+        cases.length > 0,
+        'no .discovered-empty-regions.json — discovery needs DISCOVER_BLOCKS_API=<mock api url> in this job',
+      );
+    });
     for (const c of cases) {
       const what = c.field === '*' ? `every ${c.parentType} region` : `${c.parentType}.${c.field}`;
       test(`${what} draws what it is given when its region is emptied`, async ({ page, helper }, testInfo) => {
@@ -951,7 +982,7 @@ function explain(c: ListingContainerIssue): string {
  * that listing in that container, and the existing block-sanity render checks
  * will then exercise it.
  */
-export function defineListingContainerTests(
+function defineListingContainerTests(
   options: Pick<SanityOptions, 'discoveryDir' | 'projects' | 'excludeBlockTypes' | 'excludeTypePrefixes'>,
 ): void {
   const projects = new Set(options.projects);
@@ -1006,7 +1037,7 @@ export function defineListingContainerTests(
  * mock-parent iframe, because verifyPageIntegrity uses `page.evaluate` /
  * `document.querySelectorAll`.
  */
-export function definePageIntegrityTests(
+function definePageIntegrityTests(
   options: Pick<SanityOptions, 'discoveryDir' | 'frontends'>,
 ): void {
   const where = addresses(options);

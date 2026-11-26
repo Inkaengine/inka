@@ -24,7 +24,7 @@
  */
 const { describe, it } = require('node:test');
 const assert = require('node:assert/strict');
-const { checkEditorRules } = require('./plone-content-validator.cjs');
+const { checkEditorRules } = require('./plone-content-validator.js');
 
 const SCHEMAS = {
   _page: {
@@ -174,6 +174,55 @@ describe('checkEditorRules()', () => {
     assert.match(r.errors[0], /column/);
   });
 
+  describe('an empty block is where the editor seeds one', () => {
+    // A region's seed is its defaultBlockType, else its one allowed type, else `empty`
+    // (getEmptyBlockType). So `empty` belongs wherever the seed is `empty`, listed or not.
+    const regionSchemas = (items) => ({
+      ...SCHEMAS,
+      box: { blockSchema: { properties: { items: { widget: 'blocks_layout', ...items } } } },
+      _page: { blockSchema: { properties: { items: { ...SCHEMAS._page.blockSchema.properties.items, allowedBlocks: ['box'] } } } },
+    });
+    const boxWithEmpty = page({ b: { '@type': 'box', blocks: { e: { '@type': 'empty' } }, blocks_layout: { items: ['e'] } } }, ['b']);
+    const misplaced = async (items) => (await checkEditorRules(boxWithEmpty, regionSchemas(items))).errors.filter((e) => /does not allow it/.test(e));
+
+    it('allowed in a region with no default and a choice of types', async () => {
+      assert.deepEqual(await misplaced({ allowedBlocks: ['card', 'text'] }), []);
+    });
+
+    it('refused where the region seeds another type', async () => {
+      assert.equal((await misplaced({ allowedBlocks: ['card', 'text'], defaultBlockType: 'text' })).length, 1);
+      assert.equal((await misplaced({ allowedBlocks: ['card'] })).length, 1);
+    });
+  });
+
+  describe('a link field holds the link list, the one shape its widget writes', () => {
+    // An object_browser field stores `[{ "@id": "/path" }]`. A plain string worked only
+    // where a reader guessed at both shapes, and a markdown rule reads one.
+    const linkSchemas = {
+      ...SCHEMAS,
+      _page: { blockSchema: { properties: { items: { ...SCHEMAS._page.blockSchema.properties.items, allowedBlocks: ['card'] } } } },
+      card: { blockSchema: { properties: { title: { title: 'Title' }, url: { title: 'Link', widget: 'object_browser', mode: 'link' } } } },
+    };
+    const errorsFor = async (url) => (await checkEditorRules(page({ c: { '@type': 'card', title: 'T', url } }, ['c']), linkSchemas)).errors;
+
+    it('a string is reported', async () => {
+      const errors = await errorsFor('/components');
+      assert.equal(errors.length, 1, errors.join('\n'));
+      assert.match(errors[0], /card/);
+      assert.match(errors[0], /url/);
+      assert.match(errors[0], /\[\{"@id"/);
+    });
+
+    it('the link list is not, and neither is an empty one', async () => {
+      assert.deepEqual(await errorsFor([{ '@id': '/components' }]), []);
+      assert.deepEqual(await errorsFor([]), []);
+    });
+
+    it('a list whose item has no @id is reported', async () => {
+      assert.equal((await errorsFor([{ title: 'No address' }])).length, 1);
+    });
+  });
+
   it('reports a required field left empty', async () => {
     const r = await checkEditorRules(page({ c: { '@type': 'card', description: 'D' } }, ['c']), SCHEMAS);
     assert.equal(r.errors.length, 1);
@@ -237,14 +286,24 @@ describe('checkEditorRules()', () => {
   });
 
   describe("without Volto's validators", () => {
-    it('skips the field values, and says so', async () => {
+    it("skips Volto's own validators, and says so", async () => {
       const r = await checkEditorRules(page({ c: { '@type': 'card', description: 'D' } }, ['c']), SCHEMAS, {
         volto: null,
       });
       assert.deepEqual(r.errors, []);
       assert.equal(r.warnings.length, 1);
-      assert.match(r.warnings[0], /not checked/);
-      assert.equal(r.stats.fieldErrors, null);
+      assert.match(r.warnings[0], /Volto's validators/);
+    });
+
+    it("still applies Inka's own field rules: a link is a list", async () => {
+      const linkSchemas = {
+        ...SCHEMAS,
+        _page: { blockSchema: { properties: { items: { ...SCHEMAS._page.blockSchema.properties.items, allowedBlocks: ['card'] } } } },
+        card: { blockSchema: { properties: { title: { title: 'Title' }, url: { title: 'Link', widget: 'object_browser', mode: 'link' } } } },
+      };
+      const r = await checkEditorRules(page({ c: { '@type': 'card', title: 'T', url: '/components' } }, ['c']), linkSchemas, { volto: null });
+      assert.equal(r.errors.length, 1, r.errors.join('\n'));
+      assert.match(r.errors[0], /\[\{"@id"/);
     });
 
     it('still applies every other rule', async () => {
@@ -318,9 +377,18 @@ describe('checkEditorRules()', () => {
     });
 
     it('checks any other page against the content region as before', async () => {
-      const r = await checkEditorRules(doc('/about', { f: { '@type': 'footerBar' } }, ['f']), WITH_FOOTER);
-      assert.equal(r.errors.length, 1);
+      const r = await checkEditorRules(
+        [...doc('/templates/footer', {}, []), ...doc('/about', { f: { '@type': 'footerBar' } }, ['f'])],
+        WITH_FOOTER,
+      );
+      assert.equal(r.errors.length, 1, r.errors.join('\n'));
       assert.match(r.errors[0], /footerBar/);
+    });
+
+    it('reports a page whose forced layout is not in the content, instead of checking it unmerged', async () => {
+      const r = await checkEditorRules(doc('/about', { p: { '@type': 'slate' } }, ['p']), WITH_FOOTER);
+      assert.equal(r.errors.length, 1, r.errors.join('\n'));
+      assert.match(r.errors[0], /content\/about: uses the template \/templates\/footer, which is not in the content/);
     });
   });
 });
@@ -333,7 +401,7 @@ describe('checkEditorRules()', () => {
  * page checked.
  */
 describe('checkChooserGroups()', () => {
-  const { checkChooserGroups } = require('./plone-content-validator.cjs');
+  const { checkChooserGroups } = require('./plone-content-validator.js');
 
   it('passes a block that names a group the chooser orders', () => {
     const r = checkChooserGroups({ hero: { group: 'common', blockSchema: {} } });
@@ -421,7 +489,7 @@ describe('checkEditorRules() does not report config defects', () => {
  * unknown blocks. Like the chooser, a defect in the config, not in any page.
  */
 describe('checkReservedFields()', () => {
-  const { checkReservedFields } = require('./plone-content-validator.cjs');
+  const { checkReservedFields } = require('./plone-content-validator.js');
 
   it('passes a schema whose fields are its own', () => {
     const r = checkReservedFields({ tabs: { blockSchema: { properties: { fixedTabs: { type: 'boolean' } } } } });
@@ -465,5 +533,322 @@ describe('checkReservedFields()', () => {
   it('ignores an entry that is not a block config', () => {
     const r = checkReservedFields({ _page: { fixed: true }, notABlock: {} });
     assert.deepEqual(r.errors, []);
+  });
+});
+
+/**
+ * checkFieldsetCoverage(): a field a schema declares but no fieldset lists is
+ * invisible in the editor. Nobody can see it, nobody can fix it, and nothing
+ * says whether anything still reads it — which is how a button kept a dead
+ * `url` field, and nine published pages rendered `<a href="#">` CTAs, for as
+ * long as the field was declared (pretagov-site#106, frontend#27).
+ *
+ * Keeping a field out of the UI on purpose is declared ON the field, so the
+ * reason sits where the field is:
+ *   - `mode: 'hidden'`  — Volto's Field returns null, and the field stays in
+ *     the schema, so a stored value is still declared. The one for config an
+ *     author should not edit.
+ *   - a schemaEnhancer's `fieldRules: { f: false }` removes the field from the
+ *     resolved schema altogether, so a value stored in it then reads as
+ *     undeclared. Only for a field that stores nothing.
+ */
+describe('checkFieldsetCoverage()', () => {
+  const { checkFieldsetCoverage } = require('./plone-content-validator.js');
+  const block = (properties, fieldsets) => ({
+    hero: { group: 'common', blockSchema: { fieldsets, properties } },
+  });
+
+  it('passes when every field a fieldset lists is declared and vice versa', () => {
+    const r = checkFieldsetCoverage(block(
+      { title: { type: 'string' }, url: { widget: 'url' } },
+      [{ id: 'default', title: 'Default', fields: ['title', 'url'] }],
+    ));
+    assert.deepEqual(r.errors, []);
+  });
+
+  it('reports a declared field no fieldset lists', () => {
+    const r = checkFieldsetCoverage(block(
+      { title: { type: 'string' }, url: { widget: 'url' } },
+      [{ id: 'default', title: 'Default', fields: ['title'] }],
+    ));
+    assert.equal(r.errors.length, 1);
+    assert.match(r.errors[0], /hero\.url/);
+    assert.match(r.errors[0], /no fieldset lists it/);
+    assert.match(r.errors[0], /mode: 'hidden'/);
+  });
+
+  it("accepts a field kept out of the UI with mode: 'hidden'", () => {
+    const r = checkFieldsetCoverage(block(
+      { title: { type: 'string' }, send_email: { type: 'boolean', mode: 'hidden' } },
+      [{ id: 'default', title: 'Default', fields: ['title', 'send_email'] }],
+    ));
+    assert.deepEqual(r.errors, []);
+  });
+
+  // A region is where child blocks live, not a sidebar field: the canvas edits
+  // it. Exempt by widget, not by a list of field names.
+  it('exempts regions', () => {
+    const r = checkFieldsetCoverage(block(
+      { title: { type: 'string' }, items: { widget: 'blocks_layout' }, slides: { widget: 'object_list', idField: '@id' } },
+      [{ id: 'default', title: 'Default', fields: ['title'] }],
+    ));
+    assert.deepEqual(r.errors, []);
+  });
+
+  // Declaring no fieldsets hides nothing — Volto renders what it is given — so
+  // the rule has nothing to say. Six of this site's own object_list item
+  // schemas are written that way.
+  it('says nothing about a schema that declares no fieldsets', () => {
+    const r = checkFieldsetCoverage(block({ title: { type: 'string' }, url: { widget: 'url' } }, undefined));
+    assert.deepEqual(r.errors, []);
+  });
+
+  it('checks a nested item schema that declares its own fieldsets', () => {
+    const r = checkFieldsetCoverage({
+      slider: { group: 'common', blockSchema: {
+        fieldsets: [{ id: 'default', title: 'Default', fields: ['slides'] }],
+        properties: { slides: { widget: 'object_list', idField: '@id', schema: {
+          fieldsets: [{ id: 'default', title: 'Slide', fields: ['title'] }],
+          properties: { title: { type: 'string' }, href: { widget: 'object_browser' } },
+        } } },
+      } },
+    });
+    assert.equal(r.errors.length, 1);
+    assert.match(r.errors[0], /slider\.slides\.href/);
+  });
+});
+
+// An `empty` naming a slot is a template's empty slot (inka#708): Inka's own
+// block, which no schema declares and no region lists, held only by a template.
+describe('a template stores an empty slot', () => {
+  const T = '/templates/t';
+  const items = [{
+    rel: 'content/templates/t',
+    data: {
+      '@id': T,
+      blocks: {
+        s: { ...section([['p', { '@type': 'slate', templateId: T, slotId: 'body', fixed: false }]]), templateId: T, slotId: 's', fixed: true, readOnly: true },
+        e: { '@type': 'empty', templateId: T, slotId: 'aside', fixed: false },
+      },
+      blocks_layout: { items: ['s', 'e'] },
+    },
+  }];
+
+  it('is not a misplaced block', async () => {
+    const r = await checkEditorRules(items, SCHEMAS);
+    assert.deepEqual(r.errors, []);
+  });
+
+  it('is not a block type missing from the schemas', () => {
+    const { checkBlockSchemas, fieldMapFromSchemas } = require('./plone-content-validator.js');
+    const r = checkBlockSchemas(items, fieldMapFromSchemas(SCHEMAS));
+    assert.deepEqual(r.warnings.filter((w) => /"empty"/.test(w)), []);
+  });
+});
+
+// A page whose region forces a layout (`allowedLayouts`) is checked as the
+// editor opens it: merged into that layout first. A page that was never saved
+// in the editor stores only its own blocks — its title marked for the layout's
+// `hero` slot, its text for the default slot — and the editor merges them into
+// the layout on load and stores the merged shape on save. Both shapes are what
+// a site holds, so both are checked in the shape the editor shows.
+describe('checkEditorRules() checks a page merged into its forced layout', () => {
+  const LAYOUT = '/templates/layout';
+  const LAYOUT_SCHEMAS = {
+    _page: {
+      blockSchema: {
+        properties: {
+          items: { widget: 'blocks_layout', allowedBlocks: ['slate', 'layout'], allowedLayouts: [LAYOUT] },
+        },
+      },
+    },
+    layout: {
+      blockSchema: {
+        properties: {
+          hero: { widget: 'blocks_layout', allowedBlocks: ['title'], maxLength: 1 },
+          main: { widget: 'blocks_layout', allowedBlocks: ['slate'] },
+        },
+      },
+    },
+    title: { blockSchema: { properties: {} } },
+    slate: { blockSchema: { properties: { value: { title: 'Text' } } } },
+    banner: { blockSchema: { properties: {} } },
+  };
+  const member = { templateId: LAYOUT };
+  const layoutBlock = (hero, main) => ({
+    '@type': 'layout',
+    ...member,
+    slotId: 'layout',
+    fixed: true,
+    readOnly: true,
+    blocks: Object.fromEntries([...hero, ...main]),
+    blocks_layout: { hero: hero.map(([id]) => id), main: main.map(([id]) => id) },
+  });
+  const heroTitle = { '@type': 'title', ...member, slotId: 'hero', fixed: true, readOnly: false };
+  const template = (main = [['m0', { '@type': 'slate', ...member, slotId: 'default', fixed: false }]]) => ({
+    rel: 'content/templates/layout',
+    data: {
+      '@id': LAYOUT,
+      blocks: { L: layoutBlock([['h0', heroTitle]], main) },
+      blocks_layout: { items: ['L'] },
+    },
+  });
+  const doc = (blocks, items) => ({ rel: 'content/x', data: { '@id': '/x', blocks, blocks_layout: { items } } });
+
+  it("passes a never-saved page whose title names the layout's hero slot", async () => {
+    const r = await checkEditorRules(
+      [template(), doc({ t: heroTitle, p: { '@type': 'slate' } }, ['t', 'p'])],
+      LAYOUT_SCHEMAS,
+    );
+    assert.deepEqual(r.errors, []);
+  });
+
+  it('passes a saved page that stores the layout with its title inside', async () => {
+    const saved = layoutBlock([['t', heroTitle]], [['p', { '@type': 'slate', ...member, slotId: 'default' }]]);
+    const r = await checkEditorRules([template(), doc({ L1: saved }, ['L1'])], LAYOUT_SCHEMAS);
+    assert.deepEqual(r.errors, []);
+  });
+
+  it('reports a page block the merge puts in a region that does not allow it', async () => {
+    // A title in no slot lands in the layout's main region, which takes text only.
+    const r = await checkEditorRules(
+      [template(), doc({ t: { '@type': 'title' }, p: { '@type': 'slate' } }, ['t', 'p'])],
+      LAYOUT_SCHEMAS,
+    );
+    assert.equal(r.errors.length, 1, r.errors.join('\n'));
+    assert.match(r.errors[0], /content\/x: a "title" block \(t\) is in layout\.main/);
+  });
+
+  it("reports a layout's own misplaced block once, on the layout, not on every page using it", async () => {
+    const bad = template([['m0', { '@type': 'banner', ...member, slotId: 'default', fixed: true, readOnly: true }]]);
+    const r = await checkEditorRules(
+      [bad, doc({ t: heroTitle, p: { '@type': 'slate' } }, ['t', 'p'])],
+      LAYOUT_SCHEMAS,
+    );
+    assert.equal(r.errors.length, 1, r.errors.join('\n'));
+    assert.match(r.errors[0], /content\/templates\/layout: a "banner" block \(m0\)/);
+  });
+});
+
+/**
+ * checkReservedFields() also reports a field named `@id` below a block's own
+ * fields (in an object field, in an untyped list's items): Plone reads every
+ * `@id` in stored block data as a link, at any depth.
+ */
+describe('checkReservedFields() — @id at any depth', () => {
+  const { checkReservedFields } = require('./plone-content-validator.js');
+
+  it("reports a field named '@id' inside an object field, once", () => {
+    const r = checkReservedFields({
+      hero: { blockSchema: { properties: { cta: { widget: 'object', schema: { properties: { '@id': {} } } } } } },
+    });
+    assert.equal(r.errors.length, 1);
+    assert.match(r.errors[0], /hero\.cta\.@id/);
+  });
+
+  it("reports a top-level '@id' once, not twice", () => {
+    const r = checkReservedFields({ teaser: { blockSchema: { properties: { '@id': {} } } } });
+    assert.equal(r.errors.length, 1);
+  });
+});
+
+/**
+ * checkFieldMappings(): the same mapping check the editor refuses to load on,
+ * so CI fails before a frontend ships a mapping that doesn't make sense.
+ */
+describe('checkFieldMappings()', () => {
+  const { checkFieldMappings } = require('./plone-content-validator.js');
+  const props = (p) => ({ fieldsets: [{ id: 'default', title: 'Default', fields: Object.keys(p) }], properties: p });
+
+  it('passes mappings that make sense', () => {
+    const r = checkFieldMappings({
+      card: { fieldMappings: { '@default': { getURL: { field: 'url', type: 'link' }, title: 'title' } }, blockSchema: props({ title: { type: 'string' }, url: { widget: 'object_browser', mode: 'link' } }) },
+    });
+    assert.deepEqual(r.errors, []);
+  });
+
+  it("reports a mapping from '@id', naming getURL", () => {
+    const r = checkFieldMappings({
+      card: { fieldMappings: { '@default': { '@id': 'url' } }, blockSchema: props({ url: { widget: 'object_browser', mode: 'link' } }) },
+    });
+    assert.equal(r.errors.length, 1);
+    assert.match(r.errors[0], /getURL/);
+  });
+});
+
+// A listing mapping a site's own catalog column: the column holds what its
+// field on the content types holds, the page's own type first. Without that,
+// every column is text and a list column can't be mapped onto a list.
+describe("checkEditorRules() and a site's own catalog column", () => {
+  const schemas = {
+    ...SCHEMAS,
+    _page: { blockSchema: { properties: { items: { widget: 'blocks_layout', allowedBlocks: ['listing'] } } } },
+    listing: {
+      blockSchema: {
+        properties: {
+          variation: { title: 'Item type', widget: 'blockTypeSelect', filterConvertibleFrom: '@default' },
+          fieldMapping: {
+            title: 'Field mapping',
+            widget: 'field_mapping',
+            sourceFields: { getURL: { title: 'URL', type: 'string' } },
+            vocabulary: { '@id': 'plone.app.vocabularies.MetadataFields' },
+          },
+        },
+      },
+    },
+    teaser: { blockSchema: { properties: { tags: { title: 'Tags', type: 'array' } } } },
+  };
+  const listing = [
+    {
+      rel: 'content/x',
+      data: {
+        '@id': '/x',
+        '@type': 'Document',
+        blocks: { l: { '@type': 'listing', variation: 'teaser', fieldMapping: { Topic: { field: 'tags', type: 'array' } } } },
+        blocks_layout: { items: ['l'] },
+      },
+    },
+  ];
+  const contentTypes = { Document: { properties: { Topic: { type: 'array', items: { type: 'string' } } } } };
+
+  it('a list column maps onto a list', async () => {
+    const r = await checkEditorRules(listing, schemas, { contentTypes });
+    assert.deepEqual(r.errors, []);
+  });
+
+  it('a column the content types hold as text does not', async () => {
+    const r = await checkEditorRules(listing, schemas, {
+      contentTypes: { Document: { properties: { Topic: { type: 'string' } } } },
+    });
+    assert.match(r.errors.join('\n'), /fieldMapping: "Topic" → "tags" as array: a text can't become/);
+  });
+});
+
+/**
+ * checkUndeclaredBlocks(): every block a region may hold is one the frontend
+ * declares (or Inka's own text block) — the check the editor refuses to load
+ * on, run in CI first.
+ */
+describe('checkUndeclaredBlocks()', () => {
+  const { checkUndeclaredBlocks } = require('./plone-content-validator.js');
+  const region = (allowedBlocks) => ({ widget: 'blocks_layout', allowedBlocks });
+
+  it('passes regions naming declared blocks and slate', () => {
+    const r = checkUndeclaredBlocks({
+      _page: { blockSchema: { properties: { items: region(['grid', 'slate']) } } },
+      grid: { blockSchema: { properties: { items: region(['card']) } } },
+      card: { blockSchema: { properties: {} } },
+    });
+    assert.deepEqual(r.errors, []);
+  });
+
+  it("reports a block's region and the page's naming an undeclared block", () => {
+    const r = checkUndeclaredBlocks({
+      _page: { blockSchema: { properties: { items: region(['grid', 'listing']) } } },
+      grid: { blockSchema: { properties: { items: region(['teaser']) } } },
+    });
+    assert.equal(r.errors.length, 2);
+    assert.match(r.errors[0], /grid: .*"teaser"/);
+    assert.match(r.errors[1], /page: .*"listing"/);
   });
 });

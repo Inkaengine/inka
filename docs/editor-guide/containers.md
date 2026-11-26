@@ -21,13 +21,13 @@ rights: ""
 subjects: []
 title: Containers
 blocks-matched: |
-  <block type="slate" value="${p,h*,ul,ol,blockquote,strong,em,a/slate}" plaintext="${p,h*,ul,ol,blockquote,strong,em,a/text}" />
+  <block type="slate" value="${p,h*,ul,ol,blockquote,strong,em,a/slate}" />
   <block type="title" _="${h1}" />
   <block type="image" description="${p?/textarea}" url="${img/src}" alt="${img?/alt}" title="${img?/title}" align="center" size="l" />
 blocks-tagged: |
   <block type="callout">
     <region name="items" widget="blocks_layout">
-      <block type="slate" value="${p,h*,ul,ol,blockquote,strong,em,a/slate}" plaintext="${p,h*,ul,ol,blockquote,strong,em,a/text}" />
+      <block type="slate" value="${p,h*,ul,ol,blockquote,strong,em,a/slate}" />
     </region>
   </block>
 ---
@@ -48,10 +48,12 @@ Which container types are available depends on your design system. A site might 
 
 Select one or more blocks (see [Selecting blocks](./selecting-blocks.md)), then choose **Wrap in...** from the block toolbar dropdown (or sidebar block actions). A popup shows container types that:
 
-1. Accept every selected block type (their `allowedBlocks` covers the selection).
+1. Accept every selected block type (their `allowedBlocks` covers the selection), or whose default child does (see below).
 2. Are themselves allowed in the current parent container.
 
 Pick one. The selected blocks are pulled out of their original positions and placed as children of the new container, in the original order. The new container takes the first selected block's position.
+
+Some containers hold their content one level down: a columns block only takes columns, and each column holds the content. The column is the container's **default child**, the block it adds when it is filled (its region's `defaultBlockType`, or its only allowed type; see [Empty Blocks](../frontend-guide/container-blocks.md#empty-blocks)). Such a container is offered when its default child takes the selection, and wrapping adds one default child around the blocks: two paragraphs wrapped in columns sit in one new column. Only one level is followed.
 
 <block type="image">
 
@@ -67,7 +69,11 @@ Select a container in block mode (one Escape from text mode). Choose **Unwrap co
 
 The container's children are promoted to the parent at the container's position, and the container itself is removed.
 
-Unwrap is **disabled** when the parent wouldn't accept some of the children — for example, if the children are columns and the parent's `allowedBlocks` doesn't include columns. Hover the disabled action for the reason.
+When the parent wouldn't accept the children but each is the container's default child, and the parent accepts *their* children, unwrap goes through them: their blocks are promoted, child by child, and both levels are removed. Unwrapping a columns block on a page that doesn't take columns leaves the first column's blocks, then the second's, where it was.
+
+Unwrapping a container's **only** default child does the same to its parent: unwrapping the single column of a columns block removes the column and the columns block, since the column's blocks can't go into the columns block and removing the column alone would leave it empty.
+
+Unwrap is **disabled** when the parent wouldn't accept some of the children, directly or through them — for example, if the children are columns holding a block the page doesn't allow — and for one of several default children: unwrapping one column of two would flatten the other as well.
 
 ## Edge-drag
 
@@ -96,7 +102,14 @@ Edge handles only appear when the container is selected. They don't render on ed
 
 ## Convert (change container type)
 
-In the block toolbar dropdown, **Convert to...** lists block types this block can be converted to. For containers, conversion preserves the children:
+There are two ways to change a block's type, and they offer the same types and convert the same way:
+
+- **The block's title in the sidebar.** When the block can be changed into another type, its title at the top of the sidebar is a dropdown (`Cards ▾`). Pick a type and the block is converted. **Convert to…** in the sidebar's `•••` menu opens the same list.
+- **Convert to...** in the block toolbar dropdown.
+
+A conversion happens straight away, and one undo reverses it. Nothing is lost: what the new type has no field for stays with the block, unseen, and comes back if you convert it back.
+
+For containers, conversion preserves the children:
 
 - **Layout shape conversion** — children move into the new container's layout field automatically (whether the source uses `blocks_layout` or `object_list`).
 - **Recursive child conversion** — if some children's `@type` isn't in the target's `allowedBlocks`, those children are themselves converted (using their `fieldMappings`) so they fit. If no path exists, the conversion target is shown disabled with a tooltip.

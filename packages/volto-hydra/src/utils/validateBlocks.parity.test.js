@@ -13,7 +13,6 @@
  * save (@volto-hydra/helpers/blockFieldErrors.js). This test holds them together: the same
  * pages through both, and the same block fields must be refused.
  */
-import { createRequire } from 'node:module';
 import { describe, test, expect, vi } from 'vitest';
 
 vi.mock('../context', () => ({
@@ -25,9 +24,7 @@ vi.mock('../context', () => ({
 import { createFieldRulesEnhancer } from '@volto-hydra/helpers/fieldRules.js';
 
 import { validateBlocksAgainstSchemas } from './validateBlocks';
-
-const require = createRequire(import.meta.url);
-const { checkEditorRules } = require('@inka/content-validator');
+import { checkEditorRules } from '@inka/content-validator';
 
 const formatMessage = (msg) => msg?.id || msg?.defaultMessage || 'error';
 

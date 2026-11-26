@@ -16,8 +16,7 @@
             }
           ]
         }
-      ],
-      "plaintext": "Page 2 standalone block"
+      ]
     },
     "page2-template-header": {
       "@type": "slate",
@@ -33,7 +32,6 @@
           ]
         }
       ],
-      "plaintext": "Stale Header Page 2 - Should Be Replaced By Merge",
       "templateId": "/_test_data/templates/unlabelled-layout",
       "templateInstanceId": "tpl-instance-2",
       "slotId": "header"
@@ -52,10 +50,9 @@
           ]
         }
       ],
-      "plaintext": "Page 2 user content in placeholder",
       "templateId": "/_test_data/templates/unlabelled-layout",
       "templateInstanceId": "tpl-instance-2",
-      "slotId": "primary"
+      "slotId": "default"
     },
     "page2-template-footer": {
       "@type": "slate",
@@ -71,7 +68,6 @@
           ]
         }
       ],
-      "plaintext": "Stale Footer Page 2 - Should Be Replaced By Merge",
       "templateId": "/_test_data/templates/unlabelled-layout",
       "templateInstanceId": "tpl-instance-2",
       "slotId": "footer"

@@ -12,6 +12,11 @@
  *     allowedSiblingTypes (this block IS the item being typed).
  *   - filterConvertibleFrom: only offer types whose fieldMappings accept
  *     the named source (e.g., '@default' for listings).
+ *   - default: the preferred type, kept where the choices include it.
+ *
+ * These are the only place the options are declared: the inheritSchemaFrom
+ * recipe reads them from this field too, to store the type the position allows
+ * as the block lands (and refuses a recipe that declares them).
  *
  * Usage:
  *   blockSchema: {

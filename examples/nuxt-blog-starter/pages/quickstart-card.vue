@@ -4,7 +4,7 @@
        :data-block-uid="editing ? id : undefined">
     <!-- The card block is rendered editable; anything else is shown as raw JSON. -->
     <a v-if="page.blocks[id]['@type'] === 'card'"
-       :href="page.blocks[id].link"
+       :href="page.blocks[id].link?.[0]?.['@id']"
        :data-edit-link="editing ? 'link' : undefined">
       <!-- data-edit-media: click to pick/upload image · data-edit-text: edit text in place -->
       <img :src="page.blocks[id].image" :data-edit-media="editing ? 'image' : undefined" />
@@ -32,7 +32,7 @@ onMounted(async () => {
         image: { widget: 'image' },
         title: { type: 'string' },
         description: { type: 'string' },
-        link: { widget: 'url' },
+        link: { widget: 'object_browser', mode: 'link', allowExternals: true },
       } } } },
       // Re-render on every edit.
       onEditChange: (data) => { page.value = data },

@@ -4,7 +4,7 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 
-const { validate, checkIntegrity, checkBlockSchemas, fieldMapFromSchemas } = require('./plone-content-validator.cjs');
+const { validate, checkIntegrity, checkBlockSchemas, fieldMapFromSchemas } = require('./plone-content-validator.js');
 
 /**
  * Build a minimal plone.exportimport content tree under a temp dir.
@@ -345,11 +345,11 @@ describe('plone-content-validator validate()', () => {
   });
 
   it('takes the site root from where the export keeps it, not from a site called Plone', () => {
-    // A site's id is its own (/lecc); the root is the item in
+    // A site's id is its own (/agency); the root is the item in
     // plone_site_root. A page whose @id is /Plone is a page, and a page with
     // no id aborts the import, so it is reported.
     const { root, contentDir } = buildFixture({
-      rootItem: { '@id': '/lecc', '@type': 'SiteRootOfAnyType' },
+      rootItem: { '@id': '/agency', '@type': 'SiteRootOfAnyType' },
       pageA: { '@id': '/Plone', '@type': 'Document', UID: 'pageauid1234567', parent: { '@id': '/' } },
     });
     const r = checkIntegrity(contentDir);
@@ -1674,11 +1674,17 @@ describe('checkBlockSchemas()', () => {
     assert.match(r.errors[0], /contentBlock\.url/);
   });
 
-  it('warns about a block type missing from the field map', () => {
+  it('refuses a block type missing from the field map', () => {
     const r = checkBlockSchemas(page({ b1: { '@type': 'mystery' } }), FIELDS);
-    assert.equal(r.errors.length, 0);
     assert.equal(r.stats.unknownTypes, 1);
-    assert.match(r.warnings[0], /mystery/);
+    assert.equal(r.errors.length, 1);
+    assert.match(r.errors[0], /mystery/);
+  });
+
+  it('knows Inka\'s own text block without the field map naming it', () => {
+    const r = checkBlockSchemas(page({ b1: { '@type': 'slate', value: [] } }), FIELDS);
+    assert.equal(r.stats.unknownTypes, 0);
+    assert.deepEqual(r.errors, []);
   });
 
   it('ignores identity keys and a container\'s child storage', () => {
@@ -1686,7 +1692,7 @@ describe('checkBlockSchemas()', () => {
       page({
         b1: {
           '@type': 'contentBlock',
-          '@id': 'x',
+          '@uid': 'b1',
           title: 'T',
           blocks: { inner: { '@type': 'contentBlock', linkUrl: '/y' } },
           blocks_layout: { items: ['inner'] },
@@ -1906,6 +1912,45 @@ describe('validating against a site\'s schemas', () => {
     assert.deepEqual(r.warnings, []);
   });
 
+  it('counts a field a rule adds as declared, and not one a rule only hides', () => {
+    // A block may declare a field through its rules alone (a `title` block
+    // whose own heading is a rule's `set`): the editor shows it, so storing it
+    // is no stray field.
+    const schemas = {
+      ...SCHEMAS,
+      title: {
+        blockSchema: { properties: {} },
+        schemaEnhancer: {
+          fieldRules: {
+            usePageTitle: { set: { title: 'Use page title', type: 'boolean' } },
+            heading: [{ when: { usePageTitle: false }, set: { title: 'Heading', type: 'string' } }, false],
+            subtitle: { when: { usePageTitle: false }, else: { title: 'Subtitle', type: 'string' } },
+            kicker: { title: 'Kicker', type: 'string' },
+            hidden: false,
+          },
+        },
+      },
+    };
+    const map = fieldMapFromSchemas(schemas);
+    assert.deepEqual(map.blocks.title.fields.sort(), ['heading', 'kicker', 'subtitle', 'usePageTitle']);
+    const r = checkBlockSchemas(
+      page({ b1: { '@type': 'title', usePageTitle: false, heading: 'Longer', hidden: 'x' } }),
+      map,
+    );
+    assert.equal(r.errors.length, 1, r.errors.join('\n'));
+    assert.match(r.errors[0], /title\.hidden/);
+  });
+
+  it("does not call a template's empty slot an undeclared block", () => {
+    // Inka's own placeholder for a region left empty (inka#708), as the
+    // check's own message asks a template to store one.
+    const r = checkIntegrity(
+      [{ rel: 'content/t', data: { blocks: { e: { '@type': 'empty', slotId: 'upper', fixed: false } }, blocks_layout: { items: ['e'] } } }],
+      { schemasFor: () => SCHEMAS },
+    );
+    assert.deepEqual(r.errors.filter((e) => /doesn't declare/.test(e)), []);
+  });
+
   it('reports a field the schemas do not declare', () => {
     const r = checkBlockSchemas(page({ b1: { '@type': 'card', title: 'T', url: '/x' } }), fieldMapFromSchemas(SCHEMAS));
     assert.equal(r.errors.length, 1);
@@ -1983,13 +2028,16 @@ describe('plone-content-validator template slot arrangement', () => {
     }, ['title', 'lead-intro'])), []);
   });
 
+  // The editor's rules (which this gate calls) report the split as the slot
+  // meeting another with no fixed block between: one error per block, so the
+  // second half of `body` is named once, not also as "not contiguous".
   it('reports one slot split by another', () => {
     const errs = slotErrors(definition({
       a1: { '@type': 'slate', slotId: 'body', fixed: false },
       gap: { '@type': 'slate', slotId: 'aside', fixed: false },
       a2: { '@type': 'slate', slotId: 'body', fixed: false },
     }, ['a1', 'gap', 'a2']));
-    assert.ok(errs.some((e) => /not contiguous/.test(e)), errs.join('\n'));
+    assert.ok(errs.some((e) => e.includes('"aside"') && e.includes('"body"')), errs.join('\n'));
   });
 });
 
@@ -2047,5 +2095,48 @@ describe('template slot arrangement covers every region', () => {
       blocks: {}, blocks_layout: { items: [] },
     }));
     assert.ok(r.some((e) => e.includes('"alpha"') && e.includes('"beta"')), r.join('\n') || '(no error raised)');
+  });
+});
+
+/**
+ * inka#708: the content check holds a template to the editor's own slot rules,
+ * by calling them (validateTemplatePlaceholders) rather than a copy. A slot is
+ * one place, so the same slot id in two regions is an error; a template keeps
+ * an empty slot as an `empty` naming it, and a region with nothing at all has
+ * lost its slot.
+ */
+describe('a template keeps every slot, once', () => {
+  const T = '/templates/band';
+  const layout = (blocks, blocksLayout) => [{
+    rel: '/templates/band',
+    data: {
+      '@id': T, '@type': 'Document', id: 'band', UID: 'banduid000000000',
+      blocks: {
+        layout: {
+          '@type': 'contentLayout', templateId: T, slotId: 'layout', fixed: true, readOnly: true,
+          blocks, blocks_layout: blocksLayout,
+        },
+      },
+      blocks_layout: { items: ['layout'] },
+    },
+  }];
+  const slot = (slotId, type = 'slate') => ({ '@type': type, templateId: T, slotId, fixed: false, readOnly: false });
+  const errorsOf = (items) => checkIntegrity(items).errors;
+
+  it('reports one slot in two regions, naming both', () => {
+    const errs = errorsOf(layout({ m: slot('default'), s: slot('default') }, { main: ['m'], sidebar: ['s'] }));
+    assert.ok(
+      errs.some((e) => e.includes('"default"') && /main/.test(e) && /sidebar/.test(e)),
+      errs.join('\n') || '(no error raised)',
+    );
+  });
+
+  it('accepts an empty slot: an `empty` naming its slot', () => {
+    assert.deepEqual(errorsOf(layout({ m: slot('default'), l: slot('links', 'empty') }, { main: ['m'], links: ['l'] })), []);
+  });
+
+  it('reports a region of the template with nothing in it: its slot is gone', () => {
+    const errs = errorsOf(layout({ m: slot('default') }, { main: ['m'], links: [] }));
+    assert.ok(errs.some((e) => /links/.test(e) && /empty slot/.test(e)), errs.join('\n') || '(no error raised)');
   });
 });

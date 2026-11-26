@@ -108,6 +108,10 @@ class Action(enum.Enum):
     NOOP = "noop"
     CREATE = "create"
     UPDATE = "update"
+    # Only the review state changed: a transition, not a re-import. Importing
+    # reindexes the item's whole text (a PDF's included), so a layout that
+    # starts declaring its files' states re-read every file.
+    STATE = "state"
     DELETE = "delete"
     MOVE = "move"
     LEAVE = "leave"  # disk unchanged but live has an editor edit — don't touch
@@ -124,6 +128,7 @@ class Move:
 class Plan:
     creates: list[str] = field(default_factory=list)
     updates: list[str] = field(default_factory=list)
+    states: list[str] = field(default_factory=list)
     deletes: list[str] = field(default_factory=list)
     moves: list[Move] = field(default_factory=list)
     leaves: list[str] = field(default_factory=list)
@@ -148,6 +153,7 @@ class Plan:
             "redirects": [list(r) for r in self.redirects],
             "warnings": list(self.warnings),
             "base_tid": self.base_tid,
+            "states": list(self.states),
         }
 
 
@@ -162,10 +168,18 @@ class CompareRules:
 
     `default_views`: each content type's default view, as the site's type
     settings give it (delta.default_views_of). An item on it has no view of its
-    own, whichever way a copy spells that."""
+    own, whichever way a copy spells that.
+
+    `field_defaults`: each content type's fields and their schema defaults
+    (delta.field_defaults_of). A field at its default is unset, whichever way
+    a copy spells that: the live serializer writes `exclude_from_nav: false`
+    where a layout leaves it out."""
 
     ignored_fields: frozenset[str] = frozenset()
     default_views: Mapping[str, str] = field(
+        default_factory=lambda: MappingProxyType({})
+    )
+    field_defaults: Mapping[str, Mapping[str, Any]] = field(
         default_factory=lambda: MappingProxyType({})
     )
 
@@ -226,6 +240,17 @@ def cleaned_for_compare(
     layout = cleaned.get("layout")
     if layout is not None and layout == rules.default_views.get(cleaned.get("@type")):
         cleaned.pop("layout")
+    # A field at its type's default is the same unset state: the live
+    # serializer writes `exclude_from_nav: false` on a page nobody touched,
+    # where the layout leaves the field out, and a deploy refused such a page
+    # as an editor's edit. Same value AND same type: `false` is not `0`.
+    defaults = rules.field_defaults.get(cleaned.get("@type"), {})
+    for key in [
+        k
+        for k, v in cleaned.items()
+        if k in defaults and type(v) is type(defaults[k]) and v == defaults[k]
+    ]:
+        cleaned.pop(key)
     # A file's `blob_path` is where an export put its bytes: `<uid>/file/x` from
     # the exporter, `videos/x/file/x` in a layout whose folders are named by
     # path. Every such file warned as a live edit. Its name, type and size are
@@ -255,11 +280,6 @@ def content_key(
 
 def rel_to_path(rel: str) -> str:
     return "/" + rel
-
-
-def parent_path(rel: str) -> str:
-    head, _, _ = rel.rpartition("/")
-    return "/" + head if head else "/"
 
 
 def _uid_index(tree: dict[str, dict]) -> dict[str, str]:
@@ -329,6 +349,10 @@ def _moved_key(data: dict[str, Any], rules: CompareRules) -> str:
     )
 
 
+def _without_state(data: dict[str, Any], rules: CompareRules) -> str:
+    return content_key({k: v for k, v in data.items() if k != "review_state"}, rules)
+
+
 def classify(  # noqa: C901
     base: dict[str, dict],
     disk: dict[str, dict],
@@ -385,7 +409,6 @@ def classify(  # noqa: C901
         if in_base and not in_disk:
             plan.deletes.append(rel)
             plan._action[rel] = Action.DELETE
-            plan.redirects.append((rel_to_path(rel), parent_path(rel)))
             continue
 
         # present in both base and disk
@@ -402,6 +425,20 @@ def classify(  # noqa: C901
             else:
                 plan.noops.append(rel)
                 plan._action[rel] = Action.NOOP
+            continue
+
+        # Only its state changed: transition it, leave its content alone. So
+        # an editor's content edit is not overwritten, and warns only when the
+        # editor changed the state itself.
+        if _without_state(base[rel], rules) == _without_state(disk[rel], rules):
+            plan.states.append(rel)
+            plan._action[rel] = Action.STATE
+            live_state = live[rel].get("review_state") if rel in live else None
+            if live_state is not None and live_state not in (
+                base[rel].get("review_state"),
+                disk[rel].get("review_state"),
+            ):
+                plan.warnings.append(rel)
             continue
 
         # disk changed this item -> apply (disk wins)
@@ -439,7 +476,7 @@ def refresh_from_disk(
             disk[rel], rules
         ):
             continue
-        for bucket in (plan.leaves, plan.noops, plan.warnings):
+        for bucket in (plan.leaves, plan.noops, plan.states, plan.warnings):
             if rel in bucket:
                 bucket.remove(rel)
         if rel not in plan.updates:

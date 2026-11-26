@@ -1,3 +1,4 @@
+import { test, expect } from 'vitest';
 import fs from 'fs';
 import path from 'path';
 import { mergeTemplatesIntoPage } from '@volto-hydra/helpers/mergeTemplates.js';
@@ -48,13 +49,12 @@ test('round-trip: an edited fixed-but-editable block survives a re-merge (save â
   );
   expect(headerEntry).toBeTruthy();
   const [headerId, headerBlock] = headerEntry;
-  expect(headerBlock.plaintext).toBe('Editable Header');
+  expect(headerBlock.value?.[0]?.children?.[0]?.text).toBe('Editable Header');
 
   // 2. EDIT: the user edits the fixed-but-editable header's content.
   loaded.blocks[headerId] = {
     ...headerBlock,
     value: [{ type: 'h1', children: [{ text: 'Editable Header EDITED' }] }],
-    plaintext: 'Editable Header EDITED',
     styles: { backgroundColor: 'grey' },
     align: 'center',
   };
@@ -80,7 +80,6 @@ test('round-trip: an edited fixed-but-editable block survives a re-merge (save â
   const header = Object.values(reloaded.blocks).find((b) => b.slotId === 'header');
   expect(header).toBeTruthy();
   expect(header.value?.[0]?.children?.[0]?.text).toBe('Editable Header EDITED');
-  expect(header.plaintext).toBe('Editable Header EDITED');
   expect(header.styles).toEqual({ backgroundColor: 'grey' });
   expect(header.align).toBe('center');
 

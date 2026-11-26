@@ -1,0 +1,1 @@
+The content delta can reset a site to its layout (`run_delta(..., reset=True)`): it deletes pages made on the site, makes pages deleted there again, and takes back from the layout every page changed on the site since the last committed deploy, which each committed deploy now records.

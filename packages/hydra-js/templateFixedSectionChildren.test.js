@@ -1,3 +1,4 @@
+import { describe, test, expect } from 'vitest';
 import { expandTemplatesSync, assertAllExpanded } from '@volto-hydra/helpers';
 import { mergeInstanceIntoTemplate } from '@volto-hydra/helpers/mergeTemplates.js';
 import { inheritTemplateMembershipDeep } from '@volto-hydra/helpers/blockPath.js';

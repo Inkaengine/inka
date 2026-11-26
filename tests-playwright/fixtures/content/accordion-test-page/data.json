@@ -26,13 +26,11 @@
           "blocks": {
             "content-text-1": {
               "@type": "slate",
-              "value": [{"type": "p", "children": [{"text": "Accordion Content Text"}]}],
-              "plaintext": "Accordion Content Text"
+              "value": [{"type": "p", "children": [{"text": "Accordion Content Text"}]}]
             },
             "content-text-2": {
               "@type": "slate",
-              "value": [{"type": "p", "children": [{"text": "More content"}]}],
-              "plaintext": "More content"
+              "value": [{"type": "p", "children": [{"text": "More content"}]}]
             }
           },
           "blocks_layout": {"items": ["content-text-1", "content-text-2"]}
@@ -44,8 +42,7 @@
           "blocks": {
             "panel2-hidden-text": {
               "@type": "slate",
-              "value": [{"type": "p", "children": [{"text": "Hidden in panel two"}]}],
-              "plaintext": "Hidden in panel two"
+              "value": [{"type": "p", "children": [{"text": "Hidden in panel two"}]}]
             }
           },
           "blocks_layout": {"items": ["panel2-hidden-text"]}
@@ -54,8 +51,7 @@
     },
     "text-after": {
       "@type": "slate",
-      "value": [{"type": "p", "children": [{"text": "Text after accordion"}]}],
-      "plaintext": "Text after accordion"
+      "value": [{"type": "p", "children": [{"text": "Text after accordion"}]}]
     }
   },
   "blocks_layout": {

@@ -34,7 +34,7 @@ order:
   - teaser
   - text
 blocks-matched: |
-  <block type="slate" value="${p,h*,ul,ol,blockquote,strong,em,a/slate}" plaintext="${p,h*,ul,ol,blockquote,strong,em,a/text}" />
+  <block type="slate" value="${p,h*,ul,ol,blockquote,strong,em,a/slate}" />
   <block type="title" _="${h1}" />
   <block type="image" description="${p?/textarea}" url="${img/src}" alt="${img?/alt}" title="${img?/title}" align="center" size="l" />
   <block type="codeExample">
@@ -55,7 +55,7 @@ blocks-tagged: |
 
 A responsive grid that lays out child blocks in equal-width cells. The block uses Volto's standard shared-blocks shape — blocks is the dict of children, blocks_layout.items is their order — and constrains the allowed types via allowedBlocks.
 
-<block type="listing" data-json='{"block":"616b625c-b79f-4881-8536-b67a9e401a7d","headlineTag":"h2","variation":"default","query":[]}' />
+<block type="listing" data-json='{"block":"616b625c-b79f-4881-8536-b67a9e401a7d","headlineTag":"h2","variation":"default","query":[],"fieldMapping":{"getURL":{"field":"href","type":"link"},"title":{"field":"title","type":"string"},"description":{"field":"description","type":"textarea"}}}' />
 
 <block type="slate">
 
@@ -65,7 +65,7 @@ A responsive grid that lays out child blocks in equal-width cells. The block use
 
 <block type="teaser">
 
-### [Design](/docs/architecture)
+### [Design](../../architecture.md)
 
 We craft beautiful interfaces that users love.
 
@@ -75,7 +75,7 @@ We craft beautiful interfaces that users love.
 
 <block type="teaser">
 
-### [Learn More](/docs)
+### [Learn More](../../index.md)
 
 Explore the full documentation.
 

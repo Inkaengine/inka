@@ -11,7 +11,7 @@ const ids = unit.unit === 'page' ? (formData.blocks_layout?.items ?? []) : [unit
   const block = formData.blocks[id]
   return block['@type'] === 'card' ? (
     <div data-block-uid={id}>
-      <a href={block.link} data-edit-link="link">
+      <a href={block.link?.[0]?.['@id']} data-edit-link="link">
         <img src={block.image} data-edit-media="image" />
         <h3 data-edit-text="title">{block.title}</h3>
         <p data-edit-text="description">{block.description}</p>

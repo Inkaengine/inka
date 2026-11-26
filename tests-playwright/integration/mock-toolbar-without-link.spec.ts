@@ -39,6 +39,8 @@ test.describe('A toolbar without the link button', () => {
     const toolbar = page.locator('.quanta-toolbar');
     await expect(toolbar.locator('[data-toolbar-button="link"]')).toBeVisible();
 
+    // Leave as an author does: cancel, then edit the next page.
+    await helper.cancelEdit();
     await helper.navigateToEdit('/no-link-toolbar-page');
     await helper.clickBlockInIframe('target');
     await helper.waitForBlockSelectedInAdmin('target');

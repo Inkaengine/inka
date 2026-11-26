@@ -3,6 +3,7 @@ import {
   isStyleAllowed,
   isMarkAllowed,
   normalizeSlateValue,
+  offeredSlateStyles,
   undefinedSlateTypes,
 } from './slateStyles.js';
 
@@ -322,3 +323,43 @@ describe('a link is a style', () => {
   });
 });
 
+
+// What an author can pick in a region, the way the canvas toolbar offers it.
+describe('offeredSlateStyles', () => {
+  const toolbarButtons = ['bold', 'sup', 'separator', 'heading-two', 'bulleted-list', 'link'];
+
+  test('with no toolbar of its own, a frontend gets the default one', () => {
+    expect(offeredSlateStyles({}, null)).toEqual(expect.arrayContaining(['strong', 'sup', 'h2', 'blockquote']));
+  });
+
+  test("the toolbar's formats, with nothing declared", () => {
+    expect(offeredSlateStyles({ toolbarButtons }, null).sort()).toEqual(['h2', 'strong', 'sup', 'ul']);
+  });
+
+  test("declared blockFormats replace the toolbar's block formats, not its text formats", () => {
+    const offered = offeredSlateStyles({ toolbarButtons, blockFormats: [{ type: 'h3', label: 'H3' }] }, null);
+    expect(offered.sort()).toEqual(['h3', 'strong', 'sup']);
+  });
+
+  test('the style menu adds its classes, dotted', () => {
+    const styleMenu = { blockStyles: [{ cssClass: 'lead' }], inlineStyles: [{ cssClass: 'dropcap' }] };
+    expect(offeredSlateStyles({ toolbarButtons, styleMenu }, null)).toEqual(
+      expect.arrayContaining(['.lead', '.dropcap']),
+    );
+  });
+
+  test("a region's rules take out what it does not allow", () => {
+    const rules = foldSlateStyleRules(null, {
+      disallowedStyles: ['sup', '.dropcap'],
+      allowedStyles: null,
+    });
+    const styleMenu = { inlineStyles: [{ cssClass: 'dropcap' }] };
+    expect(offeredSlateStyles({ toolbarButtons, styleMenu }, rules).sort()).toEqual(['h2', 'strong', 'ul']);
+  });
+
+  test("a paragraph style is offered only where its paragraph type is", () => {
+    const rules = foldSlateStyleRules(null, { allowedStyles: ['div', '.lead', '.aside'] });
+    const styleMenu = { blockStyles: [{ cssClass: 'lead' }, { cssClass: 'aside', type: 'div' }] };
+    expect(offeredSlateStyles({ toolbarButtons: [], styleMenu }, rules)).toEqual(['.aside']);
+  });
+});

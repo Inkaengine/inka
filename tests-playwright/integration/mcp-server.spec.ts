@@ -2,11 +2,11 @@
  * The MCP server end to end: an MCP client starts it over stdio, as an agent's
  * host would, and it drives its own headless admin against the mock API.
  */
-import { writeFileSync } from 'node:fs';
+import { mintToken } from '@inka/mock-api/tokens';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
-import { test, expect } from '../fixtures';
-import { mintToken } from '../../packages/mock-api/mock-tokens.cjs';
-import { connect, CALL } from '../helpers/mcpClient';
+import { writeFileSync } from 'node:fs';
+import { expect, test } from '../fixtures';
+import { CALL, connect } from '../helpers/mcpClient';
 import { freshPage } from '../helpers/otherUser';
 
 const PAGE = '/_test_data/test-page';
@@ -275,7 +275,7 @@ test.describe('MCP server', () => {
     // placeholder, and stayed lost through every save after.
     test.setTimeout(240000);
     const USES = '/_test_data/template-test-page';
-    const slotOf = (page: any) => page.blocks.filter((b: any) => b.slotId === 'primary').map((b: any) => b.value?.md);
+    const slotOf = (page: any) => page.blocks.filter((b: any) => b.slotId === 'default').map((b: any) => b.value?.md);
     const read = (await call('get_page', { path: USES })).json();
     const before = slotOf(read);
     expect(before).toEqual(['User content - different from template default', 'Second user content block in placeholder']);

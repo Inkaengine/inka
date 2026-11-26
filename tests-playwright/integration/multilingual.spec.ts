@@ -1,4 +1,5 @@
 import { test, expect } from '../fixtures';
+import type { Page } from '@playwright/test';
 import { AdminUIHelper } from '../helpers/AdminUIHelper';
 
 /**
@@ -45,6 +46,21 @@ async function fromMoreMenu(page: import('@playwright/test').Page, entry: RegExp
   await expect(link, `the More menu offers ${entry}`).toBeVisible({ timeout: 10000 });
   await link.click();
 }
+/**
+ * A new translation opens its editor with the original's blocks copied in, and
+ * they are the translator's to save: Add creates the page without them, since
+ * the block definitions come from the frontend, which connects in the editor.
+ * Wait for the copy on the canvas, then save it as the translator would.
+ */
+async function keepTheCopy(page: Page, helper: AdminUIHelper) {
+  await helper.waitForIframeReady();
+  await expect(helper.getIframe().locator('body'), 'the copy is on the canvas').toContainText(
+    'What we do, in English.',
+    { timeout: 20000 },
+  );
+  await helper.saveContent();
+}
+
 test.describe('Multilingual editing', () => {
   test('a page shows what it is translated into', async ({ page }) => {
     const helper = new AdminUIHelper(page);
@@ -213,6 +229,7 @@ test.describe('Multilingual editing', () => {
 
     // Saved where German belongs, and straight into the editor.
     await expect(page).toHaveURL(/\/de\/dienstleistungen\/edit/, { timeout: 20000 });
+    await keepTheCopy(page, helper);
 
     const token = helper.authToken;
     const read = async (path: string) =>
@@ -275,6 +292,7 @@ test.describe('Multilingual editing', () => {
     await page.locator('#page-add #field-title').fill('Dienstleistungen');
     await page.locator('#toolbar-save').click();
     await expect(page).toHaveURL(/\/de\/dienstleistungen\/edit/, { timeout: 20000 });
+    await keepTheCopy(page, helper);
 
     // Viewed, not edited: the saved page as a reader gets it. Asserted on the
     // rendered text rather than any one frontend's markup, since every frontend
@@ -375,6 +393,104 @@ test.describe('Multilingual editing', () => {
     // Working in the page being edited takes the sidebar back.
     await helper.getIframe().locator('[data-block-uid]').first().click();
     await expect(fields).toHaveCount(0);
+  });
+
+  // Which pane has control — whose fields the sidebar shows — is the pane the
+  // author last pressed or typed in. Both panes report selections the author
+  // didn't make: a re-announcement on a resize, scroll or re-render, and the
+  // other language answering the admin, which selects there the block that
+  // matches the one selected in the page being edited. None of them is the
+  // author, and none may move control.
+  test.describe('which pane has control', () => {
+    const german = (page: Page) => page.frameLocator('#translationSourceIframe');
+    const fields = (page: Page) => page.locator('.compare-language-fields');
+
+    async function sideBySide(page: Page) {
+      const helper = new AdminUIHelper(page);
+      await helper.login();
+      await helper.enableMultilingual();
+      await page.goto(`${helper.adminUrl}/en/about/edit`);
+      await helper.waitForIframeReady();
+      await page.locator('.compare-languages').getByRole('button', { name: 'de' }).click();
+      // The other language's page is there, as the author sees it before
+      // working in it.
+      await expect(german(page).locator('body')).toContainText('Über uns', { timeout: 20000 });
+      await expect(fields(page), 'the page being edited starts with control').toHaveCount(0);
+      return helper;
+    }
+
+    /** Which element of the admin page has focus: a pane's frame, or other. */
+    const focused = (page: Page) =>
+      page.evaluate(() => document.activeElement?.id || document.activeElement?.className || '');
+
+    /** Press `key` until focus is in the frame `id`, as an author tabbing would. */
+    async function tabInto(page: Page, key: string, id: string) {
+      for (let i = 0; i < 12 && (await focused(page)) !== id; i++) {
+        await page.keyboard.press(key);
+      }
+      expect(await focused(page), `${key} reaches #${id}`).toBe(id);
+    }
+
+    /** The admin's next frame: any message a pane sent before it is handled. */
+    const nextFrame = (page: Page) =>
+      page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
+
+    test('the other language re-announcing its selection does not take control back', async ({ page }) => {
+      const helper = await sideBySide(page);
+      await clickInOtherLanguageUntilSidebarFollows(page, 'Über uns');
+      await helper.getIframe().locator('[data-block-uid]').first().click();
+      await expect(fields(page), 'a click in the page being edited takes control').toHaveCount(0);
+
+      // As on a resize, while the click in that pane is still recent.
+      await german(page).locator('body').evaluate(() => window.dispatchEvent(new Event('resize')));
+      await nextFrame(page);
+      await expect(fields(page), 'control stays with the page being edited').toHaveCount(0);
+    });
+
+    test('the page being edited re-announcing its selection does not take control back', async ({ page }) => {
+      const helper = await sideBySide(page);
+      await clickInOtherLanguageUntilSidebarFollows(page, 'Über uns');
+
+      await helper.getIframe().locator('body').evaluate(() => window.dispatchEvent(new Event('resize')));
+      await nextFrame(page);
+      await expect(fields(page), 'control stays with the other language').toContainText(/\(de\)/);
+    });
+
+    test('clicking the block already selected in the page being edited takes control back', async ({ page }) => {
+      const helper = await sideBySide(page);
+      const selected = helper.getIframe().locator('[data-block-uid="title-1"]');
+      await clickInOtherLanguageUntilSidebarFollows(page, 'Über uns');
+
+      await selected.click();
+      await expect(fields(page), 'the page being edited has control again').toHaveCount(0);
+    });
+
+    test('opening the other language leaves focus where the author was', async ({ page }) => {
+      const helper = new AdminUIHelper(page);
+      await helper.login();
+      await helper.enableMultilingual();
+      await page.goto(`${helper.adminUrl}/en/about/edit`);
+      await helper.waitForIframeReady();
+      const button = page.locator('.compare-languages').getByRole('button', { name: 'de' });
+      await button.click();
+      await expect(german(page).locator('body')).toContainText('Über uns', { timeout: 20000 });
+      await page.evaluate(() => new Promise((r) => setTimeout(r, 500)));
+      // The other language's page focused itself as it loaded.
+      expect(await focused(page), 'focus is not taken by the page that opened').not.toBe('translationSourceIframe');
+      await expect(fields(page), 'the page being edited keeps control').toHaveCount(0);
+    });
+
+    test('tabbing from one pane into the other moves control with it', async ({ page }) => {
+      const helper = await sideBySide(page);
+      await helper.getIframe().locator('[data-block-uid="title-1"]').click();
+
+      // The other language's pane comes before the page being edited.
+      await tabInto(page, 'Shift+Tab', 'translationSourceIframe');
+      await expect(fields(page), 'the other language has control').toBeVisible();
+
+      await tabInto(page, 'Tab', 'previewIframe');
+      await expect(fields(page), 'the page being edited has control again').toHaveCount(0);
+    });
   });
 
   // The page being edited, loading slowly, settles AFTER a click in the
@@ -482,6 +598,8 @@ test.describe('Multilingual editing', () => {
     await page.locator('#page-add #field-title').fill('Dienstleistungen');
     await page.locator('#toolbar-save').click();
     await expect(page).toHaveURL(/\/de\/dienstleistungen\/edit/, { timeout: 20000 });
+    await keepTheCopy(page, helper);
+    await page.goto(`${helper.adminUrl}/de/dienstleistungen/edit`);
     await helper.waitForIframeReady();
 
     const compare = page.locator('.compare-languages');
@@ -512,6 +630,17 @@ test.describe('Multilingual editing', () => {
       await teaser.click();
       await expect(pane).toHaveAttribute('data-showing-block', canonicalOfSelected);
     }).toPass();
+
+    // Following along doesn't take the keyboard: the other pane selects its
+    // block, and focus stays in the page the author clicked. It used to move
+    // there — that pane's blocks are read-only, and the bridge focused a block
+    // with nothing to type into so that keys would reach it.
+    await page.evaluate(() => new Promise((r) => setTimeout(r, 500)));
+    expect(
+      await page.evaluate(() => document.activeElement?.id),
+      'focus stays in the page the author clicked',
+    ).toBe('previewIframe');
+    await expect(page.locator('.compare-language-fields'), 'and so does the sidebar').toHaveCount(0);
   });
 
   test('a block with no counterpart in the other language says so', async ({ page }) => {
@@ -563,6 +692,8 @@ test.describe('Multilingual editing', () => {
     await page.locator('#page-add #field-title').fill('Dienstleistungen');
     await page.locator('#toolbar-save').click();
     await expect(page).toHaveURL(/\/de\/dienstleistungen\/edit/, { timeout: 20000 });
+    await keepTheCopy(page, helper);
+    await page.goto(`${helper.adminUrl}/de/dienstleistungen/edit`);
 
     // Read it beside the English original — which is what makes
     // "untranslated" answerable at all.
@@ -708,18 +839,17 @@ test.describe('Multilingual editing', () => {
         })
       ).json();
 
-    // The copied paragraph, by the text it still carries from the original.
-    const german = await read('/de/dienstleistungen');
-    const slateId = Object.keys(german.blocks).find(
-      (id) =>
-        german.blocks[id]['@type'] === 'slate' &&
-        JSON.stringify(german.blocks[id].value ?? '').includes(
-          'What we do, in English.',
-        ),
-    );
-    expect(slateId, 'the copied paragraph is there to translate').toBeTruthy();
-
+    // The copied paragraph, by the text it still carries from the original:
+    // translated where the copy opens, and saved once, as a translator does.
     await helper.waitForIframeReady();
+    const copied = helper
+      .getIframe()
+      .locator('[data-block-uid]', { hasText: 'What we do, in English.' })
+      .last();
+    await expect(copied, 'the copied paragraph is there to translate').toBeVisible({
+      timeout: 20000,
+    });
+    const slateId = await copied.getAttribute('data-block-uid');
     await helper.editBlockTextInIframe(slateId!, 'Was wir machen, auf Deutsch.');
     await page.locator('#toolbar-save').click();
     await expect(page).toHaveURL(/\/de\/dienstleistungen$/, { timeout: 20000 });
@@ -873,6 +1003,7 @@ test.describe('Multilingual editing', () => {
     await page.locator('#page-add #field-title').fill('Dienstleistungen');
     await page.locator('#toolbar-save').click();
     await expect(page).toHaveURL(/\/de\/dienstleistungen\/edit/, { timeout: 20000 });
+    await keepTheCopy(page, helper);
 
     const auth = {
       Authorization: `Bearer ${helper.authToken}`,
@@ -983,6 +1114,7 @@ test.describe('Multilingual editing', () => {
     await page.locator('#page-add #field-title').fill('Dienstleistungen');
     await page.locator('#toolbar-save').click();
     await expect(page).toHaveURL(/\/de\/dienstleistungen\/edit/, { timeout: 20000 });
+    await keepTheCopy(page, helper);
 
     const auth = {
       Authorization: `Bearer ${helper.authToken}`,
@@ -1067,6 +1199,7 @@ test.describe('Multilingual editing', () => {
     await page.locator('#page-add #field-title').fill('Dienstleistungen');
     await page.locator('#toolbar-save').click();
     await expect(page).toHaveURL(/\/de\/dienstleistungen\/edit/, { timeout: 20000 });
+    await keepTheCopy(page, helper);
 
     // Re-opened cold: no comparison, nothing clicked but the block itself.
     await page.goto(`${helper.adminUrl}/de/dienstleistungen/edit`);

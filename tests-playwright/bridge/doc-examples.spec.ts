@@ -152,7 +152,9 @@ const examples = [
   {
     type: 'toc',
     blockId: 'ex-toc',
-    expectedText: 'Getting Started',
+    // A text block's heading is listed by its own words, bold ones included;
+    // not by `plaintext`, which is the whole block's and can be out of date.
+    expectedText: 'Plain bold heading',
   },
   {
     type: 'maps',

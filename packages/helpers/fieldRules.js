@@ -427,11 +427,21 @@ function readingOrder(pageFormData, blockPathMap, blockData) {
   if (!blockPathMap || !pageFormData) return null;
   const cached = readingOrderCache.get(blockPathMap);
   if (cached) return cached;
+  // A template's blocks get a stand-in parent for their instance in the path
+  // map; it has no place in any layout. They are read where they sit: in the
+  // instance's own container, among that container's other blocks.
+  const containerOf = (parentId) => {
+    let at = parentId;
+    while (blockPathMap[at]?.isTemplateInstance) at = blockPathMap[at].parentId;
+    return at;
+  };
   const children = new Map();
   for (const [id, entry] of Object.entries(blockPathMap)) {
     if (id === '_schemas' || !entry || typeof entry !== 'object' || !entry.parentId) continue;
-    if (!children.has(entry.parentId)) children.set(entry.parentId, []);
-    children.get(entry.parentId).push(id);
+    if (entry.isTemplateInstance) continue;
+    const parentId = containerOf(entry.parentId);
+    if (!children.has(parentId)) children.set(parentId, []);
+    children.get(parentId).push(id);
   }
   const placeOf = (parentId, id) => {
     const entry = blockPathMap[id];
@@ -938,6 +948,28 @@ function evaluateOperators(surface, operators) {
   }
 
   return true;
+}
+
+/**
+ * The fields a fieldRules map can ADD to a block's schema: a rule whose `set`
+ * (alone or as a switch entry) or `else` is a field definition, or a plain
+ * definition. A block may declare a field this way alone (its schema's
+ * properties naming none of it), and the editor then shows it; a rule that
+ * only hides (`false`) or only advises adds nothing.
+ */
+export function fieldsRulesMayAdd(fieldRules) {
+  const isDefinition = (v) => Boolean(v) && typeof v === 'object' && !Array.isArray(v);
+  const adds = (rule) => {
+    if (Array.isArray(rule)) return rule.some((r) => r !== false && adds(r));
+    if (!isDefinition(rule)) return false;
+    if ('when' in rule || 'set' in rule || 'error' in rule || 'warning' in rule) {
+      return isDefinition(rule.set) || isDefinition(rule.else);
+    }
+    return true;
+  };
+  return Object.entries(fieldRules ?? {})
+    .filter(([, rule]) => adds(rule))
+    .map(([field]) => field);
 }
 
 /**

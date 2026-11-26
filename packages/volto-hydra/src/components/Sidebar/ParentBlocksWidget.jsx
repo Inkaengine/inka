@@ -35,14 +35,16 @@ import TemplateLockToggle from '../Toolbar/TemplateLockToggle';
 import { SidebarPortalTargetContext } from './SidebarPortalTargetContext';
 import DropdownMenu from '../Toolbar/DropdownMenu';
 import ReadOnlyForm from './ReadOnlyForm';
-import { getBlockById, updateBlockById, getResolvedSchema, getCommonAncestor } from '../../utils/blockPath';
+import { getBlockById, updateBlockById, getResolvedSchema, getCommonAncestor, getAllContainerFields } from '../../utils/blockPath';
 import { HydraSchemaProvider } from '../../context';
-import { getConvertibleTypes, convertBlockType, findTypeField } from '../../utils/blockSync';
+import { findTypeField } from '../../utils/blockSync';
+import BlockTypeMenu from './BlockTypeMenu';
 import { nestedStatus } from '@volto-hydra/helpers';
 import { buildIdFieldMap } from '../../utils/blockPath';
 import { PAGE_BLOCK_UID } from '@volto-hydra/hydra-js';
 import { isObjectListRegion, isRegionField } from '@volto-hydra/helpers/regionWidgets.js';
-import { isBlockReadonly } from '@volto-hydra/helpers';
+import { isBlockReadonly, templateIdToPath } from '@volto-hydra/helpers';
+import LayoutSelector from './LayoutSelector';
 import { flattenToAppURL } from '@plone/volto/helpers';
 import { LinkedText } from '../../utils/linkedText';
 import { withImageMetadata } from '../../utils/imageMetadata';
@@ -254,6 +256,39 @@ function nestedStatusLabel({ status, count }) {
   return count === 1 ? `1 block inside ${one}` : `${count} blocks inside ${many}`;
 }
 
+/**
+ * What a LOCKED template is, and how to change it (inka#774): shown in the
+ * template's own section, where the canvas lock leads. Unlocking is done here,
+ * with the reason spelled out, and still asked once more before it happens.
+ */
+const TemplateLockedInfo = ({ title, canEdit, onUnlock, layout }) => (
+  <div className="template-locked-info">
+    <p>
+      {title ? <strong>{title}</strong> : 'This template'} is locked. Changes to
+      it apply to every page using this template.
+    </p>
+    {layout && (
+      <div className="template-locked-info-layout">
+        <span className="template-locked-info-label">Layout</span>
+        {layout}
+      </div>
+    )}
+    <button
+      type="button"
+      className="ui button template-unlock-button"
+      disabled={!onUnlock}
+      title={
+        canEdit
+          ? 'Unlock this template to edit it'
+          : 'You don’t have permission to edit this template (requires “Modify portal content”).'
+      }
+      onClick={() => onUnlock && onUnlock()}
+    >
+      Unlock template
+    </button>
+  </div>
+);
+
 const ParentBlockSection = ({
   blocksErrors = {},
   blockStatuses,
@@ -264,9 +299,11 @@ const ParentBlockSection = ({
   index,
   isCurrentBlock,
   onSelectBlock,
-  onDeleteBlock,
   onChangeBlock,
   onBlockAction,
+  blockMenuProps,
+  convertTargetsFor,
+  onConvertBlock,
   formData,
   pathname,
   intl,
@@ -276,6 +313,7 @@ const ParentBlockSection = ({
   onChangeTemplateSettings,
   onToggleTemplateEditMode,
   templatePermissions,
+  onChangeFormData,
 }) => {
   // Get intl from context if not passed (needed for getTemplateInstanceSchema)
   const contextIntl = useIntl();
@@ -328,6 +366,21 @@ const ParentBlockSection = ({
   const menuButtonRef = React.useRef(null);
 
   const title = getBlockTypeTitle(blockType, blockPathMap, blockId);
+
+  // The types this block can be changed to (the toolbar's "Convert to…" list).
+  // A block that can't be edited, or has nowhere to go, keeps a plain title.
+  const [typeMenuRect, setTypeMenuRect] = React.useState(null);
+  const titleRef = React.useRef(null);
+  const convertTargets =
+    blockId !== PAGE_BLOCK_UID &&
+    convertTargetsFor &&
+    onConvertBlock &&
+    !isBlockReadonly(blockData, templateEditMode)
+      ? convertTargetsFor(blockId)
+      : [];
+  const openTypeMenu = () => {
+    if (titleRef.current) setTypeMenuRect(titleRef.current.getBoundingClientRect());
+  };
   // Use sidebar-properties for current block (backwards compat), parent-sidebar-{id} for parents
   const targetId = isCurrentBlock ? 'sidebar-properties' : `parent-sidebar-${blockId}`;
 
@@ -393,13 +446,41 @@ const ParentBlockSection = ({
               <Icon name={leftArrowSVG} size="24px" />
             </button>
           )}
-          <button
-            className="nav-title"
-            onClick={() => onSelectBlock(blockId)}
-            title={`Select ${title}`}
-          >
-            {title}
-          </button>
+          {/* The current block's title is its type: a dropdown of the types it
+              can be changed to. A parent's title selects that parent. */}
+          {isCurrentBlock && convertTargets.length > 0 ? (
+            <button
+              ref={titleRef}
+              type="button"
+              className="nav-title nav-title--type-menu"
+              data-testid="block-type-dropdown"
+              aria-haspopup="menu"
+              aria-expanded={!!typeMenuRect}
+              onClick={() => (typeMenuRect ? setTypeMenuRect(null) : openTypeMenu())}
+              title={`Change ${title} to another type`}
+            >
+              {title} <span aria-hidden="true">▾</span>
+            </button>
+          ) : (
+            <button
+              ref={titleRef}
+              className="nav-title"
+              onClick={() => onSelectBlock(blockId)}
+              title={`Select ${title}`}
+            >
+              {title}
+            </button>
+          )}
+          {typeMenuRect && (
+            <BlockTypeMenu
+              anchorRect={typeMenuRect}
+              anchorRef={titleRef}
+              currentTitle={title}
+              targets={convertTargets}
+              onPick={(newType) => onConvertBlock(blockId, newType)}
+              onClose={() => setTypeMenuRect(null)}
+            />
+          )}
           {/* What the blocks INSIDE need. A blind is collapsed, so a teaser
               three levels down that refuses to save — or still holds the
               language it was copied from — is invisible until someone goes
@@ -474,50 +555,16 @@ const ParentBlockSection = ({
           >
             •••
           </button>
-          {menuOpen && (() => {
-            const pathInfo = blockPathMap?.[blockId];
-            const blocksConfig = config.blocks?.blocksConfig;
-            const convertibleTypes = getConvertibleTypes(blockType, blocksConfig, pathInfo?.allowedSiblingTypes);
-            const handleConvertBlock = (newType) => {
-              const newBlockData = convertBlockType(blockData, newType, blocksConfig, '@type', intl);
-              // Preserve the block ID
-              newBlockData['@uid'] = blockId;
-              onChangeBlock(blockId, newBlockData);
-            };
-            return (
-              <DropdownMenu
-                selectedBlock={blockId}
-                onDeleteBlock={onDeleteBlock}
-                menuButtonRect={menuButtonRect}
-                onClose={() => setMenuOpen(false)}
-                // No onOpenSettings - we're already in sidebar/settings
-                parentId={parentId}
-                onSelectBlock={onSelectBlock}
-                tableActions={pathInfo?.actions}
-                onTableAction={onBlockAction ? (actionId) => onBlockAction(actionId, blockId) : null}
-                addMode={pathInfo?.addMode}
-                parentAddMode={pathInfo?.parentAddMode}
-                addDirection={pathInfo?.addDirection}
-                convertibleTypes={convertibleTypes}
-                onConvertBlock={handleConvertBlock}
-                // Same rule as the canvas toolbar: `fixed` withholds removal
-                // from a PAGE, not from the template's own author. Once the
-                // template a block BELONGS to is unlocked, it is removable.
-                // (`isEditingThisTemplate` is about the instance itself, so it
-                // is the wrong question for a member.)
-                isFixed={
-                  !!blockData?.fixed &&
-                  !(templateEditMode || []).includes(blockData?.templateInstanceId)
-                }
-                isReadonly={!!blockData?.readOnly}
-                isInTemplate={!!blockData?.templateId}
-                onMakeTemplate={onBlockAction ? () => onBlockAction('makeTemplate', blockId) : null}
-                isTemplateInstance={isThisTemplateInstance}
-                isEditingTemplate={isEditingThisTemplate}
-                onToggleTemplateEdit={canToggleTemplateEdit ? toggleTemplateEdit : null}
-              />
-            );
-          })()}
+          {menuOpen && (
+            <DropdownMenu
+              {...blockMenuProps(blockId)}
+              menuButtonRect={menuButtonRect}
+              onClose={() => setMenuOpen(false)}
+              // "Convert to…" opens the type list under the block's title here,
+              // the same targets the toolbar's chooser offers.
+              onOpenConvertChooser={openTypeMenu}
+            />
+          )}
         </div>
       </div>
 
@@ -678,6 +725,33 @@ const ParentBlockSection = ({
           idEditable: !!tplDoc?._isNew,
           templateType: tplDoc?.['@type'],
         });
+        // The layouts the template's region allows, when this template is one
+        // of them and there is another to switch to: the choice the region's
+        // own control offers, here beside the template it replaces (inka#774).
+        // Layouts are applied to a region of the page.
+        const regionLayouts =
+          pathInfo.parentId === PAGE_BLOCK_UID && onChangeFormData
+            ? getAllContainerFields(
+                PAGE_BLOCK_UID,
+                blockPathMap,
+                formData,
+                config.blocks.blocksConfig,
+                contextIntl,
+                templateEditMode,
+              ).find((f) => f.region === pathInfo.region)?.allowedLayouts
+            : null;
+        const isLayout = (regionLayouts || []).some(
+          (l) => l && templateIdToPath(l) === templateIdToPath(pathInfo.templateId),
+        );
+        const layoutChoice =
+          isLayout && regionLayouts.length > 1 ? (
+            <LayoutSelector
+              formData={formData}
+              onChangeFormData={onChangeFormData}
+              allowedLayouts={regionLayouts}
+              region={pathInfo.region}
+            />
+          ) : null;
         const formContent = isEditingThisTemplate ? (
           <HydraSchemaProvider value={{ blockPathMap, currentBlockId: blockId, formData, blocksConfig: config.blocks?.blocksConfig, liveBlockDataRef, onChangeBlock }}>
             <BlockDataForm
@@ -689,11 +763,21 @@ const ParentBlockSection = ({
               block={blockId}
             />
           </HydraSchemaProvider>
-        ) : (
-          <ReadOnlyForm schema={templateSchema} formData={templateFormData} />
-        );
+        ) : isCurrentBlock ? (
+          // Locked: what the template is and how to unlock it. Its name and
+          // location are only fields to fill in once it is being edited;
+          // shown read-only here they repeated what this already says.
+          <TemplateLockedInfo
+            title={tplDoc?.title}
+            canEdit={canEditTemplate}
+            onUnlock={canToggleTemplateEdit ? toggleTemplateEdit : null}
+            layout={layoutChoice}
+          />
+        ) : null;
         const targetElement = document.getElementById(targetId);
-        return targetElement ? createPortal(formContent, targetElement) : null;
+        return targetElement && formContent
+          ? createPortal(formContent, targetElement)
+          : null;
       })()}
 
       {/* Template block settings form - shown when editing a block inside a template during edit mode */}
@@ -734,6 +818,13 @@ const ParentBlockSection = ({
         const formContent = (
           <HydraSchemaProvider value={{ blockPathMap, currentBlockId: blockId, formData, blocksConfig: config.blocks?.blocksConfig, liveBlockDataRef, onChangeBlock }}>
             <BlockDataForm
+              // A template rule's refusal is about this block's slot, so it is
+              // shown on its Slot ID, where it is fixed.
+              errors={
+                blocksErrors?.[blockId]?._layout
+                  ? { [blockId]: { slotId: [blocksErrors[blockId]._layout.message] } }
+                  : {}
+              }
               schema={templateBlockSchema}
               onChangeField={(fieldId, value) => {
                 const newBlockData = cloneDeep(blockData);
@@ -783,13 +874,16 @@ const ParentBlocksWidget = ({
   formData,
   blockPathMap,
   onSelectBlock,
-  onDeleteBlock,
   onChangeBlock,
   onBlockAction,
+  blockMenuProps, // (blockId) => a block's ⋯ menu, the same the Quanta toolbar draws
+  convertTargetsFor,
+  onConvertBlock,
   templateEditMode,
   onChangeTemplateSettings,
   onToggleTemplateEditMode,
   templatePermissions,
+  onChangeFormData,
 }) => {
   const isMultiSelected = multiSelected.length > 1;
   const [isClient, setIsClient] = React.useState(false);
@@ -988,9 +1082,11 @@ const ParentBlocksWidget = ({
                 index={index}
                 isCurrentBlock={false}
                 onSelectBlock={onSelectBlock}
-                onDeleteBlock={onDeleteBlock}
                 onChangeBlock={handleBlockChange}
                 onBlockAction={onBlockAction}
+                blockMenuProps={blockMenuProps}
+                convertTargetsFor={convertTargetsFor}
+                onConvertBlock={onConvertBlock}
                 formData={formData}
                 pathname={pathname}
                 intl={intl}
@@ -999,6 +1095,7 @@ const ParentBlocksWidget = ({
                 templateEditMode={templateEditMode}
                 onChangeTemplateSettings={onChangeTemplateSettings}
                 onToggleTemplateEditMode={onToggleTemplateEditMode}
+                onChangeFormData={onChangeFormData}
               />
             );
           })}
@@ -1016,9 +1113,11 @@ const ParentBlocksWidget = ({
             index={parentIds.length}
             isCurrentBlock={true}
             onSelectBlock={onSelectBlock}
-            onDeleteBlock={onDeleteBlock}
             onChangeBlock={handleBlockChange}
             onBlockAction={onBlockAction}
+            blockMenuProps={blockMenuProps}
+            convertTargetsFor={convertTargetsFor}
+            onConvertBlock={onConvertBlock}
             formData={formData}
             pathname={pathname}
             intl={intl}
@@ -1027,6 +1126,7 @@ const ParentBlocksWidget = ({
             templateEditMode={templateEditMode}
             onChangeTemplateSettings={onChangeTemplateSettings}
             onToggleTemplateEditMode={onToggleTemplateEditMode}
+            onChangeFormData={onChangeFormData}
           />
 
           {/* Multi-select summary bar at bottom of sidebar, below ChildBlocksWidget */}
@@ -1083,9 +1183,13 @@ ParentBlocksWidget.propTypes = {
   formData: PropTypes.object,
   blockPathMap: PropTypes.object,
   onSelectBlock: PropTypes.func,
-  onDeleteBlock: PropTypes.func,
   onChangeBlock: PropTypes.func,
   onBlockAction: PropTypes.func,
+  blockMenuProps: PropTypes.func.isRequired,
+  // (blockId) → [{ type, title }]: what the block can be changed to.
+  convertTargetsFor: PropTypes.func,
+  // (blockId, newType): change it, asking first when content would be lost.
+  onConvertBlock: PropTypes.func,
 };
 
 export default ParentBlocksWidget;

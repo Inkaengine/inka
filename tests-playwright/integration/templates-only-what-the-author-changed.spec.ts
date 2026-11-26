@@ -44,7 +44,7 @@ test.describe('a template is written only by its own commit', () => {
     expect(templateWrites(writes), 'no template is written by a page save').toEqual([]);
   });
 
-  test("a template's commit writes it once, and the page save after it doesn't again", async ({ page, urls }) => {
+  test("a template's lock writes nothing; the page save after it writes it, once", async ({ page, urls }) => {
     const helper = new AdminUIHelper(page);
     await helper.login();
     await helper.navigateToEdit('/template-test-page');
@@ -56,12 +56,12 @@ test.describe('a template is written only by its own commit', () => {
     await helper.moveCursorToEnd(header);
     await header.pressSequentially(' changed', { delay: 10 });
     await helper.lockTemplate(headerBlockId, 'commit');
-    await expect.poll(() => templateWrites(writes).length, { message: 'the commit writes the template' }).toBe(1);
+    expect(templateWrites(writes), 'locking writes nothing').toEqual([]);
 
     await helper.saveContent();
     await expect.poll(() => writes.filter((w) => w.path.endsWith('/template-test-page')).length,
       { message: 'the page itself is saved' }).toBeGreaterThanOrEqual(1);
-    expect(templateWrites(writes), 'the page save writes no template').toHaveLength(1);
+    expect(templateWrites(writes), 'the page save writes the template, once').toHaveLength(1);
   });
 });
 
@@ -85,15 +85,18 @@ async function freshTemplatePage(token: string, { emptySection = false, framed =
     '@type': 'Document', id, title: 'A template of its own',
     blocks: {
       head: { '@type': 'slate', templateId: `/_test_data/templates/${id}`, slotId: 'head', fixed: true, readOnly: true,
-        value: [{ type: 'p', children: [{ text: 'Its own heading' }] }], plaintext: 'Its own heading' },
+        value: [{ type: 'p', children: [{ text: 'Its own heading' }] }] },
       body: { '@type': 'slate', templateId: `/_test_data/templates/${id}`, slotId: 'default',
-        value: [{ type: 'p', children: [{ text: 'Its slot' }] }], plaintext: 'Its slot' },
+        value: [{ type: 'p', children: [{ text: 'Its slot' }] }] },
+      // A locked section with nothing in it yet: its one slot, empty, as a
+      // template stores a slot nobody has filled (inka#708). A page stores none.
       ...(emptySection && { aside: { '@type': 'section', templateId: `/_test_data/templates/${id}`, slotId: 'aside', fixed: true, readOnly: true,
-        blocks: {}, blocks_layout: { items: [] } } }),
+        blocks: { 'aside-slot': { '@type': 'empty', templateId: `/_test_data/templates/${id}`, slotId: 'aside-body', fixed: false } },
+        blocks_layout: { items: ['aside-slot'] } } }),
       // A locked section holding a fixed heading of its own, as a layout's hero holds its title.
       ...(framed && { frame: { '@type': 'section', templateId: `/_test_data/templates/${id}`, slotId: 'frame', fixed: true, readOnly: true,
         blocks: { framed: { '@type': 'slate', templateId: `/_test_data/templates/${id}`, slotId: 'framed', fixed: true, readOnly: true,
-          value: [{ type: 'p', children: [{ text: 'Framed heading' }] }], plaintext: 'Framed heading' } },
+          value: [{ type: 'p', children: [{ text: 'Framed heading' }] }] } },
         blocks_layout: { items: ['framed'] } } }),
     },
     blocks_layout: { items: ['head', 'body', ...(emptySection ? ['aside'] : []), ...(framed ? ['frame'] : [])] },
@@ -103,18 +106,18 @@ async function freshTemplatePage(token: string, { emptySection = false, framed =
     '@type': 'Document', id: `own-page-${randomUUID()}`, title: 'A page using it',
     blocks: {
       h: { '@type': 'slate', templateId: template, templateInstanceId: instance, slotId: 'head', fixed: true, readOnly: true,
-        value: [{ type: 'p', children: [{ text: 'Its own heading' }] }], plaintext: 'Its own heading' },
+        value: [{ type: 'p', children: [{ text: 'Its own heading' }] }] },
       b: { '@type': 'slate', templateId: template, templateInstanceId: instance, slotId: 'default',
-        value: [{ type: 'p', children: [{ text: 'Page text' }] }], plaintext: 'Page text' },
+        value: [{ type: 'p', children: [{ text: 'Page text' }] }] },
       ...(emptySection && { s: { '@type': 'section', templateId: template, templateInstanceId: instance, slotId: 'aside', fixed: true, readOnly: true,
         blocks: {}, blocks_layout: { items: [] } } }),
       ...(framed && {
         f: { '@type': 'section', templateId: template, templateInstanceId: instance, slotId: 'frame', fixed: true, readOnly: true,
           blocks: { fh: { '@type': 'slate', templateId: template, templateInstanceId: instance, slotId: 'framed', fixed: true, readOnly: true,
-            value: [{ type: 'p', children: [{ text: 'Framed heading' }] }], plaintext: 'Framed heading' } },
+            value: [{ type: 'p', children: [{ text: 'Framed heading' }] }] } },
           blocks_layout: { items: ['fh'] } },
         // The page's own, outside the template.
-        own: { '@type': 'slate', value: [{ type: 'p', children: [{ text: 'Not the template' }] }], plaintext: 'Not the template' },
+        own: { '@type': 'slate', value: [{ type: 'p', children: [{ text: 'Not the template' }] }] },
       }),
     },
     blocks_layout: { items: ['h', 'b', ...(emptySection ? ['s'] : []), ...(framed ? ['f', 'own'] : [])] },
@@ -134,7 +137,35 @@ async function lockOf(path: string, token: string) {
 }
 
 test.describe('unlocking a template locks it on the site, as editing a page does', () => {
-  test('unlocking takes its lock, and the save that commits it lets it go', async ({ page }) => {
+  test('unlocking again before the page is saved keeps the edit, and the lock', async ({ page }) => {
+    // The edit lives in the editor until the page save writes it, so unlocking
+    // again must not fetch the template afresh over it.
+    const helper = new AdminUIHelper(page);
+    await helper.login();
+    const { template, page: path } = await freshTemplatePage(helper.authToken);
+    await helper.navigateToEdit(path);
+
+    const { blockId: head } = await helper.waitForBlockByContent('Its own heading');
+    await helper.unlockTemplate(head);
+    const editor = await helper.enterEditMode(head);
+    await helper.moveCursorToEnd(editor);
+    await editor.pressSequentially(' changed', { delay: 10 });
+    await helper.lockTemplate(head, 'commit');
+
+    await helper.unlockTemplate(head);
+    await expect(helper.getIframe().locator(`[data-block-uid="${head}"]`)).toContainText('Its own heading changed');
+    // Unchanged since this unlock, so it locks without asking; the earlier edit
+    // is still to be written, so the site lock is kept for the page save.
+    const toggle = page.locator('.quanta-toolbar .template-lock-toggle');
+    await toggle.click();
+    await expect(toggle).toHaveAttribute('aria-pressed', 'false');
+    expect((await lockOf(template, helper.authToken))?.locked, 'still locked on the site').toBe(true);
+    await helper.saveContent();
+    await expect.poll(async () => JSON.stringify((await stored(template, helper.authToken)).blocks), { message: 'the edit is stored' })
+      .toContain('Its own heading changed');
+  });
+
+  test('unlocking takes its lock, and the page save that writes it lets it go', async ({ page }) => {
     const helper = new AdminUIHelper(page);
     await helper.login();
     const { template, page: path } = await freshTemplatePage(helper.authToken);
@@ -148,7 +179,9 @@ test.describe('unlocking a template locks it on the site, as editing a page does
     await helper.moveCursorToEnd(editor);
     await editor.pressSequentially(' changed', { delay: 10 });
     await helper.lockTemplate(head, 'commit');
-    await expect.poll(async () => (await lockOf(template, helper.authToken))?.locked, { message: 'committing lets it go' }).toBe(false);
+    expect((await lockOf(template, helper.authToken))?.locked, 'locked here with a change to write, it stays locked on the site').toBe(true);
+    await helper.saveContent();
+    await expect.poll(async () => (await lockOf(template, helper.authToken))?.locked, { message: 'the page save lets it go' }).toBe(false);
   });
 
   for (const how of ['unchanged', 'reset'] as const) {
@@ -205,6 +238,27 @@ test.describe('unlocking a template locks it on the site, as editing a page does
     await expect.poll(async () => (await lockOf(template, helper.authToken))?.locked, { message: 'leaving the editor lets it go' }).toBe(false);
   });
 
+  test("cancelling the page's edit after locking a changed template writes nothing, and lets its lock go", async ({ page }) => {
+    // "Change on all pages" keeps the edit for the page save; without one, the
+    // edit goes with the page's and the template is as it was.
+    const helper = new AdminUIHelper(page);
+    await helper.login();
+    const { template, page: path } = await freshTemplatePage(helper.authToken);
+    await helper.navigateToEdit(path);
+
+    const { blockId: head } = await helper.waitForBlockByContent('Its own heading');
+    await helper.unlockTemplate(head);
+    const editor = await helper.enterEditMode(head);
+    await helper.moveCursorToEnd(editor);
+    await editor.pressSequentially(' changed', { delay: 10 });
+    await helper.lockTemplate(head, 'commit');
+
+    await page.getByRole('navigation', { name: 'Toolbar' }).getByRole('button', { name: 'Cancel' }).click();
+    await expect(page).not.toHaveURL(/\/edit$/);
+    await expect.poll(async () => (await lockOf(template, helper.authToken))?.locked, { message: 'leaving the editor lets it go' }).toBe(false);
+    expect(JSON.stringify((await stored(template, helper.authToken)).blocks), 'the template is as it was').not.toContain('Its own heading changed');
+  });
+
   test('a template someone else has unlocked can not be unlocked, and says who has it', async ({ page }) => {
     const helper = new AdminUIHelper(page);
     await helper.login();
@@ -214,11 +268,12 @@ test.describe('unlocking a template locks it on the site, as editing a page does
 
     await whileEditing('jane', template, async () => {
       await helper.clickBlockInIframe(head);
-      const toggle = page.locator('.quanta-toolbar .template-lock-toggle');
-      await toggle.click();
+      await page.locator('.quanta-toolbar .template-lock-toggle').click();
+      const about = page.locator('.template-locked-info');
+      await about.locator('.template-unlock-button').click();
       await page.locator('.template-unlock-modal .template-confirm').click();
       await expect(page.locator('.Toastify'), 'the author is told who has it').toContainText('jane');
-      await expect(toggle, 'it stays locked').toHaveAttribute('aria-pressed', 'false');
+      await expect(about, 'it stays locked').toBeVisible();
       expect((await lockOf(template, helper.authToken)).creator, "jane's lock is left as it is").toBe('jane');
     });
   });
@@ -234,6 +289,7 @@ async function stored(path: string, token: string) {
 test.describe("a commit stores the author's change and nothing the editor made", () => {
   // Case 2: an empty region of a locked block is given an `empty` placeholder
   // in the editor (#700). A commit stored them as the template's own blocks.
+  // A template's own empty slot is the one `empty` it keeps (inka#708).
   test('the placeholders in empty regions are not stored', async ({ page }) => {
     const helper = new AdminUIHelper(page);
     await helper.login();
@@ -246,13 +302,15 @@ test.describe("a commit stores the author's change and nothing the editor made",
     await helper.moveCursorToEnd(editor);
     await editor.pressSequentially(' changed', { delay: 10 });
     await helper.lockTemplate(head, 'commit');
+    await helper.saveContent();
 
     await expect.poll(async () => JSON.stringify((await stored(template, helper.authToken)).blocks), { message: 'the edit is stored' })
       .toContain('Its own heading changed');
     const saved = await stored(template, helper.authToken);
-    expect(JSON.stringify(saved), 'no placeholder is stored').not.toContain('"@type":"empty"');
     const aside = Object.values(saved.blocks).find((b: any) => b['@type'] === 'section') as any;
-    expect(aside.blocks_layout.items, 'the empty region is stored empty').toEqual([]);
+    const kept = aside.blocks_layout.items.map((id: string) => [aside.blocks[id]['@type'], aside.blocks[id].slotId]);
+    expect(kept, "the section keeps its empty slot, and nothing the editor made").toEqual([['empty', 'aside-body']]);
+    expect(JSON.stringify(saved).match(/"@type":"empty"/g), 'no other placeholder is stored').toHaveLength(1);
   });
 });
 
@@ -274,6 +332,7 @@ test.describe("a block the author adds in a template's empty region", () => {
     await helper.waitForBlockSelectedInAdmin('s');
     await helper.addBlockViaSidebar('Blocks', 'Text');
     await helper.lockTemplate(head, 'commit');
+    await helper.saveContent();
 
     await expect.poll(async () => {
       const saved = await stored(template, helper.authToken);
@@ -339,7 +398,7 @@ test.describe('a drop goes only where it is allowed, and where its indicator can
     // A page of its own: a columns block far taller than the window, and a
     // section after it. A section can't go in a column.
     const paras = Object.fromEntries(Array.from({ length: 40 }, (_, n) => [`p${n}`,
-      { '@type': 'slate', value: [{ type: 'p', children: [{ text: `Paragraph ${n}` }] }], plaintext: `Paragraph ${n}` }]));
+      { '@type': 'slate', value: [{ type: 'p', children: [{ text: `Paragraph ${n}` }] }] }]));
     const response = await fetch(`${URLS.mockApi}/_test_data`, {
       method: 'POST',
       headers: { Accept: 'application/json', 'Content-Type': 'application/json', Authorization: `Bearer ${helper.authToken}` },
@@ -347,7 +406,7 @@ test.describe('a drop goes only where it is allowed, and where its indicator can
         '@type': 'Document', id: `own-page-${randomUUID()}`, title: 'A tall page',
         blocks: {
           cols: { '@type': 'columns', blocks: { col: { '@type': 'column', blocks: paras, blocks_layout: { items: Object.keys(paras) } } }, blocks_layout: { columns: ['col'] } },
-          sec: { '@type': 'section', blocks: { inner: { '@type': 'slate', value: [{ type: 'p', children: [{ text: 'In the section' }] }], plaintext: 'In the section' } }, blocks_layout: { items: ['inner'] } },
+          sec: { '@type': 'section', blocks: { inner: { '@type': 'slate', value: [{ type: 'p', children: [{ text: 'In the section' }] }] } }, blocks_layout: { items: ['inner'] } },
         },
         blocks_layout: { items: ['cols', 'sec'] },
       }),
@@ -373,5 +432,111 @@ test.describe('a drop goes only where it is allowed, and where its indicator can
     await page.mouse.up();
 
     await expect.poll(() => blockOrder(iframe), { message: 'nothing moved' }).toEqual(before);
+  });
+});
+
+test.describe("a page's own field drawn in a locked template block", () => {
+  // inka#705's context: a layout's hero holds the page's title. The title block
+  // is the template's, locked; the title it shows is the page's own field. An
+  // editor who only wanted to rename the page had to unlock the template every
+  // page uses to do it.
+  test('is edited without unlocking the template', async ({ page }) => {
+    const helper = new AdminUIHelper(page);
+    await helper.login();
+    const post = async (folder: string, body: object) => {
+      const response = await fetch(`${URLS.mockApi}${folder}`, {
+        method: 'POST',
+        headers: { Accept: 'application/json', 'Content-Type': 'application/json', Authorization: `Bearer ${helper.authToken}` },
+        body: JSON.stringify(body),
+      });
+      expect(response.status).toBe(201);
+      return new URL((await response.json())['@id']).pathname;
+    };
+    const id = `titled-template-${randomUUID()}`;
+    const templatePath = `/_test_data/templates/${id}`;
+    const template = await post('/_test_data/templates', {
+      '@type': 'Document', id, title: 'A titled template',
+      blocks: {
+        heading: { '@type': 'title', templateId: templatePath, slotId: 'heading', fixed: true, readOnly: true },
+        body: { '@type': 'slate', templateId: templatePath, slotId: 'default',
+          value: [{ type: 'p', children: [{ text: 'Its slot' }] }] },
+      },
+      blocks_layout: { items: ['heading', 'body'] },
+    });
+    const instance = `instance-${randomUUID()}`;
+    const path = await post('/_test_data', {
+      '@type': 'Document', id: `titled-page-${randomUUID()}`, title: 'Old name',
+      blocks: {
+        t: { '@type': 'title', templateId: template, templateInstanceId: instance, slotId: 'heading', fixed: true, readOnly: true },
+        b: { '@type': 'slate', templateId: template, templateInstanceId: instance, slotId: 'default',
+          value: [{ type: 'p', children: [{ text: 'Page text' }] }] },
+      },
+      blocks_layout: { items: ['t', 'b'] },
+    });
+    // navigateToEdit adds the test-content prefix itself.
+    await helper.navigateToEdit(path.replace(/^\/_test_data/, ''));
+    const writes = recordWrites(page, URLS.mockApi);
+
+    const title = await helper.getEditorLocator('t', '/title');
+    await expect(title).toHaveText('Old name');
+    await title.click();
+    await expect(title, 'the page title is editable while its template stays locked').toHaveAttribute('contenteditable', 'true');
+    await helper.moveCursorToEnd(title);
+    await title.pressSequentially(' renamed', { delay: 10 });
+    await helper.saveContent();
+
+    await expect.poll(async () => (await stored(path, helper.authToken)).title, { message: 'the page is renamed' }).toBe('Old name renamed');
+    expect(templateWrites(writes), 'the template is not written').toEqual([]);
+    expect((await lockOf(template, helper.authToken))?.locked, 'the template was never unlocked').toBeFalsy();
+  });
+});
+
+/**
+ * inka#708: a template that loses a slot leaves pages using it with content the
+ * merge has nowhere to put. Nothing records which pages use which slots, so
+ * removing one asks first, and saying no leaves the template unsaved and
+ * unlocked, to edit further.
+ */
+test.describe('removing a slot from a template asks first', () => {
+  test('Keep editing leaves it unlocked; Remove locks it, and the page save writes it', async ({ page, urls }) => {
+    const helper = new AdminUIHelper(page);
+    await helper.login();
+    const { page: path } = await freshTemplatePage(helper.authToken, { emptySection: true });
+    await helper.navigateToEdit(path);
+    const writes = recordWrites(page, urls.mockApi);
+
+    const { blockId: head } = await helper.waitForBlockByContent('Its own heading');
+    await helper.unlockTemplate(head);
+    // Emptying a slot keeps it: the placeholder left behind names it. What takes
+    // a slot out is taking out the block that holds it: the locked section and
+    // its slot, `aside-body`.
+    await page.evaluate(() => {
+      document.dispatchEvent(new CustomEvent('hydra-delete-blocks', { detail: { blockIds: ['s'] } }));
+    });
+    await expect(helper.getIframe().locator('[data-block-uid="s"]')).toHaveCount(0);
+
+    const toggle = page.locator('.quanta-toolbar .template-lock-toggle');
+    const commit = async () => {
+      await helper.clickBlockInIframe(head);
+      await expect(toggle).toHaveAttribute('aria-pressed', 'true');
+      await toggle.click();
+      await page.locator('.template-lock-modal .template-commit').click();
+    };
+    const ask = page.getByTestId('slot-removal-confirm');
+
+    await commit();
+    await expect(ask).toContainText('aside-body');
+    await page.getByRole('button', { name: 'Keep editing' }).click();
+    await expect(ask).toHaveCount(0);
+    await expect(toggle).toHaveAttribute('aria-pressed', 'true');
+    expect(templateWrites(writes), 'nothing is saved').toEqual([]);
+
+    await commit();
+    await expect(ask).toContainText('aside-body');
+    await page.getByRole('button', { name: 'Remove' }).click();
+    await expect(toggle).toHaveAttribute('aria-pressed', 'false', { timeout: 10000 });
+    expect(templateWrites(writes), 'locking writes nothing').toEqual([]);
+    await helper.saveContent();
+    expect(templateWrites(writes), 'the page save writes the template, once').toHaveLength(1);
   });
 });

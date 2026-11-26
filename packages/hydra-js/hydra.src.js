@@ -286,9 +286,6 @@ const isValidNodeId = (id) => id && /^\d+(\.\d+)*$/.test(id);
 // How many nested closed containers a reveal will open before giving up.
 const MAX_REVEAL_DEPTH = 5;
 
-// How long after a key or pointer press a selection still counts as the
-// author's doing: a click's selection, focus and caret all land within it.
-const AUTHOR_INPUT_MS = 1000;
 
 // What counts as the control a reveal handle activates — see
 // Bridge.activationTarget. A link needs an href to be one; a bare <a> is text.
@@ -659,6 +656,35 @@ export class Bridge {
 
     log('isBlockReadonly:', readonlyFromShared ? 'TRUE (blockData)' : 'FALSE', 'for:', blockUid);
     return readonlyFromShared;
+  }
+
+  /**
+   * Whether a field can't be edited: the lock of the block that OWNS the field,
+   * not of the block drawing it. A locked template block may draw the page's
+   * own `/title`; the page isn't locked, so neither is its title. A field
+   * named relative to another block (`../x`) is that block's. With no field
+   * name, the block's own lock.
+   *
+   * @param {string|null} fieldName - The field path as the frontend names it
+   * @param {string} blockUid - The block drawing the field
+   * @returns {boolean}
+   */
+  /**
+   * The field carrying `attr` that a click on `target` landed in, if it can be
+   * edited: not inside a frontend's own `data-block-readonly`, and not locked
+   * by its owning block (isFieldReadonly), so a page field drawn in a locked
+   * block still counts.
+   */
+  clickedFieldAt(target, attr, blockUid) {
+    if (target.closest('[data-block-readonly]')) return null;
+    const field = target.closest(`[${attr}]`);
+    return field && !this.isFieldReadonly(field.getAttribute(attr), blockUid) ? field : null;
+  }
+
+  isFieldReadonly(fieldName, blockUid) {
+    return this.isBlockReadonly(
+      fieldName ? this.resolveFieldPath(fieldName, blockUid).blockId : blockUid,
+    );
   }
 
   /**
@@ -1362,11 +1388,13 @@ export class Bridge {
    */
   collectBlockFields(blockElement, attrName, processor) {
     const blockUid = blockElement.getAttribute('data-block-uid');
-
-    // Check if block is marked readonly (registry, block data, or DOM attribute)
-    if (blockUid && this.isBlockReadonly(blockUid)) {
-      return {};
-    }
+    const collect = processor;
+    // Each field by its own lock (isFieldReadonly): a locked block's own fields
+    // are skipped, a page field it draws is not.
+    processor = (el, name, results) => {
+      if (blockUid && this.isFieldReadonly(name, blockUid)) return;
+      collect(el, name, results);
+    };
 
     const results = {};
 
@@ -4071,7 +4099,6 @@ export class Bridge {
       this.sendMessageToParent({
         type: 'BLOCK_SELECTED',
         src,
-        userInput: this.isAuthorInputRecent(),
         blockUid: null,
         rect: null,
       }, this.adminOrigin);
@@ -4167,8 +4194,6 @@ export class Bridge {
     const message = {
       type: 'BLOCK_SELECTED',
       src,
-      // Caused by the author's own key or pointer, not the bridge settling.
-      userInput: this.isAuthorInputRecent(),
       blockUid,
       // Where the block IS (outline) stays tight to its own elements. A
       // stand-in — a tab's label on the button that reveals it — is somewhere
@@ -4626,7 +4651,7 @@ export class Bridge {
         this.setupScrollHandler();
         this.setupResizeHandler();
         this.setupMouseActivityReporter();
-        this.trackAuthorInput();
+        this.reportCanvasFocus();
         this.setupStructuralObserver();
 
         // Add beforeunload warning to prevent accidental navigation
@@ -4641,56 +4666,14 @@ export class Bridge {
           return '';
         });
 
-        // INITIAL_DATA is the ONLY acknowledgement of INIT, and INIT used to be
-        // posted exactly once. A message posted before the admin has mounted its
-        // listener is simply gone — the iframe then sits there fully loaded and
-        // completely inert, and the only thing hydra did about it was paint a
-        // "Not Connected" diagnostic five seconds later. Reloading was the user's
-        // only recovery. Waiting on the acknowledgement and re-posting until it
-        // comes turns that dead editor into a slow one.
-        //
-        // Backs off rather than spinning: a lost INIT is recovered in a quarter
-        // of a second, and an admin that is genuinely absent is given up on
-        // after ~7.75s instead of being asked forever.
-        this._retryInitUntilAcknowledged = (initMessage) => {
-          const delays = [250, 500, 1000, 2000, 4000];
-          let attempt = 0;
-          const again = () => {
-            if (this.initialized || attempt >= delays.length) {
-              if (!this.initialized) {
-                // Out of attempts with no acknowledgement. THIS is the moment
-                // the diagnostic is entitled to speak — a handshake that has
-                // actually failed, not a clock that ran out while it was still
-                // in progress.
-                this._initHandshakeGaveUp = true;
-                _showBridgeDiagnostic({
-                  windowName: window.name,
-                  hasHydraName: window.name.startsWith('hydra-edit:'),
-                  inIframe: window.self !== window.top,
-                  adminOrigin: this.adminOrigin || null,
-                  bridgeCreated: true,
-                  bridgeInitialized: false,
-                });
-              }
-              return;
-            }
-            this._initRetryTimer = setTimeout(() => {
-              if (this.initialized) return;
-              log(`INIT not acknowledged, retrying (attempt ${attempt + 1})`);
-              window.parent.postMessage(initMessage, this.adminOrigin);
-              attempt += 1;
-              again();
-            }, delays[attempt]);
-          };
-          again();
-        };
-
-        this._stopInitRetries = () => {
-          if (this._initRetryTimer) {
-            clearTimeout(this._initRetryTimer);
-            this._initRetryTimer = null;
-          }
-        };
+        // INIT is posted ONCE, and INITIAL_DATA is its only acknowledgement.
+        // It used to be re-posted until acknowledged, to recover an INIT the
+        // admin dropped before it could answer; the admin now holds an early
+        // INIT until it can answer it (View.jsx, the deferred-INIT replay). The
+        // re-posts did harm of their own: under load the admin answered every
+        // copy, and a late answer rebuilt the page from the form as it was when
+        // that copy arrived — over edits made since. An INIT nobody answers is a
+        // broken editor, and the connection check below reports it as one.
 
         // Send single INIT message with config - admin merges config before responding
         // This ensures blockPathMap is built with complete schema knowledge
@@ -4749,7 +4732,6 @@ export class Bridge {
             initMessage.voltoConfig = options.voltoConfig;
           }
           window.parent.postMessage(initMessage, this.adminOrigin);
-          this._retryInitUntilAcknowledged(initMessage);
         }
 
         const receiveInitialData = (e) => {
@@ -4771,16 +4753,16 @@ export class Bridge {
                 this._executeRender(this.onContentChangeCallback);
               }
 
-              // Focus the iframe window so keyboard events reach it on page load.
-              // Must happen inside the iframe (window.focus()) because the parent
-              // cannot call contentWindow.focus() on a cross-origin iframe.
-              window.focus();
+              // No focus here. Whether this page should take the keyboard as
+              // it loads is the admin's call: the author may be in the sidebar,
+              // or in another page the admin shows beside this one, and a page
+              // can't see either. The admin focuses the page being edited when
+              // nothing else has focus.
 
               // Mark bridge as initialized — block selection is now allowed
               this.initialized = true;
-              // The handshake is acknowledged: stop retrying, and take down any
-              // diagnostic that was raised while we were still trying.
-              this._stopInitRetries();
+              // The handshake is acknowledged: take down a diagnostic raised
+              // while the answer was slow.
               _removeBridgeDiagnostic();
 
               // Restore block selection if provided (e.g., after adding a new block)
@@ -5524,23 +5506,24 @@ export class Bridge {
         // Using relative coordinates ensures focus()/scroll doesn't invalidate the position
         // Also store the target for field detection
         // Inside readonly blocks, ignore editable/linkable/media fields (they're from query results, not editable)
-        const clickedEditableField = isInsideReadonly ? null : event.target.closest('[data-edit-text]');
-        const editableField = clickedEditableField || (isInsideReadonly ? null : blockElement.querySelector('[data-edit-text]'));
+        // A field is judged by its own lock (isFieldReadonly), so a page field
+        // drawn in a locked block is still editable.
+        const clickedEditableField = this.clickedFieldAt(event.target, 'data-edit-text', blockUid);
+        const editableField = clickedEditableField || this.getOwnFirstEditableField(blockElement);
 
-        // Detect clicked linkable and media fields (ignored inside readonly blocks)
-        const clickedLinkableField = isInsideReadonly ? null : event.target.closest('[data-edit-link]');
-        const clickedMediaField = isInsideReadonly ? null : event.target.closest('[data-edit-media]');
-
-        // Clicking a data-edit-text element starts INLINE text editing, so prevent
-        // the element's OWN default action. A data-edit-text submit button would
-        // otherwise submit the form (showing the success state) instead of letting
-        // you edit its label. Links are handled above (data-edit-link); a plain
-        // <h3>/<p>/<label> has no default action so this is a no-op for them.
-        if (clickedEditableField) {
+        // Clicking a data-edit-text element starts INLINE text editing, and
+        // clicking a data-edit-link element edits its link, so prevent the
+        // element's OWN default action. A submit button would otherwise submit
+        // its form (showing the success state, or leaving the page) instead of
+        // letting you edit its label, or the page it goes to. An <a> is handled
+        // above; a plain <h3>/<p>/<label> has no default action so this is a
+        // no-op for them.
+        const clickedLinkableField = this.clickedFieldAt(event.target, 'data-edit-link', blockUid);
+        if (clickedEditableField || clickedLinkableField) {
           event.preventDefault();
         }
 
-        this.recordClickPosition(event, editableField, !!isInsideReadonly);
+        this.recordClickPosition(event, editableField, blockUid);
         // Cancel any pending initial-selection from waitForStable —
         // user click takes priority over automatic block restoration
         if (this._pendingInitialSelectTimer) {
@@ -5595,9 +5578,7 @@ export class Bridge {
           typeof matchMedia === 'function' &&
           matchMedia('(pointer: coarse)').matches;
         const alreadySelected = blockUid === this.selectedBlockUid;
-        const hasOwnText =
-          !this.isBlockReadonly(blockUid) &&
-          this.getOwnEditableFields(blockElement).length > 0;
+        const hasOwnText = this.getOwnEditableFields(blockElement).length > 0;
         const enterTextMode = hasOwnText && (!coarsePointer || alreadySelected);
         this.editMode = enterTextMode ? 'text' : 'block';
         this.selectBlock(blockElement, { fromUserClick: true });
@@ -7455,8 +7436,8 @@ export class Bridge {
         || null;
       const fieldName = container?.getAttribute?.('data-edit-text') || null;
 
-      // Skip error for readonly blocks - they don't need selection sync
-      if (blockUid && this.isBlockReadonly(blockUid)) {
+      // Skip error for readonly fields - they don't need selection sync
+      if (blockUid && this.isFieldReadonly(fieldName, blockUid)) {
         return null;
       }
 
@@ -7560,14 +7541,13 @@ export class Bridge {
     // Get blockUid from the element - don't rely on this.selectedBlockUid as it may not be set yet
     const blockUid = blockElement.getAttribute('data-block-uid');
 
-    // If block is readonly, remove contenteditable from all its editable fields
+    // In a readonly block, a field that is itself readonly loses contenteditable.
     if (blockUid && this.isBlockReadonly(blockUid)) {
-      const editableFields = blockElement.querySelectorAll('[data-edit-text][contenteditable="true"]');
-      editableFields.forEach((field) => {
-        field.removeAttribute('contenteditable');
+      blockElement.querySelectorAll('[data-edit-text][contenteditable="true"]').forEach((field) => {
+        if (this.isFieldReadonly(field.getAttribute('data-edit-text'), blockUid)) {
+          field.removeAttribute('contenteditable');
+        }
       });
-      log(`restoreContentEditableOnFields called from ${caller}: block ${blockUid} is readonly, removed contenteditable`);
-      return;
     }
 
     // For multi-element blocks, collect fields from ALL elements with this UID
@@ -7671,6 +7651,13 @@ export class Bridge {
     const fieldType = this.getFieldType(blockUid, fieldName);
 
     if (!this.fieldTypeIsTextEditable(fieldType)) {
+      return;
+    }
+
+    // Editable, but the keyboard stays where the author is: no focus, so no
+    // caret to place either (see selectBlock's `focus`).
+    if (options.focus === false) {
+      this.updateEmptyState(fieldElement);
       return;
     }
 
@@ -8170,7 +8157,9 @@ export class Bridge {
               // that selection — regression introduced in 97dd597b.
               log('Selecting new block from afterContentRender:', blockUidToProcess, 'transformedSelection:', !!transformedSelection);
               this.editMode = 'text';
-              this.selectBlock(el, transformedSelection ? {} : { fieldToFocus: 'first' });
+              // The admin switched to this block (one it added, or the new
+              // block after Enter) for the author to type in: it takes focus.
+              this.selectBlock(el, transformedSelection ? { focus: true } : { fieldToFocus: 'first', focus: true });
             }
           : (el) => this.updateBlockUIAfterFormData(el, skipFocus);
 
@@ -9367,6 +9356,14 @@ export class Bridge {
     // Back-compat: old callers pass a string as second arg (caller name for logging)
     const opts = typeof options === 'string' ? {} : options;
     const fieldToFocus = opts.fieldToFocus; // undefined=auto, null=block mode, string=specific field
+    // Whether selecting may focus a field or the block. By default only when
+    // this page already has focus: the bridge never moves the keyboard into
+    // its page by itself — selecting the block it opened with as it settles,
+    // re-selecting after a re-render, following the admin's selection. Focus
+    // stays where the author is, and the block is still selected and
+    // outlined. `focus: true` is the admin asking for the keyboard (a block it
+    // added); `focus: false` never focuses.
+    const takeFocus = opts.focus ?? this._iframeFocused;
     // Accept either a DOM element (from click handlers) or a block UID string
     const blockUidFromArg = typeof blockElementOrUid === 'string' ? blockElementOrUid : null;
 
@@ -9517,6 +9514,7 @@ export class Bridge {
             }
             if (targetField && targetField.getAttribute('contenteditable') === 'true') {
               if (textOf(currentElement) !== askedText) return;
+              if (!takeFocus) return;
               targetField.focus();
               if (cursorAt === 'end') {
                 this._placeCursorAtEnd(targetField);
@@ -9542,8 +9540,7 @@ export class Bridge {
     // the document-level keyboard blocker receives key events. Without focus
     // in the iframe, keydown events go to the parent page instead.
     if (!isTemplateInstance) {
-      const isReadonly = this.isBlockReadonly(blockUid);
-      const hasEditableFields = !isReadonly && this.getOwnEditableFields(blockElement).length > 0;
+      const hasEditableFields = this.getOwnEditableFields(blockElement).length > 0;
       // "No editable fields" is true of a CONTAINER whose text all belongs to
       // its children — a codeExample's labels and code live on its tabs, not on
       // the wrapper. Focusing the wrapper then rips the caret out of the field
@@ -9555,7 +9552,7 @@ export class Bridge {
       const active = document.activeElement;
       const caretAlreadyInside =
         !!active && blockElement.contains(active) && active.isContentEditable;
-      if (!hasEditableFields && !caretAlreadyInside) {
+      if (!hasEditableFields && !caretAlreadyInside && takeFocus) {
         if (!blockElement.hasAttribute('tabindex')) {
           blockElement.setAttribute('tabindex', '-1');
         }
@@ -9693,8 +9690,7 @@ export class Bridge {
     // - Non-editable blocks (no contenteditable field)
     // - Block mode (contenteditable not set)
     {
-      const isReadonly = this.isBlockReadonly(blockUid);
-      const hasEditableFields = !isReadonly && this.getOwnEditableFields(blockElement).length > 0;
+      const hasEditableFields = this.getOwnEditableFields(blockElement).length > 0;
       const needsImmediateSend = isTemplateInstance || isBlockMode || !hasEditableFields;
       if (needsImmediateSend && this._pendingBlockSelected) {
         const pending = this._pendingBlockSelected;
@@ -9856,6 +9852,7 @@ export class Bridge {
               preventScroll: this._isReselectingSameBlock,
               wasAlreadyEditable,
               saveClickPosition: true, // Save for FORM_DATA handler after re-render
+              focus: takeFocus,
             });
           } else if (this.lastClickPosition) {
             // No editable field found, clear click position
@@ -9900,14 +9897,13 @@ export class Bridge {
    * @param {HTMLElement|null} editableField - The text field the click resolved
    *   to, or null when the click wasn't on one (the target is still recorded,
    *   for field detection).
-   * @param {boolean} isInsideReadonly - Inside a readonly block (listing items
-   *   and friends) linkable/media fields come from query results, not editable
-   *   content, so they are ignored.
+   * @param {string} blockUid - The clicked block. A locked field (a listing
+   *   item's, a locked template block's own) is not recorded.
    */
-  recordClickPosition(event, editableField, isInsideReadonly = false) {
+  recordClickPosition(event, editableField, blockUid) {
     const rect = editableField?.getBoundingClientRect();
     const fieldAttr = (attr) =>
-      (isInsideReadonly ? null : event.target.closest(`[${attr}]`)?.getAttribute(attr)) || null;
+      this.clickedFieldAt(event.target, attr, blockUid)?.getAttribute(attr) || null;
     this.lastClickPosition = {
       ...(editableField && {
         relativeX: event.clientX - rect.left,
@@ -9964,7 +9960,8 @@ export class Bridge {
 
     // Readonly blocks (listing items and friends) render query results, not
     // editable content — same exclusion the plain-click path applies.
-    if (event.target.closest('[data-block-readonly]') || this.isBlockReadonly(ownerUid)) return;
+    if (event.target.closest('[data-block-readonly]')
+      || this.isFieldReadonly(field.getAttribute('data-edit-text'), ownerUid)) return;
 
     // Touch: the first tap on a not-yet-selected block selects it without a
     // caret, so iOS word-select and long-press multi-select have a clean
@@ -9976,7 +9973,7 @@ export class Bridge {
       return;
     }
 
-    this.recordClickPosition(event, field);
+    this.recordClickPosition(event, field, ownerUid);
     // editMode FIRST: focusedFieldName is an accessor that drops any value
     // assigned while the mode is still 'block' (block mode has no focused
     // field). Assigning the other way round silently loses the field name, and
@@ -11536,15 +11533,19 @@ export class Bridge {
           const targetBlockData = this.getBlockData(closestBlockUid);
           const sourceBlockData = this.getBlockData(this.selectedBlockUid);
           const addability = getBlockAddability(closestBlockUid, this.blockPathMap, targetBlockData, this.templateEditMode, sourceBlockData);
+          // A '+' redirected elsewhere (insertAt: the top of the layout's default
+          // slot) means there is no room right here: a drop lands where it is
+          // shown, so it can't go after this block.
+          const canDropAfter = addability.canInsertAfter && !addability.insertAt;
 
           // Use preferred position if allowed, otherwise try the other side
           if (preferredInsertAt === 0 && addability.canInsertBefore) {
             insertAt = 0;
-          } else if (preferredInsertAt === 1 && addability.canInsertAfter) {
+          } else if (preferredInsertAt === 1 && canDropAfter) {
             insertAt = 1;
           } else if (addability.canInsertBefore) {
             insertAt = 0;
-          } else if (addability.canInsertAfter) {
+          } else if (canDropAfter) {
             insertAt = 1;
           } else {
             // Neither side is allowed - hide indicator
@@ -11740,6 +11741,14 @@ export class Bridge {
         // This prevents ping-pong when Admin echoes back the selection from iframe click
         const alreadySelected = this.selectedBlockUid === uid;
 
+        // The admin selecting a block never takes the keyboard into this page.
+        // The author chose it somewhere else — the sidebar's block list, or the
+        // page beside this one, which this page follows — and keeps working
+        // there. Only when this page already has focus does the caret go to
+        // the block, as a click on it would. (_iframeFocused, not
+        // document.hasFocus(), which headless browsers always answer false.)
+        const focus = this._iframeFocused;
+
         this.selectedBlockUid = uid;
         // Don't update formData here - it's managed via FORM_DATA messages
         // Don't post FORM_DATA - form data syncing is handled separately
@@ -11748,7 +11757,7 @@ export class Bridge {
         // selectBlock handles these by computing bounding box from child elements
         if (this.blockPathMap?.[uid]?.isTemplateInstance) {
           if (!alreadySelected) {
-            this.selectBlock(uid);
+            this.selectBlock(uid, { focus });
           }
           return;
         }
@@ -11781,7 +11790,7 @@ export class Bridge {
             const stillWanted = this.awaitPendingSelect(uid);
             waitForVisible().then((visible) => {
               if (visible && stillWanted()) {
-                this.selectBlock(blockElement);
+                this.selectBlock(blockElement, { focus });
               }
             });
             return;
@@ -11793,7 +11802,7 @@ export class Bridge {
             const stillWanted = this.awaitPendingSelect(uid);
             waitForVisible().then((visible) => {
               if (visible && stillWanted()) {
-                this.selectBlock(blockElement);
+                this.selectBlock(blockElement, { focus });
               }
             });
             return; // Exit early - selection will happen in the async callback
@@ -11817,14 +11826,14 @@ export class Bridge {
           // Call selectBlock() to properly set up toolbar and contenteditable
           // This ensures blocks selected via Order tab work the same as clicking
           this.editMode = 'text';
-          this.selectBlock(blockElement);
+          this.selectBlock(blockElement, { focus });
 
           // Focus the contenteditable element for blocks with editable fields
           // This includes slate, string, and textarea field types
           const schemaProps = this.getBlockSchema(uid)?.properties;
           const hasEditableFields = schemaProps && Object.keys(schemaProps).length > 0;
 
-          if (hasEditableFields) {
+          if (hasEditableFields && focus) {
             // Use double requestAnimationFrame to wait for ALL DOM updates including Quanta toolbar
             requestAnimationFrame(() => {
               requestAnimationFrame(() => {
@@ -11868,7 +11877,7 @@ export class Bridge {
               clearTimeout(safetyTimer);
               if (!stillWanted()) return;
               log('Block element appeared via observer, selecting:', uid);
-              this.selectBlock(el);
+              this.selectBlock(el, { focus });
             }
           });
           observer.observe(document.body, { childList: true, subtree: true });
@@ -11986,23 +11995,20 @@ export class Bridge {
   }
 
   /**
-   * Note when the author last pressed a key or pointed in this page. The
-   * bridge also selects and focuses on its own — the block the editor opened
-   * with, once the page settles — and the admin, which can't see input inside
-   * the frame, needs to tell the two apart: focus the bridge gave itself is not
-   * the author choosing this pane (userInput on BLOCK_SELECTED).
+   * Tell the admin when this page gets focus (CANVAS_FOCUSED): the author
+   * clicked in it or tabbed into it, from the admin or from another page the
+   * admin shows. Once per switch: the window's focus event fires when focus
+   * arrives from elsewhere, not for each click or key inside.
+   *
+   * The admin can't see this itself: focus moving into an iframe, or from one
+   * iframe to another, fires nothing on the admin's side. And it is always the
+   * author: the bridge never moves focus into its own page by itself (not on
+   * load, nor when the admin selects a block — see SELECT_BLOCK).
    */
-  trackAuthorInput() {
-    const noted = (e) => {
-      if (e.isTrusted) this._lastAuthorInputAt = Date.now();
-    };
-    document.addEventListener('keydown', noted, true);
-    document.addEventListener('pointerdown', noted, true);
-  }
-
-  /** Did the author press a key or point in this page just now? */
-  isAuthorInputRecent() {
-    return this._lastAuthorInputAt !== undefined && Date.now() - this._lastAuthorInputAt < AUTHOR_INPUT_MS;
+  reportCanvasFocus() {
+    window.addEventListener('focus', () => {
+      window.parent.postMessage({ type: 'CANVAS_FOCUSED' }, this.adminOrigin);
+    });
   }
 
   /**
@@ -12059,8 +12065,8 @@ export class Bridge {
       editableField = this.getOwnFirstEditableField(elementOrBlock);
     }
 
-    // Skip making readonly blocks editable
-    if (blockUid && this.isBlockReadonly(blockUid)) {
+    // Skip making readonly fields editable
+    if (blockUid && this.isFieldReadonly(editableField?.getAttribute('data-edit-text'), blockUid)) {
       return;
     }
 
@@ -12562,26 +12568,19 @@ export class Bridge {
   }
 
   /**
-   * The block's schema fields that COULD be revealed: ones with an inline
-   * affordance that the frontend is currently rendering no element for.
+   * The block's empty fields the reveal button would show: those its frontend
+   * marked `optionalOnCanvas: true` (inka#765).
    *
-   * Purely observational — no schema annotation, no dependence on `required`
-   * (most block schemas here don't declare it).
+   * The mark is the frontend saying "I draw this field on the page when it has
+   * a value, and nothing when it is empty". Nothing else can tell: the widget
+   * only says a field COULD be edited inline, and alt text, a css class or a
+   * free-text style value are plain strings that live in the sidebar. Guessing
+   * offered a button on almost every block that often revealed nothing.
    *
-   * DELIBERATELY OVER-INCLUSIVE, don't "fix" this. The widget/type only says a
-   * field COULD be edited inline, not that this frontend renders it: alt text, a
-   * css class, a free-text style value are all plain strings that live in the
-   * sidebar. Telling them apart from an empty heading is impossible without data,
-   * since "renders nothing because it's empty" and "never renders inline" look
-   * identical — it would need a schema annotation or a frontend-side declaration,
-   * i.e. exactly the per-field bookkeeping #296 exists to remove.
-   *
-   * So reveal is BEST-EFFORT: it seeds every candidate, the ones the frontend
-   * renders appear, and the rest are a no-op. A sentinel for a field nobody
-   * renders is harmless — it lives only in the render projection, never in state
-   * and never in saved content — and the editor fills those from the sidebar as
-   * before. No warning is raised for them: a frontend that legitimately keeps a
-   * field sidebar-only is not misconfigured.
+   * Two marks contradict the field and are refused: a REQUIRED field is never
+   * toggled (an empty required image is always shown, emptyRequiredFields; a
+   * required text field is drawn by the frontend itself), and a field with no
+   * inline affordance (a select, a boolean) can't be revealed on the page.
    */
   revealableFields(blockUid) {
     const schema = this.getBlockSchema(blockUid);
@@ -12594,17 +12593,19 @@ export class Bridge {
 
     return Object.entries(properties)
       .filter(([fieldName, fieldDef]) => {
-        const fieldType = this.getFieldType(blockUid, fieldName);
-        // Has an inline affordance at all. Returns undefined for select /
-        // boolean / number, so sidebar-only fields drop out for free.
-        if (!this._revealSentinelFor(fieldDef, fieldType)) {
-          return false;
+        if (fieldDef?.optionalOnCanvas !== true) return false;
+        const where = `${block['@type']}.${fieldName}`;
+        if (schema.required?.includes(fieldName)) {
+          throw new Error(
+            `${where} is both required and optionalOnCanvas: a required field is always there, so it has nothing to reveal`,
+          );
         }
-        // A REQUIRED field is never toggled: an empty required image is always
-        // shown (emptyRequiredFields, seeded on every render), and a required
-        // text field is drawn by the frontend itself. Excluding them keeps the
-        // button's "N empty optional fields" count honest.
-        if (schema.required?.includes(fieldName)) return false;
+        const fieldType = this.getFieldType(blockUid, fieldName);
+        if (!this._revealSentinelFor(fieldDef, fieldType)) {
+          throw new Error(
+            `${where} is marked optionalOnCanvas, but its widget isn't one the page edits (text, rich text, image or link)`,
+          );
+        }
         // A slate field is never absent — it defaults to one empty paragraph —
         // so its empty is that paragraph, the same test a renderer hides it by.
         if (isSlateFieldType(fieldType)) return isEmptySlate(block[fieldName]);
@@ -12784,9 +12785,14 @@ export class Bridge {
         // bridge gave it. Reveal fills THAT paragraph rather than inventing one,
         // so the element the renderer draws carries a data-node-id and typing
         // into it maps back into the value.
+        // A field with no value at all (an admin always sends the default
+        // paragraph, but the bridge doesn't depend on it) reveals as that
+        // default would: one paragraph, with the node id the bridge gives it.
         const stored = source[fieldName];
         if (isSlateFieldType(fieldType) && Array.isArray(stored) && stored.length === 1) {
           sentinel = [{ ...stored[0], children: [{ text: Bridge.REVEAL_ZWS }] }];
+        } else if (isSlateFieldType(fieldType)) {
+          sentinel = this.addNodeIds(sentinel);
         }
         if (!projected) projected = JSON.parse(JSON.stringify(formData));
         let target = projected;
@@ -14942,6 +14948,18 @@ export class Bridge {
 
       this.setFieldValueByPath(block, resolved.fieldName, freshValue);
       log('handleTextChange: updated', editableField);
+
+      // The author has typed into this field, so its caret target (see
+      // _requestCaretTarget) has done its job: the frontend's node now holds
+      // their text. Forget it. Kept, it would fill its leaf with a zero-width
+      // space whenever the leaf is empty again — after linking the whole line,
+      // the empty leaf before the link — and the frontend, handed the same
+      // value it last drew there, would leave the typed text in that node, in
+      // front of the link.
+      const caretLeaf = this._caretLeaf;
+      if (caretLeaf && caretLeaf.blockUid === blockUid && caretLeaf.fieldName === editableField) {
+        this._caretLeaf = null;
+      }
     } else {
       // Non-Slate field - update field directly with text content
       // Resolve field path to handle /fieldName (page) and ../fieldName (parent) syntax
@@ -15592,14 +15610,11 @@ if (typeof window !== 'undefined' && window.self !== window.top) {
     // Check after page load + 5 seconds — enough time for bridge to connect
     const _checkConnection = () => {
       setTimeout(() => {
-        // Only the "initBridge was never called" case is left to a timer, and
-        // only because there is no event for something that never happens. A
-        // bridge that HAS been created is mid-handshake: it retries INIT and
-        // reports for itself when it runs out of attempts, so the clock must
-        // not pre-empt it.
-        const stillHandshaking =
-          bridgeInstance && !bridgeInstance.initialized && !bridgeInstance._initHandshakeGaveUp;
-        if (!stillHandshaking && (!bridgeInstance || !bridgeInstance.initialized)) {
+        // A bridge never created, or an INIT never answered: either way the
+        // editor is not connected, and this is the only thing that says so
+        // (there is no event for something that never happens). A late answer
+        // takes the panel down again (_removeBridgeDiagnostic).
+        if (!bridgeInstance || !bridgeInstance.initialized) {
           _showBridgeDiagnostic({
             windowName: window.name,
             hasHydraName: _isEditMode,

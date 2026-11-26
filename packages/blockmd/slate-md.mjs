@@ -193,9 +193,16 @@ export function inlineToSlate(nodes) {
 
 function listToSlate(node) {
   const items = (node.children || []).map((li) => {
-    // A list item's children are usually a single paragraph.
-    const kids = (li.children || []).flatMap((c) =>
-      c.type === 'paragraph' ? inlineToSlate(c.children) : blockToSlate(c));
+    // A list item's children are usually a single paragraph, stored as its
+    // inline text. A paragraph straight after another one stays a paragraph
+    // (the writer's `p` child, listItemChildren): read as text too, it would
+    // join the one before into a single run, and the break between them, and
+    // the space, would be lost.
+    const kids = (li.children || []).flatMap((c, i, all) => {
+      if (c.type !== 'paragraph') return blockToSlate(c);
+      if (all[i - 1]?.type === 'paragraph') return blockToSlate(c);
+      return inlineToSlate(c.children);
+    });
     return { type: 'li', children: kids.length ? kids : [{ text: '' }] };
   });
   return { type: node.ordered ? 'ol' : 'ul', children: items };
@@ -472,11 +479,17 @@ export function flatDictAttrs(field, obj) {
     cleanAttrStr(v) ? `${field}:${k}="${v}"` : `${field}:${k}=${v}`);
 }
 
+/** A name CommonMark reads as an attribute. A tag with any other (`@id`) is not
+ *  HTML to it, so the whole tag would decode as a paragraph of text. */
+export const attrName = (k) => /^[A-Za-z_:][\w.:-]*$/.test(k);
+
 export function fmtTagAttrs(fields) {
   const attrs = [], data = {};
   for (const [k, v] of Object.entries(fields)) {
     if (v === undefined) continue;          // an absent field is not an empty one
-    if (cleanAttrStr(v)) {
+    if (!attrName(k)) {
+      data[k] = v;
+    } else if (cleanAttrStr(v)) {
       attrs.push(`${k}="${v}"`);
     } else if (typeof v === 'boolean' || (typeof v === 'number' && Number.isFinite(v))) {
       attrs.push(`${k}=${v}`);              // unquoted -> read back as JSON (fixed=false, n=3)
@@ -543,7 +556,10 @@ function cellBlocks(nodes) {
 
 /** A cell whose blocks have no GFM form (a list, a quote, a tagged block): the
  *  table is written as a grid table instead. */
-export class NoCellForm extends Error {}
+/** Content that doesn't fit a prototype or a markdown form: what trying the next form
+ *  answers. Anything else thrown while trying one is a bug, and is let through. */
+export class NoFit extends Error {}
+export class NoCellForm extends NoFit {}
 
 /** A cell's block nodes -> its inline nodes (the inverse of cellBlocks). A lone
  *  paragraph is bare; otherwise a heading is an `<hN>` tag and a paragraph

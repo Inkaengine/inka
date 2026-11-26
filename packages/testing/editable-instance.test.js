@@ -5,10 +5,7 @@
  * no templateId — and is still its own definition.
  */
 import { describe, test, expect } from 'vitest';
-import { createRequire } from 'module';
-
-const require = createRequire(import.meta.url);
-const { editableInstance } = require('./discover-blocks.cjs');
+import { editableInstance } from './discover-blocks.js';
 
 const footer = (label) => ({
   '@type': 'footer', fixed: true, readOnly: true, slotId: 'footer0',

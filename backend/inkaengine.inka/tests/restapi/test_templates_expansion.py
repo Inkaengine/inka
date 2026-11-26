@@ -3,9 +3,9 @@
 The contract is not invented here — it was settled on the JS side first, where the mock
 API let the shape be tried against the real merge before any Python existed:
 
-    packages/mock-api/mock-plone-api.cjs                   reference implementation
-    packages/mock-api/templates-component.test.cjs         response shape
-    packages/mock-api/templates-component-merge.test.cjs   the merge consuming it
+    packages/mock-api/mock-plone-api.js                   reference implementation
+    packages/mock-api/templates-component.test.js         response shape
+    packages/mock-api/templates-component-merge.test.js   the merge consuming it
 
 These tests restate that contract in Python, against the SAME template fixtures (imported
 as a plone.exportimport distribution — see conftest.py). Three rules carry the weight:

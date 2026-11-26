@@ -28,7 +28,7 @@ import urllib.request
 
 # backend/inkaengine.inka/tests/ -> backend/inkaengine.inka -> backend -> <inka repo>
 INKA_ROOT = Path(__file__).resolve().parents[3]
-MOCK_SERVER = INKA_ROOT / "packages" / "mock-api" / "mock-api-server.cjs"
+MOCK_SERVER = INKA_ROOT / "node_modules" / ".bin" / "inka-mock-api"
 # Only the /inka-templates tree is needed here. The export also carries images, the search page
 # and the site root; importing those into the test portal would be slower and would couple
 # these tests to fixtures they do not read.
@@ -96,7 +96,7 @@ def build_distribution(dest: Path) -> Path:
     """Export the shared template fixtures into `dest`. Returns the distribution root."""
     if not MOCK_SERVER.exists():
         raise FileNotFoundError(
-            f"mock API not found at {MOCK_SERVER} — these tests need the inka checkout"
+            f"mock API not found at {MOCK_SERVER} — these tests need the inka checkout, installed (pnpm install)"
         )
     if shutil.which("node") is None:
         raise FileNotFoundError("node not found on PATH")
@@ -114,7 +114,7 @@ def build_distribution(dest: Path) -> Path:
         "CONTENT_SCHEMAS": "tests-playwright/fixtures/shared-block-schemas.js",
     }
     proc = subprocess.Popen(
-        ["node", str(MOCK_SERVER)],
+        [str(MOCK_SERVER)],
         cwd=str(INKA_ROOT),
         env=env,
         stdout=subprocess.PIPE,

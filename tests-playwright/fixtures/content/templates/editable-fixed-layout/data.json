@@ -22,7 +22,6 @@
           ]
         }
       ],
-      "plaintext": "Editable Header",
       "readOnly": false
     },
     "default-slot": {
@@ -40,8 +39,7 @@
             }
           ]
         }
-      ],
-      "plaintext": ""
+      ]
     },
     "editable-footer": {
       "@type": "slate",
@@ -59,7 +57,6 @@
           ]
         }
       ],
-      "plaintext": "Editable Footer",
       "readOnly": false
     }
   },

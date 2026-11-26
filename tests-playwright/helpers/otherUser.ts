@@ -5,12 +5,12 @@
  * a page of its own (freshPage): locking a shared fixture page would refuse
  * the saves of every other test editing it at the same time.
  */
-import { randomUUID } from 'node:crypto';
+import { mintToken } from '@inka/mock-api/tokens';
 import { expect } from '@playwright/test';
+import { randomUUID } from 'node:crypto';
 import { URLS } from '../ports';
-import { mintToken } from '../../packages/mock-api/mock-tokens.cjs';
 
-/** A token for `user`, one the mock site issued (mock-tokens.cjs). */
+/** A token for `user`, one the mock site issued (mock-tokens.js). */
 export function tokenFor(user: string): string {
   return mintToken(user);
 }

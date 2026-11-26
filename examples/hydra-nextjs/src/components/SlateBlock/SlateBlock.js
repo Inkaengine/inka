@@ -45,6 +45,18 @@ function nestSubLists(children) {
 }
 
 /**
+ * The design system's styles from the style menu, as classes. A paragraph style
+ * is the node's `styleName` (space separated); a text style is a `style-<class>`
+ * mark on the text leaf.
+ */
+function styleClasses(node) {
+  const classes = node.text !== undefined
+    ? Object.keys(node).filter((k) => k.startsWith("style-") && node[k]).map((k) => k.slice(6))
+    : (node.styleName || "").split(/\s+/).filter(Boolean);
+  return classes.length ? { className: classes.join(" ") } : {};
+}
+
+/**
  * Recursively serializes a single Slate node into a JSX element. Keys are the
  * node's position among its siblings: stable across renders, so React updates
  * the DOM it already has instead of replacing it on every edit.
@@ -61,7 +73,7 @@ function serializeNode(node, index) {
     // get nodeIds from addNodeIds). Rendering "undefined" breaks hydra.js lookups.
     const nodeIdProps = node.nodeId != null ? { "data-node-id": `${node.nodeId}` } : {};
     return (
-      <span key={index} {...nodeIdProps}>
+      <span key={index} {...nodeIdProps} {...styleClasses(node)}>
         {lineBreaks(node.text)}
       </span>
     );
@@ -87,7 +99,7 @@ function serializeNode(node, index) {
       const Tag = node.type;
       if (Tag)
         return (
-          <Tag key={index} {...nodeIdProps}>
+          <Tag key={index} {...nodeIdProps} {...styleClasses(node)}>
             {children}
           </Tag>
         );

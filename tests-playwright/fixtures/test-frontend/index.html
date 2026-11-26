@@ -14,6 +14,17 @@
         #content {
             margin-top: 20px;
         }
+        /* The style menu's text and list styles (styleMenu, below): each has to
+           look like something, or choosing it changes nothing. */
+        .dropcap {
+            float: left;
+            font-size: 3em;
+            font-weight: bold;
+            line-height: 1;
+        }
+        .list-spaced > li {
+            margin: 0.75em 0;
+        }
         [data-block-uid] {
             padding: 10px;
             margin: 10px 0;
@@ -622,7 +633,7 @@
                                         allowedBlocks: ['slate', 'image', 'separator', 'hero', 'columns', 'slider', 'accordion', 'teaser', 'gridBlock', 'listing', 'search', 'title', 'description', 'section', 'contextNavigation', 'codeExample', 'objectBlocks', 'convSource', 'relatedItemsListing', 'searchShortcuts', 'rssFeed'],
                                         allowedTemplates: ['/_test_data/templates/test-layout'],
                                         allowedLayouts: contextNavLayoutForced
-                                            || [null, '/_test_data/templates/test-layout', '/_test_data/templates/header-footer-layout', '/_test_data/templates/header-only-layout', '/_test_data/templates/editable-fixed-layout'],
+                                            || [null, '/_test_data/templates/test-layout', '/_test_data/templates/header-footer-layout', '/_test_data/templates/header-only-layout', '/_test_data/templates/editable-fixed-layout', '/_test_data/templates/aside-layout'],
                                         ...(restrictStyles ? { disallowedStyles: ['blockquote', 'b', 'del', 'a'], disallowedMarks: ['highlight'] } : {}),
                                     },
                                     footer: {

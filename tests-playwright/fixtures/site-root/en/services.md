@@ -16,7 +16,7 @@ blocks-matched: |
 blocks-tagged: |
   <block type="gridBlock" headline="${h/text}">
     <region name="items" widget="blocks_layout">
-      <block type="teaser" title="${h/text}" description="${p/textarea}" />
+      <block type="teaser" title="${h/text}" href="${h/link}" description="${p/textarea}" overwrite=true />
     </region>
   </block>
 ---
@@ -31,17 +31,17 @@ What we do, in English.
 
 <region name="items" widget="blocks_layout">
 
-<block type="teaser" href="/en/about">
+<block type="teaser">
 
-### Design
+### [Design](/en/about)
 
 We design in English.
 
 </block>
 
-<block type="teaser" href="/en/about">
+<block type="teaser">
 
-### Build
+### [Build](/en/about)
 
 We build in English.
 

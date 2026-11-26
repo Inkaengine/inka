@@ -3,6 +3,7 @@
  * The admin (INIT) and the mock parent both use mergeFrontendBlock, so a
  * harness never sees a different block than the editor does.
  */
+import { describe, test, expect } from 'vitest';
 import { mergeFrontendBlock } from './mergeFrontendBlock.js';
 
 const adminSchema = () => ({ properties: { value: { widget: 'slate' } } });
@@ -11,6 +12,18 @@ describe('mergeFrontendBlock', () => {
   test('a block the admin does not have is the frontend entry', () => {
     const entry = { id: 'callout', title: 'Callout', group: 'text', blockSchema: { properties: {} } };
     expect(mergeFrontendBlock('callout', undefined, entry)).toEqual({ entry, previousEnhancer: undefined });
+  });
+
+  // Without a schema the editor can't tell what the block holds: its form is
+  // empty, its text can't be indexed, and the save that needs that index
+  // fails long after the editor opened. Refused when the config arrives.
+  test('a block the admin does not have needs a schema', () => {
+    expect(() => mergeFrontendBlock('card', undefined, { id: 'card', title: 'Card', group: 'common' })).toThrow(
+      'Block "card" from the frontend needs a `blockSchema`',
+    );
+    expect(() => mergeFrontendBlock('card', undefined, {
+      id: 'card', title: 'Card', group: 'common', blockSchema: () => ({ properties: {} }),
+    })).not.toThrow();
   });
 
   test('a block the admin does not have needs a title and a group — never made up', () => {
