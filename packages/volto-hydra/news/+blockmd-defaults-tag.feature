@@ -1,0 +1,1 @@
+Inka Markdown has a `<defaults …> … </defaults>` tag: like an enclosing `<fields>`, but its values reach every block beneath it however nested (a link list's links), each block's own value winning, so a template instance's `templateId` is written once. @djay

@@ -2690,3 +2690,61 @@ describe("a region whose items are a definition list's entries", () => {
     expect(matchBlocks(protos, emitBlocks(protos, [list]))).toEqual([list]);
   });
 });
+
+describe('<defaults> sets fields on every block beneath it, however nested', () => {
+  // `<fields>` sets fields on the blocks of its own region; `<defaults>` reaches
+  // the blocks inside containers too (a template's bookkeeping is on every block
+  // of its instance, nested ones included). A block's own value wins, and items
+  // that are not blocks (an accordion's panels, a table's rows) are not touched.
+  const protos = [
+    ...parsePrototypes('<block is="slate" value="${p/slate}" />'),
+    ...parsePrototypes([
+      '<block is="list">',
+      '  <region name="links" widget="blocks_layout">',
+      '    <block is="slate" value="${p/slate}" />',
+      '  </region>',
+      '</block>',
+      '<block is="accordion">',
+      '  <region name="panels" widget="object_list" idField="@id" typeField="@type">',
+      '    <block is="panel" title="${h/text}" />',
+      '  </region>',
+      '</block>',
+    ].join('\n'), { explicit: true }),
+  ];
+  const para = (text, extra = {}) => ({ '@type': 'slate', value: [{ type: 'p', children: [{ text }] }], ...extra });
+  const T = { templateId: '/t', templateInstanceId: 'i1' };
+
+  it('reads a wrapper onto nested blocks, not onto items', () => {
+    const md = [
+      '<defaults templateId="/t" templateInstanceId="i1">', '',
+      'Intro.', '',
+      '<block is="list">', '', 'Home.', '', '</block>', '',
+      '<block is="accordion">', '', '## One', '', 'Inside.', '', '</block>', '',
+      '</defaults>',
+    ].join('\n');
+    const [intro, list, acc] = matchBlocks(protos, md);
+    expect(intro).toMatchObject(T);
+    expect(list).toMatchObject(T);
+    expect(list.links[0]).toMatchObject(T);
+    expect(acc).toMatchObject(T);
+    expect(acc.panels[0].templateId).toBeUndefined();
+    expect(acc.panels[0].blocks[0]).toMatchObject(T);
+  });
+
+  it("keeps a block's own value", () => {
+    const md = '<defaults slotId="a">\n\n<block is="list">\n\n<fields slotId="b">\n\nHome.\n\n</fields>\n\n</block>\n\n</defaults>';
+    const [list] = matchBlocks(protos, md);
+    expect(list.slotId).toBe('a');
+    expect(list.links[0].slotId).toBe('b');
+  });
+
+  it('a page whose blocks all share a field at every depth writes it once', async () => {
+    const blocks = [
+      para('Intro.', T),
+      { '@type': 'list', ...T, links: [para('Home.', T)] },
+    ];
+    const { markdown } = emitPage(protos, keyBlocks(structuredClone(blocks), []));
+    expect(markdown).toMatch(/^<defaults templateId="\/t" templateInstanceId="i1">/);
+    expect(markdown.match(/templateId/g)).toHaveLength(1);
+  });
+});

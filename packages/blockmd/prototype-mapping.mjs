@@ -1021,6 +1021,29 @@ function matchNodes(protos, nodes, depth = 2) {
         i += 1;
         continue;
       }
+      if (tag && tag.name === 'defaults' && tag.kind === 'open') {
+        // An enclosing `<defaults …>` is `<fields …>` reaching further: its values
+        // go onto every BLOCK beneath it, however nested (a container's children,
+        // a panel's blocks), each one's own value winning. Items that are not
+        // blocks (an accordion's panels, a table's rows) are not given them.
+        let nest = 1, j = i + 1;
+        for (; j < nodes.length && nest; j++) {
+          const m = nodes[j].type === 'html' ? tagOf(nodes[j].value) : null;
+          if (m && m.name === 'defaults' && m.kind === 'open') nest += 1;
+          else if (m && m.name === 'defaults' && m.kind === 'close') nest -= 1;
+        }
+        const shared = typedAttrs(n.value);
+        const flat = collectProtos(protos);
+        const give = (block) => {
+          for (const [k, v] of Object.entries(shared)) if (!(k in block)) setAt(block, k.split('.'), structuredClone(v));
+        };
+        for (const block of matchNodes(protos, nodes.slice(i + 1, j - 1), depth)) {
+          eachBlockDeep(flat, block, null, give);
+          blocks.push(block);
+        }
+        i = j;
+        continue;
+      }
       if (tag && tag.name === 'fields' && tag.kind === 'open') {
         // An enclosing `<fields …>` propagates its field values onto every block
         // it wraps, as defaults -- a wrapped block's own field wins. Same tag as
@@ -1779,6 +1802,31 @@ function collectProtos(protos, out = []) {
  * panel's child blocks, stored as Volto's shared dict + layout -- but a declared
  * one (a table cell's list of blocks) is just a list, keyed per item.
  */
+/** `fn(block)` for a block and every block beneath it, however nested: a
+ *  blocks_layout region's children, and the blocks inside an object_list item
+ *  (its own regions, or the implicit `blocks`). The items themselves are not
+ *  blocks and are not visited. `region` is the one the block sits in, whose
+ *  declared item prototype gives the block's regions. */
+function eachBlockDeep(flat, block, region, fn) {
+  fn(block);
+  const regions = region?.protos?.find((p) => p.type === block['@type'])?.regions
+    ?? flat.find((p) => p.type === block['@type'])?.regions ?? [];
+  const inRegions = (holder, list) => {
+    for (const r of list) {
+      const val = getAtPath(holder, r.path);
+      if (!Array.isArray(val)) continue;
+      if (r.widget === 'blocks_layout') { for (const b of val) eachBlockDeep(flat, b, r, fn); continue; }
+      for (const item of val) {
+        if (!item || typeof item !== 'object') continue;
+        const { regions: own, declaresBlocks } = itemShape(r, item);
+        if (!declaresBlocks && Array.isArray(item.blocks)) for (const b of item.blocks) eachBlockDeep(flat, b, null, fn);
+        inRegions(item, own);
+      }
+    }
+  };
+  inRegions(block, regions);
+}
+
 function itemShape(region, item) {
   const proto = region.typeField == null ? region.protos[0]
     : region.protos.find((p) => p.type === item[region.typeField]) ?? region.protos[0];
@@ -1923,8 +1971,7 @@ function planHoist(items) {
  * segments -- inserting a `<fields>` tag only ever adds a boundary, so it can
  * never introduce a new over-merge. `emitPage` re-checks the whole result.
  */
-function hoistFields(protos, blocks, depth = 2) {
-  if (!blocks.length) return '';
+function notHoistedFor(protos) {
   // Fields the flat form never writes are never hoisted:
   // - one the block's own prototype writes as a literal (accordion's
   //   right_arrows=true) — decode puts it back, and stripping it would make the
@@ -1943,6 +1990,66 @@ function hoistFields(protos, blocks, depth = 2) {
     const unwritable = Object.keys(block).filter((k) => !plainAttr(block[k]));
     return [...supplied, ...body, ...unwritable];
   };
+  return notHoisted;
+}
+
+/** The fields a block shares with every block beneath it (same value), less
+ *  any that one of them can't have hoisted; `nested` when it has any. */
+function deepSignature(flat, notHoisted, block) {
+  const all = [];
+  eachBlockDeep(flat, block, null, (b) => all.push(b));
+  const sig = stripKeys(block, ['@type', ...all.flatMap(notHoisted)]);
+  for (const k of Object.keys(sig)) {
+    if (isEmptyObject(sig[k]) || !all.every((b) => k in b && fieldEq(b[k], sig[k]))) delete sig[k];
+  }
+  return { sig, nested: all.length > 1 };
+}
+
+/** A copy of the block with `keys` removed from it and every block beneath it. */
+function stripDeep(flat, block, keys) {
+  const copy = structuredClone(block);
+  eachBlockDeep(flat, copy, null, (b) => { for (const k of keys) delete b[k]; });
+  return copy;
+}
+
+/**
+ * `<defaults>` around runs of blocks that share a field at every depth (a
+ * template instance's bookkeeping, on its nested blocks too), then the
+ * `<fields>` hoisting inside. A run becomes `<defaults>` only when one of its
+ * blocks has blocks beneath it: otherwise `<fields>` already says it.
+ */
+function hoistFields(protos, blocks, depth = 2) {
+  if (!blocks.length) return '';
+  const flat = collectProtos(protos);
+  const notHoisted = notHoistedFor(protos);
+  const sigs = blocks.map((b) => deepSignature(flat, notHoisted, b));
+  const reaches = (nodes) => nodes.some((n) => (n.wrap ? reaches(n.children) : sigs[n.idx].nested));
+  // Dissolve a deep wrapper that reaches no nested block (back to leaves).
+  const keep = (nodes) => nodes.flatMap((n) => (!n.wrap ? [n]
+    : reaches(n.children) ? [{ ...n, children: keep(n.children) }] : keep(n.children)));
+  const plan = keep(planHoist(blocks.map((b, idx) => ({ block: sigs[idx].sig, idx }))));
+  if (!plan.some((n) => n.wrap)) return hoistShallow(protos, blocks, depth, notHoisted);
+  const render = (nodes, keys) => {
+    const out = [];
+    let run = [];
+    const flush = () => {
+      if (run.length) out.push(hoistShallow(protos, run.map((idx) => stripDeep(flat, blocks[idx], keys)), depth, notHoisted));
+      run = [];
+    };
+    for (const n of nodes) {
+      if (!n.wrap) { run.push(n.idx); continue; }
+      flush();
+      const inner = keys.concat(Object.keys(n.fields));
+      out.push(`<defaults ${fmtTagAttrs(n.fields)}>\n\n${render(n.children, inner)}\n\n</defaults>`);
+    }
+    flush();
+    return out.join('\n\n');
+  };
+  return render(plan, []);
+}
+
+/** Factor fields shared across runs of one list into nested `<fields>` wrappers. */
+function hoistShallow(protos, blocks, depth, notHoisted) {
   const plan = planHoist(blocks.map((block, idx) => ({ block: stripKeys(block, notHoisted(block)), idx })));
   const hoisted = {}; // idx -> the field keys hoisted into wrappers that contain it
   const collect = (nodes, keys) => nodes.forEach((n) =>
