@@ -65,8 +65,8 @@ packages:
   - inka/packages/testing
 
 overrides:
-  '@playwright/test': 1.61.0   # the version your project depends on
-  playwright: 1.61.0
+  '@playwright/test': 1.65.1   # the version your project depends on
+  playwright: 1.65.1
 ```
 
 ### Playwright config

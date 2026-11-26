@@ -12,7 +12,7 @@ import { expect } from '@playwright/test';
 import type { Page, FrameLocator, Locator, ElementHandle } from '@playwright/test';
 import { AdminUIHelper } from './AdminUIHelper';
 import { recordSlateFieldContainer, recordFieldEditable } from '../field-coverage';
-import { canvasFieldKind } from '../canvas-fields.js';
+import { canvasFieldKind, canvasFieldsSet, drawnAsItself } from '../canvas-fields.js';
 import {
   usesAvailableSizes, resolveImageEntry, availableWidths, isProportionate,
 } from '../imageSizes.mjs';
@@ -1009,6 +1009,37 @@ async function advertisedFieldsOf(block: Locator): Promise<Set<string>> {
 }
 
 /**
+ * Every address the block points at: its links, forms, embeds and images
+ * (sources, srcset candidates and video posters), from each element carrying
+ * its uid, so a block drawn as several elements is read whole.
+ */
+async function addressesDrawnBy(block: Locator): Promise<string[]> {
+  const uid = await block.getAttribute('data-block-uid');
+  return block.evaluate((el, blockUid) => {
+    const roots = blockUid
+      ? [...el.ownerDocument.querySelectorAll(`[data-block-uid="${blockUid}"]`)]
+      : [el];
+    const out: string[] = [];
+    for (const root of roots) {
+      for (const n of [root, ...root.querySelectorAll('*')]) {
+        for (const attr of ['href', 'action', 'src', 'poster']) {
+          const v = n.getAttribute(attr);
+          if (v) out.push(new URL(v, n.ownerDocument.baseURI).href);
+        }
+        const srcset = n.getAttribute('srcset');
+        if (srcset) {
+          for (const candidate of srcset.split(',')) {
+            const u = candidate.trim().split(/\s+/)[0];
+            if (u) out.push(new URL(u, n.ownerDocument.baseURI).href);
+          }
+        }
+      }
+    }
+    return out;
+  }, uid);
+}
+
+/**
  * Which of these media fields the block draws as a CSS BACKGROUND.
  *
  * A background is drawn, with nothing on the canvas to click: a band behind
@@ -1288,11 +1319,22 @@ export async function checkSlateAnnotations(
         .filter(([f, a]) => a.kind === 'media' && !present[a.attr].has(f) && !advertised.has(f))
         .map(([f]) => f),
     );
+    // A field with a value that is never drawn as itself is a setting, edited in
+    // the sidebar like the block's other settings: a listing's search page,
+    // drawn only as the start of each result's search address. There is
+    // nothing on the canvas to annotate, so this example says nothing about it
+    // — as plain text is checked only where it is displayed. An empty field
+    // still counts as missing, so a field no example sets is still reported.
+    const set = new Set(canvasFieldsSet(blockSchema, blockData));
+    const drawn = await addressesDrawnBy(block);
+    const base = await block.evaluate((el) => el.ownerDocument.location.href);
     for (const [field, a, prop] of annotatedFields) {
       if (backgrounds.has(field)) {
         recordFieldEditable(a.kind, blockType, field, true, `[${coverageUid}] drawn as a CSS background`);
         continue;
       }
+      const reachable = present[a.attr].has(field) || advertised.has(field);
+      if (!reachable && set.has(field) && !drawnAsItself(a.kind, blockData[field], drawn, base)) continue;
       recordFieldEditable(
         a.kind,
         blockType,

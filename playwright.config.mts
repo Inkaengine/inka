@@ -1,7 +1,11 @@
 import { defineConfig, devices } from '@playwright/test';
+import { createRequire } from 'node:module';
 import * as path from 'node:path';
 import { CONTRACT_SCOPE, DISCOVERY_DIR } from './tests-playwright/frontends';
 import { PORTS, URLS } from './tests-playwright/ports';
+
+// An ES module has no `require`; the mock API's server is found through one.
+const require = createRequire(import.meta.url);
 
 // Check which extra servers we need based on --project arg
 const projectArgIndex = process.argv.indexOf('--project');
@@ -33,7 +37,7 @@ export default defineConfig({
   testDir: './tests-playwright',
 
   /* Global setup - verifies servers are healthy before running tests */
-  globalSetup: require.resolve('./tests-playwright/global-setup.ts'),
+  globalSetup: './tests-playwright/global-setup.ts',
 
   /* Maximum time one test can run for */
   timeout: 45 * 1000, // 45s - bridge tests complete in 2-5s, integration tests need more for page nav + re-renders

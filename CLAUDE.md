@@ -91,7 +91,7 @@ The Playwright tests use:
 
 ### Automatic Server Management
 
-Playwright's `webServer` configuration (`playwright.config.ts`):
+Playwright's `webServer` configuration (`playwright.config.mts`):
 - Auto-starts Volto if not running (or reuses existing server)
 - Polls `/health` endpoint until webpack compilation completes
 - Tests only start after compilation succeeds
