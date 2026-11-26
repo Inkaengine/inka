@@ -1,3 +1,4 @@
+import { afterEach, describe, it, expect } from 'vitest';
 import { JSDOM } from 'jsdom';
 import { Bridge } from './hydra.src.js';
 

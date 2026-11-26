@@ -2,7 +2,7 @@
  * The contract, against a REAL Plone.
  *
  * Every other Plone test in this repo runs against our own mock
- * (tests-playwright/fixtures/mock-plone-api.cjs): the contract suite's `plone`
+ * (packages/mock-api/mock-plone-api.js): the contract suite's `plone`
  * target, the admin suites, the seeded journey. The mock is careful — 370
  * fidelity tests, and a guard that refuses a route plone.restapi does not have
  * — but it is still ours, and a contract that proves the adapter and the mock

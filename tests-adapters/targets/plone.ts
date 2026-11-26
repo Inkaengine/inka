@@ -5,7 +5,7 @@ import { PloneAdapter } from '@volto-hydra/hydra-adapters-plone';
 import { createPublicReader } from '@volto-hydra/hydra-adapters-plone/public';
 import type { Target } from './index';
 import { PORTS } from '../../tests-playwright/ports';
-import { mintToken } from '../../tests-playwright/fixtures/mock-tokens.cjs';
+import { mintToken } from '@inka/mock-api/tokens';
 // Ports come from tests-playwright/ports.ts, like every other server this repo
 // starts: one HYDRA_PORT_BASE names the whole block. They were written here as
 // literals — 8899, 8790, 1337 — which are shared with every other hydra
@@ -34,7 +34,7 @@ const adapter = new PloneAdapter({ cmsBaseUrl: BASE });
  *
  * These tokens were hand-rolled here with the literal signature
  * "contract-signature", which the mock accepted while it never checked one. It
- * verifies now (mock-tokens.cjs signs with the site's key), so every request
+ * verifies now (mock-tokens.js signs with the site's key), so every request
  * the contract made came back UNAUTHORIZED — 37 failures across every spec that
  * reads anything, none of them about the adapter.
  *
@@ -138,7 +138,7 @@ const target: Target = {
     // the adapter. Fail loudly instead.
     await assertPortFree();
 
-    proc = spawn('node', ['tests-playwright/fixtures/mock-api-server.cjs'], {
+    proc = spawn('node', ['packages/mock-api/mock-api-server.js'], {
       cwd: REPO_ROOT,
       env: {
         ...process.env,
@@ -163,12 +163,12 @@ const target: Target = {
 
   /**
    * The mock keys all mutations off the Bearer token (getSessionId in
-   * mock-plone-api.cjs) and serves everything else from disk, so handing the
+   * mock-plone-api.js) and serves everything else from disk, so handing the
    * adapter a fresh token IS a full reset — there is nothing to tear down.
    */
   /**
    * The mock treats EXPIRED_TOKEN as a revoked session (see isAuthenticated in
-   * mock-plone-api.cjs). Swapping the adapter's token for it reproduces a real
+   * mock-plone-api.js). Swapping the adapter's token for it reproduces a real
    * mid-edit expiry without stubbing the adapter's own fetch.
    */
   async expireSession(onEvent) {

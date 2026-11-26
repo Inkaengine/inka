@@ -115,7 +115,7 @@ const target: Target = {
 
   async start() {
     await assertPortFree();
-    proc = spawn('node', ['tests-adapters/fixtures/mock-drupal-api.cjs'], {
+    proc = spawn('node', ['tests-adapters/fixtures/mock-drupal-api.mjs'], {
       cwd: REPO_ROOT,
       env: { ...process.env, PORT: String(PORT) },
       stdio: 'pipe',

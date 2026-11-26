@@ -1,4 +1,4 @@
-import { jest } from '@jest/globals';
+import { afterEach, beforeEach, describe, test, expect, vi } from 'vitest';
 import { JSDOM } from 'jsdom';
 import { connectProxy } from './hydra.src.js';
 
@@ -15,9 +15,9 @@ describe('connectProxy — cmsBaseUrl', () => {
   const adapter = () => ({
     name: 'stub',
     capabilities: [],
-    init: jest.fn(async () => {}),
-    whoami: jest.fn(async () => null),
-    dispatch: jest.fn(),
+    init: vi.fn(async () => {}),
+    whoami: vi.fn(async () => null),
+    dispatch: vi.fn(),
   });
 
   beforeEach(() => {

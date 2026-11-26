@@ -1,4 +1,4 @@
-import { jest } from '@jest/globals';
+import { describe, it, test, expect, vi } from 'vitest';
 import { BridgeRPC } from './bridgeRpc.js';
 
 test('resolves a request when the matching response arrives', async () => {
@@ -31,20 +31,20 @@ test('ignores a response with an unknown requestId', () => {
 });
 
 test('rejects when no response arrives before the timeout', async () => {
-  jest.useFakeTimers();
+  vi.useFakeTimers();
   const rpc = new BridgeRPC({ send: () => {} });
   const promise = rpc.request('content.get', {}, { timeoutMs: 1000 });
   const assertion = expect(promise).rejects.toMatchObject({
     code: 'TIMEOUT',
     intent: 'content.get',
   });
-  jest.advanceTimersByTime(1001);
+  vi.advanceTimersByTime(1001);
   await assertion;
-  jest.useRealTimers();
+  vi.useRealTimers();
 });
 
 test('clears the timer when a response arrives', async () => {
-  jest.useFakeTimers();
+  vi.useFakeTimers();
   const sent = [];
   const rpc = new BridgeRPC({ send: (m) => sent.push(m) });
   const promise = rpc.request('content.get', {}, { timeoutMs: 1000 });
@@ -56,8 +56,8 @@ test('clears the timer when a response arrives', async () => {
   });
   await expect(promise).resolves.toBe(1);
   expect(rpc.pending.size).toBe(0);
-  jest.advanceTimersByTime(5000); // must not throw an unhandled rejection
-  jest.useRealTimers();
+  vi.advanceTimersByTime(5000); // must not throw an unhandled rejection
+  vi.useRealTimers();
 });
 
 test('asset.upload gets a longer default timeout than content.get', () => {
@@ -218,14 +218,14 @@ describe('readiness gate', () => {
   });
 
   test('does not start the timeout clock while a request is queued', async () => {
-    jest.useFakeTimers();
+    vi.useFakeTimers();
     const sent = [];
     const rpc = new BridgeRPC({ send: (m) => sent.push(m), gated: true });
 
     const promise = rpc.request('content.get', {}, { timeoutMs: 1000 });
     const settled = promise.catch((err) => err);
     // Waiting for the iframe must not consume the request's own budget.
-    jest.advanceTimersByTime(5000);
+    vi.advanceTimersByTime(5000);
     expect(sent).toHaveLength(0);
     void settled;
 
@@ -237,7 +237,7 @@ describe('readiness gate', () => {
       result: 1,
     });
     await expect(promise).resolves.toBe(1);
-    jest.useRealTimers();
+    vi.useRealTimers();
   });
 
   test('ungated by default, so the iframe side is unaffected', () => {
@@ -250,7 +250,7 @@ describe('readiness gate', () => {
 
 describe('no adapter is an error, not a silent wait', () => {
   test('queued requests reject once the adapter deadline passes', async () => {
-    jest.useFakeTimers();
+    vi.useFakeTimers();
     const rpc = new BridgeRPC({
       send: () => {},
       gated: true,
@@ -262,13 +262,13 @@ describe('no adapter is an error, not a silent wait', () => {
       code: 'NO_ADAPTER',
     });
 
-    jest.advanceTimersByTime(5001);
+    vi.advanceTimersByTime(5001);
     await settled;
-    jest.useRealTimers();
+    vi.useRealTimers();
   });
 
   test('the deadline is cancelled once an adapter announces', async () => {
-    jest.useFakeTimers();
+    vi.useFakeTimers();
     const sent = [];
     const rpc = new BridgeRPC({
       send: (m) => sent.push(m),
@@ -278,7 +278,7 @@ describe('no adapter is an error, not a silent wait', () => {
 
     const promise = rpc.request('content.get', { path: '/a' });
     rpc.markReady();
-    jest.advanceTimersByTime(10_000);
+    vi.advanceTimersByTime(10_000);
 
     rpc.handleMessage({
       type: 'BACKEND_RESPONSE',
@@ -287,7 +287,7 @@ describe('no adapter is an error, not a silent wait', () => {
       result: 'ok',
     });
     await expect(promise).resolves.toBe('ok');
-    jest.useRealTimers();
+    vi.useRealTimers();
   });
 });
 

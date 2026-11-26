@@ -16,18 +16,20 @@
  *  - A path alias is the document's URL and carries no structure. Moving a
  *    document re-parents its MENU LINK and must not rewrite the alias.
  */
-const express = require('express');
-const cors = require('cors');
-const fs = require('fs');
-const {
-  VOCABULARIES,
-  projectQueryVocabulary,
-} = require('./query-vocabulary.cjs');
-const path = require('path');
-const crypto = require('crypto');
+import cors from 'cors';
+import crypto from 'node:crypto';
+import express from 'express';
+import fs from 'node:fs';
+import path from 'node:path';
+// ESM, not CommonJS, since @inka/mock-api's env-port is ESM now and a CJS
+// module cannot require it. The vocabulary projection stays CommonJS and is
+// imported by its default export, which is the one shape that interops.
+import { requiredPort } from '@inka/mock-api/env-port';
+import queryVocabulary from './query-vocabulary.cjs';
+
+const { VOCABULARIES, projectQueryVocabulary } = queryVocabulary;
 
 const app = express();
-const { requiredPort } = require('../../tests-playwright/fixtures/env-port.cjs');
 
 // Told which port to bind, never assuming one: 8791 was a default nobody had
 // to set, so this mock came up there whatever the run had been configured to
@@ -37,7 +39,7 @@ const BASE = () => `http://127.0.0.1:${PORT}`;
 
 const SEED_PATH =
   process.env.SEED_PATH ||
-  path.join(__dirname, '..', '..', 'tests-adapters', 'fixtures', 'seed.json');
+  path.join(import.meta.dirname, '..', '..', 'tests-adapters', 'fixtures', 'seed.json');
 
 /** The virtual folder holding content that has no menu link yet. */
 const UNFILED_PATH = '/_unfiled';
@@ -893,4 +895,4 @@ app.listen(PORT, () => {
   console.log(`Mock Drupal JSON:API on ${BASE()} (per-session content)`);
 });
 
-module.exports = { app, UNFILED_PATH };
+export { app, UNFILED_PATH };
