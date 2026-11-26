@@ -9,7 +9,7 @@
 
 <div data-block-uid={block['@uid']} class="video-block">
   {#if youtubeId && preview}
-    <a href="https://www.youtube.com/watch?v={youtubeId}">
+    <a href="https://www.youtube.com/watch?v={youtubeId}" data-edit-link="url">
       <img data-edit-media="preview_image" src={preview} alt="Play video" style="width: 100%" />
     </a>
   {:else if youtubeId}
