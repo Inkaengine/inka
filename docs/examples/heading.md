@@ -96,7 +96,7 @@ Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincid
 
 </block>
 
-<block is="heading" heading="Getting Started" tag="h2" />
+<block is="heading" heading="Getting Started" />
 
 <fields templateId="/inka-templates/block-reference-layout" templateInstanceId="tpl-inst-heading" :fixed="false" :readOnly="false">
 

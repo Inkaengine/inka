@@ -41,7 +41,7 @@ blocks-tagged: |
 
 A carousel/slider that cycles through slides. Slides are stored as an object_list — each slide has a title, description, image, and optional button.
 
-<block is="slider" :autoplayEnabled="false" :autoplayDelay="5000">
+<block is="slider" :autoplayDelay="5000">
 
 ## Product Launch 2025
 

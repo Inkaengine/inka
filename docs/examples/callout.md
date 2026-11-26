@@ -43,7 +43,7 @@ A labelled admonition box — **note**, **tip**, **warning**, or **important** �
 
 This is a **custom** block — register it via `initBridge`. The level is the block's `variation`; the body is a region of child blocks, so it holds real markdown — multiple paragraphs, lists, code.
 
-<block is="callout" variation="note">
+<block is="callout">
 
 This is a **note** — the default level. The body takes normal markdown: `code`, [links](../frontend-guide/live-preview.md), and multiple paragraphs.
 

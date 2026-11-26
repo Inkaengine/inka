@@ -36,7 +36,7 @@ Renders the current page's related items relation field (default relatedItems). 
 
 ## Live example
 
-<block is="relatedItemsListing" relationField="relatedItems" variation="summary" :fieldMapping='{"getURL":{"field":"href","type":"link"},"title":{"field":"title","type":"string"},"description":{"field":"description","type":"textarea"},"image":{"field":"image","type":"image_link"}}' />
+<block is="relatedItemsListing" relationField="relatedItems" />
 
 <fields templateId="/inka-templates/block-reference-layout" templateInstanceId="tpl-inst-relatedItemsListing" :fixed="false" :readOnly="false">
 

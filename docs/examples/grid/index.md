@@ -55,7 +55,7 @@ blocks-tagged: |
 
 A responsive grid that lays out child blocks in equal-width cells. The block uses Volto's standard shared-blocks shape — blocks is the dict of children, blocks_layout.items is their order — and constrains the allowed types via allowedBlocks.
 
-<block is="listing" block="616b625c-b79f-4881-8536-b67a9e401a7d" headlineTag="h2" variation="default" :query="[]" :fieldMapping='{"getURL":{"field":"href","type":"link"},"title":{"field":"title","type":"string"},"description":{"field":"description","type":"textarea"}}' />
+<block is="listing" block="616b625c-b79f-4881-8536-b67a9e401a7d" headlineTag="h2" variation="default" :query="[]" />
 
 <block is="slate">
 
@@ -71,7 +71,7 @@ We craft beautiful interfaces that users love.
 
 </block>
 
-<block is="image" url="https://placehold.co/600x400" alt="Placeholder" />
+![Placeholder](https://placehold.co/600x400)
 
 <block is="teaser">
 

@@ -41,7 +41,7 @@ A multi-field form with configurable field types, validation, and email submissi
 
 </block>
 
-<block is="form" default_from="noreply@plone.org" title="A simple form" default_to="admin@example.com" default_subject="New form submission" captcha="honeypot" :lastChange="1710238630312" :remove_data_after_days="-1" :send_email="true" :show_cancel="false" :store="true" :subblocks='[{"field_id":"1709833577467","field_type":"text","label":"Name","required":true},{"field_id":"1709833592544","field_type":"from","label":"Email","required":false,"use_as_bcc":false,"use_as_reply_to":false},{"field_id":"1709833604677","field_type":"textarea","label":"Message","required":false},{"field_id":"1709833616406","field_type":"multiple_choice","input_values":["Red","Green","Blue"],"label":"Select field","required":false}]' />
+<block is="form" default_from="noreply@plone.org" title="A simple form" default_to="admin@example.com" default_subject="New form submission" captcha="honeypot" :lastChange="1710238630312" :send_email="true" :store="true" :subblocks='[{"field_id":"1709833577467","field_type":"text","label":"Name","required":true},{"field_id":"1709833592544","field_type":"from","label":"Email","@type":"from"},{"field_id":"1709833604677","field_type":"textarea","label":"Message","@type":"textarea"},{"field_id":"1709833616406","field_type":"multiple_choice","input_values":["Red","Green","Blue"],"label":"Select field","@type":"multiple_choice"}]' />
 
 ## Submitting a form
 

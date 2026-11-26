@@ -51,7 +51,7 @@ A call-to-action button with an editable label and link.
 
 [Button](/)
 
-<fields inneralign="left" :styles='{"buttonAlign":"wide"}' />
+<fields :styles='{"buttonAlign":"wide"}' />
 
 </block>
 
@@ -83,8 +83,6 @@ Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nib euismod tincidu
 
 [Button](/)
 
-<fields inneralign="left" />
-
 </block>
 
 ---
@@ -111,7 +109,7 @@ Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincid
 
 </block>
 
-<block is="heading" alignment="left" heading="Button Block" tag="h2" :styles='{"backgroundColor":"grey"}' />
+<block is="heading" alignment="left" heading="Button Block" :styles='{"backgroundColor":"grey"}' />
 
 <block is="separator">
 
@@ -125,7 +123,7 @@ Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincid
 
 [Button](/)
 
-<fields inneralign="left" :styles='{"backgroundColor":"grey","buttonAlign":"wide"}' />
+<fields :styles='{"backgroundColor":"grey","buttonAlign":"wide"}' />
 
 </block>
 
@@ -181,7 +179,7 @@ Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nib euismod tincidu
 
 [Button](/)
 
-<fields inneralign="left" :styles='{"backgroundColor":"grey","buttonAlign":"center"}' />
+<fields :styles='{"backgroundColor":"grey","buttonAlign":"center"}' />
 
 </block>
 

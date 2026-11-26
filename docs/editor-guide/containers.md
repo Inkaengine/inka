@@ -38,7 +38,7 @@ A **container block** holds other blocks inside it — sliders, columns, accordi
 
 This page covers operations that change container structure: wrap a selection, unwrap a container, drag the edge of a container to absorb or expel adjacent blocks, and convert a container's type while keeping the children.
 
-<block is="callout" variation="note">
+<block is="callout">
 
 Which container types are available depends on your design system. A site might offer columns, accordions, sliders, and generic sections; another might only have a single "section" container with style variants. The wrap / unwrap / edge-drag / convert mechanics work the same regardless — the chooser just shows whatever your site registered.
 
@@ -84,7 +84,7 @@ When a container is selected (block mode), thin **edge handles** appear on the c
 
 Multiple blocks can cross in a single drag — keep dragging and a "ghost boundary" line shows where the new edge will land. Release to commit. Until release, the page DOM is unchanged; you can drag back across blocks to restore.
 
-<block is="callout" variation="note">
+<block is="callout">
 
 **Cross-axis neighbours move as a single atom.** If you drag a column's right edge into the next column, that next column's whole vertical stack of children gets absorbed — there's no useful midpoint to land between them on the horizontal drag axis. For vertical-axis containers absorbing loose siblings, blocks are absorbed one at a time as the cursor crosses each midpoint.
 

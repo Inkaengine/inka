@@ -2843,7 +2843,12 @@ function loadMarkdownMount(mount) {
   // The text search finds each block by, where the markdown stores none: the
   // editor's save writes it, and a tree read from disk was never saved.
   if (contentSchemas) {
-    for (const [p, page] of items) items.set(p, mdRuntime.fromSchemas.withMissingSearchText(page, contentSchemas));
+    for (const [p, page] of items) {
+      // A value the export left out for being its schema's default, put back as
+      // the editor saves it; then the search text, which reads the full block.
+      const full = mdRuntime.fromSchemas.withSchemaDefaults(page, contentSchemas);
+      items.set(p, mdRuntime.fromSchemas.withMissingSearchText(full, contentSchemas));
+    }
   }
   const urlFor = (p) => (mountPath === '/' ? p : mountPath + (p === '/' ? '' : p));
   // The authored `order:` is a CURATED list (it may deliberately omit asset
@@ -2978,8 +2983,8 @@ function reloadMount(mount) {
 async function getEngine() {
   if (!engine) {
     const { emitPage, parsePrototypes } = await import('@inka/blockmd/prototype-mapping.mjs');
-    const { withoutDefaultSearchText } = await import('./from-schemas.js');
-    engine = { emitPage, parsePrototypes, withoutDefaultSearchText };
+    const { withoutDefaultSearchText, withoutSchemaDefaults } = await import('./from-schemas.js');
+    engine = { emitPage, parsePrototypes, withoutDefaultSearchText, withoutSchemaDefaults };
   }
   return engine;
 }
@@ -2993,6 +2998,24 @@ async function getEngine() {
  */
 const NOT_FOLDERISH_TYPES = new Set(['Image', 'File', 'Link', 'Collection']);
 const isFolderishType = (type) => !NOT_FOLDERISH_TYPES.has(type);
+
+/** The fields each block type's prototypes state as literals (`size="l"` on an
+ *  image), at any depth: a value its bare Markdown implies. */
+function statedByPrototype(protos) {
+  const stated = new Map();
+  const walk = (list) => {
+    for (const p of list ?? []) {
+      for (const [field, value] of Object.entries(p.fields ?? {})) {
+        if (typeof value === 'string' && value.trim().startsWith('${')) continue;
+        if (!stated.has(p.type)) stated.set(p.type, new Set());
+        stated.get(p.type).add(field);
+      }
+      for (const r of p.regions ?? []) walk(r.protos);
+    }
+  };
+  walk(protos);
+  return (type, field) => stated.get(type)?.has(field) ?? false;
+}
 
 async function initMarkdownMounts() {
   const mounts = CONTENT_MOUNTS.filter(isMarkdownMount);
@@ -3647,7 +3670,7 @@ async function exportContent(req, res) {
   const { format = 'json', prototypes = {}, allowMissingBlobs = false, sitePath } = jsonBody(req);
 
   if (format === 'markdown') {
-    const { emitPage, parsePrototypes, withoutDefaultSearchText } = await getEngine();
+    const { emitPage, parsePrototypes, withoutDefaultSearchText, withoutSchemaDefaults } = await getEngine();
     const YAML = (await import('yaml')).default;
     const { SERVER_STATE } = await import('./server-state.js');
     const { BLOB_FIELD, blobDefaults } = await import('@inka/blockmd/markdown-mount.mjs');
@@ -3837,8 +3860,11 @@ async function exportContent(req, res) {
           load: (path) => loadRawContentFromDisk(path),
         });
         // Search text the frontend would give the page anyway stays out of the markdown
-        // (loading fills it again); search text set to something else is kept.
-        const own = contentSchemas ? withoutDefaultSearchText(ownBlocks, contentSchemas) : ownBlocks;
+        // (loading fills it again); search text set to something else is kept. So
+        // does a value its schema declares as the default (loading puts it back).
+        const own = contentSchemas
+          ? withoutSchemaDefaults(withoutDefaultSearchText(ownBlocks, contentSchemas), contentSchemas, { keep: statedByPrototype(protos) })
+          : ownBlocks;
         const blocks = structuredClone(own.blocks);
         unresolveBlocks(blocks, baseSegs, m);
         const { markdown } = emitPage(protos, { blocks, blocks_layout: own.blocks_layout });

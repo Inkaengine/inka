@@ -57,7 +57,7 @@ A table with rich text (Slate) content in each cell. Supports adding/removing ro
 
 </block>
 
-<block is="heading" alignment="left" heading="Basic Table" tag="h2" />
+<block is="heading" alignment="left" heading="Basic Table" />
 
 <block is="slateTable" table.celled table.fixed>
 
@@ -68,7 +68,7 @@ A table with rich text (Slate) content in each cell. Supports adding/removing ro
 
 </block>
 
-<block is="heading" alignment="left" heading="Stripe alternating rows with colors" tag="h2" />
+<block is="heading" alignment="left" heading="Stripe alternating rows with colors" />
 
 <block is="slateTable" table.celled table.fixed table.striped>
 
@@ -83,7 +83,7 @@ A table with rich text (Slate) content in each cell. Supports adding/removing ro
 
 <fields :styles='{"backgroundColor":"grey"}'>
 
-<block is="heading" alignment="left" heading="Basic Table" tag="h2" />
+<block is="heading" alignment="left" heading="Basic Table" />
 
 <block is="slateTable" table.celled table.fixed>
 
@@ -96,7 +96,7 @@ A table with rich text (Slate) content in each cell. Supports adding/removing ro
 
 </block>
 
-<block is="heading" alignment="left" heading="Stripe alternating rows with colors" tag="h2" />
+<block is="heading" alignment="left" heading="Stripe alternating rows with colors" />
 
 <block is="slateTable" table.celled table.fixed table.striped>
 

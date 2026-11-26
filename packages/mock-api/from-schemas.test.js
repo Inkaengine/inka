@@ -179,3 +179,45 @@ describe('a text link gets back the item it was picked from', () => {
     assert.equal(link.data.item, undefined);
   });
 });
+
+describe('a markdown export leaves out a value its schema declares as the default', () => {
+  // The editor applies a field's declared default and saves it, and a frontend
+  // renders the stored value. So the Markdown leaves a default value out, and
+  // loading puts it back: what is deployed is what was stored.
+  let withoutSchemaDefaults, withSchemaDefaults;
+  before(async () => { ({ withoutSchemaDefaults, withSchemaDefaults } = await import('./from-schemas.js')); });
+  const blocksConfig = {
+    question: { blockSchema: { properties: {
+      label: { type: 'string' },
+      required: { type: 'boolean', default: false },
+      size: { type: 'string', default: 'l' },
+    } } },
+  };
+  const page = (blocks) => ({ blocks, blocks_layout: { items: Object.keys(blocks) } });
+
+  it('drops a value equal to its default, and keeps any other', () => {
+    const out = withoutSchemaDefaults(page({
+      a: { '@type': 'question', label: 'Name', required: false, size: 'l' },
+      b: { '@type': 'question', label: 'Email', required: true, size: 'm' },
+    }), blocksConfig);
+    assert.deepEqual(out.blocks.a, { '@type': 'question', label: 'Name' });
+    assert.deepEqual(out.blocks.b, { '@type': 'question', label: 'Email', required: true, size: 'm' });
+  });
+
+  it('loading puts the default back, so the round trip is exact', () => {
+    const stored = page({ a: { '@type': 'question', label: 'Name', required: false, size: 'l' } });
+    assert.deepEqual(withSchemaDefaults(withoutSchemaDefaults(stored, blocksConfig), blocksConfig), stored);
+  });
+
+  it("keeps a default the block's prototype states, which its bare Markdown implies", () => {
+    const out = withoutSchemaDefaults(page({ a: { '@type': 'question', label: 'Name', required: false, size: 'l' } }), blocksConfig,
+      { keep: (type, field) => type === 'question' && field === 'size' });
+    assert.deepEqual(out.blocks.a, { '@type': 'question', label: 'Name', size: 'l' });
+  });
+
+  it('leaves a stored null alone, rather than turning it into the default', () => {
+    const out = withSchemaDefaults(page({ a: { '@type': 'question', label: 'Name', size: null } }), blocksConfig);
+    assert.equal(out.blocks.a.size, null);
+    assert.equal(out.blocks.a.required, false);
+  });
+});

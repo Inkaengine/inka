@@ -36,7 +36,7 @@ Renders a set of values as links into a faceted search — a "tag cloud" of shor
 
 ## Live example
 
-<block is="searchShortcuts" index="Subject" :searchUrl='[{"@id":"/search"}]' variation="default" :fieldMapping='{"getURL":{"field":"href","type":"link"},"title":{"field":"title","type":"string"}}' />
+<block is="searchShortcuts" :searchUrl='[{"@id":"/search"}]' />
 
 <fields templateId="/inka-templates/block-reference-layout" templateInstanceId="tpl-inst-searchShortcuts" :fixed="false" :readOnly="false">
 

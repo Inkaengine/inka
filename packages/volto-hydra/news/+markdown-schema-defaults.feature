@@ -1,0 +1,1 @@
+A Markdown export leaves out a value its block's schema declares as the default (a question's `required="false"`, a heading's `tag="h2"`), and loading puts it back as the editor saves it, so a page reads without its defaults and deploys unchanged. @djay

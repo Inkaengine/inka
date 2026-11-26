@@ -45,7 +45,7 @@ Templates let editors reuse a layout consistently across many pages without copy
 
 The two share the same merge rules; the difference is just where they're applied.
 
-<block is="callout" variation="note">
+<block is="callout">
 
 Whether your site has any templates or layouts at all is a design-system choice. A site can perfectly well skip them and let editors build pages freely; another might lock most pages into a small set of fixed layouts. The mechanics on this page apply when they're configured.
 
@@ -97,7 +97,7 @@ You **can't** insert a new block between two adjacent fixed/readonly template bl
 
 If you need to add content there, you may need to switch to a different layout (one whose structure has a slot in that position) or talk to whoever maintains the templates.
 
-<block is="callout" variation="note">
+<block is="callout">
 
 This is how it works when you're **filling** a template — the normal case. When you're **editing the template itself** (unlocked, see below), it's the opposite: dragging a block **keeps** its slot, because you set slots deliberately there. To move a block to a different slot while editing the template, change its **slot name** in the sidebar rather than relying on where you drop it.
 

@@ -43,7 +43,7 @@ Advanced topics for optimising your Inka integration: lazy loading the bridge, a
 
 <block is="separator" />
 
-<block is="callout" variation="note">
+<block is="callout">
 
 Inka's editor builds on Volto, Plone's React editor. Volto's own documentation also covers its presentation layer; ignore those parts, because your front end replaces it.
 

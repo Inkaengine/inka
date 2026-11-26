@@ -44,7 +44,7 @@ The actual code you write will depend on the framework you choose. You can look 
 - [Next.js](https://github.com/Inkaengine/inka/tree/main/examples/hydra-nextjs)
 - [F7-Vue](https://github.com/Inkaengine/inka/tree/main/examples/hydra-vue-f7)
 
-<block is="callout" variation="note">
+<block is="callout">
 
 This guide describes the integration pattern for frameworks with client-side reactivity (React, Vue, Svelte, Solid, Next, Nuxt, etc.) — your component tree consumes `formData` and re-renders, the framework's virtual DOM diff handles the per-block update.
 
@@ -125,7 +125,7 @@ Page data ends up shaped like this — one shared `blocks` dict, and a region pe
 }
 ```
 
-<block is="callout" variation="note">
+<block is="callout">
 
 Regions are sub-keys of `blocks_layout` — **not** separate top-level fields — because that is what makes them persist. `blocks_layout` is a registered backend field (a Plone behavior field), so the whole dict, including every region, is saved verbatim. A separate top-level field such as `footer_blocks` would be **silently dropped** by the backend on save, because it isn't a registered field. See [Container blocks](./container-blocks.md) for the data model in full.
 

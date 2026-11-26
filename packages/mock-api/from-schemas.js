@@ -7,6 +7,9 @@
  */
 import { searchTextOptions, withSearchableText } from '@volto-hydra/helpers/searchableText.js';
 import { linkItemSnapshot } from '@volto-hydra/helpers/linkItem.js';
+import { buildBlockPathMap } from '@volto-hydra/helpers/buildBlockPathMap.js';
+import { getBlockById, updateBlockById } from '@volto-hydra/helpers/blockPath.js';
+import { resolveEffectiveBlockSchema } from '@volto-hydra/helpers/blockSync.js';
 
 /** Build a `schemaFor(type) -> blockSchema` lookup from a block-schema registry.
  *  Handles both shapes the project uses:
@@ -200,4 +203,65 @@ function dropDerived(stored, derived) {
 export function withoutDefaultSearchText(page, blocksConfig) {
   if (!page.blocks) return page;
   return dropDerived(page, withSearchableText(page, searchTextOptions(blocksConfig, SEARCH_INTL, page)));
+}
+
+// A field's declared, fixed default (not a function of where the block sits).
+const fixedDefaults = (schema) => Object.entries(schema?.properties ?? {})
+  .filter(([, def]) => def && def.default !== undefined && typeof def.default !== 'function' && def.widget !== 'object');
+
+/** Every block of a page, nested ones too, rewritten by `fn(block, schema)`
+ *  against the block's effective schema (its variation's, enhanced). */
+function eachBlockWithSchema(page, blocksConfig, fn) {
+  if (!page.blocks) return page;
+  const pathMap = buildBlockPathMap(page, blocksConfig, SEARCH_INTL);
+  let out = page;
+  for (const id of Object.keys(pathMap)) {
+    const block = getBlockById(out, pathMap, id);
+    if (!block) continue;
+    const schema = resolveEffectiveBlockSchema(id, out, pathMap, blocksConfig, SEARCH_INTL);
+    if (!schema) continue;
+    const next = fn(block, schema);
+    if (next !== block) out = updateBlockById(out, pathMap, id, next);
+  }
+  return out;
+}
+
+const sameValue = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+
+/**
+ * The page without the values its schemas declare as defaults: what a markdown
+ * export leaves out, so a question reads without `required="false"`. The editor
+ * applies a default and saves it, and a frontend renders the stored value, so
+ * loading puts each back (withSchemaDefaults).
+ */
+// `keep(type, field)`: a default to keep anyway -- one the block's prototype
+// states as a literal, which its bare Markdown implies (an image's `size`), so
+// dropping it would leave the bare form unable to read back.
+export function withoutSchemaDefaults(page, blocksConfig, { keep = () => false } = {}) {
+  return eachBlockWithSchema(page, blocksConfig, (block, schema) => {
+    let out = block;
+    for (const [field, def] of fixedDefaults(schema)) {
+      if (keep(block['@type'], field)) continue;
+      if (field in out && sameValue(out[field], def.default)) {
+        if (out === block) out = { ...block };
+        delete out[field];
+      }
+    }
+    return out;
+  });
+}
+
+/** The page with each absent field its schema declares a default for set to
+ *  it, as the editor saves it. Only ABSENT: a stored null stays null. */
+export function withSchemaDefaults(page, blocksConfig) {
+  return eachBlockWithSchema(page, blocksConfig, (block, schema) => {
+    let out = block;
+    for (const [field, def] of fixedDefaults(schema)) {
+      if (!(field in out)) {
+        if (out === block) out = { ...block };
+        out[field] = structuredClone(def.default);
+      }
+    }
+    return out;
+  });
 }
