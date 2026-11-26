@@ -1023,9 +1023,10 @@ function matchNodes(protos, nodes, depth = 2) {
       }
       if (tag && tag.name === 'defaults' && tag.kind === 'open') {
         // An enclosing `<defaults …>` is `<fields …>` reaching further: its values
-        // go onto every BLOCK beneath it, however nested (a container's children,
-        // a panel's blocks), each one's own value winning. Items that are not
-        // blocks (an accordion's panels, a table's rows) are not given them.
+        // go onto everything beneath it, however nested -- a container's blocks
+        // and its list items (an accordion's panels, a code example's tabs) --
+        // each one's own value winning. It is how Inka labels a template
+        // instance: inheritTemplateMembershipDeep stamps every child, items too.
         let nest = 1, j = i + 1;
         for (; j < nodes.length && nest; j++) {
           const m = nodes[j].type === 'html' ? tagOf(nodes[j].value) : null;
@@ -1802,11 +1803,11 @@ function collectProtos(protos, out = []) {
  * panel's child blocks, stored as Volto's shared dict + layout -- but a declared
  * one (a table cell's list of blocks) is just a list, keyed per item.
  */
-/** `fn(block)` for a block and every block beneath it, however nested: a
- *  blocks_layout region's children, and the blocks inside an object_list item
- *  (its own regions, or the implicit `blocks`). The items themselves are not
- *  blocks and are not visited. `region` is the one the block sits in, whose
- *  declared item prototype gives the block's regions. */
+/** `fn(child)` for a block and everything beneath it, however nested: a
+ *  blocks_layout region's blocks, an object_list region's items, and the blocks
+ *  inside an item (its own regions, or the implicit `blocks`) -- what
+ *  inheritTemplateMembershipDeep labels. `region` is the one the block sits in,
+ *  whose declared item prototype gives the block's regions. */
 function eachBlockDeep(flat, block, region, fn) {
   fn(block);
   const regions = region?.protos?.find((p) => p.type === block['@type'])?.regions
@@ -1818,6 +1819,7 @@ function eachBlockDeep(flat, block, region, fn) {
       if (r.widget === 'blocks_layout') { for (const b of val) eachBlockDeep(flat, b, r, fn); continue; }
       for (const item of val) {
         if (!item || typeof item !== 'object') continue;
+        fn(item);
         const { regions: own, declaresBlocks } = itemShape(r, item);
         if (!declaresBlocks && Array.isArray(item.blocks)) for (const b of item.blocks) eachBlockDeep(flat, b, null, fn);
         inRegions(item, own);

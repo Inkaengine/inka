@@ -179,7 +179,7 @@ The `<fields>` tag sets field values on the blocks in its scope, and its form ch
 - **Self-closing**, `<fields align="left" />`, sets fields on the block it sits inside — the way to carry a field, such as `styles`, that a block's clean Markdown cannot.
 - **Enclosing**, `<fields slotId="rendering"> … </fields>`, sets fields on every block it wraps, as defaults: a wrapped block's own value wins, and nested wrappers merge outer-into-inner. This is how a field shared across a run of blocks is hoisted out so the bodies stay readable.
 
-`<fields>` stops at the blocks it wraps: a container's own children are not given its fields. `<defaults templateId="/templates/doc"> … </defaults>` reaches further, setting its fields on every block beneath it however deeply nested, such as the links inside a link list, again with each block's own value winning. Items that are not blocks, such as an accordion's panels or a table's rows, are not given them. The exporter writes `<defaults>` only where every block in the run, nested ones included, has the value, so a template instance's bookkeeping is said once.
+`<fields>` stops at the blocks it wraps: a container's own children are not given its fields. `<defaults templateId="/templates/doc"> … </defaults>` reaches further, setting its fields on everything beneath it however deeply nested, blocks and list items alike (the links inside a link list, an accordion's panels), again with each one's own value winning. That is how Inka labels a template instance: every child of a template's block carries its `templateId` and `templateInstanceId`. The exporter writes `<defaults>` only where everything in the run, nested children included, has the value, so a template instance's bookkeeping is said once.
 
 ## Typed attributes
 

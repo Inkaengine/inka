@@ -2693,9 +2693,9 @@ describe("a region whose items are a definition list's entries", () => {
 
 describe('<defaults> sets fields on every block beneath it, however nested', () => {
   // `<fields>` sets fields on the blocks of its own region; `<defaults>` reaches
-  // the blocks inside containers too (a template's bookkeeping is on every block
-  // of its instance, nested ones included). A block's own value wins, and items
-  // that are not blocks (an accordion's panels, a table's rows) are not touched.
+  // everything inside containers too, blocks and list items alike (a template's
+  // bookkeeping is on every child of its instance: inheritTemplateMembershipDeep).
+  // A child's own value wins.
   const protos = [
     ...parsePrototypes('<block is="slate" value="${p/slate}" />'),
     ...parsePrototypes([
@@ -2714,7 +2714,7 @@ describe('<defaults> sets fields on every block beneath it, however nested', () 
   const para = (text, extra = {}) => ({ '@type': 'slate', value: [{ type: 'p', children: [{ text }] }], ...extra });
   const T = { templateId: '/t', templateInstanceId: 'i1' };
 
-  it('reads a wrapper onto nested blocks, not onto items', () => {
+  it('reads a wrapper onto nested blocks and list items', () => {
     const md = [
       '<defaults templateId="/t" templateInstanceId="i1">', '',
       'Intro.', '',
@@ -2727,7 +2727,7 @@ describe('<defaults> sets fields on every block beneath it, however nested', () 
     expect(list).toMatchObject(T);
     expect(list.links[0]).toMatchObject(T);
     expect(acc).toMatchObject(T);
-    expect(acc.panels[0].templateId).toBeUndefined();
+    expect(acc.panels[0]).toMatchObject(T);
     expect(acc.panels[0].blocks[0]).toMatchObject(T);
   });
 
