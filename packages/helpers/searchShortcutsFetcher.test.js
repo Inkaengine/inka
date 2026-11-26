@@ -48,7 +48,10 @@ describe('searchShortcutsFetcher', () => {
     await fetchItems({ searchUrl: [{ '@id': '/search' }] }, page);
 
     expect(calls).toHaveLength(1);
-    expect(calls[0].url).toBe('http://api/blog/++api++/@querystring-search');
+    // The SITE ROOT, not `/blog`: @querystring-search excludes the page it is
+    // asked from, so asking from the block's own page would hide that page's
+    // keywords from a strip whose whole job is to be site-wide.
+    expect(calls[0].url).toBe('http://api/++api++/@querystring-search');
     expect(calls[0].method).toBe('POST');
     // The 401 that started this: nothing may reach @vocabularies.
     expect(calls.some((c) => c.url.includes('@vocabularies'))).toBe(false);

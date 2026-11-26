@@ -52,6 +52,9 @@ test.describe('Example listing blocks', () => {
     // reading: the vocabulary is closed to anonymous visitors (#762).
     await expect(iframe.locator('a[href="/search?facet.Subject=events"]')).toHaveCount(1);
     // `news` comes from BOTH blocks → proves this-page mode also rendered.
+    // This needs site-wide mode to ask from the SITE ROOT: @querystring-search
+    // leaves out the page it is asked from, so asked from this page it could not
+    // report this page's own keywords, and `news` came back once.
     await expect(iframe.locator('a[href="/search?facet.Subject=news"]')).toHaveCount(2);
     await expect(iframe.locator('a[href="/search?facet.Subject=plone"]')).toHaveCount(2);
   });

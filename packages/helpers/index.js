@@ -1551,7 +1551,7 @@ const SHORTCUT_VALUE_SCAN = 500;
  * where content lives. `/search` has nothing beneath it, so site-wide mode
  * returned nothing at all.
  */
-async function _indexValuesFromCatalog({ apiUrl, contextPath, index, headers }) {
+async function _indexValuesFromCatalog({ apiUrl, index, headers }) {
   // The site root, recursively: `absolutePath` with `/` is every object the
   // caller may see (checked against a live Plone 6.2 — 213 of them).
   const criterion = {
@@ -1560,7 +1560,13 @@ async function _indexValuesFromCatalog({ apiUrl, contextPath, index, headers }) 
     v: '/',
   };
 
-  const url = `${apiUrl}${contextPath}/++api++/@querystring-search`;
+  // Asked from the SITE ROOT, not from `contextPath`. plone.restapi's
+  // @querystring-search leaves out the page it is asked from — "Exclude 'self'
+  // content item" (services/querystringsearch/get.py) — and exempts the site
+  // root. Asked from the page the block sits on, site-wide mode could not
+  // report that page's OWN keywords: an integration test saw `news` once where
+  // both blocks should have offered it.
+  const url = `${apiUrl}/++api++/@querystring-search`;
   const response = await fetch(url, {
     method: 'POST',
     headers: { ...headers, 'Content-Type': 'application/json' },
@@ -1615,7 +1621,7 @@ export function searchShortcutsFetcher({ apiUrl, contextPath = '/' } = {}) {
       const v = content?.[block.pageField];
       values = Array.isArray(v) ? v : v == null ? [] : [v];
     } else {
-      values = await _indexValuesFromCatalog({ apiUrl, contextPath, index, headers });
+      values = await _indexValuesFromCatalog({ apiUrl, index, headers });
     }
 
     const all = values.map((value) => ({
