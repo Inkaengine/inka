@@ -4986,7 +4986,9 @@ app.post(/.*\/@workingcopy$/, (req, res) => {
 });
 
 // The relation catalog, as plone.restapi's @relations answers it for one kind.
-// plone.app.iterate's working copies are the only relations this mock keeps.
+// plone.app.iterate's working copies, and a content relation field (each
+// page's summaries, e.g. relatedItems) asked by its `target`: the pages whose
+// field names that page.
 app.get('{/*path}/@relations', (req, res) => {
   const name = req.query.relation;
   const sessionId = getSessionId(req);
@@ -5001,9 +5003,18 @@ app.get('{/*path}/@relations', (req, res) => {
       UID: content.UID,
     };
   };
-  const items = name === 'iterate-working-copy'
-    ? Object.entries(sessionWorkingCopies[sessionId] ?? {}).map(([copy, baseline]) => ({ source: summary(baseline), target: summary(copy) }))
-    : [];
+  const naming = (targetPath) => allContentPaths(sessionId).filter((p) => {
+    const values = rawContentForComponents(p, sessionId)?.[name];
+    return Array.isArray(values) && values.some((v) => v?.['@id'] && new URL(v['@id'], `http://localhost:${PORT}`).pathname.replace(/\/$/, '') === targetPath);
+  });
+  let items = [];
+  if (name === 'iterate-working-copy') {
+    items = Object.entries(sessionWorkingCopies[sessionId] ?? {}).map(([copy, baseline]) => ({ source: summary(baseline), target: summary(copy) }));
+  } else if (req.query.target) {
+    const targetPath = resolveContentReference(req.query.target, sessionId);
+    if (!targetPath) return res.status(404).end();
+    items = naming(targetPath).map((p) => ({ source: summary(p), target: summary(targetPath) }));
+  }
   res.json({ relations: { [name]: { items, items_total: items.length } } });
 });
 

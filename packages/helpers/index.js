@@ -1477,19 +1477,51 @@ export function ploneFetchItems({
 }
 
 /**
- * Fetcher for the Related Items example block: renders the CURRENT page's
- * relation field (default `relatedItems`). Reads the context content and pages
- * its relation summaries — no catalog query. A `fetchItems` value for
- * `expandListingBlocks`, same contract as `ploneFetchItems`.
+ * Fetcher for the Related Items example block: the pages related to the
+ * CURRENT page by one of its relation fields (`relationField`, default
+ * `relatedItems`), in the block's `direction`:
+ *
+ * - `outgoing` (the default): the pages this page's field names, in the
+ *   field's order: the page's own relation summaries, no catalog query;
+ * - `incoming`: the pages whose same field names this page, from plone.restapi's
+ *   relation catalog (`@relations?target=<UID>&relation=<field>`), which leaves
+ *   out a relation whose page the visitor can't view;
+ * - `both`: the outgoing ones, then the incoming ones, each page once.
+ *
+ * Plone keeps a relation on the page that makes it, so `incoming` is how a
+ * page lists those relating to it without anyone relating it back. A
+ * `fetchItems` value for `expandListingBlocks`, same contract as
+ * `ploneFetchItems`.
  */
+export const RELATION_DIRECTIONS = ['outgoing', 'incoming', 'both'];
+
 export function relatedItemsFetcher({ apiUrl, contextPath = '/' } = {}) {
   if (!apiUrl) throw new Error('relatedItemsFetcher requires apiUrl');
   return async function fetchItems(block, { start, size }) {
     const field = block.relationField || 'relatedItems';
+    const direction = block.direction || 'outgoing';
+    if (!RELATION_DIRECTIONS.includes(direction)) {
+      throw new Error(`relatedItemsFetcher: direction "${direction}" is not one of ${RELATION_DIRECTIONS.join(', ')}`);
+    }
     const headers = _getAuthHeaders();
     const res = await fetch(`${apiUrl}${contextPath}/++api++`, { headers });
     const content = await res.json();
-    const all = Array.isArray(content?.[field]) ? content[field] : [];
+    const outgoing = direction === 'incoming' ? [] : Array.isArray(content?.[field]) ? content[field] : [];
+    let incoming = [];
+    if (direction !== 'outgoing') {
+      if (!content?.UID) throw new Error(`relatedItemsFetcher: ${contextPath} has no UID to find the pages relating to it`);
+      const query = new URLSearchParams({ target: content.UID, relation: field });
+      const rel = await (await fetch(`${apiUrl}/++api++/@relations?${query}`, { headers })).json();
+      const found = rel?.relations?.[field];
+      if (!found) throw new Error(`relatedItemsFetcher: @relations did not answer for "${field}"`);
+      incoming = found.items.map((relation) => relation.source);
+    }
+    const seen = new Set();
+    const all = [...outgoing, ...incoming].filter((item) => {
+      if (seen.has(item['@id'])) return false;
+      seen.add(item['@id']);
+      return true;
+    });
     const items = size ? all.slice(start, start + size) : [];
     return { items, total: all.length };
   };
