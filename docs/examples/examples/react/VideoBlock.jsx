@@ -9,7 +9,7 @@ function VideoBlock({ block }) {
   return (
     <div data-block-uid={block['@uid']} className="video-block">
       {youtubeId && preview ? (
-        <a href={`https://www.youtube.com/watch?v=${youtubeId}`}>
+        <a href={`https://www.youtube.com/watch?v=${youtubeId}`} data-edit-link="url">
           <img data-edit-media="preview_image" src={preview} alt="Play video" style={{ width: '100%' }} />
         </a>
       ) : youtubeId ? (

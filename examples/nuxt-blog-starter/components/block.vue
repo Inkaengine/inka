@@ -644,7 +644,7 @@
     <!-- The preview image shows before the video plays: the <video>'s poster,
          or for YouTube a picture linked to the video. Empty means absent. -->
     <a v-if="getYouTubeId(linkUrl(block.url)) && imageProps(block.preview_image).url"
-       :href="`https://www.youtube.com/watch?v=${getYouTubeId(linkUrl(block.url))}`">
+       :href="`https://www.youtube.com/watch?v=${getYouTubeId(linkUrl(block.url))}`" data-edit-link="url">
       <img data-edit-media="preview_image" :src="imageProps(block.preview_image).url" alt="Play video" class="w-full h-auto rounded-lg" />
     </a>
     <div v-else-if="getYouTubeId(linkUrl(block.url))" class="relative w-full pb-[56.25%]">

@@ -12,6 +12,7 @@ import { expect } from '@playwright/test';
 import type { Page, FrameLocator, Locator, ElementHandle } from '@playwright/test';
 import { AdminUIHelper } from './AdminUIHelper';
 import { recordSlateFieldContainer, recordFieldEditable } from '../field-coverage';
+import { canvasFieldKind } from '../canvas-fields.js';
 import {
   usesAvailableSizes, resolveImageEntry, availableWidths, isProportionate,
 } from '../imageSizes.mjs';
@@ -613,20 +614,9 @@ export async function checkEditAnnotations(
           const host = [...el.querySelectorAll(`[data-edit-media="${field}"]`)]
             .find((n) => !n.closest('[data-block-readonly]'));
           if (!host) {
-            // An image drawn as a CSS BACKGROUND is drawn, with nothing on the
-            // canvas to click: a band behind other blocks can't be the media
-            // field without taking their clicks, so it is picked in the
-            // sidebar. Recognised by its file: the field's path inside the
-            // url() of the block's, or a descendant's, background-image.
-            const ref = Array.isArray(value) ? value[0] : value;
-            const raw = typeof ref === 'string' ? ref : (ref as { '@id'?: string } | null)?.['@id'];
-            const path = raw ? new URL(raw, location.href).pathname.replace(/\/$/, '') : '';
-            const asBackground = !!path && [el, ...el.querySelectorAll('*')].some((n) => {
-              const bg = getComputedStyle(n).backgroundImage;
-              return bg !== 'none' && [...bg.matchAll(/url\("?([^")]+)"?\)/g)]
-                .some((m) => new URL(m[1], location.href).pathname.startsWith(path));
-            });
-            imageFields.push({ field, rendered: asBackground, srcset: null });
+            // Possibly drawn as a CSS background — decided after this pass by
+            // backgroundFieldsOf, the one place that recognises it.
+            imageFields.push({ field, rendered: false, srcset: null });
             continue;
           }
           // Only an <img> can carry a srcset. A frontend may render a media
@@ -704,9 +694,13 @@ export async function checkEditAnnotations(
   //
   // Conditional on the data, deliberately: a single-scale image rendering one
   // candidate is correct and must not be failed for it.
+  const unannotated = r.imageFields.filter((f) => f.srcset === null && !f.rendered).map((f) => f.field);
+  const backgrounds = unannotated.length && blockData
+    ? await backgroundFieldsOf(block, blockData, unannotated)
+    : new Set<string>();
   for (const { field, rendered, srcset, boxWidth, actualWidth, currentSrc } of r.imageFields) {
     const entry = resolveImageEntry(blockData as Record<string, unknown>, field);
-    if (srcset === null && rendered) continue;   // CSS background: nothing to judge
+    if (backgrounds.has(field)) continue;   // CSS background: nothing to judge
     const verdict = usesAvailableSizes({ field, entry, srcset: srcset ?? '', rendered });
     expect(verdict.ok, verdict.reason).toBe(true);
 
@@ -818,23 +812,6 @@ function slateEqualIgnoringIds(a: unknown, b: unknown): boolean {
  * Values are normalised for the leading slash some renderers emit
  * (`data-edit-media="/image"`).
  */
-/**
- * The annotation a schema field is edited through, if any. `image` /
- * `object_browser` say what kind of picker the field wants; text and textarea
- * are deliberately absent (an image's `alt` is a sidebar attribute, and a
- * textarea is not uniformly canvas content).
- */
-function annotationFor(
-  prop: Record<string, unknown>,
-): { kind: 'text' | 'media' | 'link'; attr: string } | null {
-  const w = prop?.widget;
-  const mode = (prop as { mode?: string })?.mode;
-  if (w === 'image' || (w === 'object_browser' && mode === 'image'))
-    return { kind: 'media', attr: 'data-edit-media' };
-  if (w === 'object_browser' && mode === 'link')
-    return { kind: 'link', attr: 'data-edit-link' };
-  return null;
-}
 
 /** One annotated element: which attribute declares it, which field, and where. */
 interface EditableField {
@@ -1031,6 +1008,44 @@ async function advertisedFieldsOf(block: Locator): Promise<Set<string>> {
   return new Set(fields);
 }
 
+/**
+ * Which of these media fields the block draws as a CSS BACKGROUND.
+ *
+ * A background is drawn, with nothing on the canvas to click: a band behind
+ * other blocks can't be the media field without taking their clicks, so the
+ * image is picked in the sidebar on purpose. Recognised by its file: the
+ * field's path inside the url() of the block's, or a descendant's,
+ * background-image. The render check uses this to accept the image as drawn,
+ * and the coverage rule to count the field as reachable.
+ */
+async function backgroundFieldsOf(
+  block: Locator,
+  blockData: Record<string, unknown>,
+  fields: string[],
+): Promise<Set<string>> {
+  const paths = fields.flatMap((field): Array<[string, string]> => {
+    const value = blockData[field];
+    const ref = Array.isArray(value) ? value[0] : value;
+    const raw = typeof ref === 'string' ? ref : (ref as { '@id'?: string } | null)?.['@id'];
+    return raw ? [[field, raw]] : [];
+  });
+  if (!paths.length) return new Set();
+  const drawn: string[] = await block.evaluate((el, wanted) => {
+    const urls = [el, ...el.querySelectorAll('*')].flatMap((n) => {
+      const bg = getComputedStyle(n).backgroundImage;
+      return bg === 'none' ? [] : [...bg.matchAll(/url\("?([^")]+)"?\)/g)]
+        .map((m) => new URL(m[1], location.href).pathname);
+    });
+    return wanted
+      .filter(([, raw]) => {
+        const path = new URL(raw, location.href).pathname.replace(/\/$/, '');
+        return !!path && urls.some((u) => u.startsWith(path));
+      })
+      .map(([field]) => field);
+  }, paths);
+  return new Set(drawn);
+}
+
 async function revealableFieldsOf(block: Locator): Promise<Set<string>> {
   const uid = await block.getAttribute('data-block-uid');
   if (!uid) return new Set();
@@ -1113,7 +1128,7 @@ export async function checkSlateAnnotations(
   // one settle below covers every kind.
   const annotatedFields: Array<[string, { kind: 'text' | 'media' | 'link'; attr: string }, unknown]> = [];
   for (const [field, prop] of Object.entries(blockSchema?.properties ?? {})) {
-    const a = annotationFor(prop as Record<string, unknown>);
+    const a = canvasFieldKind(prop as Record<string, unknown>);
     if (a) annotatedFields.push([field, a, prop]);
   }
   const expected: Array<[string, string]> = [
@@ -1263,7 +1278,21 @@ export async function checkSlateAnnotations(
   // for them. Displayed plain text is covered by the DOM-gated check above; slate
   // (always canvas rich-text) is recorded by the loop above.
   if (blockSchema?.properties) {
+    // A media field drawn as a CSS background is picked in the sidebar on
+    // purpose (see backgroundFieldsOf), so it is reachable without a canvas
+    // annotation.
+    const backgrounds = await backgroundFieldsOf(
+      block,
+      blockData,
+      annotatedFields
+        .filter(([f, a]) => a.kind === 'media' && !present[a.attr].has(f) && !advertised.has(f))
+        .map(([f]) => f),
+    );
     for (const [field, a, prop] of annotatedFields) {
+      if (backgrounds.has(field)) {
+        recordFieldEditable(a.kind, blockType, field, true, `[${coverageUid}] drawn as a CSS background`);
+        continue;
+      }
       recordFieldEditable(
         a.kind,
         blockType,
@@ -1624,9 +1653,13 @@ export async function verifyBlockRendering(
   // alone can't tell an intentional multi-element block from an accidental
   // duplicate anyway. Verify the block renders + carries its edit annotations via
   // the first match, then return — the assertions below use the multi-match
-  // `block` locator and would trip Playwright strict mode on >1 element.
+  // `block` locator and would trip Playwright strict mode on >1 element. Its
+  // fields are still recorded for coverage: the bridge collects a block's fields
+  // from every element carrying its uid, so asking from the first finds them all
+  // (a search shortcut's link to its search page is on each of its results).
   if ((await settledCount(block)) > 1) {
     await checkEditAnnotations(block.first(), blockData);
+    await checkSlateAnnotations(block.first(), blockData, undefined, iframe);
     return;
   }
 

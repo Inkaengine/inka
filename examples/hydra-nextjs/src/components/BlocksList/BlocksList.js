@@ -1651,7 +1651,7 @@ function Block({ block, id, data, apiUrl, contextPath, inListing = false }) {
       return (
         <div data-block-uid={id} data-edit-link="url" className="video-block">
           {ytId && preview ? (
-            <a href={`https://www.youtube.com/watch?v=${ytId}`}>
+            <a href={`https://www.youtube.com/watch?v=${ytId}`} data-edit-link="url">
               <img data-edit-media="preview_image" src={preview} alt="Play video" style={{ width: "100%" }} />
             </a>
           ) : ytId ? (
