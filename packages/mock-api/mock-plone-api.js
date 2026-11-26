@@ -3314,23 +3314,30 @@ app.post('{/*path}/@copy', (req, res) => {
   return res.json([{ source: sourcePath, target: destPath }]);
 });
 
-app.post('{/*path}/@order', (req, res) => {
-  const parentPath = req.path.replace('/@order', '') || '/';
-  const sessionId = getSessionId(req);
-  const { obj_id: objId, delta } = jsonBody(req);
-  if (!objId) {
-    return res.status(400).json({
-      error: { type: 'BadRequest', message: '@order requires obj_id' },
-    });
-  }
-  if (!sessionOrder[sessionId]) sessionOrder[sessionId] = {};
-  const current = sessionOrder[sessionId][parentPath] || [];
-  const without = current.filter((entry) => entry !== objId);
-  const index = delta === 'top' ? 0 : Math.max(0, without.length);
-  without.splice(index, 0, objId);
-  sessionOrder[sessionId][parentPath] = without;
-  return res.status(204).send();
-});
+/**
+ * POST /:parent/@order — 404, because plone.restapi has no such endpoint.
+ *
+ * It was implemented here, and only here. Ordering in Plone is a PATCH on the
+ * container carrying `ordering` (its OrderingMixin); this route was invented by
+ * an earlier version of this mock, an adapter was written against the invention
+ * in the same commit, and its contract suite went green — a contract proves the
+ * adapter and the mock AGREE, and when one author writes both halves from one
+ * assumption, agreement is a tautology. It passed for two weeks while every
+ * reorder against a real Plone 404'd.
+ *
+ * Named rather than left to Express's catch-all, so the next caller is told
+ * where to go instead of guessing at a bare 404.
+ */
+app.post('{/*path}/@order', (req, res) =>
+  res.status(404).json({
+    error: {
+      type: 'NotFound',
+      message:
+        'plone.restapi has no @order endpoint. Reorder with PATCH on the ' +
+        'container: {"ordering": {"obj_id": "<id>", "delta": "top"|"bottom"|<int>}}',
+    },
+  }),
+);
 
 /**
  * DELETE /:path (content removal)
@@ -6291,68 +6298,18 @@ app.get('{/*path}/@search', (req, res) => {
  * Get folder contents for content browsing
  * Returns items at the parent folder level (siblings of current content)
  */
-app.get('{/*path}/@contents', (req, res) => {
-  const contentPath = req.path.replace('/@contents', '') || '/';
-
-  // Helper to format content item for response
-  const formatItem = (itemPath) => {
-    const content = loadContentFromDisk(itemPath);
-    if (!content) return null;
-    return {
-      '@id': content['@id'],
-      '@type': content['@type'],
-      'id': content.id,
-      'title': content.title,
-      'description': content.description || '',
-      'review_state': content.review_state || 'published',
-      'UID': content.UID,
-      'is_folderish': content.is_folderish !== undefined ? content.is_folderish : true,
-    };
-  };
-
-  // For Documents, we return siblings (contents of parent folder)
-  // For the site root, we return all root-level items
-  let items;
-
-  if (contentPath === '' || contentPath === '/') {
-    // Root level - return all root-level items
-    items = Object.keys(contentDirMap)
-      .filter((itemPath) => {
-        if (itemPath === '/') return false;
-        const pathParts = itemPath.split('/').filter(p => p);
-        return pathParts.length === 1;
-      })
-      .map(formatItem)
-      .filter(Boolean);
-  } else {
-    // Get parent folder's contents (siblings of this content)
-    const pathParts = contentPath.split('/').filter(p => p);
-    const parentPath = pathParts.length > 1
-      ? '/' + pathParts.slice(0, -1).join('/')
-      : '/';
-
-    items = Object.keys(contentDirMap)
-      .filter((itemPath) => {
-        if (itemPath === '/') return false;
-        const itemParts = itemPath.split('/').filter(p => p);
-        // Same depth as current content and same parent
-        if (parentPath === '/') {
-          return itemParts.length === 1;
-        } else {
-          return itemPath.startsWith(parentPath + '/') &&
-                 itemParts.length === pathParts.length;
-        }
-      })
-      .map(formatItem)
-      .filter(Boolean);
-  }
-
-  res.json({
-    '@id': `${API_ORIGIN}${contentPath}/@contents`,
-    'items': items,
-    'items_total': items.length,
-  });
-});
+/*
+ * There is no @contents endpoint here, and there is none in Plone.
+ *
+ * This file used to serve one. Nothing called it — not Volto, not an adapter,
+ * not a test — and plone.restapi has no such service: a folder's children come
+ * from @search with path.depth=1, which is what the contents view asks for.
+ *
+ * Removed rather than left dormant, because a route in this file reads as
+ * evidence that Plone has one. That is precisely how the @order endpoint above
+ * came about. See mock-serves-no-invented-endpoints.test.js, which now refuses
+ * to let a new route in without saying where it comes from.
+ */
 
 /**
  * POST /:path/@submit-form
