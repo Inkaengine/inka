@@ -4887,6 +4887,26 @@ export function adoptTemplate(template, id) {
   return adopted;
 }
 
+/**
+ * The query parameters that ask a Plone page response to carry these templates too,
+ * through collective.restapi.searchexpansion (`expand=search`): one search for the
+ * templates' own paths, full objects. Add them to the page request with `expand=search`
+ * (beside any other expansions); loadTemplates then takes the templates from
+ * @components.search and fetches only what is missing. For templates a frontend knows
+ * it needs before it has the page: its forced layouts.
+ *
+ * @param {string[]} ids template ids (site paths, e.g. "/templates/footer-layout")
+ * @returns {[string, string][]} entries for URLSearchParams
+ */
+export function templateSearchParams(ids) {
+  return [
+    ...ids.map((id) => ['expand.search.path.query', id]),
+    ['expand.search.path.depth', '0'],
+    ['expand.search.fullobjects', '1'],
+    ['expand.search.b_size', String(ids.length)],
+  ];
+}
+
 export async function loadTemplates(
   data,
   loadTemplate,
@@ -4949,6 +4969,37 @@ export async function loadTemplates(
   let pending = collectTemplateIds(data);
   for (const id of extraTemplateIds) {
     if (id) pending.add(id);
+  }
+
+  // Templates a search expansion brought with the page (`expand=search` with the
+  // templates' paths, see templateSearchParams): results keyed only by their @id, a
+  // URL whose path ends with the template id, whatever the site is mounted under.
+  // Taken over the caller's cache like the @templates component, and written back.
+  const searchResults = data?.['@components']?.search?.items || [];
+  if (searchResults.length) {
+    const pathOf = (url) => {
+      try {
+        return new URL(url).pathname;
+      } catch {
+        return url;
+      }
+    };
+    for (const id of pending) {
+      const found = searchResults.find((item) => {
+        const path = pathOf(item?.['@id'] || '');
+        return path === id || path.endsWith(id);
+      });
+      if (found) {
+        templates[id] = adoptTemplate(found, id);
+        preloadedTemplates[id] = templates[id];
+        loaded.add(id);
+      }
+    }
+    // Templates those carry are scanned like fetched ones below.
+    for (const id of [...pending]) {
+      if (!templates[id]) continue;
+      for (const nestedId of collectTemplateIds(templates[id])) pending.add(nestedId);
+    }
   }
 
   // Keep loading until no new templates found
