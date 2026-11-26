@@ -5,7 +5,9 @@
  * directly (not wrapped in the source block's data-block-uid); assert at the
  * iframe level.
  *
- * Fixture (example-listings-page): relatedItems summaries (Related A/B),
+ * Fixture (example-listings-page): relatedItems summaries (Related A/B), and
+ * a Related Items block in the `incoming` direction (Deep Link Page B's
+ * relatedItems names this page),
  * subjects [news, plone]; a this-page search-shortcuts (news, plone) and a
  * site-wide one (Keywords = news/plone/events), and an RSS block → the mock stub.
  */
@@ -20,6 +22,16 @@ test.describe('Example listing blocks', () => {
     const iframe = helper.getIframe();
     await expect(iframe.getByRole('heading', { name: 'Related A' })).toBeVisible();
     await expect(iframe.getByRole('heading', { name: 'Related B' })).toBeVisible();
+  });
+
+  test('Related Items in the incoming direction renders the pages relating to this one', async ({ page }) => {
+    // Plone keeps the relation on Deep Link Page B; this page lists it from the
+    // relation catalog (@relations?target=), without relating it back.
+    const helper = new AdminUIHelper(page);
+    await helper.login();
+    await helper.navigateToEdit('/example-listings-page');
+    const iframe = helper.getIframe();
+    await expect(iframe.getByRole('heading', { name: 'Deep Link Page B' })).toBeVisible();
   });
 
   test('Search Shortcuts link values to a faceted search (this-page + site-wide)', async ({ page }) => {
