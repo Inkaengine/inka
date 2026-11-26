@@ -234,6 +234,21 @@ describe('a markdown export leaves out a value its schema declares as the defaul
     ]);
   });
 
+  it('keeps a value whose default comes from the value itself, which loading could not put back', () => {
+    // A listing in a container takes its item type's default from what it holds:
+    // with `card` stored the schema says `card`, without it there is no default.
+    const config = {
+      teaser: { blockSchema: ({ formData }) => ({ properties: {
+        variation: formData?.variation ? { type: 'string', default: formData.variation } : { type: 'string' },
+        size: { type: 'string', default: 'l' },
+      } }) },
+    };
+    const stored = page({ t: { '@type': 'teaser', variation: 'card', size: 'l' } });
+    const out = withoutSchemaDefaults(stored, config);
+    assert.deepEqual(out.blocks.t, { '@type': 'teaser', variation: 'card' });
+    assert.deepEqual(withSchemaDefaults(out, config), stored);
+  });
+
   it('leaves a stored null alone, rather than turning it into the default', () => {
     const out = withSchemaDefaults(page({ a: { '@type': 'question', label: 'Name', size: null } }), blocksConfig);
     assert.equal(out.blocks.a.size, null);
