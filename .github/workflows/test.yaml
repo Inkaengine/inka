@@ -401,7 +401,7 @@ jobs:
     # timeout only made it fail faster. Keep the tag in step with
     # @playwright/test in package.json.
     container:
-      image: mcr.microsoft.com/playwright:v1.61.0-noble
+      image: mcr.microsoft.com/playwright:v1.65.1-noble
       options: --ipc=host
     # The job runs as root, but $HOME is /github/home, which the image's pwuser
     # owns, and Firefox refuses to start as root in a home it doesn't own.
@@ -524,7 +524,7 @@ jobs:
     # timeout only made it fail faster. Keep the tag in step with
     # @playwright/test in package.json.
     container:
-      image: mcr.microsoft.com/playwright:v1.61.0-noble
+      image: mcr.microsoft.com/playwright:v1.65.1-noble
       options: --ipc=host
     # The job runs as root, but $HOME is /github/home, which the image's pwuser
     # owns, and Firefox refuses to start as root in a home it doesn't own.
@@ -643,7 +643,7 @@ jobs:
     # timeout only made it fail faster. Keep the tag in step with
     # @playwright/test in package.json.
     container:
-      image: mcr.microsoft.com/playwright:v1.61.0-noble
+      image: mcr.microsoft.com/playwright:v1.65.1-noble
       options: --ipc=host
     # The job runs as root, but $HOME is /github/home, which the image's pwuser
     # owns, and Firefox refuses to start as root in a home it doesn't own.
@@ -773,7 +773,7 @@ jobs:
     # timeout only made it fail faster. Keep the tag in step with
     # @playwright/test in package.json.
     container:
-      image: mcr.microsoft.com/playwright:v1.61.0-noble
+      image: mcr.microsoft.com/playwright:v1.65.1-noble
       options: --ipc=host
     # The job runs as root, but $HOME is /github/home, which the image's pwuser
     # owns, and Firefox refuses to start as root in a home it doesn't own.
@@ -885,7 +885,7 @@ jobs:
     # timeout only made it fail faster. Keep the tag in step with
     # @playwright/test in package.json.
     container:
-      image: mcr.microsoft.com/playwright:v1.61.0-noble
+      image: mcr.microsoft.com/playwright:v1.65.1-noble
       options: --ipc=host
     # The job runs as root, but $HOME is /github/home, which the image's pwuser
     # owns, and Firefox refuses to start as root in a home it doesn't own.
@@ -1007,7 +1007,7 @@ jobs:
     # timeout only made it fail faster. Keep the tag in step with
     # @playwright/test in package.json.
     container:
-      image: mcr.microsoft.com/playwright:v1.61.0-noble
+      image: mcr.microsoft.com/playwright:v1.65.1-noble
       options: --ipc=host
     # The job runs as root, but $HOME is /github/home, which the image's pwuser
     # owns, and Firefox refuses to start as root in a home it doesn't own.

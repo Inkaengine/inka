@@ -18,7 +18,7 @@
 #     dockerfile = "hydra/packages/inka-mcp/Dockerfile"
 #     [build.args]
 #       BUNDLE = "mcp/bundle/inka-mcp.mjs"
-#       PLAYWRIGHT = "1.61.0"
+#       PLAYWRIGHT = "1.65.1"
 #
 #   fly deploy -c fly.mcp.toml \
 #     --ignorefile hydra/packages/inka-mcp/Dockerfile.dockerignore
@@ -30,7 +30,7 @@
 # bundle's `playwright` import resolves to. A consumer reads it from this
 # package's own dependencies rather than repeating it:
 #   MCP_PLAYWRIGHT = $(shell node -p "require('./inka/packages/inka-mcp/package.json').dependencies.playwright")
-ARG PLAYWRIGHT=1.61.0
+ARG PLAYWRIGHT=1.65.1
 FROM mcr.microsoft.com/playwright:v${PLAYWRIGHT}-noble
 ARG PLAYWRIGHT
 
