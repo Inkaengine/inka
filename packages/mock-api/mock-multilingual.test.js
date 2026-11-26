@@ -213,7 +213,12 @@ describe('creating a translation', () => {
     // dropping it: the form showed the inherited tags, the POST carried them,
     // and reading the page back said there were none. Plone stores whatever the
     // type's schema has, and so does this.
-    const token = 'carry-fields-token';
+    // A MINTED token, not just a session string: these read back the page they
+    // created, and a new page is private (simple_publication_workflow's
+    // initial state), so the reader has to be someone. An arbitrary token
+    // isolates a session but authenticates nobody, and Plone refuses an
+    // anonymous reader a private page.
+    const token = mintToken('admin');
     const created = await json('/de', {
       method: 'POST',
       token,
@@ -240,7 +245,12 @@ describe('creating a translation', () => {
     // is the page being translated FROM — so storing it put the German page's
     // parent at /en/services, which is where breadcrumbs, navigation and the
     // navroot all read from.
-    const token = 'computed-fields-token';
+    // A MINTED token, not just a session string: these read back the page they
+    // created, and a new page is private (simple_publication_workflow's
+    // initial state), so the reader has to be someone. An arbitrary token
+    // isolates a session but authenticates nobody, and Plone refuses an
+    // anonymous reader a private page.
+    const token = mintToken('admin');
     await asMultilingual(token);
 
     const created = await json('/de', {

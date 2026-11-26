@@ -393,7 +393,16 @@ test.describe('MCP server', () => {
 
     const image = (await call('create_page', { parent: '/_test_data', type: 'Image', title: 'Team photo', file: photo.media })).json();
     expect(image.version).toBeTruthy();
-    expect(image.reviewState).toBeTruthy();
+    // An Image has NO review state, so create_page reports none.
+    //
+    // Plone's workflows.xml binds File, Image and Plone Site to no workflow at
+    // all, and a real Plone answers null for their review_state. This asserted
+    // a truthy state, which held only while the mock called them `published` —
+    // a state they cannot be in.
+    //
+    // `?? null` because JSON cannot carry undefined: whether the answer omits
+    // the field or sends it as null, it is saying the same thing.
+    expect(image.reviewState ?? null).toBeNull();
     const madeImage = await stored(image.path);
     expect(madeImage['@type']).toBe('Image');
     expect(madeImage.title).toBe('Team photo');
@@ -402,6 +411,7 @@ test.describe('MCP server', () => {
     expect(new URL(image.media[photo.media]).pathname).toBe(image.path);
 
     const file = (await call('create_page', { parent: '/_test_data', type: 'File', title: 'Annual report', file: report.media })).json();
+    expect(file.reviewState ?? null).toBeNull();
     const madeFile = await stored(file.path);
     expect(madeFile['@type']).toBe('File');
     expect(madeFile.file).toMatchObject({ filename: 'report.png', 'content-type': report.type });
