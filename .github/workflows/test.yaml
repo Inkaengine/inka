@@ -557,10 +557,6 @@ jobs:
         with:
           node-version-file: '.nvmrc'
           cache: 'pnpm'
-      - name: Port block
-        # Derived from HYDRA_PORT_BASE by the one module that knows the
-        # offsets, rather than listed again here.
-        run: node scripts/with-ports.mjs --print >> "$GITHUB_ENV"
       - name: Get pnpm store directory
         run: echo "STORE_PATH=$(pnpm store path --silent)" >> $GITHUB_ENV
       - uses: actions/cache@v4
@@ -574,6 +570,16 @@ jobs:
         run: |
           pnpm dlx mrs-developer missdev --no-config --fetch-https
           pnpm install --frozen-lockfile
+      - name: Port block
+        # Derived from HYDRA_PORT_BASE by the one module that knows the
+        # offsets, rather than listed again here.
+        #
+        # AFTER the install: ports.ts reads its offsets from @inka/testing, a
+        # workspace package, so printing the block needs node_modules. It ran
+        # before the install here while ports.ts was self-contained, and every
+        # job in this file that kept that order died on
+        # ERR_MODULE_NOT_FOUND '@inka/testing' before a single test ran.
+        run: node scripts/with-ports.mjs --print >> "$GITHUB_ENV"
       # WordPress is PHP-WASM fetched at boot, so it needs its own download and
       # is the slow one; the mock-backed targets skip this entirely.
       - name: Warm the WordPress Playground package
@@ -659,10 +665,6 @@ jobs:
         with:
           node-version-file: '.nvmrc'
           cache: 'pnpm'
-      - name: Port block
-        # Derived from HYDRA_PORT_BASE by the one module that knows the
-        # offsets, rather than listed again here.
-        run: node scripts/with-ports.mjs --print >> "$GITHUB_ENV"
       - name: Get pnpm store directory
         run: echo "STORE_PATH=$(pnpm store path --silent)" >> $GITHUB_ENV
       - uses: actions/cache@v4
@@ -676,6 +678,16 @@ jobs:
         run: |
           pnpm dlx mrs-developer missdev --no-config --fetch-https
           pnpm install --frozen-lockfile
+      - name: Port block
+        # Derived from HYDRA_PORT_BASE by the one module that knows the
+        # offsets, rather than listed again here.
+        #
+        # AFTER the install: ports.ts reads its offsets from @inka/testing, a
+        # workspace package, so printing the block needs node_modules. It ran
+        # before the install here while ports.ts was self-contained, and every
+        # job in this file that kept that order died on
+        # ERR_MODULE_NOT_FOUND '@inka/testing' before a single test ran.
+        run: node scripts/with-ports.mjs --print >> "$GITHUB_ENV"
       - name: Build workspace deps (@plone/registry, @plone/components)
         run: pnpm build:deps
       # No production build: these run against the DEV server, which is the
