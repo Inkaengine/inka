@@ -2472,3 +2472,25 @@ describe('a blocks_layout region inside an object field (Volto\'s accordion `dat
     expect(matchBlocks(protos, md)).toEqual(blocks);
   });
 });
+
+describe("a container's own fields can read the same node twice", () => {
+  // A heading is a title and a link at once (`## [Energy](/energy)`), as a
+  // teaser reads it; a container's own fields must read it the same way, not
+  // lose the link because the title took the heading first.
+  const protos = [
+    ...parsePrototypes('<block is="slate" value="${p/slate}" />'),
+    ...parsePrototypes([
+      '<block is="panel" title="${h?/text}" url="${h?/link}">',
+      '  <region name="items" widget="blocks_layout" />',
+      '</block>',
+    ].join('\n'), { explicit: true }),
+  ];
+  const para = (text) => ({ '@type': 'slate', value: [{ type: 'p', children: [{ text }] }] });
+
+  it('reads the heading as both the title and the link', () => {
+    const block = { '@type': 'panel', title: 'Energy', url: [{ '@id': '/energy' }], items: [para('Words.')] };
+    const md = emitBlocks(protos, [block]);
+    expect(md).toContain('## [Energy](/energy)');
+    expect(matchBlocks(protos, md)).toEqual([block]);
+  });
+});

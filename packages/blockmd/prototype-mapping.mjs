@@ -797,6 +797,9 @@ function decodeTag(protos, attrs, inner, depth) {
     // `headline="${h}"`), optionally -- absent leading heading = no headline --
     // then the region gets the remainder.
     const consumed = new Set();
+    // Refs naming the same node (`${h?/text}` and `${h?/link}`: a heading that is
+    // a title and a link) read that one node, as a leaf's refs do.
+    const picked = new Map();
     // The container's own nodes: one inside a nested `<block>` belongs to that
     // block, so a container ref (a grid's headline) never takes it.
     const nested = nestedFlags(inner);
@@ -804,6 +807,12 @@ function decodeTag(protos, attrs, inner, depth) {
     for (const [field, val] of Object.entries(container.fields)) {
       const ref = parseRef(val);
       if (!ref || ref.part === null || field === '_') continue;
+      const same = `${ref.node}|${ref.label ?? ''}|${ref.index ?? 1}`;
+      if (picked.has(same)) {
+        const v = resolvePart(picked.get(same), ref);
+        if (v !== undefined) block[field] = v;
+        continue;
+      }
       // `${dd[Author]}` reads a def-list term (its `dl` is consumed whole).
       if (ref.label && ref.node === 'dd') {
         const t = termValue(own, ref.label);
@@ -815,7 +824,7 @@ function decodeTag(protos, attrs, inner, depth) {
       const pool = ref.label ? (sect?.body ?? []) : own;
       const cands = pool.filter((n) => !consumed.has(n) && nodeInSlot(n, ref.node.split(/[|,]/), depth));
       const node = cands[(ref.index ?? 1) - 1];
-      if (node) { consumed.add(node); if (sect) consumed.add(sect.heading); block[field] = resolvePart(node, ref); }
+      if (node) { consumed.add(node); picked.set(same, node); if (sect) consumed.add(sect.heading); block[field] = resolvePart(node, ref); }
     }
     const rest = inner.filter((n) => !consumed.has(n));
     // An explicit `<region name=X>` in the instance body overrides which content
