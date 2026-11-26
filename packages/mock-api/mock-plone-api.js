@@ -1118,7 +1118,7 @@ function formatSearchItem(content, baseUrl) {
     'id': content.id,
     'title': content.title,
     'description': content.description || '',
-    'review_state': content.review_state || 'published',
+    'review_state': reviewStateOf(content),
     'is_working_copy': content.is_working_copy === true,
     'UID': content.UID,
     'is_folderish': content.is_folderish !== undefined ? content.is_folderish : true,
@@ -1526,7 +1526,7 @@ function formatNavItem(rawContent, urlPath, baseUrl, remainingDepth, sessionId) 
     'id': rawContent.id,
     'title': rawContent.title,
     'description': rawContent.description || '',
-    'review_state': rawContent.review_state || 'published',
+    'review_state': reviewStateOf(rawContent),
     'UID': rawContent.UID || `${rawContent.id}-uid`,
     'is_folderish': rawContent.is_folderish !== undefined ? rawContent.is_folderish : true,
     'hasPreviewImage': hasPreviewImage,
@@ -1861,6 +1861,43 @@ const SPW = {
 const ANONYMOUS_HIDDEN_STATES = new Set(['private', 'pending']);
 
 /**
+ * The types bound to NO workflow, and so with no review_state at all.
+ *
+ * Products/CMFPlone/profiles/default/workflows.xml binds
+ * simple_publication_workflow as the default and then lists File, Image and
+ * Plone Site with no workflow of their own. A real Plone answers `null` for
+ * their review_state — verified against a live site, where every one of its
+ * images reports null — and their @workflow is empty.
+ *
+ * This mock used to call them `published`, which is a state they cannot be in.
+ */
+const UNWORKFLOWED_TYPES = new Set(['File', 'Image', 'Plone Site']);
+
+/** Does this type have a workflow? */
+const isWorkflowed = (type) => !UNWORKFLOWED_TYPES.has(type);
+
+/**
+ * The state a newly created item is in.
+ *
+ * simple_publication_workflow's initial_state is `private`, so a page a
+ * frontend has just created is NOT public until someone publishes it. This
+ * mock used to answer `published`, so nothing built against it ever met the
+ * state a real Plone starts content in.
+ */
+const initialReviewState = (type) => (isWorkflowed(type) ? 'private' : null);
+
+/**
+ * The review_state to report for stored content.
+ *
+ * An unworkflowed type has none, whatever is on disk. For the rest, a fixture
+ * that does not say is taken as published: authored fixture content stands for
+ * a live site, and the states that matter to a test are the ones it writes
+ * down.
+ */
+const reviewStateOf = (content) =>
+  isWorkflowed(content?.['@type']) ? (content?.review_state ?? 'published') : null;
+
+/**
  * Whether the session's reader may view `item` (raw content or a summary).
  *
  * Plone filters EVERY catalog query by this (allowedRolesAndUsers), not just
@@ -1896,7 +1933,18 @@ function buildWorkflowComponent(cleanPath, baseUrl, sessionId) {
   // for that root died with "Maximum call stack size exceeded", and a Next
   // frontend fetches the root for its chrome, so every page did.
   const content = rawContentForComponents(cleanPath, sessionId);
-  const state = content?.review_state || 'published';
+  // Nothing to report for a type with no workflow. A real Plone answers
+  // {history: [], state: {id: "", title: ""}, transitions: []} — verified
+  // against a live site's Image — rather than inventing a state for it.
+  if (content && !isWorkflowed(content['@type'])) {
+    return {
+      '@id': `${fullUrl}/@workflow`,
+      history: [],
+      state: { id: '', title: '' },
+      transitions: [],
+    };
+  }
+  const state = reviewStateOf(content);
   return {
     '@id': `${fullUrl}/@workflow`,
     history: [
@@ -2322,7 +2370,7 @@ function summarizeRelations(content, baseUrl) {
       '@type': raw['@type'],
       title: raw.title,
       description: raw.description || '',
-      review_state: raw.review_state || 'published',
+      review_state: reviewStateOf(raw),
       image_field: null,
     };
     if (raw['@type'] === 'Image') {
@@ -2469,7 +2517,7 @@ function getFolderChildItems(folderPath, baseUrl) {
         '@id': `${baseUrl}${itemPath}`,
         '@type': rawContent['@type'],
         'description': rawContent.description || '',
-        'review_state': rawContent.review_state || 'published',
+        'review_state': reviewStateOf(rawContent),
         'title': rawContent.title,
         'UID': rawContent.UID,
         // A Volto site's summaries carry the item's image too (plone.volto adds
@@ -2603,7 +2651,7 @@ function enrichContent(content, urlPath, baseUrl, expandList = [], sessionId, ex
     ...workingCopyFields,
     '@id': fullUrl,
     'UID': transformed.UID || `${transformed.id || urlPath.replace(/\//g, '-')}-uid`,
-    'review_state': transformed.review_state || 'published',
+    'review_state': reviewStateOf(transformed),
     'is_folderish': isFolderish,
     'allow_discussion': transformed.allow_discussion !== undefined ? transformed.allow_discussion : false,
     'exclude_from_nav': transformed.exclude_from_nav || false,
@@ -4079,7 +4127,7 @@ app.post('/{*path}', (req, res, next) => {
           },
         }],
       },
-      'review_state': 'published',
+      'review_state': initialReviewState('Image'),
     };
 
     // Store in session-specific storage (or global if no session)
@@ -4131,7 +4179,7 @@ app.post('/{*path}', (req, res, next) => {
         'filename': body.file?.filename || rawName,
         'size': body.file?.data?.length || 0,
       },
-      'review_state': 'published',
+      'review_state': initialReviewState('File'),
     };
 
     const sessionId = getSessionId(req);
@@ -4174,7 +4222,7 @@ app.post('/{*path}', (req, res, next) => {
       created: now,
       modified: now,
       effective: now,
-      review_state: 'published',
+      review_state: initialReviewState(body['@type']),
     };
 
     const sessionId = getSessionId(req);
@@ -4216,7 +4264,7 @@ app.post('/{*path}', (req, res, next) => {
       created: now,
       modified: now,
       effective: now,
-      review_state: 'published',
+      review_state: initialReviewState(body['@type']),
     };
 
     const sessionId = getSessionId(req);
@@ -4562,7 +4610,19 @@ app.post(/.*\/@workflow\/[^/]+$/, (req, res) => {
   const content = getContent(cleanPath, sessionId);
   if (!content) return res.status(404).json({ error: { type: 'NotFound' } });
 
-  const from = content.review_state || 'published';
+  // A type with no workflow has no transitions to make. The exact body a real
+  // Plone sends here is unverified — confirming it means POSTing a transition
+  // to a live site — so this says plainly what is wrong rather than guessing
+  // at Plone's wording.
+  if (!isWorkflowed(content['@type'])) {
+    return res.status(400).json({
+      error: {
+        type: 'BadRequest',
+        message: `${content['@type']} has no workflow, so it has no transitions`,
+      },
+    });
+  }
+  const from = reviewStateOf(content);
   const move = (SPW[from] ?? []).find((t) => t.id === transitionId);
   if (!move) {
     return res.status(400).json({
@@ -4791,7 +4851,7 @@ app.get('{/*path}/@relations', (req, res) => {
       '@type': content['@type'],
       title: content.title,
       description: content.description || '',
-      review_state: content.review_state || 'published',
+      review_state: reviewStateOf(content),
       UID: content.UID,
     };
   };
@@ -5506,7 +5566,7 @@ app.post('{/*path}/@querystring-search', (req, res) => {
   // handler below covers them all instead of per-index branches that drift.
   const selectionFields = {
     portal_type: (item) => [item['@type']],
-    review_state: (item) => [item.review_state || 'published'],
+    review_state: (item) => [reviewStateOf(item)],
     // Items here come from loadRawContentFromDisk — the raw content schema
     // field is lowercase `subjects`. The catalog index name `Subject`
     // (capital S) is only added later by formatSearchItem. Read both so
