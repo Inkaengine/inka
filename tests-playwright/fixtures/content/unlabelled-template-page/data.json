@@ -16,8 +16,7 @@
             }
           ]
         }
-      ],
-      "plaintext": "This is a standalone block before the template"
+      ]
     },
     "template-header": {
       "@type": "slate",
@@ -33,7 +32,6 @@
           ]
         }
       ],
-      "plaintext": "Stale Header - Should Be Replaced By Merge",
       "templateId": "/_test_data/templates/unlabelled-layout",
       "templateInstanceId": "tpl-instance-1",
       "slotId": "header"
@@ -52,10 +50,9 @@
           ]
         }
       ],
-      "plaintext": "User content - different from template default",
       "templateId": "/_test_data/templates/unlabelled-layout",
       "templateInstanceId": "tpl-instance-1",
-      "slotId": "primary"
+      "slotId": "default"
     },
     "user-content-2": {
       "@type": "slate",
@@ -71,10 +68,9 @@
           ]
         }
       ],
-      "plaintext": "Second user content block in placeholder",
       "templateId": "/_test_data/templates/unlabelled-layout",
       "templateInstanceId": "tpl-instance-1",
-      "slotId": "primary"
+      "slotId": "default"
     },
     "template-slider": {
       "@type": "slider",
@@ -122,7 +118,6 @@
           ]
         }
       ],
-      "plaintext": "Stale Footer - Should Be Replaced By Merge",
       "templateId": "/_test_data/templates/unlabelled-layout",
       "templateInstanceId": "tpl-instance-1",
       "slotId": "footer"
@@ -138,8 +133,7 @@
             }
           ]
         }
-      ],
-      "plaintext": "This is a standalone block after the template"
+      ]
     }
   },
   "blocks_layout": {

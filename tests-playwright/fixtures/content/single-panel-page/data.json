@@ -26,8 +26,7 @@
           "blocks": {
             "only-text": {
               "@type": "slate",
-              "value": [{"type": "p", "children": [{"text": "The only panel's content"}]}],
-              "plaintext": "The only panel's content"
+              "value": [{"type": "p", "children": [{"text": "The only panel's content"}]}]
             }
           },
           "blocks_layout": {"items": ["only-text"]}

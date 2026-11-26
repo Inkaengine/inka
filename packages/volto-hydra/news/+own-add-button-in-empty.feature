@@ -1,0 +1,1 @@
+A frontend can draw its own add button in an empty placeholder, however it likes, by marking it `data-block-add="button"`: Inka then draws no `+` of its own, and clicking the button opens the block chooser beside it to fill the empty in place. The docs described this, but it was never implemented. @djay

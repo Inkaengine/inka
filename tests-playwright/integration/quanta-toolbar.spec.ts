@@ -126,7 +126,9 @@ test.describe('Quanta Toolbar - Dropdown Menu', () => {
     // Also includes Copy and Cut actions
     expect(options.some(o => o.includes('Copy'))).toBe(true);
     expect(options.some(o => o.includes('Cut'))).toBe(true);
-    expect(options.length).toBe(5);
+    // A block selected on its own can be wrapped, as a multi-selection can.
+    expect(options.some(o => o.includes('Wrap in container'))).toBe(true);
+    expect(options.length).toBe(6);
   });
 
   test('Clicking Remove option triggers delete', async ({ page }) => {

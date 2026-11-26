@@ -1,0 +1,1 @@
+Clicking an element whose link is edited on it (`data-edit-link`) while editing no longer does what the element does on the published page: a search form's submit button carrying the search page's link submitted the form and left the page being edited.

@@ -28,7 +28,6 @@
           ]
         }
       ],
-      "plaintext": "Stale Header - Should Be Replaced By Merge",
       "templateId": "resolveuid/test-layout-template-uid",
       "templateInstanceId": "tpl-instance-1",
       "slotId": "header"
@@ -44,6 +43,7 @@
         {
           "@id": "tpl-slide-1",
           "@type": "slide",
+          "slotId": "slide",
           "fixed": true,
           "readOnly": true,
           "templateId": "resolveuid/test-layout-template-uid",
@@ -54,6 +54,7 @@
         {
           "@id": "tpl-slide-2",
           "@type": "slide",
+          "slotId": "slide",
           "fixed": true,
           "readOnly": true,
           "templateId": "resolveuid/test-layout-template-uid",
@@ -77,7 +78,6 @@
           ]
         }
       ],
-      "plaintext": "Stale Footer - Should Be Replaced By Merge",
       "templateId": "resolveuid/test-layout-template-uid",
       "templateInstanceId": "tpl-instance-1",
       "slotId": "footer"
@@ -86,7 +86,7 @@
       "@type": "convGroupSrc",
       "templateId": "resolveuid/test-layout-template-uid",
       "templateInstanceId": "tpl-instance-1",
-      "slotId": "primary",
+      "slotId": "default",
       "fixed": false,
       "blocks": {
         "moved-grp-child": {
@@ -94,7 +94,7 @@
           "title": "Moved group child",
           "templateId": "resolveuid/test-layout-template-uid",
           "templateInstanceId": "tpl-instance-1",
-          "slotId": "primary"
+          "slotId": "primary-items"
         },
         "moved-snip-heading": {
           "@type": "convTargetA",
@@ -133,8 +133,7 @@
             }
           ]
         }
-      ],
-      "plaintext": "Conv footer page footer content"
+      ]
     }
   },
   "blocks_layout": {

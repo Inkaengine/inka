@@ -25,7 +25,7 @@ subjects:
   - templates
 title: Context Navigation Block
 blocks-matched: |
-  <block type="slate" value="${p,h*,ul,ol,blockquote,strong,em,a/slate}" plaintext="${p,h*,ul,ol,blockquote,strong,em,a/text}" />
+  <block type="slate" value="${p,h*,ul,ol,blockquote,strong,em,a/slate}" />
   <block type="title" _="${h1}" />
   <block type="codeExample">
     <region name="tabs" widget="object_list" idField="@id" typeField="@type">
@@ -48,19 +48,19 @@ A vertical navigation list for grouped pages — a left sidebar on desktop and a
 
 <block type="navItem">
 
-[Architecture](/docs/architecture)
+[Architecture](../architecture.md)
 
 </block>
 
 <block type="navItem">
 
-[Custom blocks](/docs/frontend-guide/custom-blocks)
+[Custom blocks](../frontend-guide/custom-blocks.md)
 
 </block>
 
 <block type="navItem">
 
-[Listings](/docs/frontend-guide/listings)
+[Listings](../frontend-guide/listings.md)
 
 </block>
 

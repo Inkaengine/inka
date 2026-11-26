@@ -1,0 +1,1 @@
+A listing whose fetch fails now fails, with the fetch's error, instead of being drawn as an empty listing. `expandListingBlocks` caught every error, so a broken API or a bad query looked like "no results".

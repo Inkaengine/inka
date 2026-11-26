@@ -39,6 +39,7 @@
     "react-dom": "18.2.0"
   },
   "devDependencies": {
+    "@inka/content-validator": "workspace:*",
     "@plone/scripts": "^3.6.1",
     "release-it": "^17.1.1"
   }

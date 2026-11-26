@@ -178,7 +178,8 @@ const Login = (props) => {
     );
   }
   /**
-   * Updated the Login Component to show a message about the Hydra project
+   * Updated the Login Component to say the editor is Inka, and which sites it
+   * edits
    */
   return (
     <div id="page-login">
@@ -188,11 +189,8 @@ const Login = (props) => {
           <Grid.Column>
             <Segment raised>
               <Header as="h2">
-                <a
-                  href="https://github.com/collective/volto-hydra"
-                  style={{ color: 'inherit' }}
-                >
-                  Hydra
+                <a href="https://inka.sh" style={{ color: 'inherit' }}>
+                  Inka
                 </a>
                 <Header.Subheader>Headless Visual Editor</Header.Subheader>
               </Header>

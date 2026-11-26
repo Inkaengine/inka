@@ -1,3 +1,4 @@
+import { describe, test, expect } from 'vitest';
 import {
   getAtPath,
   ensureMutablePath,
@@ -10,7 +11,7 @@ import {
 
 /**
  * getAtPath / ensureMutablePath are the shared object-path primitives behind
- * every container read/write (object_list dataPath, blocks_layout regionPath,
+ * every container read/write (object_list and blocks_layout regionPath,
  * dotted object fields like content.headline). The clone-along-path write is
  * subtle — these guard it directly.
  */

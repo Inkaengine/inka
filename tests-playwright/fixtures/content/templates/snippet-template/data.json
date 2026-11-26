@@ -18,8 +18,7 @@
           "type": "h2",
           "children": [{ "text": "Snippet Header - From Template" }]
         }
-      ],
-      "plaintext": "Snippet Header - From Template"
+      ]
     },
     "snippet-content": {
       "@type": "slate",
@@ -32,8 +31,7 @@
           "type": "p",
           "children": [{ "text": "Default snippet content" }]
         }
-      ],
-      "plaintext": "Default snippet content"
+      ]
     }
   },
   "blocks_layout": {

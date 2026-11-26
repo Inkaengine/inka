@@ -1,3 +1,4 @@
+import { test, expect } from 'vitest';
 import {
   collectContentFromTree,
   cloneBlockFilteringNested,
@@ -8,7 +9,7 @@ import {
  * into the template on save. It descends into "blocks maps" (shared blocks_layout dicts), but
  * isBlocksMap() is false for arrays, so a nested OBJECT_LIST region (a slider's `slides`) was
  * skipped — a template whose slot content lives inside a slider lost the central edit on save.
- * The apply path (fillContainerInto) already treats both storages uniformly; the capture must
+ * Filling a region (fillRegionEntries) already treats both storages uniformly; the capture must
  * too. Same blocks_layout-only assumption removed from convert/wrap/unwrap.
  */
 test('collectContentFromTree captures user slot content inside an object_list region (slider slides)', () => {
@@ -120,7 +121,8 @@ test('cloneBlockFilteringNested re-ids + filters children in an object_list regi
       { '@id': 'drop-1', '@type': 'slate', value: 'user-added' }, // no template marker → dropped
     ],
   };
-  const cloned = cloneBlockFilteringNested(block, uuidGenerator);
+  // A slider's slides are keyed by @id — the caller's schema says so.
+  const cloned = cloneBlockFilteringNested(block, uuidGenerator, { slider: { slides: '@id' } });
 
   expect(cloned.slides).toHaveLength(1); // non-template slide dropped
   expect(cloned.slides[0]['@id']).not.toBe('keep-1'); // re-id'd (no id collision on insert)

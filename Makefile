@@ -82,10 +82,6 @@ release-dry-run: ## Dry-run the release of the add-on on npmjs.org
 test: ## Run unit tests
 	pnpm test
 
-.PHONY: test-ci
-ci-test: ## Run unit tests in CI
-	CI=1 RAZZLE_JEST_CONFIG=$(CURRENT_DIR)/jest-addon.config.js pnpm --filter @plone/volto test -- --passWithNoTests
-
 .PHONY: backend-docker-start
 backend-docker-start:	## Starts a Docker-based backend for development
 	@echo "$(GREEN)==> Start Docker-based Plone Backend$(RESET)"
@@ -157,7 +153,7 @@ ci-acceptance-test: ## Run cypress tests in headless mode for CI
 # Next.js
 .PHONY: example-nextjs-admin
 example-nextjs-admin: ## Starts Volto, allowing reloading of the add-on during development
-	RAZZLE_DEFAULT_IFRAME_URL=http://localhost:3002 pnpm start
+	RAZZLE_DEFAULT_IFRAME_URL=http://localhost:3002 RAZZLE_TEMPLATES_PATH=/templates RAZZLE_TEMPLATE_TYPE=Template pnpm start
 
 .PHONY: example-nextjs-frontend
 example-nextjs-frontend: ## Starts nextjs example frontend
@@ -166,7 +162,7 @@ example-nextjs-frontend: ## Starts nextjs example frontend
 # Nuxt
 .PHONY: example-nextjs-admin
 example-nuxt-admin:
-	RAZZLE_DEFAULT_IFRAME_URL=http://localhost:3002 pnpm start
+	RAZZLE_DEFAULT_IFRAME_URL=http://localhost:3002 RAZZLE_TEMPLATES_PATH=/templates RAZZLE_TEMPLATE_TYPE=Template pnpm start
 
 .PHONY: example-nuxt-frontend
 example-nuxt-frontend: ## Starts nuxt example frontend

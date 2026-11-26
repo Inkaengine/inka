@@ -169,10 +169,8 @@ test.describe('Container UX: Edge-drag', () => {
     expect(slateAfterRect).not.toBeNull();
 
     // Initially slate-after's parent is the page (no data-block-uid ancestor).
-    const initialParent = await iframe.locator('[data-block-uid="slate-after"]').evaluate(
-      (el) => el.parentElement?.closest('[data-block-uid]')?.getAttribute('data-block-uid') || null,
-    );
-    expect(initialParent).toBeNull();
+    await expect(iframe.locator('[data-block-uid="slate-after"]').first()).toBeVisible();
+    await expect(iframe.locator('[data-block-uid] [data-block-uid="slate-after"]')).toHaveCount(0);
 
     // Drag the bottom handle down past slate-after's midpoint.
     const handleBox = await bottomHandle.boundingBox();
@@ -191,12 +189,9 @@ test.describe('Container UX: Edge-drag', () => {
     await page.mouse.up();
 
     // After release: slate-after is now a child of section-1.
-    await expect.poll(async () =>
-      iframe.locator('[data-block-uid="slate-after"]').evaluate(
-        (el) => el.parentElement?.closest('[data-block-uid]')?.getAttribute('data-block-uid') || null,
-      ),
-      { timeout: 5000 },
-    ).toBe('section-1');
+    await expect(
+      iframe.locator('[data-block-uid="section-1"] [data-block-uid="slate-after"]').first(),
+    ).toBeVisible();
 
     // Selection stays on the container the user was adjusting (section-1),
     // not on the absorbed sibling — they were resizing the boundary, not
@@ -211,16 +206,13 @@ test.describe('Container UX: Edge-drag', () => {
 
     const iframe = helper.getIframe();
 
-    // Select section-1 (near top). The page has 15 filler slates below it
+    // Select section-1 (near top). The page has 40 filler slates below it
     // — most are off-screen, so dragging the edge to absorb them requires
     // the iframe to auto-scroll while the cursor is held near the bottom.
     await iframe.locator('[data-block-uid="section-1"]').first().evaluate((el) => {
       (window as any).bridge?.selectBlock(el);
     });
     await helper.waitForIframeBlockHandle('section-1');
-
-    // Capture iframe scroll position before drag.
-    const initialScrollY = await iframe.locator('body').evaluate(() => window.scrollY);
 
     const bottomHandle = iframe.locator('.volto-hydra-edge-handle[data-edge="bottom"]');
     await expect(bottomHandle).toBeVisible({ timeout: 3000 });
@@ -229,38 +221,37 @@ test.describe('Container UX: Edge-drag', () => {
     const startX = handleBox!.x + handleBox!.width / 2;
     const startY = handleBox!.y + handleBox!.height / 2;
 
-    // filler-10 is well below the initial viewport. Drag toward the bottom
+    // The last filler is well below the initial viewport. Drag toward the bottom
     // edge of the iframe and hold there — auto-scroll should bring more
     // blocks into view, each absorbed in turn.
     const iframeBox = await page.locator('#previewIframe').boundingBox();
     expect(iframeBox).not.toBeNull();
     const dragTargetY = iframeBox!.y + iframeBox!.height - 30; // ~30px from iframe bottom
 
+    // The premise, said where it shows: the last filler is below the fold on
+    // any frontend (there are 40, some frontends draw them compactly), so only
+    // auto-scroll can bring it to the cursor.
+    const lastFiller = iframe.locator('[data-block-uid="filler-40"]').first();
+    await expect(lastFiller).not.toBeInViewport();
+
     await page.mouse.move(startX, startY);
     await page.mouse.down();
-    // Move toward the bottom-edge auto-scroll zone.
-    for (let step = 1; step <= 8; step++) {
-      await page.mouse.move(startX, startY + (dragTargetY - startY) * (step / 8));
-      await page.waitForTimeout(30);
-    }
-    // Hold position near the bottom edge — auto-scroll should fire repeatedly.
-    for (let i = 0; i < 30; i++) {
-      await page.mouse.move(startX, dragTargetY);
-      await page.waitForTimeout(60);
-    }
+    // Into the bottom-edge auto-scroll zone, in steps as a hand moves.
+    await page.mouse.move(startX, dragTargetY, { steps: 8 });
+    // Held there, the page scrolls on its own until the last filler is in view.
+    // It moves a step per animation frame, and a loaded machine draws few.
+    await expect(lastFiller).toBeInViewport({ timeout: 20000 });
     await page.mouse.up();
-
-    // The iframe scrolled.
-    const finalScrollY = await iframe.locator('body').evaluate(() => window.scrollY);
-    expect(finalScrollY).toBeGreaterThan(initialScrollY);
 
     // Several fillers were absorbed into section-1. We don't assert exact
     // count (depends on viewport height vs page height), but at least the
-    // first few should be inside.
-    const filler01Parent = await iframe.locator('[data-block-uid="filler-01"]').evaluate(
-      (el) => el.parentElement?.closest('[data-block-uid]')?.getAttribute('data-block-uid') || null,
-    );
-    expect(filler01Parent).toBe('section-1');
+    // first few should be inside. The absorb is the admin's change, drawn by
+    // the frontend when the page comes back to it: read once, right after the
+    // drag, it could still be the page before (CI, 1 in many). Waited for as
+    // it shows: filler-01 drawn inside section-1.
+    await expect(
+      iframe.locator('[data-block-uid="section-1"] [data-block-uid="filler-01"]').first(),
+    ).toBeVisible();
 
     // Selection still pinned to section-1.
     await helper.waitForIframeBlockHandle('section-1');
@@ -296,12 +287,9 @@ test.describe('Container UX: Edge-drag', () => {
     );
     await page.mouse.up();
 
-    await expect.poll(async () =>
-      iframe.locator('[data-block-uid="slate-before"]').evaluate(
-        (el) => el.parentElement?.closest('[data-block-uid]')?.getAttribute('data-block-uid') || null,
-      ),
-      { timeout: 5000 },
-    ).toBe('section-1');
+    await expect(
+      iframe.locator('[data-block-uid="section-1"] [data-block-uid="slate-before"]').first(),
+    ).toBeVisible();
 
     await helper.waitForIframeBlockHandle('section-1');
   });
@@ -318,10 +306,9 @@ test.describe('Container UX: Edge-drag', () => {
     await helper.waitForIframeBlockHandle('section-1');
 
     // section-child-1 starts inside section-1.
-    const initialParent = await iframe.locator('[data-block-uid="section-child-1"]').evaluate(
-      (el) => el.parentElement?.closest('[data-block-uid]')?.getAttribute('data-block-uid') || null,
-    );
-    expect(initialParent).toBe('section-1');
+    await expect(
+      iframe.locator('[data-block-uid="section-1"] [data-block-uid="section-child-1"]').first(),
+    ).toBeVisible();
 
     // Centre the section first. The bottom handle must not START inside hydra's
     // 80px auto-scroll band (_createAutoScroller): there, the drag holds the cursor
@@ -373,12 +360,9 @@ test.describe('Container UX: Edge-drag', () => {
     await page.mouse.up();
 
     // section-child-1 is now at page level (no [data-block-uid] ancestor).
-    await expect.poll(async () =>
-      iframe.locator('[data-block-uid="section-child-1"]').evaluate(
-        (el) => el.parentElement?.closest('[data-block-uid]')?.getAttribute('data-block-uid') || null,
-      ),
-      { timeout: 5000 },
-    ).toBe(null);
+    // Drawn, and inside no block now.
+    await expect(iframe.locator('[data-block-uid="section-child-1"]').first()).toBeVisible();
+    await expect(iframe.locator('[data-block-uid] [data-block-uid="section-child-1"]')).toHaveCount(0);
 
     await helper.waitForIframeBlockHandle('section-1');
   });
@@ -416,17 +400,9 @@ test.describe('Container UX: Edge-drag', () => {
     // text-2a's only sibling chain (col-2 → text-2a) gets fully covered, so
     // bottom-up promotion moves col-2 itself into col-1 (col-1 accepts column).
     // Result: text-2a is now a descendant of col-1 (via col-2).
-    await expect.poll(async () => {
-      return iframe.locator('[data-block-uid="text-2a"]').evaluate((el) => {
-        let current = el.parentElement?.closest('[data-block-uid]');
-        const chain = [];
-        while (current) {
-          chain.push(current.getAttribute('data-block-uid'));
-          current = current.parentElement?.closest('[data-block-uid]');
-        }
-        return chain;
-      });
-    }, { timeout: 5000 }).toContain('col-1');
+    await expect(
+      iframe.locator('[data-block-uid="col-1"] [data-block-uid="text-2a"]').first(),
+    ).toBeVisible();
 
     await helper.waitForIframeBlockHandle('col-1');
   });
@@ -442,10 +418,9 @@ test.describe('Container UX: Edge-drag', () => {
     });
     await helper.waitForIframeBlockHandle('section-1');
 
-    const initialParent = await iframe.locator('[data-block-uid="section-child-1"]').evaluate(
-      (el) => el.parentElement?.closest('[data-block-uid]')?.getAttribute('data-block-uid') || null,
-    );
-    expect(initialParent).toBe('section-1');
+    await expect(
+      iframe.locator('[data-block-uid="section-1"] [data-block-uid="section-child-1"]').first(),
+    ).toBeVisible();
 
     // Drag the top handle DOWNWARD into the container, past the first child's midpoint.
     const topHandle = iframe.locator('.volto-hydra-edge-handle[data-edge="top"]');
@@ -468,12 +443,9 @@ test.describe('Container UX: Edge-drag', () => {
 
     // section-child-1 is now at page level (expelled out the top means it
     // sits BEFORE section-1 in the parent's layout).
-    await expect.poll(async () =>
-      iframe.locator('[data-block-uid="section-child-1"]').evaluate(
-        (el) => el.parentElement?.closest('[data-block-uid]')?.getAttribute('data-block-uid') || null,
-      ),
-      { timeout: 5000 },
-    ).toBe(null);
+    // Drawn, and inside no block now.
+    await expect(iframe.locator('[data-block-uid="section-child-1"]').first()).toBeVisible();
+    await expect(iframe.locator('[data-block-uid] [data-block-uid="section-child-1"]')).toHaveCount(0);
 
     await helper.waitForIframeBlockHandle('section-1');
   });
@@ -511,17 +483,9 @@ test.describe('Container UX: Edge-drag', () => {
     // col-1 has [text-1a, text-1b] — text-1b's midpoint is crossed; full sibling
     // coverage requires text-1a too. With only text-1b covered, no promotion;
     // text-1b moves directly into col-2.
-    await expect.poll(async () => {
-      return iframe.locator('[data-block-uid="text-1b"]').evaluate((el) => {
-        let current = el.parentElement?.closest('[data-block-uid]');
-        const chain = [];
-        while (current) {
-          chain.push(current.getAttribute('data-block-uid'));
-          current = current.parentElement?.closest('[data-block-uid]');
-        }
-        return chain;
-      });
-    }, { timeout: 5000 }).toContain('col-2');
+    await expect(
+      iframe.locator('[data-block-uid="col-2"] [data-block-uid="text-1b"]').first(),
+    ).toBeVisible();
 
     await helper.waitForIframeBlockHandle('col-2');
   });
@@ -571,15 +535,9 @@ test.describe('Container UX: Edge-drag', () => {
     await page.mouse.up();
 
     // Both teasers should now live inside grid-1.
-    await expect.poll(async () => {
-      const cells = ['grid-cell-3', 'grid-cell-4'];
-      const parents = await Promise.all(cells.map((c) =>
-        iframe.locator(`[data-block-uid="${c}"]`).evaluate(
-          (el) => el.parentElement?.closest('[data-block-uid]')?.getAttribute('data-block-uid') || null,
-        ),
-      ));
-      return parents.every((p) => p === 'grid-1');
-    }, { timeout: 5000 }).toBe(true);
+    for (const cell of ['grid-cell-3', 'grid-cell-4']) {
+      await expect(iframe.locator(`[data-block-uid="grid-1"] [data-block-uid="${cell}"]`).first()).toBeVisible();
+    }
   });
 
   // Cross-axis expel: dragging the left/right edge inward on a vertical-stack
@@ -597,10 +555,9 @@ test.describe('Container UX: Edge-drag', () => {
     });
     await helper.waitForIframeBlockHandle('section-1');
 
-    const initialParent = await iframe.locator('[data-block-uid="section-child-1"]').evaluate(
-      (el) => el.parentElement?.closest('[data-block-uid]')?.getAttribute('data-block-uid') || null,
-    );
-    expect(initialParent).toBe('section-1');
+    await expect(
+      iframe.locator('[data-block-uid="section-1"] [data-block-uid="section-child-1"]').first(),
+    ).toBeVisible();
 
     const rightHandle = iframe.locator('.volto-hydra-edge-handle[data-edge="right"]');
     await expect(rightHandle).toBeVisible({ timeout: 3000 });
@@ -620,12 +577,9 @@ test.describe('Container UX: Edge-drag', () => {
     );
     await page.mouse.up();
 
-    await expect.poll(async () =>
-      iframe.locator('[data-block-uid="section-child-1"]').evaluate(
-        (el) => el.parentElement?.closest('[data-block-uid]')?.getAttribute('data-block-uid') || null,
-      ),
-      { timeout: 5000 },
-    ).toBe(null);
+    // Drawn, and inside no block now.
+    await expect(iframe.locator('[data-block-uid="section-child-1"]').first()).toBeVisible();
+    await expect(iframe.locator('[data-block-uid] [data-block-uid="section-child-1"]')).toHaveCount(0);
 
     await helper.waitForIframeBlockHandle('section-1');
   });

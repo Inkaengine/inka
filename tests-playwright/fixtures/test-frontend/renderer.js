@@ -209,7 +209,7 @@ function scaleUrl(baseUrl, download) {
  *
  * This reference frontend exists to demonstrate the contracts Inka asserts, and
  * "an image must use the sizes its data offers" is one of them (see
- * helpers/imageSizes.mjs). Rendering a bare `src` while the data advertises
+ * imageSizes.mjs in @inka/testing). Rendering a bare `src` while the data advertises
  * 400/800/1200 is exactly the failure that rule is for, so the reference has to
  * do the thing it asks of everyone else — otherwise the rule either never fires
  * or fires on Inka's own fixtures.
@@ -254,17 +254,22 @@ function getImageSrcset(value, block) {
         .join(', ');
 }
 
-/**
- * Extract URL from various formats for links.
- * Handles: array of objects [{@id: '/path'}], object {@id: '/path'}, or string '/path'
- * @param {Array|Object|string} value - Link value in various formats
- * @returns {string} Link URL
- */
+// A link field (object_browser) holds one shape: the list its widget writes,
+// `[{ '@id': url }]`. Unset or emptied, there is no link.
 function getLinkUrl(value) {
-    if (!value) return '';
-    // Extract @id from array or object format
-    const url = Array.isArray(value) ? value[0]?.['@id'] : value?.['@id'] || value;
-    return typeof url === 'string' ? stripApiOrigin(url) : '';
+    return stripApiOrigin(getLinkAddress(value));
+}
+
+/**
+ * The address a link field holds, exactly as stored: for an embed or a media
+ * file, which is loaded from where it is, not navigated to on this site.
+ */
+function getLinkAddress(value) {
+    if (value == null || (Array.isArray(value) && value.length === 0)) return '';
+    if (!Array.isArray(value) || typeof value[0]?.['@id'] !== 'string') {
+        throw new Error(`a link is stored as [{"@id": url}], got ${JSON.stringify(value)}`);
+    }
+    return value[0]['@id'];
 }
 
 /**
@@ -402,10 +407,15 @@ async function renderBlock(blockId, block, { inListing = false } = {}) {
         case 'convTargetA':
         case 'convTargetB':
         case 'convAlien':
-            wrapper.innerHTML = `<p data-conv-type="${block['@type']}">${escapeHtml(block.title || block['@type'])}</p>`;
+            wrapper.innerHTML = `<p data-conv-type="${block['@type']}">${escapeHtml(block.title || block['@type'])}</p>`
+                // Only a source has a note field (a target may still carry the
+                // value from a conversion, unshown, for converting back).
+                + (block['@type'] === 'convSource' && block.note
+                    ? `<p data-conv-note>${escapeHtml(block.note)}</p>` : '');
             break;
         case 'convBox':
         case 'convBoxMulti':
+        case 'convBoxAll':
             wrapper.innerHTML = await renderConvBox(block);
             break;
         case 'convGroupSrc':
@@ -711,20 +721,25 @@ function renderSlateBlock(block) {
 function renderListItems(items) {
     if (!items || !Array.isArray(items)) return '';
 
-    return items.map(item => {
+    // Each entry is an item's opening tag and content, closed when the next
+    // entry starts: a nested list (an indented item) is kept beside the item
+    // it belongs to, and drawn INSIDE it, where HTML wants it.
+    const entries = [];
+    for (const item of items) {
+        const nodeIdAttr = item.nodeId !== undefined ? ` data-node-id="${item.nodeId}"` : '';
         if (item.type === 'li') {
-            const nodeIdAttr = item.nodeId !== undefined ? ` data-node-id="${item.nodeId}"` : '';
-            const content = renderChildren(item.children || []);
-            return `<li${nodeIdAttr}>${content}</li>`;
+            entries.push({ open: `<li${nodeIdAttr}>${renderChildren(item.children || [])}`, close: '</li>' });
+        } else if (item.type === 'ul' || item.type === 'ol') {
+            const list = `<${item.type}${nodeIdAttr}>${renderListItems(item.children)}</${item.type}>`;
+            const prev = entries[entries.length - 1];
+            if (prev?.close === '</li>') prev.open += list;
+            else entries.push({ open: list, close: '' });
+        } else {
+            // If not an li or nested list, render as inline content
+            entries.push({ open: renderChildren([item]), close: '' });
         }
-        // Handle nested lists (ul/ol inside ul/ol) for indentation
-        if (item.type === 'ul' || item.type === 'ol') {
-            const nodeIdAttr = item.nodeId !== undefined ? ` data-node-id="${item.nodeId}"` : '';
-            return `<${item.type}${nodeIdAttr}>${renderListItems(item.children)}</${item.type}>`;
-        }
-        // If not an li or nested list, render as inline content
-        return renderChildren([item]);
-    }).join('');
+    }
+    return entries.map((entry) => entry.open + entry.close).join('');
 }
 
 /**
@@ -738,7 +753,7 @@ function renderChildren(children) {
     return children.map(child => {
         // Handle inline element nodes (new format from toggleInlineFormat)
         // Add data-node-id for selection restoration
-        if (child.type === 'strong') {
+        if (child.type === 'strong' || child.type === 'b') {
             const nodeId = child.nodeId !== undefined ? ` data-node-id="${child.nodeId}"` : '';
             return `<span style="font-weight: bold"${nodeId}>${renderChildren(child.children)}</span>`;
         }
@@ -753,6 +768,11 @@ function renderChildren(children) {
         if (child.type === 'u') {
             const nodeId = child.nodeId !== undefined ? ` data-node-id="${child.nodeId}"` : '';
             return `<span style="text-decoration: underline"${nodeId}>${renderChildren(child.children)}</span>`;
+        }
+        if (child.type === 'sub' || child.type === 'sup') {
+            const nodeId = child.nodeId !== undefined ? ` data-node-id="${child.nodeId}"` : '';
+            const align = child.type === 'sub' ? 'sub' : 'super';
+            return `<span style="vertical-align: ${align}; font-size: smaller"${nodeId}>${renderChildren(child.children)}</span>`;
         }
         if (child.type === 'code') {
             const nodeId = child.nodeId !== undefined ? ` data-node-id="${child.nodeId}"` : '';
@@ -1242,14 +1262,14 @@ defineMapEmbedElement();
 
 /**
  * Render a maps block.
- * @param {Object} block - Maps block data with url
+ * @param {Object} block - Maps block data; `url` is a link list
  * @returns {string} HTML string
  */
 function renderMapsBlock(block) {
-    const url = block.url || '';
+    const url = getLinkAddress(block.url);
     const title = block.title || 'Map';
     if (url) {
-        return `<div class="maps-block">
+        return `<div class="maps-block" data-edit-link="url">
             <map-embed src="${url}" frame-title="${title}"></map-embed>
         </div>`;
     }
@@ -1257,17 +1277,28 @@ function renderMapsBlock(block) {
 }
 
 function renderVideoBlock(block) {
-    const url = block.url || '';
+    const url = getLinkAddress(block.url);
     const ytMatch = url.match(/(?:youtu\.be\/|youtube\.com\/(?:watch\?v=|embed\/))([^&?/]+)/);
+    // The preview image is what shows before the video plays: the <video>'s
+    // poster, or for YouTube a picture linked to the video. Empty means absent.
+    const preview = block.preview_image ? getImageUrl(block.preview_image) : '';
+    if (ytMatch && preview) {
+        return `<div class="video-block" data-edit-link="url">
+            <a href="https://www.youtube.com/watch?v=${ytMatch[1]}" data-edit-link="url">
+                <img data-edit-media="preview_image" src="${preview}" alt="Play video" style="width:100%">
+            </a>
+        </div>`;
+    }
     if (ytMatch) {
-        return `<div class="video-block">
+        return `<div class="video-block" data-edit-link="url">
             <iframe src="https://www.youtube.com/embed/${ytMatch[1]}" allowfullscreen
                 style="width:100%;aspect-ratio:16/9;border:none" title="Video"></iframe>
         </div>`;
     }
     if (url) {
-        return `<div class="video-block">
-            <video src="${url}" controls style="width:100%"></video>
+        const poster = preview ? ` poster="${preview}" data-edit-media="preview_image"` : '';
+        return `<div class="video-block" data-edit-link="url">
+            <video src="${url}" controls style="width:100%"${poster}></video>
         </div>`;
     }
     return `<div class="video-block"><p>No video URL set</p></div>`;
@@ -1304,7 +1335,7 @@ function renderSuggestBlock(block, blockId) {
 }
 
 function renderHeadingBlock(block) {
-    const tag = block.tag || 'h2';
+    const tag = block.tag;
     const text = block.heading || '';
     return `<${tag} data-edit-text="heading">${text}</${tag}>`;
 }
@@ -1418,10 +1449,12 @@ function renderTocBlock(block) {
             const b = formData.blocks[id];
             if (!b) continue;
             if (b['@type'] === 'heading' && b.heading) {
-                entries.push({ id, level: parseInt((b.tag || 'h2').slice(1)), text: b.heading });
+                entries.push({ id, level: parseInt(b.tag.slice(1)), text: b.heading });
             } else if (b['@type'] === 'slate' && b.value?.[0]?.type?.match(/^h[1-6]$/)) {
                 const level = parseInt(b.value[0].type.slice(1));
-                const text = b.plaintext || b.value[0].children?.map(c => c.text).join('') || '';
+                // The heading's own words: inline ones (bold, a link) hold theirs in children.
+                const words = (nodes) => nodes.map((n) => (typeof n.text === 'string' ? n.text : words(n.children))).join('');
+                const text = words(b.value[0].children);
                 if (text.trim()) entries.push({ id, level, text });
             }
         }
@@ -1440,10 +1473,20 @@ function renderTocBlock(block) {
  * @param {Object} block - Form block data
  * @returns {string} HTML string
  */
+// The contract (docs/frontend-guide/templates.md "Expand every container"): a form's
+// fields go through the merge, named by their id field.
+function expandFormFields(block) {
+    return window._expandTemplatesSync(block.subblocks || [], {
+        templateState: window._templateState,
+        templates: {},
+        idField: 'field_id',
+    });
+}
+
 function renderFormBlock(block) {
     const title = block.title || '';
     const description = block.description || '';
-    const subblocks = block.subblocks || [];
+    const subblocks = expandFormFields(block);
     const submitLabel = block.submit_label || 'Submit';
     const successMessage = block.send_message || 'Thank you, your form has been submitted.';
 
@@ -1460,17 +1503,20 @@ function renderFormBlock(block) {
         const label = field.label || '';
         const required = field.required || false;
         html += `<div class="form-field" data-block-uid="${fieldId}" data-block-add="bottom" style="margin-bottom: 12px;">`;
-        html += `<label data-edit-text="label" style="display: block; margin-bottom: 4px; font-weight: bold;">${label}${required ? ' *' : ''}</label>`;
         if (fieldType === 'empty') {
             // A typed object_list item seeded as 'empty' (type in field_type, no @type).
-            // Render a selectable placeholder; the admin supplies the '+' to pick its type.
-            // No data-edit-text: "Empty field — pick a type" is a hint the
-            // frontend writes, not content the author owns. No schema declares
-            // a `placeholder` field, so annotating it promised an edit that
-            // hydra correctly refuses — the same lie as a "Read More" label on
-            // a block with no button.
-            html += `<span style="color:#999;">Empty field — pick a type</span>`;
-        } else if (fieldType === 'textarea') {
+            // Drawn as empty space (docs: Empty Blocks) — no label, no control:
+            // the admin supplies the '+' that picks its type. On one page this
+            // frontend draws its OWN add button instead (data-block-add="button").
+            if (window.hydraTestOwnAddButton) {
+                // A ghost: styled, named for assistive tech, no visible text.
+                html += `<button type="button" data-block-add="button" aria-label="Add a question" style="width: 100%; min-height: 48px; border: 2px dashed #9ab; border-radius: 6px; background: rgba(150, 170, 190, 0.08); cursor: pointer;"></button>`;
+            }
+            html += '</div>';
+            continue;
+        }
+        html += `<label data-edit-text="label" style="display: block; margin-bottom: 4px; font-weight: bold;">${label}${required ? ' *' : ''}</label>`;
+        if (fieldType === 'textarea') {
             html += `<textarea name="${fieldId}" style="width: 100%; padding: 8px; border: 1px solid #ccc; border-radius: 4px;" rows="3"></textarea>`;
         } else if (fieldType === 'select') {
             const values = field.input_values || [];
@@ -1502,7 +1548,7 @@ function renderFormBlock(block) {
  */
 function attachFormValidation(formEl, block) {
     if (!formEl) return;
-    const subblocks = block.subblocks || [];
+    const subblocks = expandFormFields(block);
     const submitBtn = formEl.querySelector('.form-submit');
     if (!submitBtn) return;
 
@@ -1811,14 +1857,13 @@ async function renderContextNavigationBlock(block, blockId) {
     // Hydra seeds an '@type: empty' placeholder when a container has no defaultBlockType and
     // multiple allowedBlocks (getEmptyBlockType returns 'empty'). A custom container renderer
     // MUST tolerate that transient type — render it as a plain, selectable placeholder (not
-    // throw). The admin then shows a '+' on the selected empty to pick its type; the renderer
-    // doesn't need to make it clickable itself.
+    // throw), drawn as empty space with no text (docs: Empty Blocks). The admin then shows a
+    // '+' on the selected empty to pick its type; the renderer doesn't need to make it
+    // clickable itself.
     const emptyChildId = items.find((id) => blocks[id]?.['@type'] === 'empty');
     if (emptyChildId) {
         return `<nav data-block-uid="${escapeAttr(uid)}" aria-label="${escapeHtml(ariaLabel)}" class="context-navigation">` +
-            `<div data-block-uid="${escapeAttr(emptyChildId)}" style="display:block;min-height:40px;padding:0.5rem;color:#999;">` +
-            `Empty navigation — pick a type` +
-            `</div>` +
+            `<div data-block-uid="${escapeAttr(emptyChildId)}" style="display:block;min-height:40px;padding:0.5rem;"></div>` +
             `</nav>`;
     }
 
@@ -2569,8 +2614,8 @@ function renderSocialLinksBlock(block) {
     for (const link of links) {
         const uid = link['@id'];
         html += `<a data-block-uid="${uid}" data-block-add="right" data-edit-link="url" ` +
-            `href="${escapeAttr(link.url || '')}" target="_blank" rel="noopener noreferrer">` +
-            `${escapeHtml(link.url || '')}</a>`;
+            `href="${escapeAttr(getLinkUrl(link.url))}" target="_blank" rel="noopener noreferrer">` +
+            `${escapeHtml(getLinkUrl(link.url))}</a>`;
     }
     return html;
 }

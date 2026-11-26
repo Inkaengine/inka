@@ -17,8 +17,7 @@
           "type": "p",
           "children": [{ "text": "Footer Branding - Forced Layout" }]
         }
-      ],
-      "plaintext": "Footer Branding - Forced Layout"
+      ]
     },
     "default-slot": {
       "@type": "slate",
@@ -30,8 +29,7 @@
           "type": "p",
           "children": [{ "text": "" }]
         }
-      ],
-      "plaintext": ""
+      ]
     },
     "footer-cols": {
       "@type": "columns",
@@ -53,8 +51,7 @@
               "readOnly": true,
               "templateId": "resolveuid/footer-layout-uid",
               "slotId": "footer-col-cell",
-              "value": [{ "type": "p", "children": [{ "text": "Footer Column Cell" }] }],
-              "plaintext": "Footer Column Cell"
+              "value": [{ "type": "p", "children": [{ "text": "Footer Column Cell" }] }]
             }
           },
           "blocks_layout": { "items": ["footer-col-cell"] }

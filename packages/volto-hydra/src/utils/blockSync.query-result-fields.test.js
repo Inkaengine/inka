@@ -1,12 +1,8 @@
 /**
  * The source fields a listing can map onto its item blocks.
  *
- * `QUERY_RESULT_FIELDS` is what the field-mapping widget offers as sources, so a
- * result field missing from it cannot be mapped by an author at all — the mapping
- * exists only if a block's recipe declares it, and then it can be neither changed
- * nor recreated. Categories were in exactly that position: every Plone result
- * carries `Subject` (the keyword index behind tags/topics), the design system's
- * list item renders them as pills, and no author could wire the two together.
+ * A frontend declares what a result offers (`sourceFields` on its mapping
+ * widget); the item type's declared mappings are proposed against that.
  */
 import { describe, test, expect, vi } from 'vitest';
 
@@ -18,35 +14,27 @@ vi.mock('../context', () => ({
   getLiveBlockData: () => undefined,
 }));
 
-import { QUERY_RESULT_FIELDS, computeSmartDefaults } from './blockSync';
+import { computeSmartDefaults } from './blockSync';
 
-describe('QUERY_RESULT_FIELDS', () => {
-  test("offers the result's categories as a mappable source", () => {
-    expect(QUERY_RESULT_FIELDS.Subject).toBeDefined();
-    // A keyword index holds a LIST — one pill per category. Typed as `array` so
-    // a lone value is still carried as a list rather than joined into a string
-    // (the `string` conversion turns ['a','b'] into "a, b", which a pill
-    // renderer then shows as nothing).
-    expect(QUERY_RESULT_FIELDS.Subject.type).toBe('array');
-    expect(QUERY_RESULT_FIELDS.Subject.title).toBeTruthy();
-  });
+// What a listing's mapping widget offers as sources: the frontend declares them
+// (`sourceFields`), as the fields its fetcher returns.
+const SOURCES = {
+  getURL: { title: 'URL', type: 'string' },
+  title: { title: 'Title', type: 'string' },
+  Subject: { title: 'Categories', type: 'array' },
+};
 
-  test('a declared categories mapping survives when the target field exists', () => {
-    const target = {
-      properties: {
-        title: { title: 'Title' },
-        tags: { title: 'Categories', type: 'array', items: { type: 'string' } },
-      },
-    };
-    const mapping = computeSmartDefaults(
-      QUERY_RESULT_FIELDS,
-      target,
-      { '@default': { Subject: { field: 'tags', type: 'array' } } },
-    );
-    expect(mapping.Subject).toBeTruthy();
-    const field = typeof mapping.Subject === 'string' ? mapping.Subject : mapping.Subject.field;
-    expect(field).toBe('tags');
+test('a declared categories mapping survives when the target field exists', () => {
+  const target = {
+    properties: {
+      title: { title: 'Title' },
+      tags: { title: 'Categories', type: 'array', items: { type: 'string' } },
+    },
+  };
+  const mapping = computeSmartDefaults(SOURCES, target, {
+    '@default': { Subject: { field: 'tags', type: 'array' } },
   });
+  expect(mapping.Subject).toEqual({ field: 'tags', type: 'array' });
 });
 
 describe('computeSmartDefaults keeps the conversion a list needs', () => {
@@ -63,24 +51,44 @@ describe('computeSmartDefaults keeps the conversion a list needs', () => {
     // for link and image only, so `type: 'array'` was silently dropped — and a
     // keyword index that returns ONE value then arrives as a bare string, which
     // a pill renderer skips.
-    const mapping = computeSmartDefaults(QUERY_RESULT_FIELDS, target, {
+    const mapping = computeSmartDefaults(SOURCES, target, {
       '@default': { Subject: { field: 'tags', type: 'array' } },
     });
     expect(mapping.Subject).toEqual({ field: 'tags', type: 'array' });
   });
 
   test('a bare mapping onto a list field gains the list conversion', () => {
-    const mapping = computeSmartDefaults(QUERY_RESULT_FIELDS, target, {
+    const mapping = computeSmartDefaults(SOURCES, target, {
       '@default': { Subject: 'tags' },
     });
     expect(mapping.Subject).toEqual({ field: 'tags', type: 'array' });
   });
 
-  test('a link target still gets its conversion, and a plain field stays bare', () => {
-    const mapping = computeSmartDefaults(QUERY_RESULT_FIELDS, target, {
-      '@default': { '@id': 'url', title: 'title' },
+  // Proposed as the widget stores it: every entry with its conversion, which
+  // the listing renderer, having no schema, converts by.
+  test('every entry carries the conversion its field needs', () => {
+    const mapping = computeSmartDefaults(SOURCES, target, {
+      '@default': { getURL: 'url', title: 'title' },
     });
-    expect(mapping['@id']).toEqual({ field: 'url', type: 'link' });
-    expect(mapping.title).toBe('title');
+    expect(mapping.getURL).toEqual({ field: 'url', type: 'link' });
+    expect(mapping.title).toEqual({ field: 'title', type: 'string' });
+  });
+
+  // A feed offers fewer sources than a catalog listing (an RSS entry has no
+  // lead image): an entry for one it doesn't offer would be stored, and refused.
+  test("a declared entry for a source the mapping doesn't offer isn't proposed", () => {
+    const mapping = computeSmartDefaults(
+      { getURL: SOURCES.getURL, title: SOURCES.title },
+      target,
+      { '@default': { getURL: 'url', title: 'title', Subject: 'tags' } },
+    );
+    expect(Object.keys(mapping)).toEqual(['getURL', 'title']);
+  });
+
+  test("a declared entry the source can't become isn't proposed", () => {
+    const mapping = computeSmartDefaults(SOURCES, target, {
+      '@default': { Subject: 'url', title: 'title' },
+    });
+    expect(mapping).not.toHaveProperty('Subject');
   });
 });

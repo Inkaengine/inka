@@ -1,3 +1,8 @@
+/** The content type a file is uploaded as: image/* an Image, anything else a File. */
+export function uploadTypeOf(file) {
+  return (file.type || '').startsWith('image/') ? 'Image' : 'File';
+}
+
 /**
  * Build a createContent payload from a dropped/picked file and its data URL.
  * image/* → Plone Image (image field); anything else → File (file field).
@@ -11,10 +16,10 @@ export function buildUploadPayload(file, dataUrl) {
   if (!fields) {
     throw new Error(`buildUploadPayload: unparseable data URL for ${file.name}`);
   }
-  const isImage = (file.type || '').startsWith('image/');
-  const field = isImage ? 'image' : 'file';
+  const type = uploadTypeOf(file);
+  const field = type === 'Image' ? 'image' : 'file';
   return {
-    '@type': isImage ? 'Image' : 'File',
+    '@type': type,
     title: file.name,
     [field]: {
       data: fields[3],

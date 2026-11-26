@@ -1,13 +1,11 @@
 import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest';
 
-// HydraSchemaContext.js is JSX inside a .js file (the admin build uses babel; vitest
-// uses esbuild and can't parse it). The slotId-inheritance path doesn't touch the
-// schema context, so stub the module to keep the import graph parseable.
+// The schema context block sync reads, stubbed so each test chooses it.
 const { getHydraSchemaContext, getLiveBlockData } = vi.hoisted(() => ({
   getHydraSchemaContext: vi.fn(() => ({})),
   getLiveBlockData: vi.fn(() => undefined),
 }));
-vi.mock('../context', () => ({
+vi.mock('@volto-hydra/helpers/hydraSchemaContext.js', () => ({
   getHydraSchemaContext,
   setHydraSchemaContext: () => {},
   getLiveBlockData,
@@ -17,37 +15,12 @@ import {
   applyBlockDefaultsWithContext,
   createSchemaEnhancerFromRecipe,
   getConversionMap,
-  validateFieldMappings,
   validateFieldRulesPlacement,
   getBlockTypeChoices,
   hideParentOwnedFields,
   completeFrontendSchema,
 } from './blockSync';
 import config from '@plone/volto/registry';
-
-describe('validateFieldMappings — @default accepts any search-metadata field', () => {
-  const warnFor = (mapping) => {
-    const spy = vi.spyOn(console, 'warn').mockImplementation(() => {});
-    validateFieldMappings('blk', { fieldMappings: { '@default': mapping } });
-    const warned = spy.mock.calls.length > 0;
-    spy.mockRestore();
-    return warned;
-  };
-
-  test('canonical fields do not warn', () => {
-    expect(warnFor({ '@id': 'href', title: 'title', description: 'desc', image: 'img' })).toBe(false);
-  });
-
-  test('other search-metadata fields (tags, dates) do not warn', () => {
-    // @default keys are whatever a catalog search returns as metadata — not just
-    // the canonical four. Subject/created/effective must be accepted.
-    expect(warnFor({ title: 'heading', Subject: 'tags', created: 'createdOn', effective: 'publishedOn' })).toBe(false);
-  });
-
-  test('block-field names (fieldRules keys) still warn — the guardrail', () => {
-    expect(warnFor({ title: 'title', label: 'x', required: 'y' })).toBe(true);
-  });
-});
 
 /**
  * getBlockTypeChoices computes the type/convert picker's options. Its
@@ -690,14 +663,19 @@ describe('inheritSchemaFrom — the item type default follows the container', ()
     inheritSchemaFrom: {
       typeField: 'variation',
       mappingField: 'fieldMapping',
-      blocksField: '..',
-      filterConvertibleFrom: '@default',
-      default: 'summary',
     },
   };
   const baseSchema = {
     fieldsets: [{ id: 'default', title: 'Default', fields: ['variation'] }],
-    properties: { variation: { title: 'Item Type', widget: 'blockTypeSelect' } },
+    properties: {
+      variation: {
+        title: 'Item Type',
+        widget: 'blockTypeSelect',
+        blocksField: '..',
+        filterConvertibleFrom: '@default',
+        default: 'summary',
+      },
+    },
   };
   const resolvedDefault = (allowedSiblingTypes) => {
     const prev = config.blocks?.blocksConfig;
@@ -730,6 +708,72 @@ describe('inheritSchemaFrom — the item type default follows the container', ()
   });
 });
 
+describe('inheritSchemaFrom — the type picker\'s options are declared on its field', () => {
+  // `blocksField`, `filterConvertibleFrom` and the preferred `default` are the
+  // blockTypeSelect field's options (container-blocks.md), read there by the
+  // picker. The recipe reads them from the same field, so the type the picker
+  // offers is the type stored — a listing in a link list, which allows only
+  // `link`, stores `link` as it lands.
+  const intl = { formatMessage: (m) => (m && m.defaultMessage) || '' };
+  const blocksConfig = {
+    listing: { title: 'Listing' },
+    link: { title: 'Link', fieldMappings: { '@default': { title: 'title' } } },
+    card: { title: 'Card', fieldMappings: { '@default': { title: 'title' } } },
+  };
+  const enhance = (recipe, variation) => {
+    const prev = config.blocks?.blocksConfig;
+    config.blocks = config.blocks || {};
+    config.blocks.blocksConfig = blocksConfig;
+    try {
+      return createSchemaEnhancerFromRecipe(recipe)({
+        schema: {
+          fieldsets: [{ id: 'default', title: 'Default', fields: ['variation'] }],
+          properties: { variation },
+        },
+        formData: { '@type': 'listing' },
+        intl,
+        blockPathMap: {
+          'listing-1': { blockType: 'listing', parentId: 'll-1', allowedSiblingTypes: ['link', 'listing'] },
+        },
+        blockId: 'listing-1',
+      }).properties.variation;
+    } finally {
+      config.blocks.blocksConfig = prev;
+    }
+  };
+  const recipe = { inheritSchemaFrom: { typeField: 'variation', mappingField: 'fieldMapping' } };
+
+  test('the type its position allows is the default, which the editor stores', () => {
+    const field = enhance(recipe, {
+      title: 'Item Type',
+      widget: 'blockTypeSelect',
+      filterConvertibleFrom: '@default',
+      blocksField: '..',
+    });
+    expect(field.choices.map(([v]) => v)).toEqual(['link']);
+    expect(field.default).toBe('link');
+  });
+
+  test("the field's own default is a preference, kept where the position allows it", () => {
+    const field = enhance(recipe, {
+      widget: 'blockTypeSelect',
+      filterConvertibleFrom: '@default',
+      blocksField: '..',
+      default: 'card',
+    });
+    expect(field.default).toBe('link');
+  });
+
+  test('a recipe declaring them is refused: the field is their one place', () => {
+    expect(() =>
+      enhance(
+        { inheritSchemaFrom: { ...recipe.inheritSchemaFrom, blocksField: '..', filterConvertibleFrom: '@default' } },
+        { widget: 'blockTypeSelect' },
+      ),
+    ).toThrow(/blocksField.*filterConvertibleFrom|on the type field/);
+  });
+});
+
 describe('inheritSchemaFrom — `restricted` hides a type from the add menu, not from a listing', () => {
   // A region that names no allowedBlocks of its own — the page — allows every
   // type that is not `restricted`: that is its add menu. Inka's `summary` is
@@ -749,14 +793,19 @@ describe('inheritSchemaFrom — `restricted` hides a type from the add menu, not
     inheritSchemaFrom: {
       typeField: 'variation',
       mappingField: 'fieldMapping',
-      blocksField: '..',
-      filterConvertibleFrom: '@default',
-      default: 'summary',
     },
   };
   const baseSchema = {
     fieldsets: [{ id: 'default', title: 'Default', fields: ['variation'] }],
-    properties: { variation: { title: 'Item Type', widget: 'blockTypeSelect' } },
+    properties: {
+      variation: {
+        title: 'Item Type',
+        widget: 'blockTypeSelect',
+        blocksField: '..',
+        filterConvertibleFrom: '@default',
+        default: 'summary',
+      },
+    },
   };
   const resolve = (pathInfo) => {
     const prev = config.blocks?.blocksConfig;

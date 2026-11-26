@@ -17,10 +17,14 @@
  */
 import { describe, test, expect } from 'vitest';
 import config from '@plone/volto/registry';
+import { BlockButton } from '@plone/volto-slate/editor/ui';
 import {
   DEFAULT_SLATE_VOCABULARY,
+  DEFAULT_TOOLBAR_BUTTONS,
+  TOOLBAR_BUTTON_FORMATS,
   EXTRACTED_SLATE_TYPES,
-} from '../../../hydra-js/slateStyles.js';
+} from '@volto-hydra/helpers/slateStyles.js';
+import { probeToolbarButtons } from './toolbarButtonKinds';
 
 const liveElements = () => Object.keys(config.settings.slate?.elements || {});
 
@@ -64,5 +68,32 @@ describe('extracted types', () => {
       expect(EXTRACTED_SLATE_TYPES).toContain(t);
     }
     expect(config.settings.slate?.tableTypes?.length || 0).toBeGreaterThan(0);
+  });
+});
+
+describe('the toolbar as data', () => {
+  // What the canvas toolbar offers an author, for the runs that have no Volto to
+  // ask: block-sanity judges "is every offered style demonstrated" from it. Taken
+  // from the LIVE config the way the toolbar takes it: every registered button
+  // probed for the format it applies and whether it is a block format.
+  const slate = () => config.settings.slate || {};
+
+  test('TOOLBAR_BUTTON_FORMATS matches what each registered button applies', () => {
+    const kinds = probeToolbarButtons(slate().buttons || {}, BlockButton);
+    const live = Object.fromEntries(
+      Object.entries(kinds)
+        .filter(([, k]) => k.format)
+        .map(([name, k]) => [name, { format: k.format, block: k.block }]),
+    );
+    expect(Object.keys(live).length, 'volto-slate config did not load').toBeGreaterThan(5);
+    expect(
+      TOOLBAR_BUTTON_FORMATS,
+      'TOOLBAR_BUTTON_FORMATS has drifted from the buttons volto-slate registers. ' +
+        'Regenerate it from the live config rather than editing by hand.',
+    ).toEqual(live);
+  });
+
+  test('DEFAULT_TOOLBAR_BUTTONS is the toolbar volto-slate lists', () => {
+    expect(DEFAULT_TOOLBAR_BUTTONS).toEqual(slate().toolbarButtons);
   });
 });

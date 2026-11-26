@@ -21,7 +21,7 @@ subjects:
   - frontend
 title: Advanced
 blocks-matched: |
-  <block type="slate" value="${p,h*,ul,ol,blockquote,strong,em,a/slate}" plaintext="${p,h*,ul,ol,blockquote,strong,em,a/text}" />
+  <block type="slate" value="${p,h*,ul,ol,blockquote,strong,em,a/slate}" />
   <block type="title" _="${h1}" />
   <block type="separator" _="${hr}" styles={"align":"full"} />
   <block type="codeExample">
@@ -32,7 +32,7 @@ blocks-matched: |
 blocks-tagged: |
   <block type="callout">
     <region name="items" widget="blocks_layout">
-      <block type="slate" value="${p,h*,ul,ol,blockquote,strong,em,a/slate}" plaintext="${p,h*,ul,ol,blockquote,strong,em,a/text}" />
+      <block type="slate" value="${p,h*,ul,ol,blockquote,strong,em,a/slate}" />
     </region>
   </block>
 ---
@@ -56,7 +56,11 @@ Detect the admin iframe and load the bridge only when needed. `window.name` is s
 - **\`hydra-edit:\<origin>\`** — edit mode (e.g., `hydra-edit:http://localhost:3001`)
 - **\`hydra-view:\<origin>\`** — view mode (e.g., `hydra-view:http://localhost:3001`)
 
+Start the bridge in both. An agent's preview through Inka's MCP server opens your front end in view mode and hands it the draft through the bridge, so a front end that starts the bridge only for `hydra-edit:` can't be previewed, and the agent is told so.
+
 This persists across SPA navigation within the iframe, allowing your frontend to detect it's in the admin even after client-side route changes. In view mode, render from your API immediately but still load the bridge for navigation tracking. In edit mode, wait for `onEditChange` before rendering.
+
+**That covers everything in the frame, not just the page body.** Site chrome that comes from regions of the page, such as a footer or an announcement, also draws only from what `onEditChange` gives you. Don't render or merge the stored page first in edit mode: the admin has already merged what it sends, and a server render of the stored page has to match a browser render that hasn't got it yet. This is why a server-rendered frontend deploys [a separate, client-rendered build for editing](./build-a-frontend.md#ssg--ssr--production-speed--visual-editing).
 
 ### Javascript
 
@@ -109,7 +113,7 @@ const token = getAccessToken();
 // or sessionStorage (for SPA navigation)
 ```
 
-Example using Next.js 14 and ploneClient:
+Example using Next.js and ploneClient:
 
 ### Javascript
 
@@ -135,6 +139,16 @@ export default function Blog({ params }) {
   return <div>{data.title}</div>;
 }
 ```
+
+## Who your frontend's requests run as
+
+Every request your frontend makes to the CMS runs as someone: nobody (anonymous), the editor, or a visitor who signed in. That decides what it may see, from whole pages to a block's listing, and what it may do, like submitting a form or adding a comment. Which one is your frontend's choice, and there are three cases, needing different work.
+
+1. **Anonymous, on the public site.** The public sees published content, and blocks that call the CMS work for anyone: a search box, or a contact form on a published page. Send no token. Nothing more is needed.
+2. **The editor, inside Inka.** Inka has already signed the editor in and hands your frontend their token (see [Authentication](#authentication)). Send it, and the editor sees the site as they can: pages that aren't published yet, and blocks they can try before publishing, such as a form on a page that is still private, which the CMS refuses to an anonymous caller. Use `getAuthHeaders()` in the browser, or the `access_token` cookie from your server. The token exists only inside Inka's editor, so on the public site the same code stays anonymous.
+3. **A signed-in visitor, on the public site.** Some visitors sign in to see more: content shared only with members or a group, or blocks that act for them, like a members-only form. The editor's token is no help here, because visitors never open your site through Inka. Your frontend needs its own login: a sign-in page that posts to the CMS's `@login`, somewhere to keep the token (an HttpOnly cookie, for server rendering), renewing it with `@login-renew` before it expires, signing out with `@logout`, and sending it with every request. Pages rendered for a signed-in visitor are theirs alone, so don't let a CDN or cache serve them to anyone else (see [Behind a CDN or caching proxy](../deploy-and-secure.md#behind-a-cdn-or-caching-proxy)). Inka doesn't provide this part.
+
+Keep cases 2 and 3 apart. Something that works in the editor works because the editor is signed in. That says nothing about what a visitor can see or do, so test case 3 on the public site, signed in as a visitor, without Inka.
 
 ## Custom Sidebar and CMS UI
 

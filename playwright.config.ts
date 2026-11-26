@@ -1,5 +1,6 @@
 import { defineConfig, devices } from '@playwright/test';
-import * as path from 'path';
+import * as path from 'node:path';
+import { CONTRACT_SCOPE, DISCOVERY_DIR } from './tests-playwright/frontends';
 import { PORTS, URLS } from './tests-playwright/ports';
 
 // Check which extra servers we need based on --project arg
@@ -55,12 +56,13 @@ export default defineConfig({
     // does) override this list; the ones that don't — the doc-asset capture in
     // the inka-site deploy, the demo capture — printed nothing but "Command
     // failed", so a broken screenshot could not be told from any other.
+    ...(process.env.CI ? [['github'] as const] : []),
     ['list'],
     ['html', { open: 'never' }],
     // Aggregates block-sanity field/text-style coverage across all parallel
     // workers and fails the run in onEnd if any block type has a field or style
-    // with no working example anywhere. See tests-playwright/coverage-reporter.ts.
-    ['./tests-playwright/coverage-reporter.ts'],
+    // with no working example anywhere. See @inka/testing/playwright/coverage-reporter.
+    ['@inka/testing/playwright/coverage-reporter', { ...CONTRACT_SCOPE, discoveryDir: DISCOVERY_DIR }],
   ],
 
   /* Shared settings for all the projects below */
@@ -385,7 +387,7 @@ export default defineConfig({
       // Mock Plone API — REST endpoints, content from disk
       // Test frontend is served by the separate Vite webServer entry below
       name: 'Mock API',
-      command: `node --watch --watch-path=tests-playwright/fixtures --watch-path=packages/hydra-js ${path.join(__dirname, 'tests-playwright/fixtures/mock-api-server.cjs')}`,
+      command: `node --watch ${require.resolve('@inka/mock-api/server')}`,
       url: `${URLS.mockApi}/health`,
       timeout: 30 * 1000,
       reuseExistingServer: true,
@@ -394,7 +396,9 @@ export default defineConfig({
       stderr: 'pipe' as const,
       env: {
         PORT: String(PORTS.mockApi),
+        // Inka's own content, and the schemas of the test frontend it is written for.
         CONTENT_MOUNTS: '/docs:docs,/_test_data:tests-playwright/fixtures/content,/:tests-playwright/fixtures/site-root',
+        CONTENT_SCHEMAS: 'tests-playwright/fixtures/shared-block-schemas.js',
       },
     },
     {
@@ -409,12 +413,16 @@ export default defineConfig({
       stdout: 'pipe' as const,
       stderr: 'pipe' as const,
     },
-    // Use prebuilt production server in CI, dev server locally
-    process.env.USE_PREBUILT
+    // The BUILT admin (`pnpm build:test`), here and in CI: a webpack dev
+    // server holds its whole module graph, 1.5–2 GB, and grows for as long as
+    // it runs. ADMIN_DEV=1 runs the dev server instead, for changing the
+    // admin's own code. The build must be of this checkout: the stamp check
+    // refuses an old one (packages/testing/admin-build-stamp.js).
+    process.env.ADMIN_DEV !== '1'
       ? {
-          // Production server (prebuilt in CI) - starts immediately, no webpack compilation
+          // Production server (built) - starts immediately, no webpack compilation
           name: 'Volto Admin UI (Production)',
-          command: `PORT=${PORTS.voltoSsr} RAZZLE_API_PATH=${URLS.mockApi} RAZZLE_DEFAULT_IFRAME_URL=${URLS.testFrontend} pnpm start:prod`,
+          command: `node packages/testing/admin-build-stamp.js --check && PORT=${PORTS.voltoSsr} RAZZLE_API_PATH=${URLS.mockApi} RAZZLE_DEFAULT_IFRAME_URL=${URLS.testFrontend} RAZZLE_TEMPLATES_PATH=/templates RAZZLE_TEMPLATE_TYPE=Template pnpm start:prod`,
           url: URLS.voltoSsr, // Health check on SSR server directly
           timeout: 30 * 1000, // 30 seconds should be plenty for starting prebuilt server
           reuseExistingServer: true, // CI starts server in advance
@@ -430,18 +438,24 @@ export default defineConfig({
               URLS.testFrontend, URLS.nuxt, URLS.reactDoc, URLS.svelteDoc,
               URLS.vueDoc, URLS.nextjs, URLS.f7, URLS.astroDoc,
             ].join(','),
+            // Where "Make template" saves a new template, and as what type.
+            RAZZLE_TEMPLATES_PATH: '/templates',
+            RAZZLE_TEMPLATE_TYPE: 'Template',
             VOLTOCONFIG: process.cwd() + '/volto.config.js',
+            // A test admin left running stops itself after four idle hours
+            // (volto-hydra's express-middleware/idleExit.js).
+            INKA_ADMIN_IDLE_EXIT_MINUTES: '240',
           },
         }
       : {
-          // Dev server with HMR - used locally for fast iteration
+          // Dev server with HMR (ADMIN_DEV=1): for changing the admin's own code
           // Volto creates TWO servers:
           // - voltoSsr: Razzle SSR server (set by PORT env var) - serves content, tests navigate here
           // - voltoWebpack: webpack-dev-server (auto-incremented from PORT) - compiles assets, health check here
           // Tests navigate to voltoSsr (SSR server for content)
           // Health check on voltoWebpack (webpack-dev-server) waits for compilation to complete
           name: 'Volto Admin UI (Dev)',
-          command: `PORT=${PORTS.voltoSsr} RAZZLE_API_PATH=${URLS.mockApi} RAZZLE_DEFAULT_IFRAME_URL=${URLS.testFrontend} VOLTOCONFIG=$(pwd)/volto.config.js razzle start`,
+          command: `PORT=${PORTS.voltoSsr} RAZZLE_API_PATH=${URLS.mockApi} RAZZLE_DEFAULT_IFRAME_URL=${URLS.testFrontend} RAZZLE_TEMPLATES_PATH=/templates RAZZLE_TEMPLATE_TYPE=Template VOLTOCONFIG=$(pwd)/volto.config.js razzle start`,
           url: `${URLS.voltoWebpack}/health`, // Health check on webpack-dev-server (returns 200 when ready)
           timeout: 300 * 1000, // 5 minutes for initial webpack compilation
           reuseExistingServer: true, // Always reuse - local dev starts manually
@@ -456,7 +470,12 @@ export default defineConfig({
               URLS.testFrontend, URLS.nuxt, URLS.reactDoc, URLS.svelteDoc,
               URLS.vueDoc, URLS.nextjs, URLS.f7, URLS.astroDoc,
             ].join(','),
+            // Where "Make template" saves a new template, and as what type.
+            RAZZLE_TEMPLATES_PATH: '/templates',
+            RAZZLE_TEMPLATE_TYPE: 'Template',
             VOLTOCONFIG: process.cwd() + '/volto.config.js',
+            // Stops itself, and razzle with it, after four idle hours.
+            INKA_ADMIN_IDLE_EXIT_MINUTES: '240',
             // Prevent parcel from trying to access TTY (fixes segfault in background process)
             CI: process.env.CI || 'true',
           },

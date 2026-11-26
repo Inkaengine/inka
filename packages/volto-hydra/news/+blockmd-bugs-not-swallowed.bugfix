@@ -1,0 +1,1 @@
+Markdown export no longer hides a broken block as JSON: only content that doesn't fit a form moves on to the next form, and any other error fails the export.

@@ -1,0 +1,1 @@
+A content deploy reads an item on its type's default view as having no view of its own, for every type, not only Document. @djay

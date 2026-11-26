@@ -27,7 +27,7 @@ subjects:
   - news
 title: Another News Item
 blocks-matched: |
-  <block type="slate" value="${p,h*,ul,ol,blockquote,strong,em,a/slate}" plaintext="${p,h*,ul,ol,blockquote,strong,em,a/text}" />
+  <block type="slate" value="${p,h*,ul,ol,blockquote,strong,em,a/slate}" />
   <block type="title" _="${h1}" />
 blocks-tagged: |
   <block type="introduction" value="${p,h*/slate}" />
@@ -55,7 +55,7 @@ blocks-tagged: |
 
 Cinnamon skinny medium panna americano spice affogato froth frappuccino that.
 
-<fields slotId="content" fixed=false />
+<fields slotId="default" fixed=false />
 
 </block>
 
@@ -65,7 +65,7 @@ Cinnamon skinny medium panna americano spice affogato froth frappuccino that.
 
 Ristretto so chicory skinny ristretto au decaffeinated sugar that spoon shop crema ut pot lungo. Flavour that milk brewed flavour whipped kopi black and robusta. Bar sugar americano eu froth variety brewed acerbic steamed. Aroma est milk doppio frappuccino half cream filter french froth luwak. Acerbic plunger au barista flavour in froth trade.
 
-<fields slotId="content" fixed=false />
+<fields slotId="default" fixed=false />
 
 </block>
 

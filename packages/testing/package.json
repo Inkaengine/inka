@@ -1,0 +1,72 @@
+{
+  "name": "@inka/testing",
+  "version": "0.0.1",
+  "private": true,
+  "description": "The test harness for Inka frontends: port blocks, block discovery, the mock-parent admin stand-in, and Playwright helpers and sanity suites.",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Inkaengine/inka.git",
+    "directory": "packages/testing"
+  },
+  "license": "MIT",
+  "type": "module",
+  "engines": {
+    "node": "^20.19.0 || >=22.12.0"
+  },
+  "exports": {
+    "./ports": "./ports.ts",
+    "./discovery": "./discovery.ts",
+    "./discover-blocks": "./discover-blocks.js",
+    "./elementless": "./elementless.ts",
+    "./mock-parent": "./mock-parent/vite-plugin.js",
+    "./playwright/AdminUIHelper": "./playwright/AdminUIHelper.ts",
+    "./playwright/BlockVerificationHelper": "./playwright/BlockVerificationHelper.ts",
+    "./playwright/PageIntegrityHelper": "./playwright/PageIntegrityHelper.ts",
+    "./playwright/axe-sanity": "./playwright/axe-sanity.ts",
+    "./playwright/caption": "./playwright/caption.ts",
+    "./playwright/coverage-reporter": "./playwright/coverage-reporter.ts",
+    "./playwright/demoPacing": "./playwright/demoPacing.ts",
+    "./playwright/fixtures": "./playwright/fixtures.ts",
+    "./playwright/global-setup": "./playwright/global-setup.ts",
+    "./playwright/mock-parent": "./playwright/mock-parent.ts",
+    "./playwright/preconditions": "./playwright/preconditions.ts",
+    "./playwright/sanity": "./playwright/sanity.ts",
+    "./playwright/settled-count": "./playwright/settled-count.ts"
+  },
+  "bin": {
+    "inka-mock-parent": "./mock-parent/server.js"
+  },
+  "files": [
+    "admin-build-stamp.js",
+    "discover-blocks.js",
+    "discovery.ts",
+    "elementless.ts",
+    "field-coverage.ts",
+    "imageSizes.mjs",
+    "mock-parent/",
+    "!playwright/*.test.*",
+    "playwright/*.ts",
+    "ports.ts",
+    "selectablePoint.ts",
+    "slate-styles.js",
+    "text-style-coverage.ts"
+  ],
+  "scripts": {
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@inka/content-validator": "workspace:*",
+    "@inka/mock-api": "workspace:*",
+    "@volto-hydra/helpers": "workspace:*",
+    "@volto-hydra/hydra-js": "workspace:*",
+    "axe-core": "^4.14.1",
+    "vite": "^8.3.8"
+  },
+  "devDependencies": {
+    "jsdom": "^31.0.1",
+    "vitest": "^5.1.0"
+  },
+  "peerDependencies": {
+    "@playwright/test": "^1.58.2"
+  }
+}

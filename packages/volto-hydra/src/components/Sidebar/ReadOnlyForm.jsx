@@ -68,6 +68,11 @@ export function formatReadOnlyValue(fieldSchema = {}, value) {
   return String(value);
 }
 
+// Container fields: a region's blocks are listed in a sidebar section of their
+// own (ChildBlocksWidget), and the editable form draws `blocks_layout` with a
+// hidden widget (index.js), so none of them is a setting to show.
+const CONTAINER_WIDGETS = new Set(['blocks_layout', 'blocksid_list', 'object_list']);
+
 /** Collect the field ids from a schema's fieldsets, skipping container fields. */
 function collectFieldIds(schema) {
   const ids = [];
@@ -75,7 +80,7 @@ function collectFieldIds(schema) {
     for (const id of fieldset.fields || []) {
       const def = schema.properties?.[id];
       if (!def) continue;
-      if (def.widget === 'blocksid_list' || def.widget === 'object_list') continue;
+      if (CONTAINER_WIDGETS.has(def.widget)) continue;
       ids.push(id);
     }
   }

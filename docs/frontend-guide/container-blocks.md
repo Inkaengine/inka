@@ -24,7 +24,7 @@ subjects:
   - frontend
 title: Container Blocks
 blocks-matched: |
-  <block type="slate" value="${p,h*,ul,ol,blockquote,strong,em,a/slate}" plaintext="${p,h*,ul,ol,blockquote,strong,em,a/text}" />
+  <block type="slate" value="${p,h*,ul,ol,blockquote,strong,em,a/slate}" />
   <block type="title" _="${h1}" />
   <block type="separator" _="${hr}" styles={"align":"full"} />
   <block type="codeExample">
@@ -145,7 +145,7 @@ properties: {
     items: {
         widget: 'blocks_layout',
         allowedBlocks: ['slate', 'image'],
-        allowedStyles: ['p', 'h2', 'h3', 'ul', 'ol', 'li', 'strong', 'em'],
+        allowedStyles: ['p', 'h2', 'h3', 'ul', 'ol', 'li', 'strong', 'em', 'a'],
         disallowedStyles: ['blockquote'],
         // Leaf marks, for plugins that use Editor.addMark. Rarely needed.
         allowedMarks: null,
@@ -154,7 +154,7 @@ properties: {
 }
 ```
 
-`allowedStyles` names element types, which covers block-level formats (`p`, `h2`, `ul`, `li`) **and** inline ones — volto-slate models bold and italic as inline *elements* (`strong`, `em`, `del`, `sub`, `sup`, `u`, `code`), so one list matches what the toolbar actually toggles. `link` is structural rather than styling and is never restrictable: dropping it would lose an href.
+`allowedStyles` names element types, which covers block-level formats (`p`, `h2`, `ul`, `li`) **and** inline ones — volto-slate models bold and italic as inline *elements* (`strong`, `em`, `del`, `sub`, `sup`, `u`, `code`), so one list matches what the toolbar actually toggles. Rules name a style by its HTML name, which is slate's type too except for the link: volto-slate stores one as `link`, and a rule names it `a`. A link is a style like any other, its url being its setting, so an allow-list keeps links only by naming `a`, and `allowedStyles: ['p']` is plain text. A region that refuses links, by leaving `a` out of its allow-list or naming it in `disallowedStyles`, loses the link button from the toolbar, on the canvas and in the sidebar; a hotkey a site has added for links does nothing, a pasted link arrives as its words, and a stored link unwraps when the page loads, keeping its words and losing its href. The sidebar's toolbar offers the same buttons and styles as the canvas's. Its editor is Volto's own, though, so a refused style that gets in there anyway (pasted, say) shows there until the save, which removes it. There is no markdown shortcut for a link, and a typed or pasted URL stays text.
 
 ### A design system's own styles
 
@@ -175,7 +175,7 @@ Declaring nothing leaves every style available, so this changes nothing for a fr
 
 ### It applies everywhere, not just the toolbar
 
-Hiding a toolbar button is cosmetic — the format still arrives by paste, by hotkey, or by a markdown shortcut. A declaration here is enforced at all of them: the block-format dropdown, `Ctrl+B`-style hotkeys, the `>`-space markdown shortcuts, paste (the pasted HTML is normalized before it becomes blocks), and the stored value itself, which is normalized when the editor loads the page. Anything the load pass would rewrite is also logged to the console, so a migration shows up while editing rather than as a surprise diff on the next save.
+Hiding a toolbar button is cosmetic — the format still arrives by paste, by hotkey, or by a markdown shortcut. A declaration here is enforced at all of them: the block-format dropdown, `Ctrl+B`-style hotkeys, the `>`-space markdown shortcuts, paste (the pasted HTML is normalized before it becomes blocks), and the stored value itself, which is normalized when the editor loads the page and again when it is saved. Anything the load pass would rewrite is also logged to the console, so a migration shows up while editing rather than as a surprise diff on the next save.
 
 ### There is no global level, and no per-field level
 
@@ -240,7 +240,7 @@ initBridge({
 });
 ```
 
-On the canvas toolbar, **paragraph styles are in the format dropdown**, after the formats. Choosing one makes the block the cursor is in a `p` (or the entry's `type`) carrying that class, replacing any other paragraph style; choosing a heading or Paragraph removes it. The **style menu** there holds the text (inline) styles only, and is not shown when there are none. The sidebar's toolbar, which has no format dropdown, offers both groups in its style menu.
+On the canvas toolbar, **paragraph styles are in the format dropdown**, after the formats. Choosing one makes the block the cursor is in a `p` (or the entry's `type`) carrying that class, replacing any other paragraph style; choosing a heading or Paragraph removes it. The **style menu** there holds the text (inline) styles only, and is not shown when there are none. The sidebar's toolbar, which has no format dropdown, offers both groups in its style menu, filtered by the region's rules the same way.
 
 A style for one **kind** of block declares the element types it is for, as `appliesTo` (a list style: `['ul', 'ol']`). It is offered in the format dropdown only while the cursor is in one of those blocks, and choosing it adds the class and leaves the block what it is: a list stays a list. (A paragraph style without `appliesTo`, chosen on a list, would turn it into a paragraph.)
 
@@ -256,7 +256,7 @@ Either kind may take an `icon`, in the same data shape as a format's. Stored con
 config.settings.slate.styleAliases = { b: 'strong', i: 'em', blockquote: 'p' };
 ```
 
-With no alias, a top-level node becomes `config.settings.slate.defaultBlockType` (`p`), and an inline one is unwrapped — its text stays, without the formatting. Nothing is ever deleted.
+With no alias, a top-level node becomes `config.settings.slate.defaultBlockType` (`p`), and an inline one is unwrapped — its text stays, without the formatting. Nothing is ever deleted, except the href of a link you have refused by name.
 
 A downgrade never changes how many top-level nodes a slate field holds, because [a field always holds exactly one](./visual-editing.md#one-top-level-node-per-slate-field) and renderers are told they may assume it. So a denied *wrapper* collapses rather than splitting: denying `ul` turns `ul > li, li` into a single paragraph holding both items' content, not two paragraphs. Inline children survive the collapse — a `strong` inside a denied `blockquote` is still bold afterwards.
 
@@ -373,7 +373,7 @@ A block's schema uses the same format as a [Volto block schema](https://6.docs.p
 | `widget` | Storage | Key fields |
 | --- | --- | --- |
 | `blocks_layout` | children are ids in the parent's shared `blocks` dict; this field's name is a region key under `blocks_layout` | `allowedBlocks`, `maxLength`, `allowedTemplates`, `allowedStyles` / `disallowedStyles` / `allowedMarks` / `disallowedMarks` ([slate styles](#restricting-slate-styles-per-region)) |
-| `object_list` | inline array on the field itself | `idField` (default `@id`), `schema` (item schema), `allowedBlocks` + `typeField` (typed items), `defaultBlockType`, `maxLength`, `addMode: 'table'`, `subBlocks` (default `true`; see below) |
+| `object_list` | inline array on the field itself | `idField` (required for a region — the field each item's id is kept in, such as `@id`, `key` or `field_id`; none is assumed, and a region without one throws), `schema` (item schema), `allowedBlocks` + `typeField` (typed items), `defaultBlockType`, `maxLength`, `addMode: 'table'`, `subBlocks` (default `true`; see below) |
 | `object` | groups sub-fields under one key; sub-fields (plain OR the two container widgets above) nest inside | `schema` (the nested properties) |
 
 </block>
@@ -494,7 +494,9 @@ A container region can never be truly empty. When its last child is deleted, Ink
 
 So the simplest way to never deal with empty placeholders in a region is to give it a `defaultBlockType` (or a single-entry `allowedBlocks`). Otherwise your frontend must render `empty`.
 
-Empty blocks are stripped before saving. Render them as empty space; Inka puts a '+' button in the middle for the user to pick a real type in place. You can override the look of that '+' by rendering something inside the empty block and adding `data-block-add="button"` to it.
+Empty blocks are stripped when a page is saved. (A template keeps one that names a slot: its [empty slot](./templates.md#template-concepts), which a visitor's page never receives.) Render them as empty space; Inka puts a '+' button in the middle for the user to pick a real type in place. You may style the space — a ghost outline, a faint fill — but put nothing in it an author could take for content: no text, no editable field, no form control. Block sanity checks this for every region it can empty.
+
+To give that '+' your own look, render a button inside the empty block and mark it `data-block-add="button"`. Inka then draws no '+' of its own, and clicking your button opens the block chooser beside it to fill the empty in place, as the '+' would. Your button is yours to draw as you like — an icon, a ghost, a label such as "Add a question" — and is the one thing in an empty block that may hold text.
 
 ### Starting a region with set children — `default`
 
@@ -515,6 +517,8 @@ results: {
 
 The same works for an `object_list`. Without a `default`, a region starts with, and is refilled with, one child of its `defaultBlockType`, as described above. An author's own children are never replaced: the default only fills a region that is empty.
 
+A page's own blocks fields are regions too, so a page added in the editor starts with exactly what these rules give each field. Inka adds no blocks of its own, such as a title: if your page's layout shows the title, it appears once.
+
 ### Making a region empty by default — `defaultBlockType: "empty"`
 
 The rules above mean a region with a `defaultBlockType`, or a single-entry `allowedBlocks`, is *never* empty — it always seeds a block of that type. To declare a region that should sit **empty until an editor adds something**, while still restricting **what** they can add, set **\`defaultBlockType: "empty"\`** and do **not** list `"empty"` in `allowedBlocks`:
@@ -534,7 +538,7 @@ This is the one case where `"empty"` is a **configured** default rather than the
 
 - **Passive seed** (region loaded, or its last child deleted): Inka seeds a bare `@type: "empty"` placeholder — nothing renders. `defaultBlockType` wins over the single-`allowedBlocks` auto-fill, so the region genuinely shows empty.
 - **The '+' (active add / fill)**: inserts a real block from `allowedBlocks` (converting the empty placeholder **in place**), never another `empty`. The add path reads `allowedBlocks`, not `defaultBlockType` — so a single-entry `allowedBlocks` fills straight to that type with no chooser.
-- **\`"empty"\` is never in \`allowedBlocks\`** — it isn't a type an editor opts into; it's the "region is empty" state. On save the placeholder is stripped, so a genuinely-empty region persists with no blocks.
+- **\`"empty"\` is never in \`allowedBlocks\`** — it isn't a type an editor opts into; it's the "region is empty" state. On a page's save the placeholder is stripped, so a genuinely-empty region persists with no blocks. A template keeps an empty slot instead, so the slot keeps its place.
 
 Use this for optional site chrome — e.g. a header announcement that is usually absent but can hold a single global alert when needed. (Because the seed is `"empty"`, the frontend must render `empty` as a selectable slot — see below.)
 
@@ -568,7 +572,7 @@ Two more things a renderer must survive once the user picks a type for a seeded 
 
 You can have one container type whose children are all kept the same `@type`, with the editor picking that type once on the parent. When the type changes, every child is converted (using each child's `fieldMappings`); when a new child is added it gets the selected type.
 
-Declare `itemTypeField` on the *blocks field* — its value names a sibling field on the same schema whose value drives every child's `@type`. The sibling field is typically rendered with `widget: 'blockTypeSelect'`, which computes its `choices` from the blocks field's `allowedBlocks` at render time:
+Declare `itemTypeField` on the *blocks field* — its value names a sibling field on the same schema whose value drives every child's `@type`. The sibling field is typically rendered with `widget: 'blockTypeSelect'`, which computes its `choices` from the blocks field's `allowedBlocks` at render time (its options — `blocksField`, `filterConvertibleFrom`, `default` — are declared on the field: see [Type field options](#type-field-options)):
 
 ### Javascript
 
@@ -590,12 +594,12 @@ blocks: {
     },
     teaser: {
         fieldMappings: {
-            '@default': { '@id': 'href', 'title': 'title', 'image': 'preview_image' },
+            '@default': { getURL: 'href', 'title': 'title', 'image': 'preview_image' },
         },
     },
     image: {
         fieldMappings: {
-            '@default': { '@id': 'href', 'title': 'alt', 'image': 'url' },
+            '@default': { getURL: 'href', 'title': 'alt', 'image': 'url' },
         },
     },
 }
@@ -656,6 +660,11 @@ When `parentControlled[childType]` is set, it **replaces** the `@default` fallba
 - **\`mappingField\`** — name of the field where a per-block `fieldMapping` override is stored. Required for the `FieldMappingWidget` to appear.
 - **\`parentControlled\`** — `{ childType: [fieldName, ...] }` per-child-type override. Replaces the `fieldMappings['@default']` fallback.
 - **\`defaultsField\`** — prefix for the inherited fields on the parent's "Item Defaults" fieldset (default: `'itemDefaults'`).
-- **\`blockTypeSelect\`** widget options:
+
+### Type field options
+
+The type field is a `blockTypeSelect` field. Its options are declared on the field itself, never on the recipe (a recipe declaring them stops the editor loading, naming them). The picker and the recipe both read them there, so the type offered is the type stored:
+
 - **\`blocksField\`** — which sub-blocks field's `allowedBlocks` to use for the choices. Auto-discovers if omitted. Set to `'..'` when the choices should come from the *enclosing parent's* `allowedSiblingTypes`.
 - **\`filterConvertibleFrom\`** — only offer types whose `fieldMappings` accept the named source. Typically `'@default'` for listings (every item type must be populatable from canonical content fields).
+- **\`default\`** — with `blocksField` or `filterConvertibleFrom`, the PREFERRED type: kept where the choices include it, otherwise the first choice. The editor stores it in the block, so a block always has a type, picked or the one its position allows.

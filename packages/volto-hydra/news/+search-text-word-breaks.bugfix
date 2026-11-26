@@ -1,0 +1,1 @@
+Search text keeps list items and paragraphs as separate words: the last word of one item no longer runs into the first word of the next, so neither is lost to search.

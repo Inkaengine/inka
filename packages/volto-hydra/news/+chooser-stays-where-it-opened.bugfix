@@ -1,0 +1,1 @@
+The block chooser opens at the "+" that was pressed and stays put while you filter it. It used to measure against the whole canvas, pin its bottom edge, and drop as the list got shorter. @djay

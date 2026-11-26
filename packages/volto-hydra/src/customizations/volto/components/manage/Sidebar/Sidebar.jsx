@@ -217,6 +217,9 @@ const Sidebar = (props) => {
             {/* Page metadata fields rendered here via portal */}
           </div>
 
+          {/* The page's layouts: a page setting, under the metadata sections. */}
+          <div className="sidebar-section-content" id="sidebar-layouts" />
+
           {/* Parent blocks section + current block headers - rendered dynamically via portal */}
           {/* display:contents makes this layout-transparent so sticky headers work */}
           <div id="sidebar-parents" style={{ display: 'contents' }}>

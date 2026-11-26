@@ -56,9 +56,9 @@ import clearSVG from '@plone/volto/icons/clear.svg';
 import AddLinkForm from '../AnchorPlugin/components/LinkButton/AddLinkForm';
 import Api from '@plone/volto/helpers/Api/Api';
 import {
-  checkImagesAllowed,
+  checkAllowed,
   holdImage,
-  ImagesNotAllowed,
+  NotAllowedThere,
   isPendingImage,
   previewUrl,
 } from '../../../../../utils/pendingImages';
@@ -251,7 +251,7 @@ const UnconnectedImageInput = (props) => {
       // from this user is asked now, so a refusal comes at the drop.
       if (config.settings.deferImageUploads) {
         const folder = flattenToAppURL(uploadUrl);
-        checkImagesAllowed(folder, (path) => new Api().get(`${path}/@types`))
+        checkAllowed(file, folder, (path) => new Api().get(`${path}/@types`))
           .then(() => {
             setUploading(false);
             onChange(id, holdImage(file, folder));
@@ -259,7 +259,7 @@ const UnconnectedImageInput = (props) => {
           })
           .catch((error) => {
             setUploading(false);
-            if (!(error instanceof ImagesNotAllowed)) throw error;
+            if (!(error instanceof NotAllowedThere)) throw error;
             toast.error(
               <Toast
                 error

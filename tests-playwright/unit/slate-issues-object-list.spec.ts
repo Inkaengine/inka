@@ -1,8 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { createRequire } from 'module';
-
-const require = createRequire(import.meta.url);
-const { collectSlateIssues } = require('../helpers/discover-blocks.cjs');
+import { collectSlateIssues } from '@inka/testing/discover-blocks';
 
 /**
  * Which fields block-sanity checks as slate values.

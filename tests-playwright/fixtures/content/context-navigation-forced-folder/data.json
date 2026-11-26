@@ -11,8 +11,7 @@
     "title-block": { "@type": "title" },
     "intro": {
       "@type": "slate",
-      "value": [{ "type": "p", "children": [{ "text": "Top-level page in this section — no forced layout here." }] }],
-      "plaintext": "Top-level page in this section — no forced layout here."
+      "value": [{ "type": "p", "children": [{ "text": "Top-level page in this section — no forced layout here." }] }]
     }
   },
   "blocks_layout": { "items": ["title-block", "intro"] }

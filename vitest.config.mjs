@@ -9,8 +9,8 @@
 // supported direction; using it here lets us share Volto's catalog
 // version pin and skip the legacy ecosystem entirely.
 //
-// hydra-js stays on its own jest setup (it has ESM-specific needs);
-// this config only covers volto-hydra's addon tests.
+// hydra-js and @inka/testing run their own vitest configs; this one does
+// not collect them.
 import { defineConfig } from 'vitest/config';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -92,13 +92,17 @@ function redirectUpstreamSuitesToShadows() {
   };
 }
 
+/** Tests of a server that runs on Node, which need Node's environment (the node-servers project below). */
+const NODE_SERVER_TESTS = [
+  'packages/inka-mcp/http.test.mjs',
+];
+
 export default defineConfig({
   plugins: [redirectUpstreamSuitesToShadows()],
   resolve: {
     alias: ploneAliases,
   },
   test: {
-    globals: true,
     environment: 'jsdom',
     include: [
       'packages/volto-hydra/**/*.{test,spec}.{js,jsx,ts,tsx}',
@@ -108,25 +112,18 @@ export default defineConfig({
       // any docs-tree unit tests
       'docs/**/*.{test,spec}.mjs',
       // blockmd: the prototype engine and the slate <-> markdown core
-      'lib/**/*.{test,spec}.mjs',
+      'packages/blockmd/**/*.{test,spec}.mjs',
       // The pure data helpers (buildQuerystringSearchBody etc.) — server-safe,
       // no DOM, so their unit tests live alongside them here.
       'packages/helpers/**/*.{test,spec}.{js,jsx,ts,tsx}',
       // The MCP server: the agent page format and the tools.
       'packages/inka-mcp/**/*.{test,spec}.mjs',
-      // Pure aggregation helpers used BY the playwright suites (coverage
-      // bookkeeping, no browser). Their contract — "one example is enough",
-      // "reported only when no example covers it" — is worth testing directly
-      // rather than inferring it from a green e2e run. `.test.` only: the
-      // playwright specs themselves are `.spec.ts` and must not be collected.
-      'tests-playwright/helpers/**/*.test.{js,ts}',
-      // The coverage REPORTER (tests-playwright/coverage-reporter.ts) lives at
-      // the suite root, next to playwright.config's reference to it. Its unit
-      // test proves onEnd actually fails the run on a gap. `.test.` only, so
-      // the `.spec.ts` playwright specs at this level are never collected.
+      // Repo checks at the suite root. `.test.` only, so the `.spec.ts`
+      // playwright specs at this level are never collected.
       'tests-playwright/*.test.{js,ts}',
     ],
-    // hydra-js has its own jest harness; covered by `cd packages/hydra-js && pnpm test` in CI.
+    // hydra-js and packages/testing run their own vitest configs, from their
+    // own test scripts, which the root `pnpm test` calls after this suite.
     exclude: ['**/node_modules/**', 'packages/hydra-js/**'],
     // Reuse Volto's setup files via the workspace. These initialise the
     // shared config registry (settings.slate.extensions etc.) and DOM
@@ -140,6 +137,25 @@ export default defineConfig({
       // Volto's setup files initialise the bare config registry but don't
       // invoke addon applyConfig chains.
       path.resolve(__dirname, 'vitest-setup-hydra.js'),
+    ],
+    projects: [
+      {
+        extends: true,
+        test: {
+          name: 'hydra',
+          exclude: NODE_SERVER_TESTS,
+          // For core's files, which we can't change: Volto's setup imports
+          // @testing-library/jest-dom, which calls the global expect, and
+          // upstream's suites above use describe/it/expect unimported. Our own
+          // tests import what they use.
+          globals: true,
+        },
+      },
+      // Servers that run on Node, tested on Node: jsdom's globals (its
+      // AbortController among them) are not Node's, and Node's own fetch
+      // refuses them, so a server under test there fails where it never
+      // would. Volto's setup files need a window, so these go without.
+      { test: { name: 'node-servers', include: NODE_SERVER_TESTS, environment: 'node' } },
     ],
   },
 });

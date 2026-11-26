@@ -41,6 +41,48 @@ test.describe('Container UX: Unwrap', () => {
     expect(parentUid).toBeNull();
   });
 
+  // The page doesn't take `column`, but each column is the columns block's
+  // default child and the page takes their blocks: unwrap lifts those, column
+  // by column, and removes both levels (#790).
+  test('Unwrap a columns block lifts its columns\' blocks, column by column', async ({ page }) => {
+    const helper = new AdminUIHelper(page);
+    await helper.login();
+    await helper.navigateToEdit('/container-test-page');
+
+    const iframe = helper.getIframe();
+
+    // text-1a → (Escape) col-1 → (Escape) columns-1
+    await helper.clickBlockInIframe('text-1a');
+    await helper.waitForIframeBlockHandle('text-1a');
+    await helper.escapeFromEditing();
+    await page.keyboard.press('Escape');
+    await helper.waitForIframeBlockHandle('col-1');
+    await page.keyboard.press('Escape');
+    await helper.waitForIframeBlockHandle('columns-1');
+
+    const menuButton = page.locator('.quanta-toolbar .volto-hydra-menu-trigger');
+    await expect(menuButton).toBeVisible({ timeout: 3000 });
+    await menuButton.click();
+    const unwrapButton = page.locator('[data-testid="unwrap-container"]');
+    await expect(unwrapButton).toBeEnabled({ timeout: 3000 });
+    await unwrapButton.click();
+
+    await expect(iframe.locator('[data-block-uid="columns-1"]')).toHaveCount(0, { timeout: 3000 });
+    await expect(iframe.locator('[data-block-uid="col-1"]')).toHaveCount(0);
+    await expect(iframe.locator('[data-block-uid="col-2"]')).toHaveCount(0);
+
+    // The page's own blocks, in order: col-1's, then col-2's, where columns-1 was.
+    const pageBlocks = await iframe.locator('[data-block-uid]').evaluateAll((els) =>
+      els
+        .filter((el) => !el.parentElement?.closest('[data-block-uid]'))
+        .map((el) => el.getAttribute('data-block-uid')),
+    );
+    const at = pageBlocks.indexOf('text-1a');
+    expect(pageBlocks.slice(at, at + 5)).toEqual([
+      'text-1a', 'text-1b', 'col1-img-1', 'text-2a', 'text-after',
+    ]);
+  });
+
   test('Unwrap button is disabled when parent does not accept the children types', async ({ page }) => {
     const helper = new AdminUIHelper(page);
     await helper.login();
@@ -50,6 +92,8 @@ test.describe('Container UX: Unwrap', () => {
 
     // col-1 is inside columns-1. columns-1's allowedBlocks is ['column'] only —
     // unwrapping col-1 would try to promote slates to columns-1, which is not allowed.
+    // Nor does it unwrap columns-1 through it, as a lone column would: col-2
+    // would be flattened too, and it wasn't asked for.
     // Select col-1 by clicking a text child and escaping up.
     await helper.clickBlockInIframe('text-1a');
     await helper.waitForIframeBlockHandle('text-1a');

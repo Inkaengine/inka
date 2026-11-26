@@ -1,3 +1,5 @@
+import { describe, test, expect } from 'vitest';
+import { expandEveryContainer } from './expandEveryContainer.testutil.js';
 import { expandTemplatesSync } from '@volto-hydra/helpers';
 
 /**
@@ -28,7 +30,7 @@ describe('merge stamps every block with its resolved instance id', () => {
       },
       blocks_layout: { items: ['cols'] },
     };
-    const result = expandTemplatesSync([], {
+    const result = expandEveryContainer([], {
       blocks: {}, templates: { '/t/outer': A }, templateState: {}, allowedLayouts: ['/t/outer'],
     });
     const cols = result.find((b) => b['@type'] === 'columns');

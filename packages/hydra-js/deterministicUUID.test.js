@@ -1,3 +1,4 @@
+import { describe, test, expect } from 'vitest';
 import { deterministicUUID } from '@volto-hydra/helpers';
 
 describe('deterministicUUID', () => {

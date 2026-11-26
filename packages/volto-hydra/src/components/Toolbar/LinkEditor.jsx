@@ -85,6 +85,10 @@ const LinkEditor = (props) => {
           );
           editor.selection = newSelection;
           editor.savedSelection = newSelection;
+          // Clearing is done with the link: close, as submitting does.
+          ReactEditor.focus(editor);
+          dispatch(setPluginOptions(pid, { show_sidebar_editor: false }));
+          savedPosition.current = null;
         }}
         onOverrideContent={(c) => {
           dispatch(setPluginOptions(pid, { show_sidebar_editor: false }));

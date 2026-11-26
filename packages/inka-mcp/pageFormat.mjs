@@ -10,14 +10,14 @@
  * child list is named after its region: `blocks` for the usual `items` region,
  * the region's own name otherwise (columns' `columns`). Rich text is
  * `{"md": "…"}`; coming in, a field the schema marks as rich text (widget slate)
- * may also be a plain markdown string. Derived fields (a slate block's
- * `plaintext`) are left out going out and recomputed coming in.
+ * may also be a plain markdown string. A block's search text (`searchableText`,
+ * and a Text block's older `plaintext`) is left out: the editor's save writes it.
  *
  * This is the format agents got right most often in the format experiment, and
  * the one the edit_blocks operations address blocks in.
  */
-import { slateToMd, mdToSlate, plaintextOf } from '../../lib/slate-md.mjs';
-import { isObjectListRegion } from '../hydra-js/regionWidgets.js';
+import { slateToMd, mdToSlate } from '@inka/blockmd/slate-md.mjs';
+import { isObjectListRegion, regionIdField } from '@volto-hydra/helpers/regionWidgets.js';
 
 /** A Slate value: an array of element nodes with `children`. */
 const isSlate = (v) => Array.isArray(v) && v.length > 0
@@ -50,7 +50,7 @@ export function schemaFacts(blocksConfig) {
     // regionWidgets.js), or null for a field that is no such list.
     objectListIdField: (type, field) => {
       const def = props(type)[field];
-      return isObjectListRegion(def) ? def.idField || '@id' : null;
+      return isObjectListRegion(def) ? regionIdField(def, `block "${type}" field "${field}"`) : null;
     },
   };
 }
@@ -93,9 +93,8 @@ function layoutList(container, key) {
 
 /** One stored block, with its uid, in the agent format. */
 export function toAgentBlock(uid, block) {
-  const out = { '@uid': uid, ...simplify(block) };
-  if (isSlate(block.value)) delete out.plaintext;
-  return out;
+  const { searchableText: _s, plaintext: _p, ...fields } = block;
+  return { '@uid': uid, ...simplify(fields) };
 }
 
 function simplify(v) {
@@ -147,9 +146,7 @@ function restoreBlock(b, facts, mintId) {
     throw new Error(`not a block (needs "@type"): ${JSON.stringify(b)?.slice(0, 120)}`);
   }
   const { '@uid': _uid, ...fields } = b;
-  const out = restoreFields(fields, b['@type'], facts, mintId);
-  if (isSlate(out.value)) out.plaintext = plaintextOf(out.value);
-  return out;
+  return restoreFields(fields, b['@type'], facts, mintId);
 }
 
 function restoreFields(obj, type, facts, mintId) {

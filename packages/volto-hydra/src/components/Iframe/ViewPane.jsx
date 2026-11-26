@@ -34,7 +34,12 @@ const ViewPane = ({
   // every block of the content it is given is read-only, which is what stops
   // the bridge collecting a single editable field. See withAllBlocksReadOnly.
   selectable = false,
+  // onSelectBlock(uid): the block selected in the pane — by the author, by
+  // the bridge settling or re-announcing, or answering showBlock.
   onSelectBlock,
+  // onCanvasFocus(): the author moved into the pane — clicked or tabbed into
+  // its page (CANVAS_FOCUSED, once per switch).
+  onCanvasFocus,
   // Show this block: the counterpart of whatever is selected next door. The
   // bridge scrolls it into view as part of selecting it, which is what makes
   // the two panes follow each other.
@@ -46,6 +51,8 @@ const ViewPane = ({
   // again.
   const onSelectBlockRef = useRef(onSelectBlock);
   onSelectBlockRef.current = onSelectBlock;
+  const onCanvasFocusRef = useRef(onCanvasFocus);
+  onCanvasFocusRef.current = onCanvasFocus;
   const intl = useIntl();
   const [frameLoaded, setFrameLoaded] = useState(false);
   const [mounted, setMounted] = useState(false);
@@ -88,6 +95,10 @@ const ViewPane = ({
       if (event.data?.type === 'BLOCK_SELECTED') {
         // `blockUid`, which is what the bridge calls it.
         onSelectBlockRef.current?.(event.data.blockUid);
+        return;
+      }
+      if (event.data?.type === 'CANVAS_FOCUSED') {
+        onCanvasFocusRef.current?.();
         return;
       }
       if (event.data?.type !== 'INIT') return;

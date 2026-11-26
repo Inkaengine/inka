@@ -6,11 +6,11 @@
 > `diag`, `check-parity`, `export-proto`, the migrations). Kept as the design
 > history. What is live:
 >
-> - Engine: `lib/prototype-mapping.mjs`, over the markdown layer in `lib/slate-md.mjs`;
->   default prototypes in `lib/default-prototypes.mjs`.
-> - Loader: `lib/markdown-mount.mjs` (the mock API serves markdown mounts through it).
+> - Engine: `packages/blockmd/prototype-mapping.mjs`, over the markdown layer in `packages/blockmd/slate-md.mjs`;
+>   default prototypes in `packages/blockmd/default-prototypes.mjs`.
+> - Loader: `packages/blockmd/markdown-mount.mjs` (the mock API serves markdown mounts through it).
 > - Export to markdown: `POST /@export` with `format: 'markdown'` and the
->   prototypes from `lib/default-prototypes.mjs`.
+>   prototypes from `packages/blockmd/default-prototypes.mjs`.
 > - Authoring guide: `docs/testing/blockmd.md`.
 
 The readable format that is the single source of truth for Plone block content:

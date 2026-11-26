@@ -23,11 +23,16 @@
  *
  * A block the admin does NOT have takes the frontend entry as it is, and
  * needs a `title` and a `group` from it — compulsory, never made up from the
- * key: a chooser entry with an invented name is a bug hidden, not fixed.
+ * key: a chooser entry with an invented name is a bug hidden, not fixed. It
+ * needs a `blockSchema` too: without one the editor can't tell what the block
+ * holds, and the first save that indexes its text fails.
  *
  * Every `allowedBlocks` list the entry carries, at any depth of its schema,
  * must be block type names only: a gap (a stray comma) or a null would offer
- * an unnamed type in the chooser.
+ * an unnamed type in the chooser. Where a region has a non-empty list, what
+ * it seeds must be on it: its `defaultBlockType` (bar `"empty"`, which means
+ * "sit empty") and the type of each `default` entry. A default outside the
+ * list seeds a block the region then refuses to take back.
  *
  * @returns {{ entry: object, previousEnhancer: Function | undefined }}
  */
@@ -38,6 +43,12 @@ export function mergeFrontendBlock(blockType, adminEntry, frontendEntry) {
       throw new Error(
         `Block "${blockType}" from the frontend needs a \`title\` and a \`group\` ` +
           `(got title: ${JSON.stringify(frontendEntry.title)}, group: ${JSON.stringify(frontendEntry.group)})`,
+      );
+    }
+    if (!frontendEntry.blockSchema && !frontendEntry.schema) {
+      throw new Error(
+        `Block "${blockType}" from the frontend needs a \`blockSchema\`: the editor ` +
+          `reads what a block holds from it (its form, its searchable text)`,
       );
     }
     return { entry: frontendEntry, previousEnhancer: undefined };
@@ -64,6 +75,7 @@ function checkAllowedBlocks(blockType, node, path, seen) {
     node.forEach((item, i) => checkAllowedBlocks(blockType, item, [...path, i], seen));
     return;
   }
+  checkRegionDefaults(blockType, node, path);
   for (const [key, value] of Object.entries(node)) {
     if (key === 'allowedBlocks' && Array.isArray(value)) {
       for (let i = 0; i < value.length; i++) {
@@ -77,5 +89,24 @@ function checkAllowedBlocks(blockType, node, path, seen) {
     } else {
       checkAllowedBlocks(blockType, value, [...path, key], seen);
     }
+  }
+}
+
+function checkRegionDefaults(blockType, region, path) {
+  const allowed = region.allowedBlocks;
+  if (!Array.isArray(allowed) || allowed.length === 0) return;
+  const where = path.length ? path.join('.') : 'the block';
+  const refuse = (what, type) => {
+    throw new Error(
+      `Block "${blockType}": ${what} "${type}" at ${where} is not in its allowedBlocks (${allowed.join(', ')})`,
+    );
+  };
+  const dflt = region.defaultBlockType;
+  if (dflt && dflt !== 'empty' && !allowed.includes(dflt)) refuse('defaultBlockType', dflt);
+  if (Array.isArray(region.default)) {
+    region.default.forEach((entry, i) => {
+      const type = (region.typeField && entry?.[region.typeField]) || entry?.['@type'];
+      if (type && !allowed.includes(type)) refuse(`default[${i}]`, type);
+    });
   }
 }

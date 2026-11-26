@@ -250,25 +250,9 @@ test.describe('Block Selection', () => {
     const blockSettings = page.locator('#sidebar-properties');
     await expect(blockSettings).toBeVisible({ timeout: 5000 });
 
-    // Wait for scroll animation to complete
-    await page.waitForTimeout(500);
-
-    // Verify the block settings are visible within the scroll viewport
-    const settingsBox = await blockSettings.boundingBox();
-    const scrollerBox = await sidebarScroller.boundingBox();
-
-    expect(settingsBox).toBeTruthy();
-    expect(scrollerBox).toBeTruthy();
-
-    // The settings should be at least partially visible in the sidebar viewport
-    const settingsTop = settingsBox!.y;
-    const settingsBottom = settingsBox!.y + settingsBox!.height;
-    const scrollerTop = scrollerBox!.y;
-    const scrollerBottom = scrollerBox!.y + scrollerBox!.height;
-
-    // Check that settings are within visible area (at least partially)
-    const isVisible = settingsTop < scrollerBottom && settingsBottom > scrollerTop;
-    expect(isVisible, 'Current block settings should be visible in sidebar scroll area').toBe(true);
+    // Scrolled to, at least partly: in view counts the sidebar's own scroll
+    // area clipping it, and waits for the scroll to get there.
+    await expect(blockSettings, 'Current block settings should be visible in sidebar scroll area').toBeInViewport();
   });
 
   test('reselecting same block does not scroll sidebar', async ({ page }) => {
@@ -285,8 +269,8 @@ test.describe('Block Selection', () => {
     const sidebarScroller = page.locator('.sidebar-content-wrapper');
     await expect(sidebarScroller).toBeVisible();
 
-    // Wait for any initial scroll to complete
-    await page.waitForTimeout(500);
+    // The sidebar has scrolled to the block's settings.
+    await expect(page.locator('#sidebar-properties')).toBeInViewport();
 
     // Check if content is scrollable (content height > container height)
     const canScroll = await sidebarScroller.evaluate((el) => {
@@ -297,7 +281,6 @@ test.describe('Block Selection', () => {
     if (!canScroll) {
       // If we can't scroll, just verify re-clicking doesn't cause errors
       await helper.clickBlockInIframe('block-1-uuid');
-      await page.waitForTimeout(300);
       // Test passes - no scroll to verify
       return;
     }
@@ -307,15 +290,13 @@ test.describe('Block Selection', () => {
       // Scroll to 50px or max scrollable, whichever is smaller
       el.scrollTop = Math.min(50, el.scrollHeight - el.clientHeight);
     });
-    await page.waitForTimeout(100);
 
     // Get the scroll position (may be less than 50 if content is short)
     const scrollBefore = await sidebarScroller.evaluate((el) => el.scrollTop);
     expect(scrollBefore).toBeGreaterThan(0);
 
-    // Re-click the same block
+    // Re-click the same block (clickBlockInIframe waits for its toolbar).
     await helper.clickBlockInIframe('block-1-uuid');
-    await page.waitForTimeout(300);
 
     // Verify scroll position is maintained (not reset)
     const scrollAfter = await sidebarScroller.evaluate((el) => el.scrollTop);
@@ -339,28 +320,10 @@ test.describe('Block Selection', () => {
     await expect(sidebarScroller).toBeVisible();
     await expect(blockSettings).toBeVisible({ timeout: 5000 });
 
-    // Wait for any scroll animation to complete
-    await page.waitForTimeout(500);
-
-    // Verify the TOP of block settings is visible (not scrolled past)
-    // Get bounding boxes to compare positions
-    const scrollerBox = await sidebarScroller.boundingBox();
-    const settingsBox = await blockSettings.boundingBox();
-
-    expect(scrollerBox).toBeTruthy();
-    expect(settingsBox).toBeTruthy();
-
-    // The top of settings should be at or below the top of the scroller viewport
-    // (i.e., not scrolled so far that the top of settings is above the viewport)
-    const settingsTopIsVisible = settingsBox!.y >= scrollerBox!.y - 20; // Allow 20px tolerance
-    expect(
-      settingsTopIsVisible,
-      `Top of block settings should be visible. Settings top: ${settingsBox!.y}, Scroller top: ${scrollerBox!.y}`,
-    ).toBe(true);
-
-    // Also verify the first field is visible (variation for listing block)
+    // The TOP of the block settings is in view (not scrolled past): its first
+    // field, the listing's variation, is.
     const firstField = page.locator('#sidebar-properties .field-wrapper-variation');
-    await expect(firstField).toBeVisible({ timeout: 5000 });
+    await expect(firstField, 'Top of block settings should be visible').toBeInViewport();
   });
 
   test('sidebar block header menu has same items as toolbar menu except settings', async ({
@@ -381,7 +344,7 @@ test.describe('Block Selection', () => {
 
     // Close toolbar menu by clicking elsewhere
     await page.locator('body').click({ position: { x: 10, y: 10 } });
-    await page.waitForTimeout(200);
+    await expect(page.locator('.volto-hydra-dropdown-menu')).toBeHidden();
 
     // Open the sidebar block header menu
     const sidebarMenuButton = page.locator(
@@ -389,7 +352,7 @@ test.describe('Block Selection', () => {
     );
     await expect(sidebarMenuButton).toBeVisible({ timeout: 5000 });
     await sidebarMenuButton.click();
-    await page.waitForTimeout(200);
+    await expect(page.locator('.volto-hydra-dropdown-item').first()).toBeVisible();
 
     // Get sidebar menu items (same dropdown class as toolbar)
     const sidebarMenuItems = page.locator('.volto-hydra-dropdown-item');
@@ -554,8 +517,9 @@ test.describe('Block Mode (Escape state machine)', () => {
       window.addEventListener('keydown', (e) => { if (e.key === 'Escape') window.__escReachedPage = true; }, false);
     });
 
-    await page.keyboard.press('Escape');
-    await page.waitForTimeout(300);
+    // Escape, and the editor shows it handled it (block mode's border outline):
+    // the key has been through every listener by then.
+    await helper.escapeFromEditing();
 
     const reached = await frame.evaluate(() => window.__escReachedPage);
     expect(reached, 'editor Escape leaked to a frontend window keydown listener').toBe(false);
@@ -1504,10 +1468,7 @@ test.describe('Multi-Block Selection', () => {
     const iframe = helper.getIframe();
     const blocksBefore = await iframe.locator('[data-block-uid]').count();
     await page.keyboard.press('ControlOrMeta+v');
-    // Small wait then verify count unchanged
-    await page.waitForTimeout(500);
-    const blocksAfter = await iframe.locator('[data-block-uid]').count();
-    expect(blocksAfter).toBe(blocksBefore);
+    await expect(iframe.locator('[data-block-uid]')).toHaveCount(blocksBefore);
   });
 
   test('Quanta toolbar dropdown has copy/cut/paste actions for single block', async ({ page }) => {
@@ -2120,7 +2081,13 @@ test.describe('Multi-Block Selection', () => {
     await helper.waitForIframeBlockHandle('block-1-uuid');
     await helper.escapeFromEditing();
     await iframe.locator('[data-block-uid="block-3-uuid"]').click({ modifiers: ['ControlOrMeta'] });
-    await helper.waitForMultiSelectOutlines(2);
+
+    // Where this test should be before it scrolls, so a failure below is about
+    // the scroll: both blocks outlined, and the page has somewhere to go.
+    for (const uid of ['block-1-uuid', 'block-3-uuid']) {
+      await expect(page.locator(`.volto-hydra-block-outline[data-block-uid="${uid}"]`), 'multi-selected before the scroll').toBeVisible();
+    }
+    await expect(iframe.locator('[data-block-uid]').last(), 'the page can scroll').not.toBeInViewport();
 
     // Scroll iframe down — outlines should disappear during scroll. They are
     // back 150ms after the scroll stops, sooner than a poll may look, so the

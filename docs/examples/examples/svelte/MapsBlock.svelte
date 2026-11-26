@@ -3,9 +3,9 @@
 </script>
 
 <div data-block-uid={block['@uid']} class="maps-block">
-  {#if block.url}
+  {#if block.url?.[0]?.['@id']}
     <iframe
-      src={block.url}
+      src={block.url?.[0]?.['@id']}
       title={block.title || 'Map'}
       allowfullscreen
       loading="lazy"

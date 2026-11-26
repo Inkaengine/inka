@@ -1,0 +1,1 @@
+A listing can ask for pages that are the same as the one it is on: "Is the same as this page" is offered on the Tag, Type, Creator, Language and related-items indexes, and the fetcher fills in the page's own values and leaves the page out. @djay

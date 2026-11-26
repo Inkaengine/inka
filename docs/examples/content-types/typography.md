@@ -20,7 +20,7 @@ subjects:
   - content
 title: Typography - Page Title (H1, 48/56px)
 blocks-matched: |
-  <block type="slate" value="${p,h*,ul,ol,blockquote,strong,em,a/slate}" plaintext="${p,h*,ul,ol,blockquote,strong,em,a/text}" />
+  <block type="slate" value="${p,h*,ul,ol,blockquote,strong,em,a/slate}" />
   <block type="title" _="${h1}" />
   <block type="image" description="${p?/textarea}" url="${img/src}" alt="${img?/alt}" title="${img?/title}" align="center" size="l" />
 blocks-tagged: |
@@ -52,7 +52,7 @@ blocks-tagged: |
 
 <block type="teaser">
 
-### [Teaser Title (H2, 30/36px)](/docs/examples/content-types)
+### [Teaser Title (H2, 30/36px)](./index.md)
 
 For grid blocks, the font of the headlines are variable, depending on the number of cells in the grid.
 
@@ -64,27 +64,27 @@ For grid blocks, the font of the headlines are variable, depending on the number
 
 <block type="gridBlock">
 
+<fields styles:align="left">
+
 <block type="teaser">
 
-### [Teaser Title (H3, 24/30px)](/docs/examples/content-types)
+### [Teaser Title (H3, 24/30px)](./index.md)
 
 **Teaser Headtitle (DIV, 14/18px)**
-
-<fields styles:align="left" />
 
 </block>
 
 <block type="teaser">
 
-### [Teaser Title (H3, 24/30px)](/docs/examples/content-types)
+### [Teaser Title (H3, 24/30px)](./index.md)
 
 **Teaser Headtitle (DIV, 14/18px)**
 
 Paragraph (p, 18px/24px). This section has a sample of content types available in this site.
 
-<fields styles:align="left" />
-
 </block>
+
+</fields>
 
 </block>
 
@@ -116,7 +116,7 @@ Lorem ipsum dolor sit amet, consetetur sadipscing elitr, sed diam nonumy eirmod 
 
 Paragraph text (p, 24/33px) -> Lorem ipsum dolor sit amet, consetetur sadipscing elitr, sed diam nonumy eirmod tempor invidunt ut labore et dolore magna aliquyam erat, sed diam voluptua. At vero eos et accusam et justo duo dolores et ea rebum. Stet clita kasd gubergren, no sea takimata sanctus est Lorem ipsum dolor sit amet. Lorem ipsum dolor sit amet, consetetur sadipscing elitr, sed diam nonumy eirmod tempor invidunt ut labore et dolore magna aliquyam erat, sed diam voluptua. At vero eos et accusam et justo duo dolores et ea rebum. Stet clita kasd gubergren, no sea takimata sanctus est Lorem ipsum dolor sit amet.
 
-<block type="listing" data-json='{"block":"875e2811-edb6-4842-8cc0-246fa1be6f58","headline":"Heading (H2, 33/42px)","headlineTag":"h2","variation":"default","query":[],"querystring":{"limit":"5","query":[{"i":"portal_type","o":"plone.app.querystring.operation.selection.any","v":["File","Document"]}],"sort_on":"effective","sort_order":"descending","sort_order_boolean":"descending"}}' />
+<block type="listing" data-json='{"block":"875e2811-edb6-4842-8cc0-246fa1be6f58","headline":"Heading (H2, 33/42px)","headlineTag":"h2","variation":"default","query":[],"querystring":{"limit":"5","query":[{"i":"portal_type","o":"plone.app.querystring.operation.selection.any","v":["File","Document"]}],"sort_on":"effective","sort_order":"descending","sort_order_boolean":"descending"},"fieldMapping":{"getURL":{"field":"href","type":"link"},"title":{"field":"title","type":"string"},"description":{"field":"description","type":"textarea"}}}' />
 
 <block type="image">
 

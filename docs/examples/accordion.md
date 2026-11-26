@@ -21,7 +21,7 @@ subjects:
   - containers
 title: Accordion
 blocks-matched: |
-  <block type="slate" value="${p,h*,ul,ol,blockquote,strong,em,a/slate}" plaintext="${p,h*,ul,ol,blockquote,strong,em,a/text}" />
+  <block type="slate" value="${p,h*,ul,ol,blockquote,strong,em,a/slate}" />
   <block type="title" _="${h1}" />
   <block type="separator" _="${hr}" styles={"align":"full"} />
   <block type="image" description="${p?/textarea}" url="${img/src}" alt="${img?/alt}" title="${img?/title}" align="center" size="l" />
@@ -209,7 +209,7 @@ Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincid
 
 <block type="teaser">
 
-### [Teaser Title H2](/docs/examples/content-types/page)
+### [Teaser Title H2](./content-types/page.md)
 
 Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincidunt ut laoreet dolore magna aliquam erat volutpat. Ut wisi enim ad minim veniam, quis nostrud exerci tation ullamcorper suscipit lobortis nisl ut aliquip ex ea commodo
 
@@ -219,7 +219,7 @@ Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincid
 
 <block type="teaser">
 
-### [Teaser Title H2](/docs/examples/content-types/image-light.jpg)
+### [Teaser Title H2](./content-types/image-light.jpg)
 
 Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincidunt ut laoreet dolore magna aliquam erat volutpat. Ut wisi enim ad minim veniam, quis nostrud exerci tation ullamcorper
 
@@ -229,7 +229,7 @@ Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincid
 
 <block type="teaser">
 
-### [Teaser Title H2](/docs/examples/content-types/page)
+### [Teaser Title H2](./content-types/page.md)
 
 Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincidunt ut laoreet dolore magna aliquam erat volutpat. Ut wisi enim ad minim veniam, quis nostrud exerci tation ullamcorper
 
@@ -239,7 +239,7 @@ Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincid
 
 ## Accordion with listing
 
-<block type="listing" data-json='{"headlineTag":"h2","querystring":{"limit":"3","query":[{"i":"Description","o":"plone.app.querystring.operation.string.contains","v":"block"}],"sort_order":"descending","sort_order_boolean":true},"variation":"summary"}' />
+<block type="listing" data-json='{"headlineTag":"h2","querystring":{"limit":"3","query":[{"i":"Description","o":"plone.app.querystring.operation.string.contains","v":"block"}],"sort_order":"descending","sort_order_boolean":true},"variation":"summary","fieldMapping":{"getURL":{"field":"href","type":"link"},"title":{"field":"title","type":"string"},"description":{"field":"description","type":"textarea"},"image":{"field":"image","type":"image_link"}}}' />
 
 ## Accordion with table
 

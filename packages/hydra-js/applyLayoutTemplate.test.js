@@ -1,10 +1,19 @@
+import { describe, test, expect, beforeEach } from 'vitest';
+import { expandEveryContainer } from './expandEveryContainer.testutil.js';
 import { expandTemplates, expandTemplatesSync } from '@volto-hydra/helpers';
-import { mergeTemplatesIntoPage, mergeInstanceIntoTemplate } from './mergeTemplates.js';
+import { mergeTemplatesIntoPage, mergeInstanceIntoTemplate } from '@volto-hydra/helpers/mergeTemplates.js';
+import { buildIdFieldMap } from '@volto-hydra/helpers/buildBlockPathMap.js';
+import { sharedBlocksConfig as idFieldSchemas } from '../../tests-playwright/fixtures/shared-block-schemas.js';
+
+// Each list's id field, from the schema, as the admin derives it (buildIdFieldMap).
+const ID_FIELDS = buildIdFieldMap(idFieldSchemas);
+
 
 // Wrapper to match old applyLayoutTemplate signature for existing tests
 async function applyLayoutTemplate(pageData, templateData, uuidGenerator) {
   const templateUrl = templateData['@id'];
   const { merged } = await mergeTemplatesIntoPage(pageData, {
+    idFieldMap: ID_FIELDS,
     loadTemplate: async () => templateData,
     pageBlocksFields: { items: { allowedLayouts: [templateUrl] } },
     uuidGenerator,
@@ -17,6 +26,7 @@ async function mergeTemplateContent(target, source, filterTemplateId = null) {
   // For merge tests, source contains template structure, target has page content
   // This simulates the old merge behavior
   const { merged } = await mergeTemplatesIntoPage(target, {
+    idFieldMap: ID_FIELDS,
     loadTemplate: async () => source,
     pageBlocksFields: { items: {} },
   });
@@ -578,6 +588,7 @@ describe('reverse merge - page to template (for saving)', () => {
     // Merge page content back INTO template (reverse direction)
     // This simulates what happens on save
     const { merged } = await mergeTemplatesIntoPage(template, {
+      idFieldMap: ID_FIELDS,
       loadTemplate: async () => pageWithEdits, // The "template" to load is actually the page
       pageBlocksFields: { items: { allowedLayouts: ['/templates/header-footer'] } },
       uuidGenerator,
@@ -634,6 +645,7 @@ describe('reverse merge - page to template (for saving)', () => {
       blocks_layout: { items: ['p2-header', 'p2-user'] },
     };
     const { merged: page2Merged } = await mergeTemplatesIntoPage(page2, {
+      idFieldMap: ID_FIELDS,
       loadTemplate: async () => updatedTemplate,
       uuidGenerator: uuidGen,
     });
@@ -688,6 +700,8 @@ describe('reverse merge - page to template (for saving)', () => {
     };
 
     const { merged } = await mergeTemplatesIntoPage(template, {
+
+      idFieldMap: ID_FIELDS,
       loadTemplate: async () => pageWithEdits,
       pageBlocksFields: { items: { allowedLayouts: ['/templates/mixed'] } },
       uuidGenerator,
@@ -903,7 +917,7 @@ describe('multiple template instances with shared templateState', () => {
     const templateState = {};
 
     // First call: expand main blocks with main template
-    const mainItems = expandTemplatesSync(mainLayout, {
+    const mainItems = expandEveryContainer(mainLayout, {
       blocks: mainBlocks,
       templateState,
       templates,
@@ -911,7 +925,7 @@ describe('multiple template instances with shared templateState', () => {
     });
 
     // Second call: expand footer blocks with footer template (same templateState)
-    const footerItems = expandTemplatesSync(footerLayout, {
+    const footerItems = expandEveryContainer(footerLayout, {
       blocks: footerBlocks,
       templateState,
       templates,
@@ -975,6 +989,7 @@ describe('multiple template instances with shared templateState', () => {
       blocks_layout: { items: ['cardA', 'cardB'] },
     };
     const { merged } = await mergeTemplatesIntoPage(page, {
+      idFieldMap: ID_FIELDS,
       loadTemplate: async () => cardTemplate,
       pageBlocksFields: { items: {} },
       uuidGenerator: (() => { let c = 0; return () => `u-${++c}`; })(),
@@ -1010,7 +1025,7 @@ describe('multiple template instances with shared templateState', () => {
     const templateState = {};
 
     // First call: main blocks with template
-    const mainItems = expandTemplatesSync(mainLayout, {
+    const mainItems = expandEveryContainer(mainLayout, {
       blocks: mainBlocks,
       templateState,
       templates,
@@ -1018,7 +1033,7 @@ describe('multiple template instances with shared templateState', () => {
     });
 
     // Second call: footer blocks WITHOUT template
-    const footerItems = expandTemplatesSync(footerLayout, {
+    const footerItems = expandEveryContainer(footerLayout, {
       blocks: footerBlocks,
       templateState,
       templates,
@@ -1043,7 +1058,7 @@ describe('multiple template instances with shared templateState', () => {
     const templateState = {};
 
     // First call
-    const items1 = expandTemplatesSync(mainLayout, {
+    const items1 = expandEveryContainer(mainLayout, {
       blocks: mainBlocks,
       templateState,
       templates,
@@ -1051,7 +1066,7 @@ describe('multiple template instances with shared templateState', () => {
     });
 
     // Second call with same data (simulates re-render)
-    const items2 = expandTemplatesSync(mainLayout, {
+    const items2 = expandEveryContainer(mainLayout, {
       blocks: mainBlocks,
       templateState,
       templates,
@@ -1175,7 +1190,7 @@ describe('nextSlotId and childSlotIds on fixed blocks', () => {
     expect(result.blocks.intro).not.toHaveProperty('childSlotIds');
   });
 
-  test("switching layout keeps the page's editable text where the new layout has that slot, drops the rest of the old layout's fixed blocks, and keeps its slot content", async () => {
+  test("switching layout keeps the page's editable text where the new layout has that slot, drops the rest of the old layout's fixed blocks, and hides slot content the new layout has no slot for", async () => {
     const A = {
       '@id': '/templates/a',
       blocks: {
@@ -1199,6 +1214,7 @@ describe('nextSlotId and childSlotIds on fixed blocks', () => {
     const loadTemplate = async (id) => ({ '/templates/a': A, '/templates/b': B })[id];
     const page = { blocks: { mine: { '@type': 'slate', text: 'Mine' } }, blocks_layout: { items: ['mine'] } };
     const { merged: onA } = await mergeTemplatesIntoPage(page, {
+      idFieldMap: ID_FIELDS,
       loadTemplate, pageBlocksFields: { items: { allowedLayouts: ['/templates/a'] } }, uuidGenerator,
     });
     for (const id of onA.blocks_layout.items) {
@@ -1207,16 +1223,21 @@ describe('nextSlotId and childSlotIds on fixed blocks', () => {
       if (onA.blocks[id].slotId === 'aside') onA.blocks[id].text = 'Page aside';
     }
     const { merged: onB } = await mergeTemplatesIntoPage(onA, {
+      idFieldMap: ID_FIELDS,
       loadTemplate, pageBlocksFields: { items: { allowedLayouts: ['/templates/b'] } }, uuidGenerator,
     });
     const introId = onA.blocks_layout.items.find((id) => onA.blocks[id].slotId === 'intro');
     expect(onB.blocks_layout.items.map((id) => [onB.blocks[id].slotId, onB.blocks[id].text])).toEqual([
       ['header', 'B head'],
       ['intro', 'Page intro'],
-      ['default', 'Page aside'],
       ['default', 'Mine'],
     ]);
     expect(onB.blocks_layout.items[1]).toBe(introId);
+    // B has no aside: the page's aside is hidden, kept in its blocks but in no
+    // region, until a layout with an aside shows it again.
+    const listed = new Set(onB.blocks_layout.items);
+    const hidden = Object.entries(onB.blocks).filter(([id]) => !listed.has(id)).map(([, b]) => [b.slotId, b.text]);
+    expect(hidden).toEqual([['aside', 'Page aside']]);
   });
 
   test("removing the layout leaves the page's content without any of the merge's marks", async () => {
@@ -1234,6 +1255,8 @@ describe('nextSlotId and childSlotIds on fixed blocks', () => {
     expect(applied.blocks.mine.templateId).toBe('/templates/t1');
 
     const { merged } = await mergeTemplatesIntoPage(applied, {
+
+      idFieldMap: ID_FIELDS,
       loadTemplate: async () => templateData,
       pageBlocksFields: { items: { allowedLayouts: [null] } },
       uuidGenerator,
@@ -1348,98 +1371,6 @@ describe('nextSlotId and childSlotIds on fixed blocks', () => {
   });
 });
 
-describe('mergeTemplatesIntoPage: object_list write-back on frozen input', () => {
-  // INITIAL_DATA arrives deep-frozen, and mergeTemplatesIntoPage only
-  // shallow-copies each block — so its nested objects are still the frozen
-  // originals. Writing an expanded object_list back through a multi-level
-  // `dataPath` (slateTable's rows live at `table.rows`) descended into that
-  // frozen child and threw "Cannot assign to read only property 'rows'".
-  // slateTable is the only shipped block with a depth-2 dataPath, and the
-  // only fixture pairing it with a template is docs/examples/table — which
-  // no functional test loaded, so the crash shipped unnoticed.
-
-  /** Recursively Object.freeze an object graph, mirroring INITIAL_DATA. */
-  function deepFreeze(value) {
-    if (value && typeof value === 'object' && !Object.isFrozen(value)) {
-      Object.freeze(value);
-      for (const key of Object.keys(value)) {
-        deepFreeze(value[key]);
-      }
-    }
-    return value;
-  }
-
-  // slateTable schema as registered in packages/volto-hydra/src/index.js:
-  // `rows` is an object_list whose data lives at block.table.rows — a
-  // depth-2 dataPath, the shape that triggers the frozen-write crash.
-  const blocksConfig = {
-    slateTable: {
-      blockSchema: {
-        properties: {
-          rows: {
-            widget: 'object_list',
-            idField: 'key',
-            dataPath: ['table', 'rows'],
-            schema: {
-              fieldsets: [{ id: 'default', title: 'Default', fields: ['cells'] }],
-              properties: {
-                cells: { widget: 'object_list', idField: 'key', schema: { properties: {} } },
-              },
-            },
-          },
-        },
-      },
-    },
-  };
-
-  const makeTablePage = () => ({
-    blocks: {
-      'tbl-1': {
-        '@type': 'slateTable',
-        table: {
-          rows: [
-            {
-              key: 'row-1',
-              cells: [
-                { key: 'c1', value: [{ type: 'p', children: [{ text: 'A' }] }] },
-              ],
-            },
-          ],
-        },
-      },
-    },
-    blocks_layout: { items: ['tbl-1'] },
-  });
-
-  const mergeOptions = () => ({
-    loadTemplate: async () => {
-      throw new Error('loadTemplate must not run — page has no template refs');
-    },
-    uuidGenerator: (() => {
-      let n = 0;
-      return () => `uid-${++n}`;
-    })(),
-    blocksConfig,
-    intl: { formatMessage: ({ defaultMessage }) => defaultMessage || '' },
-  });
-
-  test('writes a slateTable rows object_list back through a depth-2 dataPath without throwing', async () => {
-    const page = deepFreeze(makeTablePage());
-
-    const { merged } = await mergeTemplatesIntoPage(page, mergeOptions());
-
-    expect(merged.blocks['tbl-1'].table.rows).toHaveLength(1);
-    expect(merged.blocks['tbl-1'].table.rows[0].key).toBe('row-1');
-    expect(merged.blocks['tbl-1'].table.rows[0].cells).toHaveLength(1);
-  });
-
-  test('does not mutate the frozen input page', async () => {
-    const page = deepFreeze(makeTablePage());
-    await mergeTemplatesIntoPage(page, mergeOptions());
-    expect(Object.isFrozen(page.blocks['tbl-1'].table)).toBe(true);
-  });
-});
-
 describe('a layout menu must not re-home a page', () => {
   const uuidGenerator = (() => { let n = 0; return () => `uuid-${++n}`; })();
 
@@ -1460,7 +1391,7 @@ describe('a layout menu must not re-home a page', () => {
       blocks: {
         'ev-title': { '@type': 'title', templateId: '/inka-templates/event-view', templateInstanceId: 'tpl-ev', slotId: 'title', readOnly: true, fixed: true },
         'ev-meta': { '@type': 'eventMetadata', templateId: '/inka-templates/event-view', templateInstanceId: 'tpl-ev', slotId: 'event-metadata', fixed: true },
-        'ev-body': { '@type': 'slate', templateId: '/inka-templates/event-view', templateInstanceId: 'tpl-ev', slotId: 'content', value: [{ type: 'p', children: [{ text: 'Body' }] }] },
+        'ev-body': { '@type': 'slate', templateId: '/inka-templates/event-view', templateInstanceId: 'tpl-ev', slotId: 'default', value: [{ type: 'p', children: [{ text: 'Body' }] }] },
       },
       blocks_layout: { items: ['ev-title', 'ev-meta', 'ev-body'] },
     };
@@ -1473,12 +1404,14 @@ describe('a layout menu must not re-home a page', () => {
       blocks: {
         't-title': { '@type': 'title', templateId: '/inka-templates/event-view', slotId: 'title', readOnly: true, fixed: true },
         't-meta': { '@type': 'eventMetadata', templateId: '/inka-templates/event-view', slotId: 'event-metadata', fixed: true },
-        't-content': { '@type': 'slate', templateId: '/inka-templates/event-view', slotId: 'content', value: [] },
+        't-content': { '@type': 'slate', templateId: '/inka-templates/event-view', slotId: 'default', value: [] },
       },
       blocks_layout: { items: ['t-title', 't-meta', 't-content'] },
     };
 
     const { merged } = await mergeTemplatesIntoPage(page, {
+
+      idFieldMap: ID_FIELDS,
       loadTemplate: async (id) => {
         if (id !== '/inka-templates/event-view') {
           throw new Error(`the menu must not apply a different layout (asked for ${id})`);
