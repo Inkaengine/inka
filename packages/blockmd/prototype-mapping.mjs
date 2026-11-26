@@ -1612,14 +1612,20 @@ export function unkeyBlocks(keyed, protos = []) {
   // from that declaration, and the item may carry no type to look them up by
   // (typeField omitted/null: table rows/cells).
   const unkeyRegions = (block, regions = regionsOf(block['@type'])) => {
-    let liftedBlocksLayout = false;
+    // The object holding a region's `blocks` + `blocks_layout`: the block itself,
+    // or an object field of it (`data.items` -> `data`, as Volto's accordion).
+    const lifted = new Map(); // holder path -> holder
     for (const region of regions) {
       if (region.widget === 'blocks_layout') {
-        if (block.blocks && block.blocks_layout?.[region.name]) {
-          block[region.name] = unkeyChildren(
-            { blocks: block.blocks, blocks_layout: block.blocks_layout }, region.name, region,
+        const at = region.path.slice(0, -1);
+        const layoutKey = region.path[region.path.length - 1];
+        let holder = at.length ? getAtPath(block, at) : block;
+        if (holder?.blocks && holder.blocks_layout?.[layoutKey]) {
+          if (at.length && !lifted.has(at.join('.'))) { holder = { ...holder }; setAt(block, at, holder); }
+          holder[layoutKey] = unkeyChildren(
+            { blocks: holder.blocks, blocks_layout: holder.blocks_layout }, layoutKey, region,
           );
-          liftedBlocksLayout = true;
+          lifted.set(at.join('.'), holder);
         }
         continue;
       }
@@ -1649,9 +1655,9 @@ export function unkeyBlocks(keyed, protos = []) {
     // them into per-region arrays. A block with NO blocks_layout region (a tier-3
     // block that carries its own `blocks`/`blocks_layout`, e.g. `search`) keeps
     // them so its raw `data-json` round-trips intact.
-    if (liftedBlocksLayout) {
-      delete block.blocks;
-      delete block.blocks_layout;
+    for (const holder of lifted.values()) {
+      delete holder.blocks;
+      delete holder.blocks_layout;
     }
   };
   return { blocks: unkeyChildren(keyed), assignments };
@@ -1822,15 +1828,21 @@ export function keyBlocks(blocks, assignments, protos = []) {
   // Same as unkeyRegions: an item recurses with its container's declared item
   // prototype's regions, not a lookup by the item's (possibly absent) type.
   const keyRegions = (block, regions = regionsOf(block['@type'])) => {
-    const dict = {}, layout = {};
+    // One shared `blocks` dict + `blocks_layout` per holder: the block, or the
+    // object field a region sits in (`data.items` -> `data`).
+    const holders = new Map(); // holder path -> { at, dict, layout }
     for (const region of regions) {
       const val = getAtPath(block, region.path);
       if (region.widget === 'blocks_layout') {
         if (Array.isArray(val)) {
+          const at = region.path.slice(0, -1);
+          const layoutKey = region.path[region.path.length - 1];
+          if (!holders.has(at.join('.'))) holders.set(at.join('.'), { at, dict: {}, layout: {} });
+          const h = holders.get(at.join('.'));
           const k = keyChildren(val, region);
-          Object.assign(dict, k.dict);
-          layout[region.name] = k.uids;
-          delete block[region.name];
+          Object.assign(h.dict, k.dict);
+          h.layout[layoutKey] = k.uids;
+          delete (at.length ? getAtPath(block, at) : block)[layoutKey];
         }
         continue;
       }
@@ -1847,7 +1859,12 @@ export function keyBlocks(blocks, assignments, protos = []) {
         keyRegions(item, own); // the item's own regions (a row's cells, a cell's blocks)
       }
     }
-    if (Object.keys(dict).length) { block.blocks = dict; block.blocks_layout = layout; }
+    for (const { at, dict, layout } of holders.values()) {
+      if (!Object.keys(dict).length) continue;
+      const holder = at.length ? getAtPath(block, at) : block;
+      holder.blocks = dict;
+      holder.blocks_layout = layout;
+    }
   };
 
   const top = keyChildren(blocks);

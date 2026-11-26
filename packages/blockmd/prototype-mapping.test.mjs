@@ -2421,3 +2421,54 @@ describe("a container's items use the container's own prototypes, whatever else 
     expect(keyBlocks(blocks, assignments, protos)).toEqual(stored);
   });
 });
+
+describe('a blocks_layout region inside an object field (Volto\'s accordion `data`)', () => {
+  // Volto's accordion keeps its panels one object down: `data.blocks` and
+  // `data.blocks_layout.items`. A region named `data.items` reads them there,
+  // as `table.rows` reads an object_list inside `table`.
+  const protos = [
+    ...parsePrototypes('<block is="slate" value="${p,h*/slate}" />'),
+    ...parsePrototypes([
+      '<block is="accordion">',
+      '  <region name="data.items" widget="blocks_layout">',
+      '    <block is="accordionPanel" title="${h/text}">',
+      '      <region name="items" widget="blocks_layout" />',
+      '    </block>',
+      '  </region>',
+      '</block>',
+    ].join('\n'), { explicit: true }),
+  ];
+  const para = (text) => ({ '@type': 'slate', value: [{ type: 'p', children: [{ text }] }] });
+  const stored = {
+    blocks: {
+      acc: {
+        '@type': 'accordion',
+        toggle: true,
+        data: {
+          blocks: { p1: { '@type': 'accordionPanel', title: 'First', blocks: { c1: para('Inside') }, blocks_layout: { items: ['c1'] } } },
+          blocks_layout: { items: ['p1'] },
+        },
+      },
+    },
+    blocks_layout: { items: ['acc'] },
+  };
+
+  it('unkeys the panels into data.items, and keys them back', () => {
+    const input = structuredClone(stored);
+    const { blocks, assignments } = unkeyBlocks(input, protos);
+    expect(blocks[0]).toEqual({
+      '@type': 'accordion', toggle: true,
+      data: { items: [{ '@type': 'accordionPanel', title: 'First', items: [para('Inside')] }] },
+    });
+    expect(input).toEqual(stored); // the stored data is not changed in place
+    expect(keyBlocks(blocks, assignments, protos)).toEqual(stored);
+  });
+
+  it('emits the panels as markdown and decodes them back', () => {
+    const { blocks } = unkeyBlocks(structuredClone(stored), protos);
+    const md = emitBlocks(protos, blocks);
+    expect(md).toContain('Inside');
+    expect(md).not.toContain(':data');
+    expect(matchBlocks(protos, md)).toEqual(blocks);
+  });
+});
