@@ -248,7 +248,7 @@ The same `fetchItems` seam powers other "collection" blocks — each is just a f
 
 | Fetcher | Block | What it returns |
 | --- | --- | --- |
-| `relatedItemsFetcher({ apiUrl, contextPath })` | **Related Items** | the current page's relation field (default `relatedItems`) — its summaries, paged |
+| `relatedItemsFetcher({ apiUrl, contextPath })` | **Related Items** | the pages related to the current page by a relation field (default `relatedItems`), paged: the ones it names (`direction: 'outgoing'`, the default), the ones naming it (`'incoming'`, from `@relations`), or both |
 | `searchShortcutsFetcher({ apiUrl, contextPath })` | **Search Shortcuts** | one link per value, each `@id` set to `${searchUrl}?facet.${index}=${value}` (a shortcut into a search page's facet). A linked `pageField` → this page's values; none → the index's site-wide unique values (e.g. `Keywords` for `Subject`) |
 | `rssFetcher()` | **RSS Feed** | entries from `block.feedUrl`, client-side `fetch` (best-effort — a CORS/parse error degrades to an empty feed); each entry's `@id` is its link |
 

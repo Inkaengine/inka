@@ -2399,6 +2399,49 @@ function imageBlockUrl(url) {
   return null;
 }
 
+/**
+ * The image_scales of a referenced object, derived from the content ON DISK.
+ *
+ * Deliberately does NOT call enrichContent: a reference can point at the very
+ * object being enriched. Volto writes exactly that when an author picks the
+ * page's own lead image for an image block (`url: "../../resolveuid/<the
+ * page's own UID>"`), and enriching the referenced content then found the same
+ * block, loaded the same page and recursed until the stack gave out — a 500
+ * for the page AND for `@search`, so nothing came up at all.
+ *
+ * Scales need only the field's width/height: the downloads are relative
+ * (`@@images/<field>[/scale]`), as getLeadImageScales explains. So the raw
+ * content is all this needs, and no walk can re-enter.
+ *
+ * WHAT REAL PLONE DOES, checked rather than assumed (plone.restapi 10.2.1,
+ * `serializer/blocks.py` `ResolveUIDSerializerBase._process_data`): a block is
+ * a dict, so for each of `@id`, `url`, `href`, `preview_image` holding a
+ * string it calls `resolve_uid`, and when a BRAIN comes back it sets
+ * `image_scales` from `brain.image_scales` — the catalog metadata, not
+ * anything computed per request. That metadata covers lead images on ordinary
+ * types, not only Image objects: measured on a live Plone 6.2.3 catalog, 137
+ * of 213 items carry it — Image 97, CaseStudy 33, News Item 7 — shaped
+ * `{"image": [{content-type, download, filename, height, scales, size,
+ * width}]}`, keyed by the field the OBJECT has.
+ *
+ * Hence: keyed by the object's own field, and `image_field` on the reference
+ * only picks between an object's fields — it cannot name a field the object
+ * lacks, which is why 'image' remains the fallback.
+ */
+function referencedImageScales(rawContent, imageField) {
+  if (!rawContent || typeof rawContent !== 'object') return null;
+  if (rawContent['@type'] === 'Image' && rawContent.image) {
+    return getImageScales(rawContent);
+  }
+  // A lead image on an ordinary type (the ILeadImage behaviour). Real Plone
+  // answers with the brain's own keys, so a reference naming a field the
+  // object does not have still gets the object's image.
+  for (const field of [imageField, 'image'].filter(Boolean)) {
+    if (rawContent[field]) return getLeadImageScales(rawContent, field);
+  }
+  return null;
+}
+
 function enrichImageBrains(obj, baseUrl) {
   if (!obj || typeof obj !== 'object') return obj;
   if (Array.isArray(obj)) return obj.map(item => enrichImageBrains(item, baseUrl));
@@ -2410,8 +2453,7 @@ function enrichImageBrains(obj, baseUrl) {
     const contentPath = idUrl.startsWith('http') ? new URL(idUrl).pathname : idUrl;
     const rawContent = loadRawContentFromDisk(contentPath);
     if (rawContent) {
-      const enrichedImage = enrichContent(rawContent, contentPath, baseUrl);
-      const scales = getImageScales(enrichedImage);
+      const scales = referencedImageScales(rawContent, obj.image_field);
       if (scales) {
         obj = { ...obj, image_scales: scales };
       }
@@ -2435,8 +2477,7 @@ function enrichImageBrains(obj, baseUrl) {
       const contentPath = url.startsWith('http') ? new URL(url).pathname : url;
       const rawContent = loadRawContentFromDisk(contentPath);
       if (rawContent) {
-        const enrichedImage = enrichContent(rawContent, contentPath, baseUrl);
-        const scales = getImageScales(enrichedImage);
+        const scales = referencedImageScales(rawContent, obj.image_field);
         if (scales) {
           obj = { ...obj, image_scales: scales };
         }
@@ -4350,28 +4391,6 @@ app.get('/embedded-document.html', (req, res) => {
 });
 
 /**
- * Walk every registered content dir and collect unique `subjects` values
- * across all data.json files. Returns the `{ value: { title } }` shape
- * Plone's @querystring endpoint uses for the Subject (Keywords) index.
- */
-function collectSubjectValues() {
-  const subjects = new Set();
-  for (const { dirPath } of Object.values(contentDirMap)) {
-    const dataFile = path.join(dirPath, 'data.json');
-    if (!fs.existsSync(dataFile)) continue;
-    try {
-      const data = JSON.parse(fs.readFileSync(dataFile, 'utf8'));
-      for (const s of (data.subjects || [])) {
-        if (typeof s === 'string' && s) subjects.add(s);
-      }
-    } catch { /* ignore malformed data.json */ }
-  }
-  const out = {};
-  for (const s of [...subjects].sort()) out[s] = { title: s };
-  return out;
-}
-
-/**
  * GET /@querystring
  * Get querystring schema (available indexes, operators, sortable indexes)
  * Used by QuerystringWidget to populate criteria and sort dropdowns
@@ -4873,7 +4892,9 @@ app.post(/.*\/@workingcopy$/, (req, res) => {
 });
 
 // The relation catalog, as plone.restapi's @relations answers it for one kind.
-// plone.app.iterate's working copies are the only relations this mock keeps.
+// plone.app.iterate's working copies, and a content relation field (each
+// page's summaries, e.g. relatedItems) asked by its `target`: the pages whose
+// field names that page.
 app.get('{/*path}/@relations', (req, res) => {
   const name = req.query.relation;
   const sessionId = getSessionId(req);
@@ -4888,9 +4909,25 @@ app.get('{/*path}/@relations', (req, res) => {
       UID: content.UID,
     };
   };
-  const items = name === 'iterate-working-copy'
-    ? Object.entries(sessionWorkingCopies[sessionId] ?? {}).map(([copy, baseline]) => ({ source: summary(baseline), target: summary(copy) }))
-    : [];
+  // A stored reference names a path as written, or (content authored for a
+  // site root, as mountInternalRefs reads it) under its page's own mount.
+  const names = (ref, fromPath, targetPath) => {
+    const asPath = new URL(ref, `http://localhost:${PORT}`).pathname.replace(/\/$/, '');
+    const prefix = prefixMountOf(fromPath);
+    return [asPath, prefix && prefix + asPath].some((p) => p && resolveContentReference(p, sessionId) === targetPath);
+  };
+  const naming = (targetPath) => allContentPaths(sessionId).filter((p) => {
+    const values = rawContentForComponents(p, sessionId)?.[name];
+    return Array.isArray(values) && values.some((v) => v?.['@id'] && names(v['@id'], p, targetPath));
+  });
+  let items = [];
+  if (name === 'iterate-working-copy') {
+    items = Object.entries(sessionWorkingCopies[sessionId] ?? {}).map(([copy, baseline]) => ({ source: summary(baseline), target: summary(copy) }));
+  } else if (req.query.target) {
+    const targetPath = resolveContentReference(req.query.target, sessionId);
+    if (!targetPath) return res.status(404).end();
+    items = naming(targetPath).map((p) => ({ source: summary(p), target: summary(targetPath) }));
+  }
   res.json({ relations: { [name]: { items, items_total: items.length } } });
 });
 
@@ -5215,6 +5252,39 @@ app.get('/@vocabularies', (req, res) => {
       title: name,
     })),
   );
+});
+
+/**
+ * Vocabularies a real Plone closes to an anonymous visitor.
+ *
+ * Not all of them: checked against a live Plone 6.2, anonymously —
+ *
+ *   plone.app.vocabularies.Keywords                 401
+ *   plone.app.vocabularies.Users                    401
+ *   plone.app.vocabularies.ReallyUserFriendlyTypes  200
+ *   plone.app.vocabularies.MetadataFields           200
+ *
+ * The two that are closed are the two that expose a site's own data — every
+ * keyword in use (including private content's), and every user. Serving these
+ * to anyone, as this mock did, is what let a facet UI read a keyword
+ * vocabulary in CI and render an empty strip in production (#725).
+ */
+const ANONYMOUS_FORBIDDEN_VOCABS = new Set([
+  'plone.app.vocabularies.Keywords',
+  'plone.app.vocabularies.Users',
+]);
+
+app.get('/@vocabularies/:vocab', (req, res, next) => {
+  if (ANONYMOUS_FORBIDDEN_VOCABS.has(req.params.vocab) && !isAuthenticated(req)) {
+    // plone.restapi's own wording and shape, verbatim.
+    return res.status(401).json({
+      error: {
+        type: 'Not authenticated',
+        message: `You need to be authenticated to access the vocabulary '${req.params.vocab}'.`,
+      },
+    });
+  }
+  next();
 });
 
 app.get('/@vocabularies/:vocab', (req, res) => {

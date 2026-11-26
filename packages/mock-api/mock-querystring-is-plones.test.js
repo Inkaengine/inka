@@ -49,18 +49,54 @@ describe('the captured vocabulary', () => {
     assert.ok(fixture._captured_at);
   });
 
-  it('carries no site of its own: the values belong to whoever answers', () => {
+  it('carries no site of its own: the VALUES belong to whoever answers', () => {
     const perSite = [];
     for (const [root, obj] of [['indexes', fixture.indexes], ['sortable_indexes', fixture.sortable_indexes]]) {
       (function walk(node, trail) {
         if (!node || typeof node !== 'object') return;
         for (const [key, value] of Object.entries(node)) {
-          if (['values', 'vocabulary', 'fetch_vocabulary'].includes(key)) perSite.push(`${trail}.${key}`);
+          if (key === 'values') perSite.push(`${trail}.${key}`);
           walk(value, `${trail}.${key}`);
         }
       })(obj, root);
     }
     assert.deepEqual(perSite, [], 'a captured site\'s own vocabulary leaked into the fixture');
+  });
+
+  /**
+   * `vocabulary` and `fetch_vocabulary` were stripped with `values` as
+   * per-site, and they are not: they are plone.app.querystring's registry —
+   * WHICH vocabulary an index draws on, and whether the server inlines its
+   * terms or expects the client to go and fetch them. Every stock site answers
+   * the same, and it is exactly the shape a consumer has to cope with.
+   *
+   * Keeping them is not tidiness. Without them the mock said "no values, no
+   * vocabulary", which reads as "this index has no terms". A real Plone says
+   * `fetch_vocabulary: true, vocabulary: ...Keywords, values: {}` and then
+   * refuses that vocabulary to an anonymous visitor — so a facet UI that reads
+   * `index.values` passed here and rendered one empty strip in production
+   * (#725, #762).
+   */
+  it('keeps the vocabulary each index draws on, and whether it inlines its terms', () => {
+    const subject = fixture.indexes.Subject;
+    assert.equal(subject.vocabulary, 'plone.app.vocabularies.Keywords');
+    assert.equal(subject.fetch_vocabulary, true);
+
+    // Both, on the same index: `fetch_vocabulary` alone is NOT a reason for a
+    // consumer to go fetching. portal_type carries the flag and the mock still
+    // inlines nine terms, so a consumer must look at whether `values` is empty.
+    assert.equal(
+      fixture.indexes.portal_type.vocabulary,
+      'plone.app.vocabularies.ReallyUserFriendlyTypes',
+    );
+    assert.equal(fixture.indexes.portal_type.fetch_vocabulary, true);
+    assert.ok(Object.keys(served.indexes.portal_type.values).length > 0);
+
+    // And in what the ROUTE answers, which is what a consumer sees: the
+    // keyword index names its vocabulary, flags it, and inlines nothing.
+    assert.equal(served.indexes.Subject.fetch_vocabulary, true);
+    assert.equal(served.indexes.Subject.vocabulary, 'plone.app.vocabularies.Keywords');
+    assert.deepEqual(served.indexes.Subject.values ?? {}, {});
   });
 
   /**

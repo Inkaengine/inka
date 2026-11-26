@@ -4,6 +4,9 @@
   "UID": "deep-link-page-b-uid",
   "id": "deep-link-page-b",
   "title": "Deep Link Page B",
+  "relatedItems": [
+    { "@id": "http://localhost:8888/example-listings-page", "@type": "Document", "title": "Example Listings" }
+  ],
   "blocks": {
     "title-block": { "@type": "title" },
     "btnb": {

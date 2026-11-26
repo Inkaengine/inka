@@ -32,7 +32,13 @@ blocks-matched: |
 
 # Related Items Block
 
-Renders the current page's related items relation field (default relatedItems). Its items are fetched at render time and shown with a configurable item type (variation).
+Renders the pages related to the current page by one of its relation fields (default relatedItems). Its items are fetched at render time and shown with a configurable item type (variation).
+
+**Direction** says which way the relation runs. Plone keeps a relation on the page that makes it, so a page names its related pages, but the pages that name it hold nothing on it:
+
+- **This page's related items** (`outgoing`, the default): the pages this page's field names, in its order.
+- **Pages relating to this one** (`incoming`): the pages whose same field names this page, from plone.restapi's relation catalog (`@relations?target=<UID>&relation=<field>`). A relation whose page the visitor can't view is left out. With it, relating two pages once lists each on the other.
+- **Both**: this page's related items, then the pages relating to it, each page once.
 
 ## Live example
 
@@ -73,8 +79,17 @@ This block has no bespoke renderer. Add its fetcher to your fetchItems map (keye
 export function relatedItemsFetcher({ apiUrl, contextPath }) {
   return async function fetchItems(block, { start, size }) {
     const field = block.relationField || 'relatedItems';
+    const direction = block.direction || 'outgoing';
     const content = await (await fetch(`${apiUrl}${contextPath}/++api++`, { headers: authHeaders() })).json();
-    const all = Array.isArray(content[field]) ? content[field] : [];
+    const outgoing = direction === 'incoming' ? [] : content[field] || [];
+    let incoming = [];
+    if (direction !== 'outgoing') {
+      const query = new URLSearchParams({ target: content.UID, relation: field });
+      const rel = await (await fetch(`${apiUrl}/++api++/@relations?${query}`, { headers: authHeaders() })).json();
+      incoming = rel.relations[field].items.map((relation) => relation.source);
+    }
+    const seen = new Set();
+    const all = [...outgoing, ...incoming].filter((item) => !seen.has(item['@id']) && seen.add(item['@id']));
     return { items: all.slice(start, start + size), total: all.length };
   };
 }

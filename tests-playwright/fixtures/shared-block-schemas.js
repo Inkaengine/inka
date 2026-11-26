@@ -956,13 +956,22 @@ export const sharedBlocksConfig = {
         title: 'Related Items',
         group: 'common',
         blockSchema: {
-            fieldsets: [{ id: 'default', title: 'Default', fields: ['relationField', 'variation', 'fieldMapping'] }],
+            fieldsets: [{ id: 'default', title: 'Default', fields: ['relationField', 'direction', 'variation', 'fieldMapping'] }],
             properties: {
                 relationField: {
                     title: 'Relation field',
                     description: 'Which relation field to render (default: relatedItems)',
                     widget: 'schemaFieldSelect',
                     fieldType: 'relation',
+                },
+                // relatedItemsFetcher's RELATION_DIRECTIONS. Plone keeps a
+                // relation on the page that makes it: "incoming" lists the
+                // pages naming this one in the same field.
+                direction: {
+                    title: 'Direction',
+                    widget: 'select',
+                    choices: [['outgoing', "This page's related items"], ['incoming', 'Pages relating to this one'], ['both', 'Both']],
+                    default: 'outgoing',
                 },
                 variation: { title: 'Item Type', widget: 'blockTypeSelect', filterConvertibleFrom: '@default', blocksField: '..', default: 'summary' },
                 // The mapping's sources: each related item's catalog fields (relatedItemsFetcher). The item type's default

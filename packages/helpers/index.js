@@ -1477,29 +1477,55 @@ export function ploneFetchItems({
 }
 
 /**
- * Fetcher for the Related Items example block: renders the CURRENT page's
- * relation field (default `relatedItems`). Reads the context content and pages
- * its relation summaries — no catalog query. A `fetchItems` value for
- * `expandListingBlocks`, same contract as `ploneFetchItems`.
+ * Fetcher for the Related Items example block: the pages related to the
+ * CURRENT page by one of its relation fields (`relationField`, default
+ * `relatedItems`), in the block's `direction`:
+ *
+ * - `outgoing` (the default): the pages this page's field names, in the
+ *   field's order: the page's own relation summaries, no catalog query;
+ * - `incoming`: the pages whose same field names this page, from plone.restapi's
+ *   relation catalog (`@relations?target=<UID>&relation=<field>`), which leaves
+ *   out a relation whose page the visitor can't view;
+ * - `both`: the outgoing ones, then the incoming ones, each page once.
+ *
+ * Plone keeps a relation on the page that makes it, so `incoming` is how a
+ * page lists those relating to it without anyone relating it back. A
+ * `fetchItems` value for `expandListingBlocks`, same contract as
+ * `ploneFetchItems`.
  */
+export const RELATION_DIRECTIONS = ['outgoing', 'incoming', 'both'];
+
 export function relatedItemsFetcher({ apiUrl, contextPath = '/' } = {}) {
   if (!apiUrl) throw new Error('relatedItemsFetcher requires apiUrl');
   return async function fetchItems(block, { start, size }) {
     const field = block.relationField || 'relatedItems';
+    const direction = block.direction || 'outgoing';
+    if (!RELATION_DIRECTIONS.includes(direction)) {
+      throw new Error(`relatedItemsFetcher: direction "${direction}" is not one of ${RELATION_DIRECTIONS.join(', ')}`);
+    }
     const headers = _getAuthHeaders();
     const res = await fetch(`${apiUrl}${contextPath}/++api++`, { headers });
     const content = await res.json();
-    const all = Array.isArray(content?.[field]) ? content[field] : [];
+    const outgoing = direction === 'incoming' ? [] : Array.isArray(content?.[field]) ? content[field] : [];
+    let incoming = [];
+    if (direction !== 'outgoing') {
+      if (!content?.UID) throw new Error(`relatedItemsFetcher: ${contextPath} has no UID to find the pages relating to it`);
+      const query = new URLSearchParams({ target: content.UID, relation: field });
+      const rel = await (await fetch(`${apiUrl}/++api++/@relations?${query}`, { headers })).json();
+      const found = rel?.relations?.[field];
+      if (!found) throw new Error(`relatedItemsFetcher: @relations did not answer for "${field}"`);
+      incoming = found.items.map((relation) => relation.source);
+    }
+    const seen = new Set();
+    const all = [...outgoing, ...incoming].filter((item) => {
+      if (seen.has(item['@id'])) return false;
+      seen.add(item['@id']);
+      return true;
+    });
     const items = size ? all.slice(start, start + size) : [];
     return { items, total: all.length };
   };
 }
-
-// Catalog index → vocabulary of its unique values (site-wide mode). Extend as
-// needed; falls back to a same-named vocabulary.
-const SEARCH_SHORTCUT_INDEX_VOCAB = {
-  Subject: 'plone.app.vocabularies.Keywords',
-};
 
 /**
  * The address a link field holds. A link field stores one shape, a list of
@@ -1519,9 +1545,100 @@ function _linkUrl(value, field) {
  * `${searchUrl}?facet.${index}=${value}` so expandListingBlocks' default
  * @id→href mapping renders it as a link item — no special renderer.
  *
- * A linked `pageField` ⇒ THIS page's values of that field; no `pageField` ⇒ all
- * unique values of the index, site-wide (from the index's vocabulary).
+ * A linked `pageField` ⇒ THIS page's values of that field; no `pageField` ⇒ the
+ * values the index actually holds, read from the catalog (see
+ * `_indexValuesFromCatalog` — it used to read the index's vocabulary, which an
+ * anonymous visitor may not be allowed to, #762).
  */
+/** How many brains a shortcuts strip scans for an index's values. */
+const SHORTCUT_VALUE_SCAN = 500;
+
+/**
+ * The values an index actually HOLDS, read from the catalog.
+ *
+ * This used to read the index's vocabulary — `@vocabularies/<vocab>` — and for
+ * the default index, `Subject`, that is `plone.app.vocabularies.Keywords`, which
+ * a real Plone refuses to an anonymous visitor:
+ *
+ *   GET /++api++/@vocabularies/plone.app.vocabularies.Keywords
+ *   401  "You need to be authenticated to access the vocabulary '...'."
+ *
+ * `_getAuthHeaders()` supplies a token when there is one, so the strip worked in
+ * the editor and for a signed-in user, and was EMPTY for the visitor the block
+ * exists for — silently, because `data.items` was undefined and `[]` renders as
+ * nothing (#762).
+ *
+ * The catalog answers the same question anonymously, and answers it better: the
+ * values of items the caller may actually see, rather than every term in a
+ * site-wide keyword vocabulary. A chip is a link into a faceted search, so a
+ * value with nothing behind it is a link to an empty page; and a keyword
+ * vocabulary includes the keywords of private content, which this cannot leak.
+ *
+ * Scope: the whole site, which is what "site-wide mode" means and what reading
+ * the index's vocabulary used to give.
+ *
+ * It briefly scoped to `searchUrl`'s path instead, on the theory that a chip
+ * should only offer values its destination can return. That is wrong, and an
+ * integration test caught it: a search page is where results are SHOWN, not
+ * where content lives. `/search` has nothing beneath it, so site-wide mode
+ * returned nothing at all.
+ */
+async function _indexValuesFromCatalog({ apiUrl, index, headers }) {
+  // The site root, recursively: `absolutePath` with `/` is every object the
+  // caller may see (checked against a live Plone 6.2 — 213 of them).
+  const criterion = {
+    i: 'path',
+    o: 'plone.app.querystring.operation.string.absolutePath',
+    v: '/',
+  };
+
+  // Asked from the SITE ROOT, not from `contextPath`. plone.restapi's
+  // @querystring-search leaves out the page it is asked from — "Exclude 'self'
+  // content item" (services/querystringsearch/get.py) — and exempts the site
+  // root. Asked from the page the block sits on, site-wide mode could not
+  // report that page's OWN keywords: an integration test saw `news` once where
+  // both blocks should have offered it.
+  const url = `${apiUrl}/++api++/@querystring-search`;
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: { ...headers, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      query: [criterion],
+      b_start: 0,
+      b_size: SHORTCUT_VALUE_SCAN,
+      // The brains carry every catalog column, so `index` is on each one.
+      metadata_fields: '_all',
+    }),
+  });
+
+  // Loudly: the silent `[]` is the whole defect this replaces.
+  if (!response.ok) {
+    throw new Error(
+      `searchShortcutsFetcher: ${url} answered ${response.status} ` +
+        `asking for the values of '${index}'`,
+    );
+  }
+
+  const items = (await response.json())?.items || [];
+  // Distinct, in the result set's own order. Not sorted: a token is not its
+  // label (`gov-security` may read "Government Security"), so sorting tokens
+  // would order the strip by something the reader cannot see. A keyword column
+  // is a list; a single-valued index is a scalar; both are accepted.
+  const seen = [];
+  const known = new Set();
+  for (const item of items) {
+    const raw = item?.[index];
+    if (raw === null || raw === undefined) continue;
+    for (const value of Array.isArray(raw) ? raw : [raw]) {
+      if (typeof value !== 'string' || value === '') continue;
+      if (known.has(value)) continue;
+      known.add(value);
+      seen.push(value);
+    }
+  }
+  return seen;
+}
+
 export function searchShortcutsFetcher({ apiUrl, contextPath = '/' } = {}) {
   if (!apiUrl) throw new Error('searchShortcutsFetcher requires apiUrl');
   return async function fetchItems(block, { start, size }) {
@@ -1536,10 +1653,7 @@ export function searchShortcutsFetcher({ apiUrl, contextPath = '/' } = {}) {
       const v = content?.[block.pageField];
       values = Array.isArray(v) ? v : v == null ? [] : [v];
     } else {
-      const vocab = SEARCH_SHORTCUT_INDEX_VOCAB[index] || index;
-      const res = await fetch(`${apiUrl}/++api++/@vocabularies/${vocab}`, { headers });
-      const data = await res.json();
-      values = (data?.items || []).map((t) => t.token);
+      values = await _indexValuesFromCatalog({ apiUrl, index, headers });
     }
 
     const all = values.map((value) => ({
@@ -4857,6 +4971,26 @@ export function adoptTemplate(template, id) {
   return adopted;
 }
 
+/**
+ * The query parameters that ask a Plone page response to carry these templates too,
+ * through collective.restapi.searchexpansion (`expand=search`): one search for the
+ * templates' own paths, full objects. Add them to the page request with `expand=search`
+ * (beside any other expansions); loadTemplates then takes the templates from
+ * @components.search and fetches only what is missing. For templates a frontend knows
+ * it needs before it has the page: its forced layouts.
+ *
+ * @param {string[]} ids template ids (site paths, e.g. "/templates/footer-layout")
+ * @returns {[string, string][]} entries for URLSearchParams
+ */
+export function templateSearchParams(ids) {
+  return [
+    ...ids.map((id) => ['expand.search.path.query', id]),
+    ['expand.search.path.depth', '0'],
+    ['expand.search.fullobjects', '1'],
+    ['expand.search.b_size', String(ids.length)],
+  ];
+}
+
 export async function loadTemplates(
   data,
   loadTemplate,
@@ -4919,6 +5053,37 @@ export async function loadTemplates(
   let pending = collectTemplateIds(data);
   for (const id of extraTemplateIds) {
     if (id) pending.add(id);
+  }
+
+  // Templates a search expansion brought with the page (`expand=search` with the
+  // templates' paths, see templateSearchParams): results keyed only by their @id, a
+  // URL whose path ends with the template id, whatever the site is mounted under.
+  // Taken over the caller's cache like the @templates component, and written back.
+  const searchResults = data?.['@components']?.search?.items || [];
+  if (searchResults.length) {
+    const pathOf = (url) => {
+      try {
+        return new URL(url).pathname;
+      } catch {
+        return url;
+      }
+    };
+    for (const id of pending) {
+      const found = searchResults.find((item) => {
+        const path = pathOf(item?.['@id'] || '');
+        return path === id || path.endsWith(id);
+      });
+      if (found) {
+        templates[id] = adoptTemplate(found, id);
+        preloadedTemplates[id] = templates[id];
+        loaded.add(id);
+      }
+    }
+    // Templates those carry are scanned like fetched ones below.
+    for (const id of [...pending]) {
+      if (!templates[id]) continue;
+      for (const nestedId of collectTemplateIds(templates[id])) pending.add(nestedId);
+    }
   }
 
   // Keep loading until no new templates found
