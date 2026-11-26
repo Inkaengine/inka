@@ -337,9 +337,11 @@ const { templates, errors } = await loadTemplates(
 - **A template the backend couldn't return** (missing, or one the visitor isn't allowed to view) is listed in `errors` and isn't requested again.
 - **Only list the layouts your rules actually force in view mode.** Every template named in `extra` is included in every page response it's added to.
 
-### Forced layouts without the addon: a search expansion
+## Forced layouts without the addon
 
-A site without the addon can still have its forced layouts come with the page, through [collective.restapi.searchexpansion](https://github.com/collective/collective.restapi.searchexpansion). It runs one `@search` in the page request and returns the results under `@components.search`. Forced layouts are what it's for: the frontend knows them before it asks for the page. `templateSearchParams(ids)` builds the search, and `loadTemplates` takes the templates from the results, matched by path:
+A site without the addon can still have its forced layouts come with the page, through [collective.restapi.searchexpansion](https://github.com/collective/collective.restapi.searchexpansion). It runs one `@search` in the page request and returns the results under `@components.search`. Forced layouts are what it's for: the frontend knows them before it asks for the page. `templateSearchParams(ids)` builds the search, and `loadTemplates` takes the templates from the results, matched by path.
+
+### Javascript
 
 ```javascript
 import { loadTemplates, templateSearchParams } from '@volto-hydra/helpers';
