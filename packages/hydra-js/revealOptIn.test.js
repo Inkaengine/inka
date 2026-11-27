@@ -97,3 +97,32 @@ describe('reveal — a field the admin wrapped to copy from a link', () => {
     expect(bridge.revealableFields('b1')).toEqual([]);
   });
 });
+
+/**
+ * An image picker (object_browser in image mode) stores the picked Image item:
+ * its @id, and the image's field and scales, which carry its proportions. Its
+ * reveal stand-in has the same shape, so a frontend that draws a picked image
+ * from its proportions (a logo box sized to the image) draws the stand-in too.
+ */
+describe('reveal — an image picker stands in as a picked image', () => {
+  test('its stand-in is the reveal image, with that image\'s field and proportions', () => {
+    const bridge = Object.create(Bridge.prototype);
+    const [picked] = bridge._revealSentinelFor(
+      { widget: 'object_browser', mode: 'image', optionalOnCanvas: true },
+      'string:object_browser',
+    );
+    expect(picked['@id']).toBe(Bridge.REVEAL_PIXEL);
+    expect(picked.image_field).toBe('image');
+    expect(picked.image_scales.image[0]).toMatchObject({ width: 400, height: 300 });
+  });
+
+  test('a link picker\'s stand-in is a link, with no image about it', () => {
+    const bridge = Object.create(Bridge.prototype);
+    const [picked] = bridge._revealSentinelFor(
+      { widget: 'object_browser', mode: 'link', optionalOnCanvas: true },
+      'string:object_browser',
+    );
+    expect(picked['@id']).toBe(Bridge.REVEAL_ZWS);
+    expect(picked.image_scales).toBeUndefined();
+  });
+});
