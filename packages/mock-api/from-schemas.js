@@ -208,8 +208,12 @@ export function withoutDefaultSearchText(page, blocksConfig) {
 }
 
 // A field's declared, fixed default (not a function of where the block sits).
+// Not a region's: a blocks_layout region keeps its children in the block's
+// `blocks` and `blocks_layout`, never under its own name, and its default lists
+// the blocks a new one starts with.
 const fixedDefaults = (schema) => Object.entries(schema?.properties ?? {})
-  .filter(([, def]) => def && def.default !== undefined && typeof def.default !== 'function' && def.widget !== 'object');
+  .filter(([, def]) => def && def.default !== undefined && typeof def.default !== 'function'
+    && def.widget !== 'object' && def.widget !== 'blocks_layout');
 
 /** Every block of a page, nested ones too, rewritten by `fn(block, schema, type)`
  *  against the block's effective schema (its variation's, enhanced). The block is

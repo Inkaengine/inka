@@ -254,6 +254,26 @@ describe('a markdown export leaves out a value its schema declares as the defaul
     assert.equal(out.blocks.a.size, null);
     assert.equal(out.blocks.a.required, false);
   });
+
+  it("gives a region no value: its default is the children it starts with, kept in the block's blocks", () => {
+    // A blocks_layout region holds its children in the block's `blocks` and
+    // `blocks_layout`, never under its own name. Its default lists the blocks a
+    // new one starts with, which is no value for a field called `listing`.
+    const config = {
+      search: { blockSchema: { properties: {
+        listing: { widget: 'blocks_layout', allowedBlocks: ['listing'], default: [{ '@type': 'listing' }] },
+      } } },
+      listing: { blockSchema: { properties: {} } },
+    };
+    const stored = page({ s: {
+      '@type': 'search',
+      blocks: { l: { '@type': 'listing' } },
+      blocks_layout: { listing: ['l'] },
+    } });
+    const out = withSchemaDefaults(stored, config);
+    assert.equal('listing' in out.blocks.s, false, JSON.stringify(out.blocks.s));
+    assert.deepEqual(out, stored);
+  });
 });
 
 describe("a markdown export leaves out a template child's slot named from its region", () => {
