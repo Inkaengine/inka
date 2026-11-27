@@ -232,6 +232,56 @@ describe('buildQuerystringSearchBody — discrete (value) facets', () => {
   });
 });
 
+// SearchableText is Plone's full-text index: its criterion is a search TERM, a
+// string, which plone.app.querystring hands to munge_search_term. A facet on it
+// (a keyword box inside the filters) sent as selection.any's list made
+// @querystring-search answer 500: "'list' object has no attribute 'replace'".
+describe('buildQuerystringSearchBody — a facet on SearchableText', () => {
+  test('is search text: one string criterion, not selection.any', () => {
+    const body = buildQuerystringSearchBody({}, {}, {
+      'facet.SearchableText': ['dog'],
+    });
+    const found = body.query.filter((q) => q.i === 'SearchableText');
+    expect(found).toHaveLength(1);
+    expect(found[0].o).toBe('plone.app.querystring.operation.string.contains');
+    expect(found[0].v).toBe('dog');
+  });
+
+  test("joins the search box's words in the one criterion", () => {
+    const body = buildQuerystringSearchBody({}, {}, {
+      SearchableText: 'dog',
+      'facet.SearchableText': 'cat',
+    });
+    const found = body.query.filter((q) => q.i === 'SearchableText');
+    expect(found).toHaveLength(1);
+    expect(found[0].v).toBe('dog cat');
+  });
+
+  test('takes the Advanced operation as the search box does', () => {
+    const body = buildQuerystringSearchBody({}, {}, {
+      'facet.SearchableText': ['dog'],
+      queryType: 'search',
+    });
+    expect(criterion(body, 'SearchableText').o).toBe(
+      'plone.app.querystring.operation.string.search',
+    );
+  });
+
+  test('is a search text relevance can rank', () => {
+    const body = buildQuerystringSearchBody({}, {}, {
+      'facet.SearchableText': ['dog'],
+      sort_on: null,
+    });
+    expect(body.sort_on).toBeUndefined();
+    expect(criterion(body, 'SearchableText').v).toBe('dog');
+  });
+
+  test('an empty one adds nothing', () => {
+    const body = buildQuerystringSearchBody({}, {}, { 'facet.SearchableText': [''] });
+    expect(criterion(body, 'SearchableText')).toBeUndefined();
+  });
+});
+
 describe('buildQuerystringSearchBody — date-range facets', () => {
   test("'after' → date.largerThan on the bare index, scalar value", () => {
     const body = buildQuerystringSearchBody({}, {}, {

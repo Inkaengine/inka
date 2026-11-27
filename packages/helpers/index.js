@@ -301,7 +301,9 @@ export function searchSort(text, sortOn, sortOrder) {
  *   for relevance: the body names no sort, so Plone ranks the SearchableText
  *   matches (it needs a SearchableText; without one this throws).
  * @param {string} [extraCriteria.sort_order] - Override sort order
- * @param {string|string[]} [extraCriteria['facet.*']] - Facet filters (e.g., 'facet.portal_type': ['Document'])
+ * @param {string|string[]} [extraCriteria['facet.*']] - Facet filters (e.g., 'facet.portal_type': ['Document']),
+ *   each a selection.any of its values; but `facet.SearchableText` (a keyword box
+ *   inside the filters) joins the search text, as one string criterion.
  * @returns {Object|null} Request body for POST to @querystring-search, or
  *   null when the criteria together can match nothing (a facet value outside
  *   what the listing's own query allows): list nothing, ask nothing.
@@ -340,8 +342,21 @@ export function buildQuerystringSearchBody(
     ];
   }
 
-  // Merge extraCriteria into query
-  if (extraCriteria.SearchableText) {
+  // Merge extraCriteria into query.
+  //
+  // The search text: the search box's, and a facet on SearchableText's (a
+  // keyword box inside the filters). SearchableText is Plone's full-text
+  // index, whose criterion is one search term, a string
+  // (plone.app.querystring hands it to munge_search_term), so its facet joins
+  // the search text instead of becoming the facets' selection.any list, which
+  // made @querystring-search answer 500.
+  const searchText = [
+    extraCriteria.SearchableText,
+    ...[extraCriteria['facet.SearchableText'] ?? []].flat(),
+  ]
+    .filter((part) => typeof part === 'string' && part.trim())
+    .join(' ');
+  if (searchText) {
     // queryType (plone6): "search" = Advanced (word/phrase) → the ZCTextIndex
     // `string.search` operation; anything else = Standard substring
     // (`string.contains`, the default). Only "search" switches it.
@@ -351,7 +366,7 @@ export function buildQuerystringSearchBody(
         extraCriteria.queryType === 'search'
           ? 'plone.app.querystring.operation.string.search'
           : 'plone.app.querystring.operation.string.contains',
-      v: extraCriteria.SearchableText,
+      v: searchText,
     });
   }
 
@@ -370,6 +385,7 @@ export function buildQuerystringSearchBody(
   for (const [key, value] of Object.entries(extraCriteria)) {
     if (!key.startsWith('facet.')) continue;
     const field = key.replace('facet.', '');
+    if (field === 'SearchableText') continue; // the search text, above
     const dateMatch = field.match(/^(.+)\.(after|before)$/);
     if (dateMatch) {
       // Date-range facet: `<index>.<after|before>` → a scalar date operation.
@@ -403,7 +419,7 @@ export function buildQuerystringSearchBody(
   // the request names no sort_on. `sort_on: null` asks for it, as a choice —
   // unlike a missing sort_on, which takes the listing's own sort.
   const relevance = extraCriteria.sort_on === null;
-  if (relevance && !extraCriteria.SearchableText) {
+  if (relevance && !searchText) {
     throw new Error(
       'buildQuerystringSearchBody: relevance (sort_on: null) ranks SearchableText matches, and no SearchableText was given',
     );
