@@ -2218,6 +2218,50 @@ function buildTemplatesComponent(cleanPath, baseUrl, sessionId, extraIds = []) {
 }
 
 /**
+ * The search component (collective.restapi.searchexpansion): `?expand=search` runs the
+ * catalog search its `expand.search.<index>` options spell and answers it inside the page
+ * read. The mock answers the one search a frontend asks this way, its forced templates
+ * (templateSearchParams in packages/helpers): a depth-0 search for one or more paths, as
+ * full objects. SEARCH_OPTIONS lists those options; searchOptionsRefused names any other,
+ * which the content GET refuses rather than ignore.
+ */
+const SEARCH_OPTIONS = new Set([
+  'expand.search.path.query',
+  'expand.search.path.depth',
+  'expand.search.fullobjects',
+  'expand.search.b_size',
+]);
+
+function searchOptionsRefused(params) {
+  const refused = Object.keys(params).filter(
+    (key) => key.startsWith('expand.search.') && !SEARCH_OPTIONS.has(key),
+  );
+  if (params['expand.search.path.query'] !== undefined && params['expand.search.path.depth'] !== '0') {
+    refused.push('expand.search.path.depth (only 0)');
+  }
+  if (params['expand.search.path.query'] !== undefined && params['expand.search.fullobjects'] !== '1') {
+    refused.push('expand.search.fullobjects (only 1)');
+  }
+  return refused;
+}
+
+function buildSearchComponent(cleanPath, baseUrl, sessionId, params) {
+  const fullUrl = cleanPath === '/' ? baseUrl : `${baseUrl}${cleanPath}`;
+  const paths = [params['expand.search.path.query'] ?? []].flat().map(String);
+  const items = paths
+    .map((path) => getContent(path.replace(/\/+$/, '') || '/', sessionId, []))
+    .filter((content) => content != null && mayView(content, sessionId))
+    // A full object minus its own @components, as the add-on serializes a result.
+    .map(({ '@components': _own, ...item }) => item);
+  const size = params['expand.search.b_size'];
+  return {
+    '@id': `${fullUrl}/@search`,
+    items: size === undefined ? items : items.slice(0, Number(size)),
+    items_total: items.length,
+  };
+}
+
+/**
  * Generate the FULL @components map (every entry expanded). The
  * expand-aware caller (enrichContent) decides which entries are included
  * vs left as @id stubs.
@@ -2239,6 +2283,8 @@ function generateComponents(urlPath, baseUrl, sessionId, params = {}) {
         // layouts (a page layout and a footer layout).
         splitList(params['expand.templates.extra']),
       ),
+    // Lazy for the same reason: it reads each item it finds.
+    search: () => buildSearchComponent(cleanPath, baseUrl, sessionId, params),
     // @actions has no session here on purpose: the adapter reads @actions
     // directly, and that route IS session-aware, so a working copy still
     // reports iterate_checkin.
@@ -6961,6 +7007,13 @@ app.get('/{*path}', (req, res, next) => {
   // Reload content from disk to pick up changes during development.
   // Pass ?expand= so @components matches what the client requested
   // (real Plone behaviour: stub by default, expand only what's listed).
+  const refusedSearch = searchOptionsRefused(parseExpandParams(req));
+  if (refusedSearch.length) {
+    return res.status(400).json({
+      type: 'BadRequest',
+      message: `the mock's search expansion answers only a depth-0 path search for full objects; not ${refusedSearch.join(', ')}`,
+    });
+  }
   const content = getContent(cleanPath, sessionId, parseExpand(req), parseExpandParams(req));
 
   if (content) {
