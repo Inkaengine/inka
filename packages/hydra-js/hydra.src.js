@@ -12532,6 +12532,18 @@ export class Bridge {
    * Returns undefined for a field that has no inline affordance (select, boolean,
    * number …) — those are sidebar-only and nothing can be revealed for them.
    */
+  /**
+   * The field's type as reveal reads it: through the admin's decoration. A
+   * copyFromTargetField wrapper keeps the field's own def under `baseWidget`, and
+   * its type string is the wrapper's (`array:copyFromTargetField`), so a rich-text
+   * field a block can fill from a link would read as neither slate nor text.
+   */
+  _revealFieldType(blockUid, fieldName, fieldDef) {
+    let def = fieldDef;
+    while (def?.baseWidget) def = def.baseWidget;
+    return def === fieldDef ? this.getFieldType(blockUid, fieldName) : getFieldTypeString(def);
+  }
+
   _revealSentinelFor(fieldDef, fieldType) {
     const Z = Bridge.REVEAL_ZWS;
     // The admin DECORATES field defs — a copyFromTargetField wrapper keeps the real
@@ -12600,7 +12612,7 @@ export class Bridge {
             `${where} is both required and optionalOnCanvas: a required field is always there, so it has nothing to reveal`,
           );
         }
-        const fieldType = this.getFieldType(blockUid, fieldName);
+        const fieldType = this._revealFieldType(blockUid, fieldName, fieldDef);
         if (!this._revealSentinelFor(fieldDef, fieldType)) {
           throw new Error(
             `${where} is marked optionalOnCanvas, but its widget isn't one the page edits (text, rich text, image or link)`,
@@ -12641,7 +12653,10 @@ export class Bridge {
     return empty
       .filter(({ fieldName, fieldDef }) => {
         if (isStarterUiField(fieldDef)) return false;
-        const sentinel = this._revealSentinelFor(fieldDef, this.getFieldType(blockUid, fieldName));
+        const sentinel = this._revealSentinelFor(
+          fieldDef,
+          this._revealFieldType(blockUid, fieldName, fieldDef),
+        );
         return sentinel === Bridge.REVEAL_PIXEL || sentinel?.[0]?.['@id'] === Bridge.REVEAL_PIXEL;
       })
       .map(({ fieldName }) => fieldName);
@@ -12778,7 +12793,7 @@ export class Bridge {
       ];
       for (const fieldName of toSeed) {
         const fieldDef = properties[fieldName];
-        const fieldType = this.getFieldType(blockUid, fieldName);
+        const fieldType = this._revealFieldType(blockUid, fieldName, fieldDef);
         let sentinel = this._revealSentinelFor(fieldDef, fieldType);
         if (sentinel === undefined) continue;
         // A slate field's empty paragraph is already there, with the nodeId the

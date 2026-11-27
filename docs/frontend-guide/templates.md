@@ -337,6 +337,25 @@ const { templates, errors } = await loadTemplates(
 - **A template the backend couldn't return** (missing, or one the visitor isn't allowed to view) is listed in `errors` and isn't requested again.
 - **Only list the layouts your rules actually force in view mode.** Every template named in `extra` is included in every page response it's added to.
 
+## Forced layouts without the addon
+
+A site without the addon can still have its forced layouts come with the page, through [collective.restapi.searchexpansion](https://github.com/collective/collective.restapi.searchexpansion). It runs one `@search` in the page request and returns the results under `@components.search`. Forced layouts are what it's for: the frontend knows them before it asks for the page. `templateSearchParams(ids)` builds the search, and `loadTemplates` takes the templates from the results, matched by path.
+
+### Javascript
+
+```javascript
+import { loadTemplates, templateSearchParams } from '@volto-hydra/helpers';
+
+const forcedLayouts = ['/templates/footer-layout'];
+const params = new URLSearchParams([['expand', 'search'], ...templateSearchParams(forcedLayouts)]);
+const pageData = await (await fetch(`${apiBase}/++api++${path}?${params}`)).json();
+
+const { templates } = await loadTemplates(pageData, loadTemplate, {}, forcedLayouts);
+```
+
+- **Still name them as the fourth argument:** without the expansion installed, Plone ignores `expand=search` and `loadTemplates` fetches them as before.
+- **One search per request:** the expansion runs a single search, so it carries the forced layouts and nothing else. The templates a page references in its own data are found once the page has arrived, and fetched then.
+
 ## Keeping templates out of search
 
 Templates are content, so a visitor could find one on its own. Which content type a template is, and where new ones are saved, is each site's choice. Inka doesn't add a type for them. **Make Template** in the editor saves a new template as the type and in the folder the deployment's settings name (see [Configuration](../deploy-and-secure.md#configuration)). Templates aren't tied to that folder: the editor can save one anywhere.

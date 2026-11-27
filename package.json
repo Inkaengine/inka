@@ -82,7 +82,7 @@
     "yaml": "1.10.2"
   },
   "peerDependencies": {
-    "@playwright/test": "1.61.0"
+    "@playwright/test": "1.65.1"
   },
   "peerDependenciesMeta": {
     "@playwright/test": {
@@ -105,7 +105,7 @@
     "@modelcontextprotocol/ext-apps": "2.0.4",
     "@modelcontextprotocol/sdk": "^1.32.1",
     "@modelcontextprotocol/server": "2.4.0",
-    "@playwright/test": "1.61.0",
+    "@playwright/test": "1.65.1",
     "@plone/babel-preset-razzle": "workspace:*",
     "@plone/razzle": "workspace:*",
     "@plone/razzle-dev-utils": "workspace:*",

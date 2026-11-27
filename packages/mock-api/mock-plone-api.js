@@ -1118,7 +1118,7 @@ function formatSearchItem(content, baseUrl) {
     'id': content.id,
     'title': content.title,
     'description': content.description || '',
-    'review_state': content.review_state || 'published',
+    'review_state': reviewStateOf(content),
     'is_working_copy': content.is_working_copy === true,
     'UID': content.UID,
     'is_folderish': content.is_folderish !== undefined ? content.is_folderish : true,
@@ -1526,7 +1526,7 @@ function formatNavItem(rawContent, urlPath, baseUrl, remainingDepth, sessionId) 
     'id': rawContent.id,
     'title': rawContent.title,
     'description': rawContent.description || '',
-    'review_state': rawContent.review_state || 'published',
+    'review_state': reviewStateOf(rawContent),
     'UID': rawContent.UID || `${rawContent.id}-uid`,
     'is_folderish': rawContent.is_folderish !== undefined ? rawContent.is_folderish : true,
     'hasPreviewImage': hasPreviewImage,
@@ -1861,6 +1861,43 @@ const SPW = {
 const ANONYMOUS_HIDDEN_STATES = new Set(['private', 'pending']);
 
 /**
+ * The types bound to NO workflow, and so with no review_state at all.
+ *
+ * Products/CMFPlone/profiles/default/workflows.xml binds
+ * simple_publication_workflow as the default and then lists File, Image and
+ * Plone Site with no workflow of their own. A real Plone answers `null` for
+ * their review_state — verified against a live site, where every one of its
+ * images reports null — and their @workflow is empty.
+ *
+ * This mock used to call them `published`, which is a state they cannot be in.
+ */
+const UNWORKFLOWED_TYPES = new Set(['File', 'Image', 'Plone Site']);
+
+/** Does this type have a workflow? */
+const isWorkflowed = (type) => !UNWORKFLOWED_TYPES.has(type);
+
+/**
+ * The state a newly created item is in.
+ *
+ * simple_publication_workflow's initial_state is `private`, so a page a
+ * frontend has just created is NOT public until someone publishes it. This
+ * mock used to answer `published`, so nothing built against it ever met the
+ * state a real Plone starts content in.
+ */
+const initialReviewState = (type) => (isWorkflowed(type) ? 'private' : null);
+
+/**
+ * The review_state to report for stored content.
+ *
+ * An unworkflowed type has none, whatever is on disk. For the rest, a fixture
+ * that does not say is taken as published: authored fixture content stands for
+ * a live site, and the states that matter to a test are the ones it writes
+ * down.
+ */
+const reviewStateOf = (content) =>
+  isWorkflowed(content?.['@type']) ? (content?.review_state ?? 'published') : null;
+
+/**
  * Whether the session's reader may view `item` (raw content or a summary).
  *
  * Plone filters EVERY catalog query by this (allowedRolesAndUsers), not just
@@ -1896,7 +1933,18 @@ function buildWorkflowComponent(cleanPath, baseUrl, sessionId) {
   // for that root died with "Maximum call stack size exceeded", and a Next
   // frontend fetches the root for its chrome, so every page did.
   const content = rawContentForComponents(cleanPath, sessionId);
-  const state = content?.review_state || 'published';
+  // Nothing to report for a type with no workflow. A real Plone answers
+  // {history: [], state: {id: "", title: ""}, transitions: []} — verified
+  // against a live site's Image — rather than inventing a state for it.
+  if (content && !isWorkflowed(content['@type'])) {
+    return {
+      '@id': `${fullUrl}/@workflow`,
+      history: [],
+      state: { id: '', title: '' },
+      transitions: [],
+    };
+  }
+  const state = reviewStateOf(content);
   return {
     '@id': `${fullUrl}/@workflow`,
     history: [
@@ -2322,7 +2370,7 @@ function summarizeRelations(content, baseUrl) {
       '@type': raw['@type'],
       title: raw.title,
       description: raw.description || '',
-      review_state: raw.review_state || 'published',
+      review_state: reviewStateOf(raw),
       image_field: null,
     };
     if (raw['@type'] === 'Image') {
@@ -2351,6 +2399,49 @@ function imageBlockUrl(url) {
   return null;
 }
 
+/**
+ * The image_scales of a referenced object, derived from the content ON DISK.
+ *
+ * Deliberately does NOT call enrichContent: a reference can point at the very
+ * object being enriched. Volto writes exactly that when an author picks the
+ * page's own lead image for an image block (`url: "../../resolveuid/<the
+ * page's own UID>"`), and enriching the referenced content then found the same
+ * block, loaded the same page and recursed until the stack gave out — a 500
+ * for the page AND for `@search`, so nothing came up at all.
+ *
+ * Scales need only the field's width/height: the downloads are relative
+ * (`@@images/<field>[/scale]`), as getLeadImageScales explains. So the raw
+ * content is all this needs, and no walk can re-enter.
+ *
+ * WHAT REAL PLONE DOES, checked rather than assumed (plone.restapi 10.2.1,
+ * `serializer/blocks.py` `ResolveUIDSerializerBase._process_data`): a block is
+ * a dict, so for each of `@id`, `url`, `href`, `preview_image` holding a
+ * string it calls `resolve_uid`, and when a BRAIN comes back it sets
+ * `image_scales` from `brain.image_scales` — the catalog metadata, not
+ * anything computed per request. That metadata covers lead images on ordinary
+ * types, not only Image objects: measured on a live Plone 6.2.3 catalog, 137
+ * of 213 items carry it — Image 97, CaseStudy 33, News Item 7 — shaped
+ * `{"image": [{content-type, download, filename, height, scales, size,
+ * width}]}`, keyed by the field the OBJECT has.
+ *
+ * Hence: keyed by the object's own field, and `image_field` on the reference
+ * only picks between an object's fields — it cannot name a field the object
+ * lacks, which is why 'image' remains the fallback.
+ */
+function referencedImageScales(rawContent, imageField) {
+  if (!rawContent || typeof rawContent !== 'object') return null;
+  if (rawContent['@type'] === 'Image' && rawContent.image) {
+    return getImageScales(rawContent);
+  }
+  // A lead image on an ordinary type (the ILeadImage behaviour). Real Plone
+  // answers with the brain's own keys, so a reference naming a field the
+  // object does not have still gets the object's image.
+  for (const field of [imageField, 'image'].filter(Boolean)) {
+    if (rawContent[field]) return getLeadImageScales(rawContent, field);
+  }
+  return null;
+}
+
 function enrichImageBrains(obj, baseUrl) {
   if (!obj || typeof obj !== 'object') return obj;
   if (Array.isArray(obj)) return obj.map(item => enrichImageBrains(item, baseUrl));
@@ -2362,8 +2453,7 @@ function enrichImageBrains(obj, baseUrl) {
     const contentPath = idUrl.startsWith('http') ? new URL(idUrl).pathname : idUrl;
     const rawContent = loadRawContentFromDisk(contentPath);
     if (rawContent) {
-      const enrichedImage = enrichContent(rawContent, contentPath, baseUrl);
-      const scales = getImageScales(enrichedImage);
+      const scales = referencedImageScales(rawContent, obj.image_field);
       if (scales) {
         obj = { ...obj, image_scales: scales };
       }
@@ -2387,8 +2477,7 @@ function enrichImageBrains(obj, baseUrl) {
       const contentPath = url.startsWith('http') ? new URL(url).pathname : url;
       const rawContent = loadRawContentFromDisk(contentPath);
       if (rawContent) {
-        const enrichedImage = enrichContent(rawContent, contentPath, baseUrl);
-        const scales = getImageScales(enrichedImage);
+        const scales = referencedImageScales(rawContent, obj.image_field);
         if (scales) {
           obj = { ...obj, image_scales: scales };
         }
@@ -2469,7 +2558,7 @@ function getFolderChildItems(folderPath, baseUrl) {
         '@id': `${baseUrl}${itemPath}`,
         '@type': rawContent['@type'],
         'description': rawContent.description || '',
-        'review_state': rawContent.review_state || 'published',
+        'review_state': reviewStateOf(rawContent),
         'title': rawContent.title,
         'UID': rawContent.UID,
         // A Volto site's summaries carry the item's image too (plone.volto adds
@@ -2603,7 +2692,7 @@ function enrichContent(content, urlPath, baseUrl, expandList = [], sessionId, ex
     ...workingCopyFields,
     '@id': fullUrl,
     'UID': transformed.UID || `${transformed.id || urlPath.replace(/\//g, '-')}-uid`,
-    'review_state': transformed.review_state || 'published',
+    'review_state': reviewStateOf(transformed),
     'is_folderish': isFolderish,
     'allow_discussion': transformed.allow_discussion !== undefined ? transformed.allow_discussion : false,
     'exclude_from_nav': transformed.exclude_from_nav || false,
@@ -3314,23 +3403,30 @@ app.post('{/*path}/@copy', (req, res) => {
   return res.json([{ source: sourcePath, target: destPath }]);
 });
 
-app.post('{/*path}/@order', (req, res) => {
-  const parentPath = req.path.replace('/@order', '') || '/';
-  const sessionId = getSessionId(req);
-  const { obj_id: objId, delta } = jsonBody(req);
-  if (!objId) {
-    return res.status(400).json({
-      error: { type: 'BadRequest', message: '@order requires obj_id' },
-    });
-  }
-  if (!sessionOrder[sessionId]) sessionOrder[sessionId] = {};
-  const current = sessionOrder[sessionId][parentPath] || [];
-  const without = current.filter((entry) => entry !== objId);
-  const index = delta === 'top' ? 0 : Math.max(0, without.length);
-  without.splice(index, 0, objId);
-  sessionOrder[sessionId][parentPath] = without;
-  return res.status(204).send();
-});
+/**
+ * POST /:parent/@order — 404, because plone.restapi has no such endpoint.
+ *
+ * It was implemented here, and only here. Ordering in Plone is a PATCH on the
+ * container carrying `ordering` (its OrderingMixin); this route was invented by
+ * an earlier version of this mock, an adapter was written against the invention
+ * in the same commit, and its contract suite went green — a contract proves the
+ * adapter and the mock AGREE, and when one author writes both halves from one
+ * assumption, agreement is a tautology. It passed for two weeks while every
+ * reorder against a real Plone 404'd.
+ *
+ * Named rather than left to Express's catch-all, so the next caller is told
+ * where to go instead of guessing at a bare 404.
+ */
+app.post('{/*path}/@order', (req, res) =>
+  res.status(404).json({
+    error: {
+      type: 'NotFound',
+      message:
+        'plone.restapi has no @order endpoint. Reorder with PATCH on the ' +
+        'container: {"ordering": {"obj_id": "<id>", "delta": "top"|"bottom"|<int>}}',
+    },
+  }),
+);
 
 /**
  * DELETE /:path (content removal)
@@ -4072,7 +4168,7 @@ app.post('/{*path}', (req, res, next) => {
           },
         }],
       },
-      'review_state': 'published',
+      'review_state': initialReviewState('Image'),
     };
 
     // Store in session-specific storage (or global if no session)
@@ -4124,7 +4220,7 @@ app.post('/{*path}', (req, res, next) => {
         'filename': body.file?.filename || rawName,
         'size': body.file?.data?.length || 0,
       },
-      'review_state': 'published',
+      'review_state': initialReviewState('File'),
     };
 
     const sessionId = getSessionId(req);
@@ -4167,7 +4263,7 @@ app.post('/{*path}', (req, res, next) => {
       created: now,
       modified: now,
       effective: now,
-      review_state: 'published',
+      review_state: initialReviewState(body['@type']),
     };
 
     const sessionId = getSessionId(req);
@@ -4209,7 +4305,7 @@ app.post('/{*path}', (req, res, next) => {
       created: now,
       modified: now,
       effective: now,
-      review_state: 'published',
+      review_state: initialReviewState(body['@type']),
     };
 
     const sessionId = getSessionId(req);
@@ -4262,317 +4358,82 @@ app.get('/embedded-document.html', (req, res) => {
 });
 
 /**
- * Walk every registered content dir and collect unique `subjects` values
- * across all data.json files. Returns the `{ value: { title } }` shape
- * Plone's @querystring endpoint uses for the Subject (Keywords) index.
- */
-function collectSubjectValues() {
-  const subjects = new Set();
-  for (const { dirPath } of Object.values(contentDirMap)) {
-    const dataFile = path.join(dirPath, 'data.json');
-    if (!fs.existsSync(dataFile)) continue;
-    try {
-      const data = JSON.parse(fs.readFileSync(dataFile, 'utf8'));
-      for (const s of (data.subjects || [])) {
-        if (typeof s === 'string' && s) subjects.add(s);
-      }
-    } catch { /* ignore malformed data.json */ }
-  }
-  const out = {};
-  for (const s of [...subjects].sort()) out[s] = { title: s };
-  return out;
-}
-
-/**
  * GET /@querystring
  * Get querystring schema (available indexes, operators, sortable indexes)
  * Used by QuerystringWidget to populate criteria and sort dropdowns
  */
+/**
+ * GET /@querystring — the query vocabulary, from a real Plone's own answer.
+ *
+ * This used to be written out by hand here, and it drifted from the thing it
+ * was imitating. Measured against a live Plone and against
+ * plone.app.querystring's own registry profile, it served 11 of the 22
+ * indexes, offered `string.is` on Creator — an operation Plone has never
+ * registered — claimed Title was sortable when Plone says it is not, and had
+ * none of the relative-date operations (afterToday, beforeToday, today,
+ * between) on created, modified or effective.
+ *
+ * That is not cosmetic. The admin builds its query builder, its rearrange menu
+ * and its contents columns from this answer, so each missing index is a
+ * feature with nothing to test it, and each invented operation is one a
+ * frontend can be built against, pass its contract, and have refused by the
+ * CMS — exactly how the @order endpoint happened.
+ *
+ * So the structure is captured rather than authored: api/querystring.json is a
+ * real Plone's response (scripts/capture-querystring.mjs). What is NOT captured
+ * is each selection index's `values` — the portal types a site holds, the
+ * review states its workflows define, the subjects its authors typed. Those
+ * belong to whoever is answering, so the capture strips them and this mock
+ * fills in its own below.
+ */
+const QUERYSTRING = JSON.parse(
+  fs.readFileSync(path.join(import.meta.dirname, 'api', 'querystring.json'), 'utf-8'),
+);
+
+/**
+ * This mock's own vocabulary for the indexes that have one: Plone's stock
+ * types, and the three states of simple_publication_workflow.
+ */
+const QUERYSTRING_VALUES = {
+  portal_type: {
+    'Document': { 'title': 'Page' },
+    'News Item': { 'title': 'News Item' },
+    'Event': { 'title': 'Event' },
+    'Image': { 'title': 'Image' },
+    'File': { 'title': 'File' },
+    'Link': { 'title': 'Link' },
+  },
+  review_state: {
+    'private': { 'title': 'Private' },
+    'pending': { 'title': 'Pending' },
+    'published': { 'title': 'Published' },
+  },
+};
+
 app.get('{/*path}/@querystring', (req, res) => {
+  const indexes = {};
+  for (const [name, index] of Object.entries(QUERYSTRING.indexes)) {
+    indexes[name] = QUERYSTRING_VALUES[name]
+      ? { ...index, values: QUERYSTRING_VALUES[name] }
+      : { ...index };
+  }
+  // The fork, ADDED to what stock Plone answers rather than replacing it.
+  //
+  // `string.search` is not core: it comes from a plone.app.querystring fork
+  // (raw, un-munged terms for collective.elasticsearch) that some production
+  // sites run, and MOCK_QUERYSTRING_SEARCH=1 makes this mock one of them. The
+  // captured answer above is stock — which is why the flag layers on top of
+  // it, and why a site without the fork keeps offering `contains` alone.
+  const operations = searchableTextOperations();
+  indexes.SearchableText = {
+    ...indexes.SearchableText,
+    operations,
+    operators: Object.fromEntries(operations.map((op) => [op, TEXT_OPERATORS[op]])),
+  };
   res.json({
     '@id': `${API_ORIGIN}/@querystring`,
-    'indexes': {
-      'portal_type': {
-        'title': 'Type',
-        'description': 'Content type',
-        'group': 'Metadata',
-        'enabled': true,
-        'sortable': false,
-        // portal_type is a FieldIndex (one value per item) — real Plone
-        // offers only .any / .none for it; .all is KeywordIndex-only.
-        'operations': [
-          'plone.app.querystring.operation.selection.any',
-          'plone.app.querystring.operation.selection.none',
-        ],
-        'operators': {
-          'plone.app.querystring.operation.selection.any': {
-            'title': 'Matches any of',
-            'description': 'Matches any of the selected values',
-            'widget': 'MultipleSelectionWidget',
-            'operation': 'plone.app.querystring.operation.selection.any',
-          },
-          'plone.app.querystring.operation.selection.none': {
-            'title': 'Matches none of',
-            'description': 'Matches none of the selected values',
-            'widget': 'MultipleSelectionWidget',
-            'operation': 'plone.app.querystring.operation.selection.none',
-          },
-        },
-        'values': {
-          'Document': { 'title': 'Page' },
-          'News Item': { 'title': 'News Item' },
-          'Event': { 'title': 'Event' },
-          'Image': { 'title': 'Image' },
-          'File': { 'title': 'File' },
-          'Link': { 'title': 'Link' },
-        },
-      },
-      'path': {
-        'title': 'Location',
-        'description': 'Location in the site structure',
-        'group': 'Metadata',
-        'enabled': true,
-        'sortable': false,
-        // All three the path index really takes, copied from a live Plone 6.2's
-        // @querystring (titles, descriptions, widgets and queryparser names as
-        // it gives them). `string.path` was missing, so a site storing it --
-        // one stores it in 9 of its 12 path criteria -- was configured with an
-        // operation this mock said the site did not have.
-        'operations': [
-          'plone.app.querystring.operation.string.absolutePath',
-          'plone.app.querystring.operation.string.path',
-          'plone.app.querystring.operation.string.relativePath',
-        ],
-        'operators': {
-          'plone.app.querystring.operation.string.absolutePath': {
-            'title': 'Absolute path',
-            'description': 'Location in the site structure',
-            'widget': 'ReferenceWidget',
-            'operation': 'plone.app.querystring.queryparser._absolutePath',
-          },
-          'plone.app.querystring.operation.string.path': {
-            'title': 'Navigation path',
-            'description': 'Location in the navigation structure',
-            'widget': 'ReferenceWidget',
-            'operation': 'plone.app.querystring.queryparser._navigationPath',
-          },
-          'plone.app.querystring.operation.string.relativePath': {
-            'title': 'Relative path',
-            'description': "Use '../' to navigate to parent objects.",
-            'widget': 'RelativePathWidget',
-            'operation': 'plone.app.querystring.queryparser._relativePath',
-          },
-        },
-      },
-      'review_state': {
-        'title': 'Review state',
-        'description': 'Workflow state',
-        'group': 'Metadata',
-        'enabled': true,
-        'sortable': true,
-        'operations': [
-          'plone.app.querystring.operation.selection.any',
-          'plone.app.querystring.operation.selection.none',
-        ],
-        'operators': {
-          'plone.app.querystring.operation.selection.any': {
-            'title': 'Matches any of',
-            'widget': 'MultipleSelectionWidget',
-            'operation': 'plone.app.querystring.operation.selection.any',
-          },
-          'plone.app.querystring.operation.selection.none': {
-            'title': 'Matches none of',
-            'widget': 'MultipleSelectionWidget',
-            'operation': 'plone.app.querystring.operation.selection.none',
-          },
-        },
-        'values': {
-          'private': { 'title': 'Private' },
-          'pending': { 'title': 'Pending' },
-          'published': { 'title': 'Published' },
-        },
-      },
-      'created': {
-        'title': 'Creation date',
-        'description': 'Date created',
-        'group': 'Dates',
-        'enabled': true,
-        'sortable': true,
-        'operations': [
-          'plone.app.querystring.operation.date.lessThan',
-          'plone.app.querystring.operation.date.largerThan',
-          'plone.app.querystring.operation.date.between',
-        ],
-        'operators': {
-          'plone.app.querystring.operation.date.lessThan': {
-            'title': 'Before',
-            'widget': 'DateWidget',
-            'operation': 'plone.app.querystring.operation.date.lessThan',
-          },
-          'plone.app.querystring.operation.date.largerThan': {
-            'title': 'After',
-            'widget': 'DateWidget',
-            'operation': 'plone.app.querystring.operation.date.largerThan',
-          },
-          'plone.app.querystring.operation.date.between': {
-            'title': 'Between',
-            'widget': 'DateRangeWidget',
-            'operation': 'plone.app.querystring.operation.date.between',
-          },
-        },
-      },
-      'effective': {
-        'title': 'Effective date',
-        'description': 'Publication date',
-        'group': 'Dates',
-        'enabled': true,
-        'sortable': true,
-        'operations': [
-          'plone.app.querystring.operation.date.lessThan',
-          'plone.app.querystring.operation.date.largerThan',
-        ],
-        'operators': {
-          'plone.app.querystring.operation.date.lessThan': {
-            'title': 'Before',
-            'widget': 'DateWidget',
-            'operation': 'plone.app.querystring.operation.date.lessThan',
-          },
-          'plone.app.querystring.operation.date.largerThan': {
-            'title': 'After',
-            'widget': 'DateWidget',
-            'operation': 'plone.app.querystring.operation.date.largerThan',
-          },
-        },
-      },
-      'modified': {
-        'title': 'Modification date',
-        'description': 'Date last modified',
-        'group': 'Dates',
-        'enabled': true,
-        'sortable': true,
-        'operations': [
-          'plone.app.querystring.operation.date.lessThan',
-          'plone.app.querystring.operation.date.largerThan',
-        ],
-        'operators': {
-          'plone.app.querystring.operation.date.lessThan': {
-            'title': 'Before',
-            'widget': 'DateWidget',
-            'operation': 'plone.app.querystring.operation.date.lessThan',
-          },
-          'plone.app.querystring.operation.date.largerThan': {
-            'title': 'After',
-            'widget': 'DateWidget',
-            'operation': 'plone.app.querystring.operation.date.largerThan',
-          },
-        },
-      },
-      'Creator': {
-        'title': 'Creator',
-        'description': 'Content author',
-        'group': 'Metadata',
-        'enabled': true,
-        'sortable': true,
-        'operations': [
-          'plone.app.querystring.operation.string.is',
-        ],
-        'operators': {
-          'plone.app.querystring.operation.string.is': {
-            'title': 'Is',
-            'widget': null,
-            'operation': 'plone.app.querystring.operation.string.is',
-          },
-        },
-      },
-      'Subject': {
-        'title': 'Tag',
-        'description': 'Subject/tag',
-        'group': 'Text',
-        'enabled': true,
-        'sortable': false,
-        'vocabulary': 'plone.app.vocabularies.Keywords',
-        'operations': [
-          'plone.app.querystring.operation.selection.any',
-          'plone.app.querystring.operation.selection.all',
-          'plone.app.querystring.operation.selection.none',
-        ],
-        'operators': {
-          'plone.app.querystring.operation.selection.any': {
-            'title': 'Matches any of',
-            'widget': 'autocomplete',
-            'operation': 'plone.app.querystring.operation.selection.any',
-          },
-          'plone.app.querystring.operation.selection.all': {
-            'title': 'Matches all of',
-            'widget': 'autocomplete',
-            'operation': 'plone.app.querystring.operation.selection.all',
-          },
-          'plone.app.querystring.operation.selection.none': {
-            'title': 'Matches none of',
-            'widget': 'autocomplete',
-            'operation': 'plone.app.querystring.operation.selection.none',
-          },
-        },
-        'values': collectSubjectValues(),
-      },
-      'Title': {
-        'title': 'Title',
-        'description': 'Content title',
-        'group': 'Text',
-        'enabled': true,
-        'sortable': true,
-        'operations': [
-          'plone.app.querystring.operation.string.contains',
-        ],
-        'operators': {
-          'plone.app.querystring.operation.string.contains': {
-            'title': 'Contains',
-            'widget': null,
-            'operation': 'plone.app.querystring.operation.string.contains',
-          },
-        },
-      },
-      'Description': {
-        'title': 'Description',
-        'description': 'Content description',
-        'group': 'Text',
-        'enabled': true,
-        'sortable': false,
-        'operations': [
-          'plone.app.querystring.operation.string.contains',
-        ],
-        'operators': {
-          'plone.app.querystring.operation.string.contains': {
-            'title': 'Contains',
-            'widget': null,
-            'operation': 'plone.app.querystring.operation.string.contains',
-          },
-        },
-      },
-      'SearchableText': {
-        'title': 'Searchable text',
-        'description': 'All text content',
-        'group': 'Text',
-        'enabled': true,
-        'sortable': false,
-        'operations': searchableTextOperations(),
-        'operators': Object.fromEntries(
-          searchableTextOperations().map((op) => [op, TEXT_OPERATORS[op]]),
-        ),
-      },
-    },
-    'sortable_indexes': {
-      'effective': { 'title': 'Effective date', 'description': 'Publication date' },
-      'created': { 'title': 'Creation date', 'description': 'Date created' },
-      'modified': { 'title': 'Modification date', 'description': 'Date last modified' },
-      'sortable_title': { 'title': 'Title', 'description': 'Title (sortable)' },
-      'Creator': { 'title': 'Creator', 'description': 'Content author' },
-      'review_state': { 'title': 'Review state', 'description': 'Workflow state' },
-      // Position in the parent folder — used by navigation listings.
-      // ploneFetchItems detects path+getObjPositionInParent and routes
-      // the call to @navigation instead of @querystring-search.
-      'getObjPositionInParent': { 'title': 'Position in parent', 'description': 'Order within parent folder (navigation order)' },
-    },
+    indexes,
+    sortable_indexes: QUERYSTRING.sortable_indexes,
   });
 });
 
@@ -4768,7 +4629,19 @@ app.post(/.*\/@workflow\/[^/]+$/, (req, res) => {
   const content = getContent(cleanPath, sessionId);
   if (!content) return res.status(404).json({ error: { type: 'NotFound' } });
 
-  const from = content.review_state || 'published';
+  // A type with no workflow has no transitions to make. The exact body a real
+  // Plone sends here is unverified — confirming it means POSTing a transition
+  // to a live site — so this says plainly what is wrong rather than guessing
+  // at Plone's wording.
+  if (!isWorkflowed(content['@type'])) {
+    return res.status(400).json({
+      error: {
+        type: 'BadRequest',
+        message: `${content['@type']} has no workflow, so it has no transitions`,
+      },
+    });
+  }
+  const from = reviewStateOf(content);
   const move = (SPW[from] ?? []).find((t) => t.id === transitionId);
   if (!move) {
     return res.status(400).json({
@@ -4986,7 +4859,9 @@ app.post(/.*\/@workingcopy$/, (req, res) => {
 });
 
 // The relation catalog, as plone.restapi's @relations answers it for one kind.
-// plone.app.iterate's working copies are the only relations this mock keeps.
+// plone.app.iterate's working copies, and a content relation field (each
+// page's summaries, e.g. relatedItems) asked by its `target`: the pages whose
+// field names that page.
 app.get('{/*path}/@relations', (req, res) => {
   const name = req.query.relation;
   const sessionId = getSessionId(req);
@@ -4997,13 +4872,29 @@ app.get('{/*path}/@relations', (req, res) => {
       '@type': content['@type'],
       title: content.title,
       description: content.description || '',
-      review_state: content.review_state || 'published',
+      review_state: reviewStateOf(content),
       UID: content.UID,
     };
   };
-  const items = name === 'iterate-working-copy'
-    ? Object.entries(sessionWorkingCopies[sessionId] ?? {}).map(([copy, baseline]) => ({ source: summary(baseline), target: summary(copy) }))
-    : [];
+  // A stored reference names a path as written, or (content authored for a
+  // site root, as mountInternalRefs reads it) under its page's own mount.
+  const names = (ref, fromPath, targetPath) => {
+    const asPath = new URL(ref, `http://localhost:${PORT}`).pathname.replace(/\/$/, '');
+    const prefix = prefixMountOf(fromPath);
+    return [asPath, prefix && prefix + asPath].some((p) => p && resolveContentReference(p, sessionId) === targetPath);
+  };
+  const naming = (targetPath) => allContentPaths(sessionId).filter((p) => {
+    const values = rawContentForComponents(p, sessionId)?.[name];
+    return Array.isArray(values) && values.some((v) => v?.['@id'] && names(v['@id'], p, targetPath));
+  });
+  let items = [];
+  if (name === 'iterate-working-copy') {
+    items = Object.entries(sessionWorkingCopies[sessionId] ?? {}).map(([copy, baseline]) => ({ source: summary(baseline), target: summary(copy) }));
+  } else if (req.query.target) {
+    const targetPath = resolveContentReference(req.query.target, sessionId);
+    if (!targetPath) return res.status(404).end();
+    items = naming(targetPath).map((p) => ({ source: summary(p), target: summary(targetPath) }));
+  }
   res.json({ relations: { [name]: { items, items_total: items.length } } });
 });
 
@@ -5328,6 +5219,39 @@ app.get('/@vocabularies', (req, res) => {
       title: name,
     })),
   );
+});
+
+/**
+ * Vocabularies a real Plone closes to an anonymous visitor.
+ *
+ * Not all of them: checked against a live Plone 6.2, anonymously —
+ *
+ *   plone.app.vocabularies.Keywords                 401
+ *   plone.app.vocabularies.Users                    401
+ *   plone.app.vocabularies.ReallyUserFriendlyTypes  200
+ *   plone.app.vocabularies.MetadataFields           200
+ *
+ * The two that are closed are the two that expose a site's own data — every
+ * keyword in use (including private content's), and every user. Serving these
+ * to anyone, as this mock did, is what let a facet UI read a keyword
+ * vocabulary in CI and render an empty strip in production (#725).
+ */
+const ANONYMOUS_FORBIDDEN_VOCABS = new Set([
+  'plone.app.vocabularies.Keywords',
+  'plone.app.vocabularies.Users',
+]);
+
+app.get('/@vocabularies/:vocab', (req, res, next) => {
+  if (ANONYMOUS_FORBIDDEN_VOCABS.has(req.params.vocab) && !isAuthenticated(req)) {
+    // plone.restapi's own wording and shape, verbatim.
+    return res.status(401).json({
+      error: {
+        type: 'Not authenticated',
+        message: `You need to be authenticated to access the vocabulary '${req.params.vocab}'.`,
+      },
+    });
+  }
+  next();
 });
 
 app.get('/@vocabularies/:vocab', (req, res) => {
@@ -5712,7 +5636,7 @@ app.post('{/*path}/@querystring-search', (req, res) => {
   // handler below covers them all instead of per-index branches that drift.
   const selectionFields = {
     portal_type: (item) => [item['@type']],
-    review_state: (item) => [item.review_state || 'published'],
+    review_state: (item) => [reviewStateOf(item)],
     // Items here come from loadRawContentFromDisk — the raw content schema
     // field is lowercase `subjects`. The catalog index name `Subject`
     // (capital S) is only added later by formatSearchItem. Read both so
@@ -6291,68 +6215,18 @@ app.get('{/*path}/@search', (req, res) => {
  * Get folder contents for content browsing
  * Returns items at the parent folder level (siblings of current content)
  */
-app.get('{/*path}/@contents', (req, res) => {
-  const contentPath = req.path.replace('/@contents', '') || '/';
-
-  // Helper to format content item for response
-  const formatItem = (itemPath) => {
-    const content = loadContentFromDisk(itemPath);
-    if (!content) return null;
-    return {
-      '@id': content['@id'],
-      '@type': content['@type'],
-      'id': content.id,
-      'title': content.title,
-      'description': content.description || '',
-      'review_state': content.review_state || 'published',
-      'UID': content.UID,
-      'is_folderish': content.is_folderish !== undefined ? content.is_folderish : true,
-    };
-  };
-
-  // For Documents, we return siblings (contents of parent folder)
-  // For the site root, we return all root-level items
-  let items;
-
-  if (contentPath === '' || contentPath === '/') {
-    // Root level - return all root-level items
-    items = Object.keys(contentDirMap)
-      .filter((itemPath) => {
-        if (itemPath === '/') return false;
-        const pathParts = itemPath.split('/').filter(p => p);
-        return pathParts.length === 1;
-      })
-      .map(formatItem)
-      .filter(Boolean);
-  } else {
-    // Get parent folder's contents (siblings of this content)
-    const pathParts = contentPath.split('/').filter(p => p);
-    const parentPath = pathParts.length > 1
-      ? '/' + pathParts.slice(0, -1).join('/')
-      : '/';
-
-    items = Object.keys(contentDirMap)
-      .filter((itemPath) => {
-        if (itemPath === '/') return false;
-        const itemParts = itemPath.split('/').filter(p => p);
-        // Same depth as current content and same parent
-        if (parentPath === '/') {
-          return itemParts.length === 1;
-        } else {
-          return itemPath.startsWith(parentPath + '/') &&
-                 itemParts.length === pathParts.length;
-        }
-      })
-      .map(formatItem)
-      .filter(Boolean);
-  }
-
-  res.json({
-    '@id': `${API_ORIGIN}${contentPath}/@contents`,
-    'items': items,
-    'items_total': items.length,
-  });
-});
+/*
+ * There is no @contents endpoint here, and there is none in Plone.
+ *
+ * This file used to serve one. Nothing called it — not Volto, not an adapter,
+ * not a test — and plone.restapi has no such service: a folder's children come
+ * from @search with path.depth=1, which is what the contents view asks for.
+ *
+ * Removed rather than left dormant, because a route in this file reads as
+ * evidence that Plone has one. That is precisely how the @order endpoint above
+ * came about. See mock-serves-no-invented-endpoints.test.js, which now refuses
+ * to let a new route in without saying where it comes from.
+ */
 
 /**
  * POST /:path/@submit-form

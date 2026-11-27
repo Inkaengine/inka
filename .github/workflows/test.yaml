@@ -40,7 +40,7 @@ jobs:
           fetch-depth: 0
       - name: Setup pnpm
         run: |
-          npm install -g corepack
+          npm install -g --force corepack  # the Playwright image ships its own yarn, which corepack replaces
           corepack cache clean
           corepack enable
       - name: Use Node.js
@@ -358,7 +358,7 @@ jobs:
       - uses: actions/checkout@v4
       - name: Setup pnpm
         run: |
-          npm install -g corepack
+          npm install -g --force corepack  # the Playwright image ships its own yarn, which corepack replaces
           corepack cache clean
           corepack enable
       - name: Use Node.js
@@ -390,6 +390,29 @@ jobs:
         run: make test
 
   # ── Bridge + unit tests (no Volto needed) ────────────────────────────────
+  build-mcp-image:
+    # Nothing built the hosted MCP server's image, which every consumer builds
+    # from packages/inka-mcp/Dockerfile. Its Playwright base image moved to one
+    # whose Node no longer ships corepack, and `corepack enable` then failed in
+    # a consumer's production deploy, not here. This builds the image as a
+    # consumer does (a bundle of its own, as BUNDLE) and checks the bundle's
+    # externals resolve in it. The bundle is a stub: what breaks this image is
+    # its install, not the server.
+    runs-on: 'ubuntu-latest'
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build the MCP image
+        run: |
+          mkdir -p packages/inka-mcp/dist
+          echo 'console.log("stub server")' > packages/inka-mcp/dist/inka-mcp-http.mjs
+          docker build --progress=plain -t inka-mcp:ci packages/inka-mcp
+      - name: The bundle's externals resolve in it
+        run: |
+          docker run --rm inka-mcp:ci node -e "
+            for (const m of ['playwright', '@sentry/node']) require.resolve(m, { paths: ['/app'] });
+            console.log('playwright and @sentry/node resolve');"
+
   test-bridge-unit:
     needs: build
     runs-on: 'ubuntu-latest'
@@ -401,7 +424,7 @@ jobs:
     # timeout only made it fail faster. Keep the tag in step with
     # @playwright/test in package.json.
     container:
-      image: mcr.microsoft.com/playwright:v1.61.0-noble
+      image: mcr.microsoft.com/playwright:v1.65.1-noble
       options: --ipc=host
     # The job runs as root, but $HOME is /github/home, which the image's pwuser
     # owns, and Firefox refuses to start as root in a home it doesn't own.
@@ -413,7 +436,7 @@ jobs:
           fetch-depth: 0
       - name: Setup pnpm
         run: |
-          npm install -g corepack
+          npm install -g --force corepack  # the Playwright image ships its own yarn, which corepack replaces
           corepack cache clean
           corepack enable
       - name: Use Node.js
@@ -524,7 +547,7 @@ jobs:
     # timeout only made it fail faster. Keep the tag in step with
     # @playwright/test in package.json.
     container:
-      image: mcr.microsoft.com/playwright:v1.61.0-noble
+      image: mcr.microsoft.com/playwright:v1.65.1-noble
       options: --ipc=host
     # The job runs as root, but $HOME is /github/home, which the image's pwuser
     # owns, and Firefox refuses to start as root in a home it doesn't own.
@@ -536,7 +559,7 @@ jobs:
           fetch-depth: 0
       - name: Setup pnpm
         run: |
-          npm install -g corepack
+          npm install -g --force corepack  # the Playwright image ships its own yarn, which corepack replaces
           corepack cache clean
           corepack enable
       - name: Use Node.js
@@ -643,7 +666,7 @@ jobs:
     # timeout only made it fail faster. Keep the tag in step with
     # @playwright/test in package.json.
     container:
-      image: mcr.microsoft.com/playwright:v1.61.0-noble
+      image: mcr.microsoft.com/playwright:v1.65.1-noble
       options: --ipc=host
     # The job runs as root, but $HOME is /github/home, which the image's pwuser
     # owns, and Firefox refuses to start as root in a home it doesn't own.
@@ -655,7 +678,7 @@ jobs:
           fetch-depth: 0
       - name: Setup pnpm
         run: |
-          npm install -g corepack
+          npm install -g --force corepack  # the Playwright image ships its own yarn, which corepack replaces
           corepack cache clean
           corepack enable
       - name: Use Node.js
@@ -773,7 +796,7 @@ jobs:
     # timeout only made it fail faster. Keep the tag in step with
     # @playwright/test in package.json.
     container:
-      image: mcr.microsoft.com/playwright:v1.61.0-noble
+      image: mcr.microsoft.com/playwright:v1.65.1-noble
       options: --ipc=host
     # The job runs as root, but $HOME is /github/home, which the image's pwuser
     # owns, and Firefox refuses to start as root in a home it doesn't own.
@@ -785,7 +808,7 @@ jobs:
           fetch-depth: 0
       - name: Setup pnpm
         run: |
-          npm install -g corepack
+          npm install -g --force corepack  # the Playwright image ships its own yarn, which corepack replaces
           corepack cache clean
           corepack enable
       - name: Use Node.js
@@ -885,7 +908,7 @@ jobs:
     # timeout only made it fail faster. Keep the tag in step with
     # @playwright/test in package.json.
     container:
-      image: mcr.microsoft.com/playwright:v1.61.0-noble
+      image: mcr.microsoft.com/playwright:v1.65.1-noble
       options: --ipc=host
     # The job runs as root, but $HOME is /github/home, which the image's pwuser
     # owns, and Firefox refuses to start as root in a home it doesn't own.
@@ -897,7 +920,7 @@ jobs:
           fetch-depth: 0
       - name: Setup pnpm
         run: |
-          npm install -g corepack
+          npm install -g --force corepack  # the Playwright image ships its own yarn, which corepack replaces
           corepack cache clean
           corepack enable
       - name: Use Node.js
@@ -1007,7 +1030,7 @@ jobs:
     # timeout only made it fail faster. Keep the tag in step with
     # @playwright/test in package.json.
     container:
-      image: mcr.microsoft.com/playwright:v1.61.0-noble
+      image: mcr.microsoft.com/playwright:v1.65.1-noble
       options: --ipc=host
     # The job runs as root, but $HOME is /github/home, which the image's pwuser
     # owns, and Firefox refuses to start as root in a home it doesn't own.
@@ -1019,7 +1042,7 @@ jobs:
           fetch-depth: 0
       - name: Setup pnpm
         run: |
-          npm install -g corepack
+          npm install -g --force corepack  # the Playwright image ships its own yarn, which corepack replaces
           corepack cache clean
           corepack enable
       - name: Use Node.js

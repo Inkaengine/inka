@@ -6,7 +6,7 @@ A complete E2E test suite for Volto Hydra using modern JavaScript tooling.
 
 ### ✅ Core Infrastructure
 
-1. **Playwright Test Configuration** (`playwright.config.ts`)
+1. **Playwright Test Configuration** (`playwright.config.mts`)
    - Automatic server management (Volto + Mock API)
    - TypeScript support
    - Screenshot/video capture on failure
@@ -71,7 +71,7 @@ tests-playwright/
 ├── integration/
 │   ├── block-selection.spec.ts       # Block selection tests
 │   └── inline-editing.spec.ts        # Inline editing tests
-├── playwright.config.ts              # Playwright configuration
+├── playwright.config.mts              # Playwright configuration
 ├── tsconfig.json                     # TypeScript config
 ├── README.md                         # Complete documentation
 └── IMPLEMENTATION_SUMMARY.md         # This file
@@ -236,7 +236,7 @@ The Python test suite (`tests/`) is still present but not used. Key migrations:
 See `README.md` for detailed troubleshooting guide.
 
 Quick fixes:
-- Tests timeout → Increase timeout in `playwright.config.ts`
+- Tests timeout → Increase timeout in `playwright.config.mts`
 - Servers don't start → Check ports 8888 and 3001 are free
 - Mock API 404 → Verify `fixtures/api/content.json` exists
 - Flaky tests → Add explicit waits, disable parallelization
