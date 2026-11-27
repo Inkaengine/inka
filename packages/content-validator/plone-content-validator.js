@@ -773,6 +773,22 @@ function imageDimensions(file) {
             );
             continue;
           }
+          // Then the widget's own shape. A string Plone WOULD resolve (a field
+          // named url, href or preview_image) or one that needs no resolving (a
+          // plain path) gets past the resolution check above, and is still the
+          // wrong shape for a widget whose value is an array of links.
+          // Disjoint from the check just above, which is about an OBJECT that
+          // holds no reference; this one is about a string where a list belongs.
+          // An empty string is simply no link.
+          if (ARRAY_SHAPED_WIDGETS.has(def.widget) && typeof v === 'string' && v !== '') {
+            stats.linksBroken += 1;
+            fail(rel,
+              `  ${rel}: block ${bid} (${block['@type']}) field "${field}" holds "${v}" as a bare ` +
+                `string, but its ${def.widget} widget stores an array of links — ` +
+                `store it as ${ARRAY_SHAPED_WIDGETS.get(def.widget)}`,
+            );
+            continue;
+          }
           // Every reference the field holds, in whichever shape it stores it.
           for (const ref of refStrings(v)) {
             const where = `  ${rel}: block ${bid} (${block['@type']}) ${field}`;
@@ -1607,6 +1623,22 @@ const REFERENCE_WIDGETS = new Set(['object_browser', 'url', 'image']);
 // `@id` whatever the field is called; a bare uid string in any other field
 // reaches the frontend unresolved.
 const PLONE_RESOLVES_BY_NAME = new Set(['url', 'href', 'preview_image']);
+
+// The widgets whose value IS an array, and the shape of one entry. The schema
+// names the field's widget and the widget fixes the shape, whatever the block
+// is called. A link field (object_browser, in any mode) stores a list of links
+// and never a plain string (docs/frontend-guide/custom-blocks.md), so a bare
+// string there is the wrong SHAPE whatever it points at: the widget cannot edit
+// it, and the restapi resolving the string (in a field named url, href or
+// preview_image) only hides that.
+//
+// An `image` widget is not one: it stores the image's path as a string, with
+// its image_field and image_scales beside it on the block, as Volto's image
+// block does and Plone Aurora's still does (its schema names them as the
+// widget's `extraFields`).
+const ARRAY_SHAPED_WIDGETS = new Map([
+  ['object_browser', '[{ "@id": "…" }]'],
+]);
 
 /**
  * Every block stored under a container, at any depth — the ONE place the

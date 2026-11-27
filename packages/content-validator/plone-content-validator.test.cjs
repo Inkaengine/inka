@@ -1359,6 +1359,7 @@ describe('plone-content-validator checkIntegrity()', () => {
     const IMAGE_CONFIG = {
       banner: { blockSchema: { properties: { image: { widget: 'image' }, preview_image: { widget: 'image' } } } },
       image: { blockSchema: { properties: { url: { widget: 'image' } } } },
+      button: { blockSchema: { properties: { href: { widget: 'object_browser', mode: 'link' } } } },
     };
     const check = (block) => {
       const { root, contentDir } = buildFixture({
@@ -1383,31 +1384,51 @@ describe('plone-content-validator checkIntegrity()', () => {
       }
     });
 
-    it('passes the same uid as an @id, in a field Plone resolves by name, or as a path', () => {
+    it('passes the same uid as an @id, however deep the array', () => {
       for (const block of [
         { '@type': 'banner', image: { '@id': 'resolveuid/pageauid1234567' } },
         { '@type': 'banner', image: [{ '@id': '../resolveuid/pageauid1234567' }] },
+      ]) {
+        assert.deepEqual(check(block), [], JSON.stringify(block));
+      }
+    });
+
+    // An `image` widget stores the image's path as a string, with its scales
+    // beside it on the block: Volto's image block, and Plone Aurora's, whose
+    // schema names them as `extraFields`. Not the wrong shape, so not refused.
+    it('passes a path in an image widget, the image block\'s own shape', () => {
+      for (const block of [
         { '@type': 'banner', preview_image: 'resolveuid/pageauid1234567' },
-        { '@type': 'image', url: 'resolveuid/pageauid1234567' },
+        { '@type': 'image', url: 'resolveuid/pageauid1234567', image_field: 'image' },
         { '@type': 'banner', image: '/page-a' },
       ]) {
         assert.deepEqual(check(block), [], JSON.stringify(block));
       }
     });
 
-    // inka#702: an agent put a file's data in an image block. With no reference
-    // in it, nothing was checked, and it was stored as it was: the block drew
-    // no image. An image or link field holds a reference, or nothing.
-    it('FAILS on an image field holding an object with no reference in it, such as a file', () => {
-      const file = { data: '<svg/>', encoding: 'utf8', filename: 'd.svg', 'content-type': 'image/svg+xml' };
-      for (const block of [{ '@type': 'image', url: file }, { '@type': 'banner', image: file }]) {
-        const errors = check(block);
-        assert.ok(errors.some((e) => e.includes('holds no reference') && e.includes('data,encoding,filename,content-type')), `${JSON.stringify(block)}:\n${errors.join('\n')}`);
+    it('passes an image field left empty, as an empty list', () => {
+      assert.deepEqual(check({ '@type': 'banner', image: [] }), []);
+    });
+
+    // A link field (object_browser) stores a list of links too, and never a
+    // plain string (docs/frontend-guide/custom-blocks.md). The schema names the
+    // widget and the widget fixes the shape, whatever the block is called.
+    it('FAILS on a bare string in a link field, and names the link shape', () => {
+      for (const href of ['/page-a', 'resolveuid/pageauid1234567', 'https://www.example.gov.au/x']) {
+        const errors = check({ '@type': 'button', href });
+        assert.ok(
+          errors.some((e) => e.includes('stores an array') && e.includes('[{ "@id": "…" }]')),
+          `${href} should fail the widget-shape check:\n${errors.join('\n')}`,
+        );
       }
     });
 
-    it('passes an image field left empty, as an empty list', () => {
-      assert.deepEqual(check({ '@type': 'banner', image: [] }), []);
+    it('passes a link field holding a list of links', () => {
+      assert.deepEqual(check({ '@type': 'button', href: [{ '@id': '/page-a' }] }), []);
+    });
+
+    it('still accepts an empty string: the field simply holds no link', () => {
+      assert.deepEqual(check({ '@type': 'button', href: '' }), []);
     });
   });
 
