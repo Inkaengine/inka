@@ -51,7 +51,9 @@ We build tools that make content editing delightful.
 
 </block>
 
-<fields templateId="/inka-templates/block-reference-layout" templateInstanceId="tpl-inst-hero" :fixed="false" :readOnly="false">
+<defaults templateId="/inka-templates/block-reference-layout" templateInstanceId="tpl-inst-hero">
+
+<fields :fixed="false" :readOnly="false">
 
 <block is="codeExample" slotId="schema">
 
@@ -97,3 +99,5 @@ We build tools that make content editing delightful.
 </block>
 
 </fields>
+
+</defaults>

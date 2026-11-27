@@ -105,7 +105,9 @@ Lorem ipsum dolor sit amet, [consetetur sadipscing](./button.md) elitr, sed diam
 
 </fields>
 
-<fields templateId="/inka-templates/block-reference-layout" templateInstanceId="tpl-inst-highlight" :fixed="false" :readOnly="false">
+<defaults templateId="/inka-templates/block-reference-layout" templateInstanceId="tpl-inst-highlight">
+
+<fields :fixed="false" :readOnly="false">
 
 <block is="codeExample" slotId="schema">
 
@@ -151,3 +153,5 @@ Lorem ipsum dolor sit amet, [consetetur sadipscing](./button.md) elitr, sed diam
 </block>
 
 </fields>
+
+</defaults>

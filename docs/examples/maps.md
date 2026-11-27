@@ -116,7 +116,9 @@ blandit praesent luptatum zzril qui.
 
 <block is="slate" />
 
-<fields templateId="/inka-templates/block-reference-layout" templateInstanceId="tpl-inst-maps" :fixed="false" :readOnly="false">
+<defaults templateId="/inka-templates/block-reference-layout" templateInstanceId="tpl-inst-maps">
+
+<fields :fixed="false" :readOnly="false">
 
 <block is="codeExample" slotId="schema">
 
@@ -162,3 +164,5 @@ blandit praesent luptatum zzril qui.
 </block>
 
 </fields>
+
+</defaults>

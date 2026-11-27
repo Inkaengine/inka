@@ -116,7 +116,9 @@ Lorem ipsum dolor sit amet, consetetur sadipscing elitr, sed diam nonumy eirmod 
 
 </block>
 
-<fields templateId="/inka-templates/block-reference-layout" templateInstanceId="tpl-inst-teaser" :fixed="false" :readOnly="false">
+<defaults templateId="/inka-templates/block-reference-layout" templateInstanceId="tpl-inst-teaser">
+
+<fields :fixed="false" :readOnly="false">
 
 <block is="codeExample" slotId="schema">
 
@@ -162,3 +164,5 @@ Lorem ipsum dolor sit amet, consetetur sadipscing elitr, sed diam nonumy eirmod 
 </block>
 
 </fields>
+
+</defaults>

@@ -67,7 +67,9 @@ This is an **important** — for a must-know gotcha.
 
 </block>
 
-<fields templateId="/inka-templates/block-reference-layout" templateInstanceId="tpl-inst-callout" :fixed="false" :readOnly="false">
+<defaults templateId="/inka-templates/block-reference-layout" templateInstanceId="tpl-inst-callout">
+
+<fields :fixed="false" :readOnly="false">
 
 <block is="codeExample" slotId="schema">
 
@@ -119,3 +121,5 @@ This is an **important** — for a must-know gotcha.
 </block>
 
 </fields>
+
+</defaults>

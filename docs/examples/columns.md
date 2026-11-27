@@ -58,7 +58,9 @@ We build robust systems.
 
 </block>
 
-<fields templateId="/inka-templates/block-reference-layout" templateInstanceId="tpl-inst-columns" :fixed="false" :readOnly="false">
+<defaults templateId="/inka-templates/block-reference-layout" templateInstanceId="tpl-inst-columns">
+
+<fields :fixed="false" :readOnly="false">
 
 <block is="codeExample" slotId="schema">
 
@@ -104,3 +106,5 @@ We build robust systems.
 </block>
 
 </fields>
+
+</defaults>

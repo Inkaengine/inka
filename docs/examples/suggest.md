@@ -34,7 +34,9 @@ A question whose answer is completed from a vocabulary the author picked.
 
 <block is="suggest" label="Topic" suggestFrom="plone.app.vocabularies.Keywords" value="" />
 
-<fields templateId="/inka-templates/block-reference-layout" templateInstanceId="tpl-inst-suggest" :fixed="false" :readOnly="false">
+<defaults templateId="/inka-templates/block-reference-layout" templateInstanceId="tpl-inst-suggest">
+
+<fields :fixed="false" :readOnly="false">
 
 <block is="codeExample" slotId="schema">
 
@@ -77,3 +79,5 @@ A question whose answer is completed from a vocabulary the author picked.
 </block>
 
 </fields>
+
+</defaults>

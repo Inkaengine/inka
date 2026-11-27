@@ -44,7 +44,9 @@ Renders the pages related to the current page by one of its relation fields (def
 
 <block is="relatedItemsListing" relationField="relatedItems" />
 
-<fields templateId="/inka-templates/block-reference-layout" templateInstanceId="tpl-inst-relatedItemsListing" :fixed="false" :readOnly="false">
+<defaults templateId="/inka-templates/block-reference-layout" templateInstanceId="tpl-inst-relatedItemsListing">
+
+<fields :fixed="false" :readOnly="false">
 
 <block is="codeExample" slotId="schema">
 
@@ -116,3 +118,5 @@ items.forEach((item) => renderBlock(item)); // your normal per-block renderer
 </fields>
 
 </fields>
+
+</defaults>

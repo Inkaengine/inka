@@ -38,7 +38,9 @@ Renders a set of values as links into a faceted search — a "tag cloud" of shor
 
 <block is="searchShortcuts" :searchUrl='[{"@id":"/search"}]' />
 
-<fields templateId="/inka-templates/block-reference-layout" templateInstanceId="tpl-inst-searchShortcuts" :fixed="false" :readOnly="false">
+<defaults templateId="/inka-templates/block-reference-layout" templateInstanceId="tpl-inst-searchShortcuts">
+
+<fields :fixed="false" :readOnly="false">
 
 <block is="codeExample" slotId="schema">
 
@@ -115,3 +117,5 @@ items.forEach((item) => renderBlock(item)); // your normal per-block renderer
 </fields>
 
 </fields>
+
+</defaults>

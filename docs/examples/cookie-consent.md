@@ -44,7 +44,9 @@ We use essential cookies to make this site work, and analytics cookies to see ho
 
 </block>
 
-<fields templateId="/inka-templates/block-reference-layout" templateInstanceId="tpl-inst-cookie-consent" :fixed="false" :readOnly="false">
+<defaults templateId="/inka-templates/block-reference-layout" templateInstanceId="tpl-inst-cookie-consent">
+
+<fields :fixed="false" :readOnly="false">
 
 <block is="codeExample" slotId="schema">
 
@@ -90,3 +92,5 @@ We use essential cookies to make this site work, and analytics cookies to see ho
 </block>
 
 </fields>
+
+</defaults>

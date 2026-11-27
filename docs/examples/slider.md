@@ -67,7 +67,9 @@ Recognized for excellence in UX.
 
 </block>
 
-<fields templateId="/inka-templates/block-reference-layout" templateInstanceId="tpl-inst-slider" :fixed="false" :readOnly="false">
+<defaults templateId="/inka-templates/block-reference-layout" templateInstanceId="tpl-inst-slider">
+
+<fields :fixed="false" :readOnly="false">
 
 <block is="codeExample" slotId="schema">
 
@@ -113,3 +115,5 @@ Recognized for excellence in UX.
 </block>
 
 </fields>
+
+</defaults>

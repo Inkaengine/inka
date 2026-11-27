@@ -58,7 +58,9 @@ A search interface with faceted filtering. Contains a child listing block for re
 
 </fields>
 
-<fields templateId="/inka-templates/block-reference-layout" templateInstanceId="tpl-inst-search" :fixed="false" :readOnly="false">
+<defaults templateId="/inka-templates/block-reference-layout" templateInstanceId="tpl-inst-search">
+
+<fields :fixed="false" :readOnly="false">
 
 <block is="codeExample" slotId="schema">
 
@@ -104,3 +106,5 @@ A search interface with faceted filtering. Contains a child listing block for re
 </block>
 
 </fields>
+
+</defaults>

@@ -110,7 +110,9 @@ Text can be **bold** or *italic*.
 
 </block>
 
-<fields templateId="/inka-templates/block-reference-layout" templateInstanceId="tpl-inst-toc" :fixed="false" :readOnly="false">
+<defaults templateId="/inka-templates/block-reference-layout" templateInstanceId="tpl-inst-toc">
+
+<fields :fixed="false" :readOnly="false">
 
 <block is="codeExample" slotId="schema">
 
@@ -156,3 +158,5 @@ Text can be **bold** or *italic*.
 </block>
 
 </fields>
+
+</defaults>

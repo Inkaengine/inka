@@ -92,7 +92,9 @@ Lorem ipsum dolor sit amet, consetetur sadipscing elitr, sed diam nonumy eirmod 
 
 Lorem ipsum dolor sit amet, consetetur sadipscing elitr, sed diam nonumy eirmod tempor invidunt ut labore et dolore magna aliquyam erat, sed diam voluptua. At vero eos et accusam et justo duo dolores et ea rebum. Stet clita kasd gubergren, no sea takimata sanctus est Lorem ipsum dolor sit amet. Lorem ipsum dolor sit amet, consetetur sadipscing elitr, sed diam nonumy eirmod tempor invidunt ut labore et dolore magna aliquyam erat, sed diam voluptua. At vero eos et accusam et justo duo dolores et ea rebum. Stet clita kasd gubergren, no sea takimata sanctus est Lorem ipsum dolor sit amet
 
-<fields templateId="/inka-templates/block-reference-layout" templateInstanceId="tpl-inst-text" :fixed="false" :readOnly="false">
+<defaults templateId="/inka-templates/block-reference-layout" templateInstanceId="tpl-inst-text">
+
+<fields :fixed="false" :readOnly="false">
 
 <block is="codeExample" slotId="schema">
 
@@ -119,7 +121,13 @@ Lorem ipsum dolor sit amet, consetetur sadipscing elitr, sed diam nonumy eirmod 
 
 <block is="callout">
 
+<block is="slate">
+
 The Astro examples below omit `data-block-uid` on the block's root element because `BlockRenderer.astro` wraps every block in `<div data-block-uid={uid}>`. See [Server-rendered frontends](../frontend-guide/server-rendered-frontends.md) for why.
+
+<fields :fixed="false" :readOnly="false" />
+
+</block>
 
 </block>
 
@@ -208,3 +216,5 @@ defineProps({ node: Object });
 </fields>
 
 </fields>
+
+</defaults>

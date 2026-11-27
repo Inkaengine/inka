@@ -69,7 +69,9 @@ const response = await fetch(`${apiUrl}${pagePath}/@submit-form`, {
 
 If your frontend submits from its server, read the token from the `access_token` cookie the bridge sets instead. Either way, a submission made like this is the editor's, with the editor's permissions: see [How an editor's login reaches the front end](../deploy-and-secure.md#how-an-editors-login-reaches-the-front-end).
 
-<fields templateId="/inka-templates/block-reference-layout" templateInstanceId="tpl-inst-form" :fixed="false" :readOnly="false">
+<defaults templateId="/inka-templates/block-reference-layout" templateInstanceId="tpl-inst-form">
+
+<fields :fixed="false" :readOnly="false">
 
 <block is="codeExample" slotId="schema">
 
@@ -115,3 +117,5 @@ If your frontend submits from its server, read the token from the `access_token`
 </block>
 
 </fields>
+
+</defaults>

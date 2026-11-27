@@ -636,6 +636,54 @@ describe('plone-content-validator checkIntegrity()', () => {
     });
   });
 
+  // On a page, every block inside a template's block belongs to the template
+  // too, at every depth (inheritTemplateMembershipDeep stamps them): the merge
+  // takes a template's blocks by templateId, so a nested block without one is
+  // dropped. The check walked such blocks but only judged ones that already
+  // named a template, so an untagged one inside an instance passed unseen.
+  describe("a block inside a template's block on a page", () => {
+    const definition = {
+      '@id': '/templates/frame', '@type': 'Document', id: 'frame', UID: 'frame-uid',
+      blocks: { body: { '@type': 'slate', fixed: false, slotId: 'body' } },
+      blocks_layout: { items: ['body'] },
+    };
+    const page = (inner) => ({
+      '@id': '/p', '@type': 'Document', id: 'p', UID: 'page-uid',
+      blocks: {
+        f: {
+          '@type': 'gridBlock', templateId: '/templates/frame', templateInstanceId: 'i1',
+          slotId: 'body', fixed: false,
+          blocks: { n: { '@type': 'slate', ...inner } },
+          blocks_layout: { items: ['n'] },
+        },
+      },
+      blocks_layout: { items: ['f'] },
+    });
+    const nestedErrors = (inner) =>
+      checkIntegrity([
+        { rel: '/templates/frame', data: definition },
+        { rel: '/p', data: page(inner) },
+      ]).errors.filter((e) => e.includes(' n '));
+
+    it("is reported when it does not carry the template's ids", () => {
+      const errors = nestedErrors({});
+      assert.ok(errors.some((e) => e.includes('templateId') && e.includes('templateInstanceId')), errors.join('\n'));
+    });
+
+    it('is reported when it names a template but no instance', () => {
+      const errors = nestedErrors({ templateId: '/templates/frame' });
+      assert.ok(errors.some((e) => e.includes('templateInstanceId') && !e.includes('templateId and')), errors.join('\n'));
+    });
+
+    it('passes when it starts an instance of its own, as a nested snippet does', () => {
+      assert.deepEqual(nestedErrors({ templateId: '/templates/snippet', templateInstanceId: 's1', slotId: 'snip-body', fixed: false }), []);
+    });
+
+    it('passes when it carries them, as the editor stamps them', () => {
+      assert.deepEqual(nestedErrors({ templateId: '/templates/frame', templateInstanceId: 'i1', slotId: 'body-items' }), []);
+    });
+  });
+
   it('flags broken resolveuid refs', () => {
     const { root, contentDir } = buildFixture({
       pageA: {

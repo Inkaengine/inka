@@ -37,7 +37,9 @@ Renders entries from an external RSS feed. Its items are fetched at render time 
 
 <block is="rssFeed" :feedUrl='[{"@id":"https://pypi.org/rss/project/plone/releases.xml"}]' variation="default" />
 
-<fields templateId="/inka-templates/block-reference-layout" templateInstanceId="tpl-inst-rssFeed" :fixed="false" :readOnly="false">
+<defaults templateId="/inka-templates/block-reference-layout" templateInstanceId="tpl-inst-rssFeed">
+
+<fields :fixed="false" :readOnly="false">
 
 <block is="codeExample" slotId="schema">
 
@@ -119,3 +121,5 @@ items.forEach((item) => renderBlock(item)); // your normal per-block renderer
 </fields>
 
 </fields>
+
+</defaults>

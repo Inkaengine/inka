@@ -76,7 +76,9 @@ Displays a list of content items from a query. The listing block fetches items f
 
 </fields>
 
-<fields templateId="/inka-templates/block-reference-layout" templateInstanceId="tpl-inst-listing" :fixed="false" :readOnly="false">
+<defaults templateId="/inka-templates/block-reference-layout" templateInstanceId="tpl-inst-listing">
+
+<fields :fixed="false" :readOnly="false">
 
 <block is="codeExample" slotId="schema">
 
@@ -122,3 +124,5 @@ Displays a list of content items from a query. The listing block fetches items f
 </block>
 
 </fields>
+
+</defaults>

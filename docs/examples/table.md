@@ -111,7 +111,9 @@ A table with rich text (Slate) content in each cell. Supports adding/removing ro
 
 </fields>
 
-<fields templateId="/inka-templates/block-reference-layout" templateInstanceId="tpl-inst-table" :fixed="false" :readOnly="false">
+<defaults templateId="/inka-templates/block-reference-layout" templateInstanceId="tpl-inst-table">
+
+<fields :fixed="false" :readOnly="false">
 
 <block is="codeExample" slotId="schema">
 
@@ -157,3 +159,5 @@ A table with rich text (Slate) content in each cell. Supports adding/removing ro
 </block>
 
 </fields>
+
+</defaults>
