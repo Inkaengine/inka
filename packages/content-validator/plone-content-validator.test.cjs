@@ -1359,6 +1359,7 @@ describe('plone-content-validator checkIntegrity()', () => {
     const IMAGE_CONFIG = {
       banner: { blockSchema: { properties: { image: { widget: 'image' }, preview_image: { widget: 'image' } } } },
       image: { blockSchema: { properties: { url: { widget: 'image' } } } },
+      button: { blockSchema: { properties: { href: { widget: 'object_browser', mode: 'link' } } } },
     };
     const check = (block) => {
       const { root, contentDir } = buildFixture({
@@ -1428,6 +1429,23 @@ describe('plone-content-validator checkIntegrity()', () => {
 
     it('passes an image field left empty, as an empty list', () => {
       assert.deepEqual(check({ '@type': 'banner', image: [] }), []);
+    });
+
+    // A link field (object_browser) stores a list of links too, and never a
+    // plain string (docs/frontend-guide/custom-blocks.md). The schema names the
+    // widget and the widget fixes the shape, whatever the block is called.
+    it('FAILS on a bare string in a link field, and names the link shape', () => {
+      for (const href of ['/page-a', 'resolveuid/pageauid1234567', 'https://www.example.gov.au/x']) {
+        const errors = check({ '@type': 'button', href });
+        assert.ok(
+          errors.some((e) => e.includes('stores an array') && e.includes('[{ "@id": "…" }]')),
+          `${href} should fail the widget-shape check:\n${errors.join('\n')}`,
+        );
+      }
+    });
+
+    it('passes a link field holding a list of links', () => {
+      assert.deepEqual(check({ '@type': 'button', href: [{ '@id': '/page-a' }] }), []);
     });
 
     it('still accepts an empty string: the field simply holds no image', () => {

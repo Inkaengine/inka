@@ -785,7 +785,7 @@ function imageDimensions(file) {
             fail(rel,
               `  ${rel}: block ${bid} (${block['@type']}) field "${field}" holds "${v}" as a bare ` +
                 `string, but its ${def.widget} widget stores an array of link/media objects — ` +
-                `store it as [{ "@id": "…", "image_field": "image" }]`,
+                `store it as ${ARRAY_SHAPED_WIDGETS.get(def.widget)}`,
             );
             continue;
           }
@@ -1624,19 +1624,19 @@ const REFERENCE_WIDGETS = new Set(['object_browser', 'url', 'image']);
 // reaches the frontend unresolved.
 const PLONE_RESOLVES_BY_NAME = new Set(['url', 'href', 'preview_image']);
 
-// The widgets whose value IS an array of link/media objects: an image or file
-// widget stores image-scale dicts, so a bare string is the wrong SHAPE there
-// whatever it points at -- the widget cannot edit it, a save may not round-trip
-// it, and the restapi resolving the string (in a field named url, href or
-// preview_image) only hides that.
-//
-// `object_browser` is deliberately NOT here. Volto stores it both ways: an
-// array for a teaser's href, a plain string for its own image block's url
-// (mode: 'link'). Which one a given field wants is the consumer's convention,
-// not something this validator can know, so a consumer that wants every
-// object_browser field to hold an array enforces that itself (pretagov-site's
-// scripts/validate-content-schemas.mjs, ARRAY_WIDGETS).
-const ARRAY_SHAPED_WIDGETS = new Set(['image', 'file']);
+// The widgets whose value IS an array, and the shape of one entry. The schema
+// names the field's widget and the widget fixes the shape, whatever the block
+// is called: an image or file widget stores image-scale dicts, a link field
+// (object_browser) stores a list of links and never a plain string
+// (docs/frontend-guide/custom-blocks.md). So a bare string is the wrong SHAPE
+// there whatever it points at -- the widget cannot edit it, a save may not
+// round-trip it, and the restapi resolving the string (in a field named url,
+// href or preview_image) only hides that.
+const ARRAY_SHAPED_WIDGETS = new Map([
+  ['image', '[{ "@id": "…", "image_field": "image" }]'],
+  ['file', '[{ "@id": "…" }]'],
+  ['object_browser', '[{ "@id": "…" }]'],
+]);
 
 /**
  * Every block stored under a container, at any depth — the ONE place the
