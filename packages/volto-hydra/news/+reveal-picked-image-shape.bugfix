@@ -1,1 +1,0 @@
-An image picker's reveal stand-in has the shape a picked image has, its field and proportions included, so a frontend that sizes an image from its proportions (a logo at a fixed height) draws it instead of refusing it. @djay

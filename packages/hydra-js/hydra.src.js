@@ -12522,25 +12522,6 @@ export class Bridge {
   }
 
   /**
-   * REVEAL_PIXEL as an image picker stores a picked Image item: its @id, and the
-   * image's field and scales. The scales carry the image's proportions, which a
-   * frontend may size the image's box from (a logo drawn at a fixed height); a
-   * stand-in without them is a value no real pick could store.
-   */
-  static get REVEAL_PICKED_IMAGE() {
-    return {
-      '@id': Bridge.REVEAL_PIXEL,
-      title: Bridge.REVEAL_ZWS,
-      image_field: 'image',
-      image_scales: {
-        // Only the proportions: a `download` is a path under the item, which a
-        // data: URI has none of, so a frontend joining the two would break it.
-        image: [{ width: 400, height: 300 }],
-      },
-    };
-  }
-
-  /**
    * The field's type as reveal reads it: through the admin's decoration. A
    * copyFromTargetField wrapper keeps the field's own def under `baseWidget`, and
    * its type string is the wrapper's (`array:copyFromTargetField`), so a rich-text
@@ -12577,7 +12558,7 @@ export class Bridge {
     // preview_image) is rendered as an <img> from its @id, so its @id must be an
     // image that loads — a ZWS @id renders a broken image.
     if (widget === 'object_browser') {
-      return [fieldDef?.mode === 'image' ? Bridge.REVEAL_PICKED_IMAGE : { '@id': Z, title: Z }];
+      return [{ '@id': fieldDef?.mode === 'image' ? Bridge.REVEAL_PIXEL : Z, title: Z }];
     }
     if (widget === 'image' || fieldDef?.type === 'image') return Bridge.REVEAL_PIXEL;
     if (widget === 'url' || fieldDef?.type === 'url') return Z;
