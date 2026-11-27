@@ -104,7 +104,7 @@ An assistant such as Claude connects over MCP and edits through the same editor,
 | CMS | Status |
 | --- | --- |
 | Plone | Released, in production |
-| WordPress, Drupal, Strapi | Built, in testing before release |
+| WordPress, Drupal, Strapi | Built |
 
 An adapter is one contract: read and write pages as JSON, plus the CMS's fields, permissions, workflow and revisions. Pages stored as JSON move between CMSs without conversion. See [Connect a CMS](./docs/adapters/index.md).
 
