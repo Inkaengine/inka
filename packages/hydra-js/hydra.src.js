@@ -1720,6 +1720,34 @@ export class Bridge {
    * @param {string} parentId - The parent block ID
    * @returns {string[]} Sibling IDs sorted by DOM order
    */
+  /**
+   * Where a block sits: its parent, its region and its neighbours there, in
+   * render order. Two places differ when the block has moved.
+   */
+  _blockPlace(uid) {
+    const info = this.blockPathMap?.[uid];
+    if (!info) return null;
+    const siblings = this._getSiblingsByDomOrder(null, info.parentId).filter(
+      (id) => this.blockPathMap[id].region === info.region,
+    );
+    const i = siblings.indexOf(uid);
+    return JSON.stringify([info.parentId, info.region, siblings[i - 1] ?? null, siblings[i + 1] ?? null]);
+  }
+
+  /**
+   * Whether the selected block moved with the last FORM_DATA, now that the
+   * frontend has rendered it. However it moved (dragged, the chevrons, a key,
+   * undo), the frontend may render it some time after FORM_DATA, so the check
+   * as FORM_DATA lands sees its old place. Answers once per FORM_DATA.
+   */
+  _movedSinceFormData(uid) {
+    const before = this._placeBeforeFormData;
+    if (!before || before.uid !== uid) return false;
+    const moved = before.place !== this._blockPlace(uid);
+    if (moved) this._placeBeforeFormData = null;
+    return moved;
+  }
+
   _getSiblingsByDomOrder(blockId, parentId) {
     const siblings = Object.entries(this.blockPathMap)
       .filter(([, info]) => info.parentId === parentId)
@@ -5038,6 +5066,12 @@ export class Bridge {
               return;
             }
 
+            // Where the selected block sits before this data renders, so that
+            // once it has rendered we can tell whether it moved (see
+            // _movedSinceFormData).
+            this._placeBeforeFormData = this.selectedBlockUid
+              ? { uid: this.selectedBlockUid, place: this._blockPlace(this.selectedBlockUid) }
+              : null;
             this.setFormDataFromAdmin(event.data.data, 'FORM_DATA', event.data.blockPathMap);
 
             // Add nodeIds to all slate blocks before rendering
@@ -10749,15 +10783,17 @@ export class Bridge {
               // Re-check element is still valid and get fresh rect
               const freshElements = this.getAllBlockElements(blockUid);
               if (freshElements.length > 0) {
-                // Scroll to block if not visible AND we were waiting for this dragged block
-                // (prevents unwanted scrolling on normal DOM changes like size updates)
-                if (this._justFinishedDragBlockId === blockUid) {
+                // Scroll to block if not visible AND it was just moved (dragged,
+                // or moved by FORM_DATA). Not on other DOM changes, like size
+                // updates.
+                const justDragged = this._justFinishedDragBlockId === blockUid;
+                if (justDragged || this._movedSinceFormData(blockUid)) {
                   if (!this.elementIsVisibleInViewport(freshElements[0])) {
-                    log('observeBlockDomChanges: scrolling to dragged block', blockUid);
+                    log('observeBlockDomChanges: scrolling to moved block', blockUid);
                     this.scrollBlockIntoView(freshElements[0]);
                   }
                   // Always clear after processing - drag is complete
-                  this._justFinishedDragBlockId = null;
+                  if (justDragged) this._justFinishedDragBlockId = null;
                 }
                 this.sendBlockSelected('domChange', null, { blockUid });
               }
