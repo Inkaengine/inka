@@ -1,0 +1,1 @@
+A list item given a block format (a heading, say) leaves the list, splitting it there, instead of staying inside it as a heading. Volto's own list rule, which never fired. @djay

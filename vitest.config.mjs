@@ -74,6 +74,14 @@ const UPSTREAM_SUITES = [
     shadow:
       'packages/volto-hydra/src/customizations/@plone/volto-slate/utils/blocks.js',
   },
+  // Not a test: volto-slate's own editor imports its normalizer relatively, and
+  // the admin build resolves that to the shadow, so tests of the editor must too.
+  {
+    test: 'core/packages/volto-slate/src/editor/extensions/index.js',
+    source: './normalizeNode',
+    shadow:
+      'packages/volto-hydra/src/customizations/@plone/volto-slate/editor/extensions/normalizeNode.js',
+  },
 ];
 
 function redirectUpstreamSuitesToShadows() {
