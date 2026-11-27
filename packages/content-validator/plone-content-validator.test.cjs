@@ -1393,37 +1393,16 @@ describe('plone-content-validator checkIntegrity()', () => {
       }
     });
 
-    // An `image`/`file` widget's value IS an array of media objects, so a bare
-    // string is the wrong SHAPE whether or not Plone would resolve it. These
-    // three used to pass: Plone resolves a bare string in a field named url,
-    // href or preview_image, and a path needs no resolving at all, so the
-    // resolution check above has nothing to say about them. They still reach
-    // the frontend as a value the widget cannot edit and the next save may not
-    // round-trip -- and, pointed at their own page, they recursed in the mock
-    // (inka#707). The shape is the widget's business, so it is checked here
-    // rather than only in a consumer's own deploy gate.
-    it('FAILS on a bare string in an image/file widget, resolvable or not', () => {
+    // An `image` widget stores the image's path as a string, with its scales
+    // beside it on the block: Volto's image block, and Plone Aurora's, whose
+    // schema names them as `extraFields`. Not the wrong shape, so not refused.
+    it('passes a path in an image widget, the image block\'s own shape', () => {
       for (const block of [
         { '@type': 'banner', preview_image: 'resolveuid/pageauid1234567' },
-        { '@type': 'image', url: 'resolveuid/pageauid1234567' },
+        { '@type': 'image', url: 'resolveuid/pageauid1234567', image_field: 'image' },
         { '@type': 'banner', image: '/page-a' },
       ]) {
-        const errors = check(block);
-        assert.ok(
-          errors.some((e) => e.includes('stores an array')),
-          `${JSON.stringify(block)} should fail the widget-shape check:\n${errors.join('\n')}`,
-        );
-      }
-    });
-
-    // inka#702: an agent put a file's data in an image block. With no reference
-    // in it, nothing was checked, and it was stored as it was: the block drew
-    // no image. An image or link field holds a reference, or nothing.
-    it('FAILS on an image field holding an object with no reference in it, such as a file', () => {
-      const file = { data: '<svg/>', encoding: 'utf8', filename: 'd.svg', 'content-type': 'image/svg+xml' };
-      for (const block of [{ '@type': 'image', url: file }, { '@type': 'banner', image: file }]) {
-        const errors = check(block);
-        assert.ok(errors.some((e) => e.includes('holds no reference') && e.includes('data,encoding,filename,content-type')), `${JSON.stringify(block)}:\n${errors.join('\n')}`);
+        assert.deepEqual(check(block), [], JSON.stringify(block));
       }
     });
 
@@ -1448,8 +1427,8 @@ describe('plone-content-validator checkIntegrity()', () => {
       assert.deepEqual(check({ '@type': 'button', href: [{ '@id': '/page-a' }] }), []);
     });
 
-    it('still accepts an empty string: the field simply holds no image', () => {
-      assert.deepEqual(check({ '@type': 'image', url: '' }), []);
+    it('still accepts an empty string: the field simply holds no link', () => {
+      assert.deepEqual(check({ '@type': 'button', href: '' }), []);
     });
   });
 

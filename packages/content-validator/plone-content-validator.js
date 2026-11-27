@@ -776,15 +776,15 @@ function imageDimensions(file) {
           // Then the widget's own shape. A string Plone WOULD resolve (a field
           // named url, href or preview_image) or one that needs no resolving (a
           // plain path) gets past the resolution check above, and is still the
-          // wrong shape for a widget whose value is an array of media objects.
+          // wrong shape for a widget whose value is an array of links.
           // Disjoint from the check just above, which is about an OBJECT that
           // holds no reference; this one is about a string where a list belongs.
-          // An empty string is simply no image.
+          // An empty string is simply no link.
           if (ARRAY_SHAPED_WIDGETS.has(def.widget) && typeof v === 'string' && v !== '') {
             stats.linksBroken += 1;
             fail(rel,
               `  ${rel}: block ${bid} (${block['@type']}) field "${field}" holds "${v}" as a bare ` +
-                `string, but its ${def.widget} widget stores an array of link/media objects — ` +
+                `string, but its ${def.widget} widget stores an array of links — ` +
                 `store it as ${ARRAY_SHAPED_WIDGETS.get(def.widget)}`,
             );
             continue;
@@ -1626,15 +1626,17 @@ const PLONE_RESOLVES_BY_NAME = new Set(['url', 'href', 'preview_image']);
 
 // The widgets whose value IS an array, and the shape of one entry. The schema
 // names the field's widget and the widget fixes the shape, whatever the block
-// is called: an image or file widget stores image-scale dicts, a link field
-// (object_browser) stores a list of links and never a plain string
-// (docs/frontend-guide/custom-blocks.md). So a bare string is the wrong SHAPE
-// there whatever it points at -- the widget cannot edit it, a save may not
-// round-trip it, and the restapi resolving the string (in a field named url,
-// href or preview_image) only hides that.
+// is called. A link field (object_browser, in any mode) stores a list of links
+// and never a plain string (docs/frontend-guide/custom-blocks.md), so a bare
+// string there is the wrong SHAPE whatever it points at: the widget cannot edit
+// it, and the restapi resolving the string (in a field named url, href or
+// preview_image) only hides that.
+//
+// An `image` widget is not one: it stores the image's path as a string, with
+// its image_field and image_scales beside it on the block, as Volto's image
+// block does and Plone Aurora's still does (its schema names them as the
+// widget's `extraFields`).
 const ARRAY_SHAPED_WIDGETS = new Map([
-  ['image', '[{ "@id": "…", "image_field": "image" }]'],
-  ['file', '[{ "@id": "…" }]'],
   ['object_browser', '[{ "@id": "…" }]'],
 ]);
 
