@@ -116,6 +116,15 @@ function holdsBlocksIn(blockData, field) {
 }
 
 /**
+ * A template's locked block, which an editor can't empty: the empty-region
+ * sweep passes over it. A block in a template's open slot carries the
+ * template's id but is the page's own, emptied like any other block.
+ */
+function isLockedExample(b) {
+  return !!(b.blockData?.readOnly || /\/templates\//.test(b.pagePath));
+}
+
+/**
  * A case for each region that some container fills and no kept example does.
  *
  * Discovery keeps a rich and a simple example per type, and the empty-region
@@ -128,8 +137,10 @@ function holdsBlocksIn(blockData, field) {
  */
 function regionHolderCases(kept, holders) {
   const added = [];
+  // Only an example the sweep can empty covers a region: a template's locked
+  // instance filling it is passed over there (buildEmptyRegionCases).
   const covered = (type, field) =>
-    [...kept, ...added].some((b) => b.blockType === type && holdsBlocksIn(b.blockData, field));
+    [...kept, ...added].some((b) => b.blockType === type && !isLockedExample(b) && holdsBlocksIn(b.blockData, field));
   for (const [key, example] of holders) {
     const [type, field] = key.split('|');
     if (covered(type, field)) continue;
@@ -149,18 +160,15 @@ function regionHolderCases(kept, holders) {
  * @returns {Array<{parentType: string, field: string, pagePath: string, blockId: string}>}
  */
 function buildEmptyRegionCases(blocksConfig, blocks) {
-  // Prefer an example an editor can empty: a template's locked blocks can't be,
-  // so the case would only be skipped. A block in a template's open slot carries
-  // the template's id but is the page's own, emptied like any other block.
-  const isLocked = (b) => !!(b.blockData?.readOnly || /\/templates\//.test(b.pagePath));
+  // Prefer an example an editor can empty (see isLockedExample).
   // A page holding template content at all, open slots included.
-  const isTemplated = (b) => !!(b.blockData?.templateId || isLocked(b));
+  const isTemplated = (b) => !!(b.blockData?.templateId || isLockedExample(b));
   // Then an example with blocks in THIS region: a container may draw only some
   // of its regions (a layout whose setting picks the left or the right
   // sidebar), and one that has content in a region draws it. Emptying a region
   // its example doesn't draw checks nothing but that setting.
   const holds = (b, field) => holdsBlocksIn(b.blockData, field);
-  const rank = (b, field) => (isLocked(b) ? 0 : 2) + (holds(b, field) ? 1 : 0);
+  const rank = (b, field) => (isLockedExample(b) ? 0 : 2) + (holds(b, field) ? 1 : 0);
   const cases = [];
   for (const { parentType, field } of regionFields(blocksConfig)) {
     let example;
