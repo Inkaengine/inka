@@ -1547,7 +1547,7 @@ function _linkUrl(value, field) {
  *
  * A linked `pageField` ⇒ THIS page's values of that field; no `pageField` ⇒ the
  * values the index actually holds, read from the catalog (see
- * `_indexValuesFromCatalog` — it used to read the index's vocabulary, which an
+ * `indexValuesFromCatalog` — it used to read the index's vocabulary, which an
  * anonymous visitor may not be allowed to, #762).
  */
 /** How many brains a shortcuts strip scans for an index's values. */
@@ -1582,8 +1582,13 @@ const SHORTCUT_VALUE_SCAN = 500;
  * integration test caught it: a search page is where results are SHOWN, not
  * where content lives. `/search` has nothing beneath it, so site-wide mode
  * returned nothing at all.
+ *
+ * Exported for anything else a visitor sees that needs an index's values, such
+ * as a search facet on an index whose values Plone doesn't give an anonymous
+ * visitor (`Subject`: `@querystring` declares none, and its vocabulary is 401).
+ * `fetch` is the caller's, so a server render can pass one that caches.
  */
-async function _indexValuesFromCatalog({ apiUrl, index, headers }) {
+export async function indexValuesFromCatalog({ apiUrl, index, headers = {}, fetch = globalThis.fetch }) {
   // The site root, recursively: `absolutePath` with `/` is every object the
   // caller may see (checked against a live Plone 6.2 — 213 of them).
   const criterion = {
@@ -1614,7 +1619,7 @@ async function _indexValuesFromCatalog({ apiUrl, index, headers }) {
   // Loudly: the silent `[]` is the whole defect this replaces.
   if (!response.ok) {
     throw new Error(
-      `searchShortcutsFetcher: ${url} answered ${response.status} ` +
+      `indexValuesFromCatalog: ${url} answered ${response.status} ` +
         `asking for the values of '${index}'`,
     );
   }
@@ -1653,7 +1658,7 @@ export function searchShortcutsFetcher({ apiUrl, contextPath = '/' } = {}) {
       const v = content?.[block.pageField];
       values = Array.isArray(v) ? v : v == null ? [] : [v];
     } else {
-      values = await _indexValuesFromCatalog({ apiUrl, index, headers });
+      values = await indexValuesFromCatalog({ apiUrl, index, headers });
     }
 
     const all = values.map((value) => ({

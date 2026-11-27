@@ -1,0 +1,1 @@
+indexValuesFromCatalog is exported: the values an index holds, read from the catalog as a visitor may, with the caller's fetch. A frontend can fill a search facet on an index whose values Plone gives a visitor none of (Subject) the way the search shortcuts already do. @djay
