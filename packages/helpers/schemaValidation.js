@@ -37,6 +37,15 @@ function choiceTokens(choices) {
 }
 
 export function isValidValue(value, fieldDef) {
+  // A field's own default is a value the editor produces: it gives a new block
+  // that value, and puts it back on load. Declared "nothing chosen" (`default:
+  // ""` on a Choice whose choices don't hold it), it was refused here: emptied
+  // on load and filled again, and reported by block sanity as a value the
+  // editor can't produce.
+  if (fieldDef.default !== undefined && typeof fieldDef.default !== 'function' && value === fieldDef.default) {
+    return true;
+  }
+
   // For choice fields: check if value is one of the allowed choices.
   //
   // A field can take SEVERAL of them, and then it holds an array — Volto's
