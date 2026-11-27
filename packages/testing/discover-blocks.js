@@ -1636,16 +1636,25 @@ async function discoverBlocks(
   const items = searchData.items || [];
   console.log(`[DISCOVER] Found ${items.length} content items`);
 
-  // Filter to page-like types that have blocks
-  const pageTypes = new Set(['Document', 'Folder', 'Plone Site', 'News Item', 'Event']);
-  const pages = items.filter(item => pageTypes.has(item['@type']));
+  // The pages: every item with blocks, whatever its type, as the catalog has
+  // it. The volto.blocks behavior marks its items with IBlocks (a schema-only
+  // behavior marks with what it provides), indexed as object_provides. A list
+  // of type names here skipped every type a site adds — Inka's Template, which
+  // holds a site's layouts, among them. The search above is still every item:
+  // the integrity pass registers the ones not scanned, so references resolve.
+  const pagesUrl = `${apiUrl}/@search?b_size=9999&object_provides=plone.restapi.behaviors.IBlocks`;
+  const pagesResp = await fetch(pagesUrl, { headers: { Accept: 'application/json' } });
+  if (!pagesResp.ok) {
+    throw new Error(`Failed to fetch ${pagesUrl}: ${pagesResp.status} ${pagesResp.statusText}`);
+  }
+  const pages = (await pagesResp.json()).items;
 
   // Always include site root (/) — @search typically excludes it
   const rootInResults = pages.some(p => new URL(p['@id']).pathname === '/');
   if (!rootInResults) {
     pages.unshift({ '@id': `${apiUrl}/`, '@type': 'Plone Site' });
   }
-  console.log(`[DISCOVER] ${pages.length} page-like items to scan`);
+  console.log(`[DISCOVER] ${pages.length} items with blocks to scan`);
 
   // Step 2: Fetch each page and extract blocks
   let fetched = 0;

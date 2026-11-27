@@ -5907,6 +5907,17 @@ app.post('{/*path}/@querystring-search', (req, res) => {
  * Supports path.depth parameter to get children of a specific path
  * Supports path.query parameter to get a specific content item
  */
+/**
+ * The interfaces the catalog's object_provides index answers for here, each
+ * with how an item shows it provides it. plone.restapi's volto.blocks behavior
+ * registers IBlocks with no marker and no factory, so plone.behavior marks its
+ * items with IBlocks itself; the editable-layout variant's interface extends
+ * it. An item with blocks has `blocks_layout`.
+ */
+const PROVIDED_INTERFACES = {
+  'plone.restapi.behaviors.IBlocks': (content) => content.blocks_layout !== undefined,
+};
+
 app.get('{/*path}/@search', (req, res) => {
   const searchPath = req.path.replace('/@search', '');
 
@@ -5948,7 +5959,18 @@ app.get('{/*path}/@search', (req, res) => {
   // container children included.
   const blockTypes = req.query.block_types === undefined ? null : [req.query.block_types].flat();
   const reviewStates = req.query.review_state === undefined ? null : [req.query.review_state].flat();
-  if (searchableText || titleQuery || blockTypes || reviewStates) {
+  // object_provides: the catalog's index of the interfaces an item provides.
+  // Only those modelled here (PROVIDED_INTERFACES) can be asked for; any other
+  // would match nothing, which reads as "no item provides it".
+  const provides = req.query.object_provides === undefined ? null : [req.query.object_provides].flat();
+  const unmodelled = (provides || []).filter((name) => !PROVIDED_INTERFACES[name]);
+  if (unmodelled.length) {
+    return res.status(400).json({
+      type: 'BadRequest',
+      message: `object_provides: the mock doesn't model ${unmodelled.join(', ')} (it models ${Object.keys(PROVIDED_INTERFACES).join(', ')})`,
+    });
+  }
+  if (searchableText || titleQuery || blockTypes || reviewStates || provides) {
     // The site as this session has it, as Plone's catalog does: its own new
     // and edited pages included, by the text in their blocks too.
     items = allContentPaths(getSessionId(req))
@@ -5956,6 +5978,7 @@ app.get('{/*path}/@search', (req, res) => {
       .map((itemPath) => getContent(itemPath, getSessionId(req)))
       .filter((content) => content != null)
       .filter((content) => !blockTypes || blockTypesOf(content).some((t) => blockTypes.includes(t)))
+      .filter((content) => !provides || provides.some((name) => PROVIDED_INTERFACES[name](content)))
       .filter((content) => !searchableText || matchSearchableText(searchableText, content, blocksSearchableText(content.blocks)))
       .map((content) => formatSearchItem(content, baseUrl));
     if (titleQuery) {
