@@ -37,8 +37,8 @@ test('the image installs every module the bundle leaves external', () => {
   // Dockerfile installs nothing and fails nothing: the server crashes when it
   // first imports it, in production.
   const dockerfile = readFileSync(mcp('Dockerfile'), 'utf8');
-  const added = dockerfile.match(/^RUN .*\bpnpm add ([^\n]*)$/m);
-  expect(added, 'the Dockerfile installs nothing with `pnpm add`').not.toBe(null);
+  const added = dockerfile.match(/^RUN .*\bnpm install ([^\n]*)$/m);
+  expect(added, 'the Dockerfile installs nothing with `npm install`').not.toBe(null);
   // The specs are written with ARGs now that consumers build this same file
   // (PLAYWRIGHT is theirs to pass, SENTRY is pinned here), so resolve each
   // ARG's default before reading them -- otherwise this asserts against
@@ -52,7 +52,10 @@ test('the image installs every module the bundle leaves external', () => {
     return value!;
   });
   expect(resolved, 'every ${ARG} resolved').not.toContain('${');
-  const installed = resolved.split(/\s+/).map((spec) => spec.replace(/@[^@]*$/, ''));
+  const installed = resolved
+    .split(/\s+/)
+    .filter((spec) => spec && !spec.startsWith('--')) // npm's own flags
+    .map((spec) => spec.replace(/@[^@]*$/, ''));
   const external = bundling(mcp('start.mjs'), mcp('dist/unwritten.mjs')).external as string[];
   expect([...external].sort()).toEqual([...installed].sort());
 });

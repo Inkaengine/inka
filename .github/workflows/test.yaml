@@ -390,6 +390,29 @@ jobs:
         run: make test
 
   # ── Bridge + unit tests (no Volto needed) ────────────────────────────────
+  build-mcp-image:
+    # Nothing built the hosted MCP server's image, which every consumer builds
+    # from packages/inka-mcp/Dockerfile. Its Playwright base image moved to one
+    # whose Node no longer ships corepack, and `corepack enable` then failed in
+    # a consumer's production deploy, not here. This builds the image as a
+    # consumer does (a bundle of its own, as BUNDLE) and checks the bundle's
+    # externals resolve in it. The bundle is a stub: what breaks this image is
+    # its install, not the server.
+    runs-on: 'ubuntu-latest'
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build the MCP image
+        run: |
+          mkdir -p packages/inka-mcp/dist
+          echo 'console.log("stub server")' > packages/inka-mcp/dist/inka-mcp-http.mjs
+          docker build --progress=plain -t inka-mcp:ci packages/inka-mcp
+      - name: The bundle's externals resolve in it
+        run: |
+          docker run --rm inka-mcp:ci node -e "
+            for (const m of ['playwright', '@sentry/node']) require.resolve(m, { paths: ['/app'] });
+            console.log('playwright and @sentry/node resolve');"
+
   test-bridge-unit:
     needs: build
     runs-on: 'ubuntu-latest'
