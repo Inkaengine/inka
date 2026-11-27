@@ -2656,6 +2656,48 @@ test.describe('Multi-Block Selection', () => {
     expect(finalOrder).toContain('template-header');
   });
 
+  // Cut on a multi-selection with a locked block: the locked block stays, and
+  // only what was cut goes on the clipboard — pasting must not copy the locked
+  // block somewhere else. The toolbar's Cut and the ⋯ menu's both.
+  for (const { label, cut } of [
+    {
+      label: 'toolbar Cut',
+      cut: async (page) => page.locator('#toolbar-cut-blocks').click(),
+    },
+    {
+      label: 'menu Cut',
+      cut: async (page) => {
+        await page.locator('.quanta-toolbar .volto-hydra-menu-trigger').click();
+        await page.locator('.volto-hydra-dropdown-menu [data-action="cut-block"]').click();
+      },
+    },
+  ]) {
+    test(`${label} on multi-selection with locked block cuts only the unlocked`, async ({ page }) => {
+      const helper = new AdminUIHelper(page);
+      await helper.login();
+      await helper.navigateToEdit('/template-test-page');
+      const iframe = helper.getIframe();
+      await helper.clickBlockInIframe('standalone-block-1');
+      await helper.waitForIframeBlockHandle('standalone-block-1');
+      await helper.escapeFromEditing();
+      const modifier = process.platform === 'darwin' ? 'Meta' : 'Control';
+      await iframe.locator('[data-block-uid="template-header"]').click({ modifiers: [modifier] });
+      await helper.waitForMultiSelectOutlines(2);
+
+      await cut(page);
+
+      await expect.poll(async () => helper.getBlockOrder(), { timeout: 5000 })
+        .not.toContain('standalone-block-1');
+      expect(await helper.getBlockOrder(), 'the locked block stays').toContain('template-header');
+      // Select a block to paste after: the clipboard holds the one block cut.
+      await helper.clickBlockInIframe('template-header');
+      await expect(
+        page.locator('#toolbar-paste-blocks .blockCount'),
+        'only the unlocked block is on the clipboard',
+      ).toHaveText('1');
+    });
+  }
+
   // DnD on multi-selection with a locked block: only the movable blocks move;
   // the locked block stays in its original position.
   test('Drag of multi-selection containing locked block moves only unlocked', async ({ page }) => {

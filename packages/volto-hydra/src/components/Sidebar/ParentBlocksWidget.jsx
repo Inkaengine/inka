@@ -314,6 +314,7 @@ const ParentBlockSection = ({
   onToggleTemplateEditMode,
   templatePermissions,
   onChangeFormData,
+  focusLostFromSidebar,
 }) => {
   // Get intl from context if not passed (needed for getTemplateInstanceSchema)
   const contextIntl = useIntl();
@@ -371,6 +372,14 @@ const ParentBlockSection = ({
   // A block that can't be edited, or has nowhere to go, keeps a plain title.
   const [typeMenuRect, setTypeMenuRect] = React.useState(null);
   const titleRef = React.useRef(null);
+  // Choosing a block in the sidebar (in its list, a parent's title, back)
+  // swaps the sidebar's contents: the control that had focus goes with them,
+  // and focus falls to the page body. It goes to the chosen block's title
+  // instead, so a keyboard author carries on from the block they chose. The
+  // current section is keyed by the selection, so this runs once per choice.
+  React.useEffect(() => {
+    if (isCurrentBlock && focusLostFromSidebar()) titleRef.current?.focus();
+  }, [isCurrentBlock, focusLostFromSidebar]);
   const convertTargets =
     blockId !== PAGE_BLOCK_UID &&
     convertTargetsFor &&
@@ -887,6 +896,22 @@ const ParentBlocksWidget = ({
 }) => {
   const isMultiSelected = multiSelected.length > 1;
   const [isClient, setIsClient] = React.useState(false);
+
+  // Whether focus was last in the sidebar. Focus moving anywhere (into a
+  // field, the page's iframe, the toolbar) says where it went; focus lost
+  // because its control was removed says nothing, so this still holds.
+  const lastFocusInSidebarRef = React.useRef(false);
+  React.useEffect(() => {
+    const onFocusIn = (e) => {
+      lastFocusInSidebarRef.current = !!e.target.closest?.('#sidebar');
+    };
+    document.addEventListener('focusin', onFocusIn);
+    return () => document.removeEventListener('focusin', onFocusIn);
+  }, []);
+  const focusLostFromSidebar = React.useCallback(
+    () => lastFocusInSidebarRef.current && document.activeElement === document.body,
+    [],
+  );
   const prevSelectedBlockRef = React.useRef(null);
   const intl = useIntl();
   const location = useLocation();
@@ -1127,6 +1152,7 @@ const ParentBlocksWidget = ({
             onChangeTemplateSettings={onChangeTemplateSettings}
             onToggleTemplateEditMode={onToggleTemplateEditMode}
             onChangeFormData={onChangeFormData}
+            focusLostFromSidebar={focusLostFromSidebar}
           />
 
           {/* Multi-select summary bar at bottom of sidebar, below ChildBlocksWidget */}
