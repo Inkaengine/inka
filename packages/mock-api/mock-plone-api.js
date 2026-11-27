@@ -2218,6 +2218,50 @@ function buildTemplatesComponent(cleanPath, baseUrl, sessionId, extraIds = []) {
 }
 
 /**
+ * The search component (collective.restapi.searchexpansion): `?expand=search` runs the
+ * catalog search its `expand.search.<index>` options spell and answers it inside the page
+ * read. The mock answers the one search a frontend asks this way, its forced templates
+ * (templateSearchParams in packages/helpers): a depth-0 search for one or more paths, as
+ * full objects. SEARCH_OPTIONS lists those options; searchOptionsRefused names any other,
+ * which the content GET refuses rather than ignore.
+ */
+const SEARCH_OPTIONS = new Set([
+  'expand.search.path.query',
+  'expand.search.path.depth',
+  'expand.search.fullobjects',
+  'expand.search.b_size',
+]);
+
+function searchOptionsRefused(params) {
+  const refused = Object.keys(params).filter(
+    (key) => key.startsWith('expand.search.') && !SEARCH_OPTIONS.has(key),
+  );
+  if (params['expand.search.path.query'] !== undefined && params['expand.search.path.depth'] !== '0') {
+    refused.push('expand.search.path.depth (only 0)');
+  }
+  if (params['expand.search.path.query'] !== undefined && params['expand.search.fullobjects'] !== '1') {
+    refused.push('expand.search.fullobjects (only 1)');
+  }
+  return refused;
+}
+
+function buildSearchComponent(cleanPath, baseUrl, sessionId, params) {
+  const fullUrl = cleanPath === '/' ? baseUrl : `${baseUrl}${cleanPath}`;
+  const paths = [params['expand.search.path.query'] ?? []].flat().map(String);
+  const items = paths
+    .map((path) => getContent(path.replace(/\/+$/, '') || '/', sessionId, []))
+    .filter((content) => content != null && mayView(content, sessionId))
+    // A full object minus its own @components, as the add-on serializes a result.
+    .map(({ '@components': _own, ...item }) => item);
+  const size = params['expand.search.b_size'];
+  return {
+    '@id': `${fullUrl}/@search`,
+    items: size === undefined ? items : items.slice(0, Number(size)),
+    items_total: items.length,
+  };
+}
+
+/**
  * Generate the FULL @components map (every entry expanded). The
  * expand-aware caller (enrichContent) decides which entries are included
  * vs left as @id stubs.
@@ -2239,6 +2283,8 @@ function generateComponents(urlPath, baseUrl, sessionId, params = {}) {
         // layouts (a page layout and a footer layout).
         splitList(params['expand.templates.extra']),
       ),
+    // Lazy for the same reason: it reads each item it finds.
+    search: () => buildSearchComponent(cleanPath, baseUrl, sessionId, params),
     // @actions has no session here on purpose: the adapter reads @actions
     // directly, and that route IS session-aware, so a working copy still
     // reports iterate_checkin.
@@ -4443,12 +4489,90 @@ const QUERYSTRING_VALUES = {
   },
 };
 
+/**
+ * A site's index vocabularies, as collective.indexvocabularies makes them.
+ *
+ * Plone gives a visitor no values for a keyword index: `Subject`'s query field
+ * names `plone.app.vocabularies.Keywords`, which plone.restapi closes to
+ * anonymous, so @querystring inlines nothing for it. A site that filters on an
+ * index lists it in collective.indexvocabularies (`indexvocabularies.indexes`),
+ * and for each one that add-on
+ *   - registers a vocabulary `collective.indexvocabularies.<index>` over the
+ *     index's `uniqueValues()`: no permission of its own, so a visitor may read
+ *     it, and the index's values whoever's content they are on;
+ *   - points the index's query field at it, creating the field when the site
+ *     has none (title the index's name, group Metadata, the selection
+ *     operations, not sortable).
+ * So @querystring inlines the values for anyone.
+ *
+ * MOCK_INDEX_VOCABULARIES names those indexes ("Subject,Topic"). Read per
+ * request, like the other site flags. An index's values here are the content's
+ * own field of that name (`subjects` for Subject, its schema field).
+ */
+const INDEX_VOCABULARY_PREFIX = 'collective.indexvocabularies.';
+
+function siteIndexVocabularies() {
+  return String(process.env.MOCK_INDEX_VOCABULARIES || '')
+    .split(',')
+    .map((name) => name.trim())
+    .filter(Boolean);
+}
+
+/** The values an item holds in a keyword index, as the catalog indexes them. */
+function keywordIndexValues(item, index) {
+  const raw = index === 'Subject' ? item.subjects || item.Subject : item[index];
+  if (raw === undefined || raw === null) return [];
+  return (Array.isArray(raw) ? raw : [raw]).filter((v) => typeof v === 'string' && v !== '');
+}
+
+/** An index's `uniqueValues()`: every value any item holds, private ones too, sorted. */
+function indexUniqueValues(index) {
+  const values = new Set();
+  const mountRoots = CONTENT_MOUNTS.map(({ mountPath }) => mountPath).filter(
+    (mountPath) => mountPath !== '/' && !contentDirMap[mountPath],
+  );
+  for (const itemPath of [...Object.keys(contentDirMap), ...mountRoots]) {
+    const raw = loadRawContentFromDisk(itemPath);
+    if (!raw) continue;
+    for (const value of keywordIndexValues(raw, index)) values.add(value);
+  }
+  return [...values].sort();
+}
+
+/** The query field collective.indexvocabularies creates for an index Plone has none for. */
+function indexVocabularyQueryField(index) {
+  const operations = [
+    'plone.app.querystring.operation.selection.any',
+    'plone.app.querystring.operation.selection.all',
+    'plone.app.querystring.operation.selection.none',
+  ];
+  const subject = QUERYSTRING.indexes.Subject;
+  return {
+    title: index,
+    description: '',
+    enabled: true,
+    group: 'Metadata',
+    operations,
+    // The same operations as Subject's, so the same operator descriptions.
+    operators: Object.fromEntries(operations.map((op) => [op, subject.operators[op]])),
+    sortable: false,
+  };
+}
+
 app.get('{/*path}/@querystring', (req, res) => {
   const indexes = {};
   for (const [name, index] of Object.entries(QUERYSTRING.indexes)) {
     indexes[name] = QUERYSTRING_VALUES[name]
       ? { ...index, values: QUERYSTRING_VALUES[name] }
       : { ...index };
+  }
+  for (const index of siteIndexVocabularies()) {
+    indexes[index] = {
+      ...(indexes[index] ?? indexVocabularyQueryField(index)),
+      vocabulary: `${INDEX_VOCABULARY_PREFIX}${index}`,
+      fetch_vocabulary: true,
+      values: Object.fromEntries(indexUniqueValues(index).map((v) => [v, { title: v }])),
+    };
   }
   // The fork, ADDED to what stock Plone answers rather than replacing it.
   //
@@ -5307,6 +5431,23 @@ app.get('/@vocabularies/:vocab', (req, res) => {
     });
   }
 
+  // A site index vocabulary (siteIndexVocabularies): the index's values, each
+  // its own token and title, filtered by `?title=` like any other.
+  const indexName = req.params.vocab.startsWith(INDEX_VOCABULARY_PREFIX)
+    ? req.params.vocab.slice(INDEX_VOCABULARY_PREFIX.length)
+    : undefined;
+  if (indexName && siteIndexVocabularies().includes(indexName)) {
+    const wanted = String(req.query.title || '').toLowerCase();
+    const items = indexUniqueValues(indexName)
+      .map((value) => ({ token: value, title: value }))
+      .filter((term) => !wanted || term.title.toLowerCase().includes(wanted));
+    return res.json({
+      '@id': `http://localhost:${PORT}/@vocabularies/${req.params.vocab}`,
+      items,
+      items_total: items.length,
+    });
+  }
+
   if (!VOCAB_ITEMS[req.params.vocab]) {
     return res.status(404).json({
       error: {
@@ -5677,6 +5818,12 @@ app.post('{/*path}/@querystring-search', (req, res) => {
     Subject: (item) => item.subjects || item.Subject || [],
     // A UUIDIndex: `selection.none` on it is how a query leaves out one item.
     UID: (item) => [item.UID],
+    // The keyword indexes the site gave vocabularies (siteIndexVocabularies).
+    ...Object.fromEntries(
+      siteIndexVocabularies()
+        .filter((index) => index !== 'Subject')
+        .map((index) => [index, (item) => keywordIndexValues(item, index)]),
+    ),
   };
 
   /** Criteria no branch below could apply: a 400 after the loop, never a silent pass. */
@@ -6994,6 +7141,13 @@ app.get('/{*path}', (req, res, next) => {
   // Reload content from disk to pick up changes during development.
   // Pass ?expand= so @components matches what the client requested
   // (real Plone behaviour: stub by default, expand only what's listed).
+  const refusedSearch = searchOptionsRefused(parseExpandParams(req));
+  if (refusedSearch.length) {
+    return res.status(400).json({
+      type: 'BadRequest',
+      message: `the mock's search expansion answers only a depth-0 path search for full objects; not ${refusedSearch.join(', ')}`,
+    });
+  }
   const content = getContent(cleanPath, sessionId, parseExpand(req), parseExpandParams(req));
 
   if (content) {
