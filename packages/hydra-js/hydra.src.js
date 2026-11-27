@@ -12522,17 +12522,6 @@ export class Bridge {
   }
 
   /**
-   * The sentinel for a field, chosen by WIDGET — never by inspecting the current
-   * value, which is absent precisely when a sentinel is needed.
-   *
-   * Shape-preserving is the whole point: a renderer reading an object_browser
-   * field does `block.href?.[0]?.['@id']` or maps over it, so handing it a bare
-   * string would make it iterate characters.
-   *
-   * Returns undefined for a field that has no inline affordance (select, boolean,
-   * number …) — those are sidebar-only and nothing can be revealed for them.
-   */
-  /**
    * The field's type as reveal reads it: through the admin's decoration. A
    * copyFromTargetField wrapper keeps the field's own def under `baseWidget`, and
    * its type string is the wrapper's (`array:copyFromTargetField`), so a rich-text
@@ -12544,6 +12533,17 @@ export class Bridge {
     return def === fieldDef ? this.getFieldType(blockUid, fieldName) : getFieldTypeString(def);
   }
 
+  /**
+   * The sentinel for a field, chosen by WIDGET — never by inspecting the current
+   * value, which is absent precisely when a sentinel is needed.
+   *
+   * Shape-preserving is the whole point: a renderer reading an object_browser
+   * field does `block.href?.[0]?.['@id']` or maps over it, so handing it a bare
+   * string would make it iterate characters.
+   *
+   * Returns undefined for a field that has no inline affordance (select, boolean,
+   * number …) — those are sidebar-only and nothing can be revealed for them.
+   */
   _revealSentinelFor(fieldDef, fieldType) {
     const Z = Bridge.REVEAL_ZWS;
     // The admin DECORATES field defs — a copyFromTargetField wrapper keeps the real

@@ -1,0 +1,1 @@
+The mock API serves a site's index vocabularies, as collective.indexvocabularies makes them: MOCK_INDEX_VOCABULARIES names the keyword indexes, each gets a vocabulary of its values that a visitor may read, and its query field offers them inline. @djay
