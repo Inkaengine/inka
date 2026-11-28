@@ -1,0 +1,1 @@
+CI cancels a branch's run when a newer push to that branch arrives (never on main, where each commit keeps its own run) and splits its longest jobs: admin-mock in three, nuxt-admin in two, and bridge-unit and nextjs-f7 by project, each block-sanity project (mock, nextjs) in a job of its own.
