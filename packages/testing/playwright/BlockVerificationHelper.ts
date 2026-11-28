@@ -456,9 +456,9 @@ export async function checkEditAnnotations(
   // with 30 descendants goes from ~240 round-trips to ~30. The ASSERTIONS stay in
   // Node (below) with their original messages; only the DOM READS moved in-page,
   // so the checks mean exactly what they did before.
-  const blockUid = await block.getAttribute('data-block-uid');
   const r = await block.evaluate(
-    async (el: Element, { blockData, uid }: { blockData: Record<string, unknown> | undefined; uid: string | null }) => {
+    async (el: Element, { blockData }: { blockData: Record<string, unknown> | undefined }) => {
+      const uid = el.getAttribute('data-block-uid');
       const bridge = (window as any).__hydraBridge;
       const pageOrigin = window.location.origin;
 
@@ -663,7 +663,7 @@ export async function checkEditAnnotations(
 
       return { linksWithout, trappedAnnotations, offSiteLinks, imagesWithout, brokenImages, brokenMedia, textViolations, imageFields };
     },
-    { blockData, uid: blockUid },
+    { blockData },
   );
 
   expect(r.linksWithout, 'All content links should have data-edit-link or data-linkable-allow').toEqual([]);
@@ -981,8 +981,7 @@ async function settleAnnotations(
  * Trusting the declaration is what keeps the coverage rule about whether the
  * author can reach a field, rather than about where the markup happens to sit.
  */
-async function advertisedFieldsOf(block: Locator): Promise<Set<string>> {
-  const uid = await block.getAttribute('data-block-uid');
+async function advertisedFieldsOf(block: Locator, uid: string | null): Promise<Set<string>> {
   if (!uid) return new Set();
   // Searched through the block's OWN document, not `block.page()`. The block is
   // inside the editor's iframe, and `page.locator()` only ever sees the
@@ -1077,8 +1076,7 @@ async function backgroundFieldsOf(
   return new Set(drawn);
 }
 
-async function revealableFieldsOf(block: Locator): Promise<Set<string>> {
-  const uid = await block.getAttribute('data-block-uid');
+async function revealableFieldsOf(block: Locator, uid: string | null): Promise<Set<string>> {
   if (!uid) return new Set();
   const fields = await block.evaluate((el, blockUid) => {
     const bridge = (el.ownerDocument.defaultView as any)?.__hydraBridge;
@@ -1116,8 +1114,10 @@ export async function checkSlateAnnotations(
   // _schemas, already resolved via schemaEnhancers) when a caller didn't
   // pass one explicitly. This avoids persisting blocksConfig to disk just
   // to drive annotation checks in the spec.
+  // Read once: the schema, the coverage label and the field searches below all
+  // ask for it, and each read is a round trip to the browser.
+  const blockUid = await block.getAttribute('data-block-uid');
   if (!blockSchema?.properties) {
-    const blockUid = await block.getAttribute('data-block-uid');
     if (blockUid) {
       const bridgeSchema = await block.evaluate(
         (_el, uid) => (window as any).__hydraBridge?.getBlockSchema?.(uid) || null,
@@ -1148,7 +1148,7 @@ export async function checkSlateAnnotations(
   }
 
   const blockType = (blockData?.['@type'] as string | undefined) ?? '(unknown)';
-  const coverageUid = (await block.getAttribute('data-block-uid')) ?? '(no uid)';
+  const coverageUid = blockUid ?? '(no uid)';
 
   // ONE search for the block's editable fields (see editableFieldsIn), then the
   // per-field questions are set lookups. Anything absent may simply be an empty
@@ -1167,14 +1167,16 @@ export async function checkSlateAnnotations(
     ...annotatedFields.map(([f, a]) => [a.attr, f] as [string, string]),
   ];
 
+  // After the settle, as before (it can wait for fields to be drawn); the two
+  // bridge questions are independent reads, so they go out together and their
+  // round trips overlap instead of queueing.
   const look = async () => {
     const f = await settleAnnotations(block, await editableFieldsIn(block), expected);
-    return {
-      found: f,
-      present: namesByAttr(f),
-      revealable: await revealableFieldsOf(block),
-      advertised: await advertisedFieldsOf(block),
-    };
+    const [revealable, advertised] = await Promise.all([
+      revealableFieldsOf(block, blockUid),
+      advertisedFieldsOf(block, blockUid),
+    ]);
+    return { found: f, present: namesByAttr(f), revealable, advertised };
   };
   let { found, present, revealable, advertised } = await look();
 
@@ -1192,14 +1194,14 @@ export async function checkSlateAnnotations(
     // Accept either a descendant [data-edit-text="<field>"] OR the block
     // element itself carrying the attribute (renderers are free to collapse
     // the block wrapper and the edit-text container onto one element).
-    const blockHasAttr = (await block.getAttribute('data-edit-text')) === field;
     // From the one search — no second look, and so no chance of a different
-    // answer than the coverage question just got.
+    // answer than the coverage question just got. The block's own attribute is
+    // read only when the search did not find the field.
     const foundField = found.find((f) => f.attr === 'data-edit-text' && f.field === field);
     const hasContainer = !!foundField || present['data-edit-text'].has(field);
     const container = foundField
       ? foundField.element
-      : blockHasAttr
+      : (await block.getAttribute('data-edit-text')) === field
         ? block
         : block.locator(`[data-edit-text="${field}"]`).first();
 
@@ -1746,15 +1748,35 @@ export async function verifyBlockRendering(
         }
         return false;
       };
+      // Whether each is already on show, read here with the list: asking per
+      // child cost three round trips each (count, attached, visible), hundreds
+      // on a container. Visible as Playwright means it: a non-empty box, and
+      // not visibility:hidden.
+      const shown = (uid: string): boolean => {
+        const el = document.querySelector(`[data-block-uid="${CSS.escape(uid)}"]`);
+        if (!el) return false;
+        const box = el.getBoundingClientRect();
+        return box.width > 0 && box.height > 0 && getComputedStyle(el).visibility !== 'hidden';
+      };
       return Object.keys(pathMap)
         .filter((k) => !k.startsWith('_') && isDescendant(k))
-        .map((uid) => ({ id: uid, data: b.getBlockData?.(uid) || null }))
+        .map((uid) => ({ id: uid, data: b.getBlockData?.(uid) || null, shown: shown(uid) }))
         .filter((s: { id: string; data: unknown }) => !!s.data && typeof s.data === 'object');
-    }, blockId) as SubBlock[];
+    }, blockId) as Array<SubBlock & { shown: boolean }>;
 
     let anyVisible = false;
-    for (const { id, data } of subBlocks) {
+    // The snapshot holds until something is revealed: opening one tab or panel
+    // can close another, so after the first reveal every child is asked again.
+    let revealed = false;
+    for (const { id, data, shown } of subBlocks) {
       const loc = iframe.locator(`[data-block-uid="${id}"]`).first();
+      if (shown && !revealed) {
+        anyVisible = true;
+        await checkEditAnnotations(loc, data);
+        await checkSlateAnnotations(loc, data, undefined, iframe);
+        continue;
+      }
+      revealed = true;
       // A query-gated child has no element until its question is asked —
       // reveal FIRST (revealBlock knows how to ask), then require attachment.
       if ((await loc.count()) === 0) {
