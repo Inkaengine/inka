@@ -2953,8 +2953,8 @@ function reloadMount(mount) {
 async function getEngine() {
   if (!engine) {
     const { emitPage, parsePrototypes } = await import('@inka/blockmd/prototype-mapping.mjs');
-    const { withoutDefaultSearchText, withoutSchemaDefaults, withoutRegionSlots } = await import('./from-schemas.js');
-    engine = { emitPage, parsePrototypes, withoutDefaultSearchText, withoutSchemaDefaults, withoutRegionSlots };
+    const { withoutDefaultSearchText, withoutSchemaDefaults, withoutRegionSlots, statedDefaults } = await import('./from-schemas.js');
+    engine = { emitPage, parsePrototypes, withoutDefaultSearchText, withoutSchemaDefaults, withoutRegionSlots, statedDefaults };
   }
   return engine;
 }
@@ -2968,24 +2968,6 @@ async function getEngine() {
  */
 const NOT_FOLDERISH_TYPES = new Set(['Image', 'File', 'Link', 'Collection']);
 const isFolderishType = (type) => !NOT_FOLDERISH_TYPES.has(type);
-
-/** The fields each block type's prototypes state as literals (`size="l"` on an
- *  image), at any depth: a value its bare Markdown implies. */
-function statedByPrototype(protos) {
-  const stated = new Map();
-  const walk = (list) => {
-    for (const p of list ?? []) {
-      for (const [field, value] of Object.entries(p.fields ?? {})) {
-        if (typeof value === 'string' && value.trim().startsWith('${')) continue;
-        if (!stated.has(p.type)) stated.set(p.type, new Set());
-        stated.get(p.type).add(field);
-      }
-      for (const r of p.regions ?? []) walk(r.protos);
-    }
-  };
-  walk(protos);
-  return (type, field) => stated.get(type)?.has(field) ?? false;
-}
 
 async function initMarkdownMounts() {
   const mounts = CONTENT_MOUNTS.filter(isMarkdownMount);
@@ -3638,7 +3620,7 @@ async function exportContent(req, res) {
   const { format = 'json', prototypes = {}, allowMissingBlobs = false, sitePath } = jsonBody(req);
 
   if (format === 'markdown') {
-    const { emitPage, parsePrototypes, withoutDefaultSearchText, withoutSchemaDefaults, withoutRegionSlots } = await getEngine();
+    const { emitPage, parsePrototypes, withoutDefaultSearchText, withoutSchemaDefaults, withoutRegionSlots, statedDefaults } = await getEngine();
     const YAML = (await import('yaml')).default;
     const { SERVER_STATE } = await import('./server-state.js');
     const { BLOB_FIELD, blobDefaults } = await import('@inka/blockmd/markdown-mount.mjs');
@@ -3861,7 +3843,7 @@ async function exportContent(req, res) {
         // slot the editor names from its region (loading puts each back).
         const own = contentSchemas
           ? withoutRegionSlots(
-            withoutSchemaDefaults(withoutDefaultSearchText(ownBlocks, contentSchemas), contentSchemas, { keep: statedByPrototype(protos) }),
+            withoutSchemaDefaults(withoutDefaultSearchText(ownBlocks, contentSchemas), contentSchemas, { keep: statedDefaults(protos) }),
             contentSchemas)
           : ownBlocks;
         const blocks = structuredClone(own.blocks);

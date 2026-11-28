@@ -243,9 +243,10 @@ const sameValue = (a, b) => JSON.stringify(a) === JSON.stringify(b);
  * applies a default and saves it, and a frontend renders the stored value, so
  * loading puts each back (withSchemaDefaults).
  */
-// `keep(type, field)`: a default to keep anyway -- one the block's prototype
-// states as a literal, which its bare Markdown implies (an image's `size`), so
-// dropping it would leave the bare form unable to read back.
+// `keep(type, field, value)`: a default to keep anyway -- one the block's
+// prototype states as that literal, which its bare Markdown implies (an
+// image's `size="l"`), so dropping it would leave the bare form unable to read
+// back. See statedDefaults.
 //
 // A default is only left out when loading puts it back: some come from the
 // block itself (a listing in a container defaults its item type to the one it
@@ -260,7 +261,7 @@ export function withoutSchemaDefaults(page, blocksConfig, { keep = () => false }
     const out = eachBlockWithSchema(page, blocksConfig, (block, schema, type, path) => {
       let next = block;
       for (const [field, def] of fixedDefaults(schema)) {
-        if (keep(type, field) || kept.has(`${path}|${field}`)) continue;
+        if (keep(type, field, def.default) || kept.has(`${path}|${field}`)) continue;
         if (field in next && sameValue(next[field], def.default)) {
           if (next === block) next = { ...block };
           delete next[field];
@@ -283,6 +284,34 @@ export function withoutSchemaDefaults(page, blocksConfig, { keep = () => false }
     }
     if (!lost) return out;
   }
+}
+
+/**
+ * `keep` for withoutSchemaDefaults: the values each block type's prototypes
+ * state as literals, at any depth (an image's `size="l"`). A default is kept
+ * only where a prototype states that same value. Another variant stating the
+ * field differently (a table's `headerMode="col"`) is no reason to keep the
+ * default: the bare variant reads it back, and kept, it matches no variant.
+ */
+export function statedDefaults(protos) {
+  const stated = new Map(); // type -> field -> literals
+  const walk = (list) => {
+    for (const p of list ?? []) {
+      for (const [field, value] of Object.entries(p.fields ?? {})) {
+        if (typeof value === 'string' && value.trim().startsWith('${')) continue;
+        if (!stated.has(p.type)) stated.set(p.type, new Map());
+        const fields = stated.get(p.type);
+        if (!fields.has(field)) fields.set(field, []);
+        fields.get(field).push(value);
+      }
+      for (const r of p.regions ?? []) walk(r.protos);
+    }
+  };
+  walk(protos);
+  // A literal is written in the Markdown as text (`size="l"`, `:gap="false"`),
+  // so it states a value when it is the value or spells it.
+  const states = (literal, value) => sameValue(literal, value) || (typeof literal === 'string' && literal === String(value));
+  return (type, field, value) => (stated.get(type)?.get(field) ?? []).some((literal) => states(literal, value));
 }
 
 /** The page with each absent field its schema declares a default for set to

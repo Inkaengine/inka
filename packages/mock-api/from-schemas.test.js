@@ -211,8 +211,32 @@ describe('a markdown export leaves out a value its schema declares as the defaul
 
   it("keeps a default the block's prototype states, which its bare Markdown implies", () => {
     const out = withoutSchemaDefaults(page({ a: { '@type': 'question', label: 'Name', required: false, size: 'l' } }), blocksConfig,
-      { keep: (type, field) => type === 'question' && field === 'size' });
+      { keep: (type, field, value) => type === 'question' && field === 'size' && value === 'l' });
     assert.deepEqual(out.blocks.a, { '@type': 'question', label: 'Name', size: 'l' });
+  });
+
+  // Only a prototype stating the default itself keeps it. A table whose plain
+  // variant is the first-row-headers one, and whose other variants state
+  // `headerMode="col"` or `"both"`, still drops a default `headerMode: "row"`:
+  // kept, it matched no variant and was written as an attribute on every table.
+  it('keeps a default only where a prototype states that value', async () => {
+    const { statedDefaults } = await import('./from-schemas.js');
+    const { parsePrototypes } = await import('@inka/blockmd/prototype-mapping.mjs');
+    const keep = statedDefaults(parsePrototypes([
+      '<block is="image" url="${img/src}" size="l" />',
+      '<block is="table" caption="${p?/text}" />',
+      '<block is="table" headerMode="col" caption="${p?/text}" />',
+    ].join('\n')));
+    const config = {
+      image: { blockSchema: { properties: { url: { type: 'string' }, size: { type: 'string', default: 'l' } } } },
+      table: { blockSchema: { properties: { caption: { type: 'string' }, headerMode: { type: 'string', default: 'row' } } } },
+    };
+    const out = withoutSchemaDefaults(page({
+      i: { '@type': 'image', url: '/a.png', size: 'l' },
+      t: { '@type': 'table', caption: 'Rates', headerMode: 'row' },
+    }), config, { keep });
+    assert.deepEqual(out.blocks.i, { '@type': 'image', url: '/a.png', size: 'l' });
+    assert.deepEqual(out.blocks.t, { '@type': 'table', caption: 'Rates' });
   });
 
   it("drops a list item's default without giving the item anything else", () => {
