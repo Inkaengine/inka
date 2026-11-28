@@ -211,8 +211,52 @@ describe('a markdown export leaves out a value its schema declares as the defaul
 
   it("keeps a default the block's prototype states, which its bare Markdown implies", () => {
     const out = withoutSchemaDefaults(page({ a: { '@type': 'question', label: 'Name', required: false, size: 'l' } }), blocksConfig,
-      { keep: (type, field) => type === 'question' && field === 'size' });
+      { keep: (type, field, value) => type === 'question' && field === 'size' && value === 'l' });
     assert.deepEqual(out.blocks.a, { '@type': 'question', label: 'Name', size: 'l' });
+  });
+
+  // Only a prototype stating the default itself keeps it. A table whose plain
+  // variant is the first-row-headers one, and whose other variants state
+  // `headerMode="col"` or `"both"`, still drops a default `headerMode: "row"`:
+  // kept, it matched no variant and was written as an attribute on every table.
+  it('keeps a default only where a prototype states that value', async () => {
+    const { statedDefaults } = await import('./from-schemas.js');
+    const { parsePrototypes } = await import('@inka/blockmd/prototype-mapping.mjs');
+    const keep = statedDefaults(parsePrototypes([
+      '<block is="image" url="${img/src}" size="l" />',
+      '<block is="table" caption="${p?/text}" />',
+      '<block is="table" headerMode="col" caption="${p?/text}" />',
+    ].join('\n')));
+    const config = {
+      image: { blockSchema: { properties: { url: { type: 'string' }, size: { type: 'string', default: 'l' } } } },
+      table: { blockSchema: { properties: { caption: { type: 'string' }, headerMode: { type: 'string', default: 'row' } } } },
+    };
+    const out = withoutSchemaDefaults(page({
+      i: { '@type': 'image', url: '/a.png', size: 'l' },
+      t: { '@type': 'table', caption: 'Rates', headerMode: 'row' },
+    }), config, { keep });
+    assert.deepEqual(out.blocks.i, { '@type': 'image', url: '/a.png', size: 'l' });
+    assert.deepEqual(out.blocks.t, { '@type': 'table', caption: 'Rates' });
+  });
+
+  // A field rule can hide a field once another field has its default: a
+  // columns block's gap is hidden at an equal layout, and `layout` defaults to
+  // equal. Filled from the schema the block had before its defaults, the gap
+  // got its default anyway, and the export then found no field to leave it
+  // out by, so a block loaded from Markdown came back with `:gap="false"`.
+  it("gives a field no default that the block's other defaults hide", () => {
+    const config = {
+      columns: {
+        blockSchema: {
+          fieldsets: [{ id: 'default', title: 'Default', fields: ['layout', 'gap'] }],
+          properties: { layout: { type: 'string', default: 'equal' }, gap: { type: 'boolean', default: false } },
+        },
+        schemaEnhancer: { fieldRules: { gap: [{ when: { layout: 'equal' }, set: false }] } },
+      },
+    };
+    const filled = withSchemaDefaults(page({ c: { '@type': 'columns' }, w: { '@type': 'columns', layout: 'wide-left' } }), config);
+    assert.deepEqual(filled.blocks.c, { '@type': 'columns', layout: 'equal' });
+    assert.deepEqual(filled.blocks.w, { '@type': 'columns', layout: 'wide-left', gap: false });
   });
 
   it("drops a list item's default without giving the item anything else", () => {
@@ -316,5 +360,34 @@ describe("a markdown export leaves out a template child's slot named from its re
 
   it('loading names it again, so the round trip is exact', () => {
     assert.deepEqual(withRegionSlots(withoutRegionSlots(stored(), blocksConfig), blocksConfig), stored());
+  });
+});
+
+describe('a markdown export writes a link field as the link alone', () => {
+  // Loading a Markdown tree gives each link field its target's summary, as
+  // Volto snapshots it when the link is picked (resolveLinkSummaries). The
+  // export leaves that summary out again, where loading would put back the
+  // same one; it wrote the summary out on every card loaded from Markdown.
+  const schemaFor = (type) => (type === 'card'
+    ? { properties: { title: { type: 'string' }, url: { widget: 'object_browser' } } } : null);
+  const target = { '@id': '/about', '@type': 'Document', title: 'About us', description: 'Who we are' };
+  const page = (url) => ({ blocks: { c: { '@type': 'card', title: 'Card', url } }, blocks_layout: { items: ['c'] } });
+
+  it('leaves out the summary loading puts back', async () => {
+    const { resolveLinkSummaries, withoutLinkSummaries } = await import('./from-schemas.js');
+    const items = new Map([['/about', target], ['/', page([{ '@id': '/about' }])]]);
+    resolveLinkSummaries(items, { schemaFor });
+    const loaded = items.get('/');
+    assert.equal(loaded.blocks.c.url[0].Title, 'About us', 'loading gave the link its summary');
+    const out = withoutLinkSummaries(loaded, { schemaFor, targetOf: (id) => items.get(id) ?? null });
+    assert.deepEqual(out.blocks.c.url, [{ '@id': '/about' }]);
+    assert.equal(loaded.blocks.c.url[0].Title, 'About us', 'the loaded page is not changed');
+  });
+
+  it("keeps a summary that isn't its target's: the content's own snapshot", async () => {
+    const { withoutLinkSummaries } = await import('./from-schemas.js');
+    const stale = [{ '@id': '/about', '@type': 'Document', Title: 'About', Description: '', title: 'About', head_title: null, getRemoteUrl: null, hasPreviewImage: false, image_field: '' }];
+    const out = withoutLinkSummaries(page(stale), { schemaFor, targetOf: () => target });
+    assert.deepEqual(out.blocks.c.url, stale);
   });
 });

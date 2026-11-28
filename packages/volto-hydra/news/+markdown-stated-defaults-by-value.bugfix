@@ -1,0 +1,1 @@
+A Markdown export leaves out a schema default unless a prototype states that same value. A table's default `headerMode: "row"` was kept because another variant states `headerMode="col"`, so it matched no variant and was written as an attribute on every table loaded back from Markdown.

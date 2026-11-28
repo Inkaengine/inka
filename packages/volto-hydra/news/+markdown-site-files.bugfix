@@ -1,0 +1,1 @@
+An export of a Markdown site carries its own principals.json, portlets.json and other site files, which it keeps beside its index.md. They were looked for one folder up, where an exportimport tree keeps them, so a Markdown site exported without its groups, or with another tree's files.

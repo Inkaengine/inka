@@ -1,0 +1,1 @@
+A Markdown export of JSON content links correctly from and to a page that is written as a folder because it holds an image or a file. Its links were made relative to the folder above it, so they pointed at pages under itself, and links to it pointed at a `.md` file that wasn't written.

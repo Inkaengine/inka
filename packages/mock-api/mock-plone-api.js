@@ -2953,8 +2953,8 @@ function reloadMount(mount) {
 async function getEngine() {
   if (!engine) {
     const { emitPage, parsePrototypes } = await import('@inka/blockmd/prototype-mapping.mjs');
-    const { withoutDefaultSearchText, withoutSchemaDefaults, withoutRegionSlots } = await import('./from-schemas.js');
-    engine = { emitPage, parsePrototypes, withoutDefaultSearchText, withoutSchemaDefaults, withoutRegionSlots };
+    const { withoutDefaultSearchText, withoutSchemaDefaults, withoutRegionSlots, statedDefaults, withoutLinkSummaries } = await import('./from-schemas.js');
+    engine = { emitPage, parsePrototypes, withoutDefaultSearchText, withoutSchemaDefaults, withoutRegionSlots, statedDefaults, withoutLinkSummaries };
   }
   return engine;
 }
@@ -2968,24 +2968,6 @@ async function getEngine() {
  */
 const NOT_FOLDERISH_TYPES = new Set(['Image', 'File', 'Link', 'Collection']);
 const isFolderishType = (type) => !NOT_FOLDERISH_TYPES.has(type);
-
-/** The fields each block type's prototypes state as literals (`size="l"` on an
- *  image), at any depth: a value its bare Markdown implies. */
-function statedByPrototype(protos) {
-  const stated = new Map();
-  const walk = (list) => {
-    for (const p of list ?? []) {
-      for (const [field, value] of Object.entries(p.fields ?? {})) {
-        if (typeof value === 'string' && value.trim().startsWith('${')) continue;
-        if (!stated.has(p.type)) stated.set(p.type, new Set());
-        stated.get(p.type).add(field);
-      }
-      for (const r of p.regions ?? []) walk(r.protos);
-    }
-  };
-  walk(protos);
-  return (type, field) => stated.get(type)?.has(field) ?? false;
-}
 
 async function initMarkdownMounts() {
   const mounts = CONTENT_MOUNTS.filter(isMarkdownMount);
@@ -3421,6 +3403,11 @@ app.delete('/{*path}', (req, res, next) => {
  * Used by ImageWidget for file uploads
  */
 // The plone.exportimport siblings that ride alongside a content tree.
+/** Where a mount keeps its site's own files (principals.json, portlets.json,
+ *  …): a Markdown tree in its own folder, beside its index.md, as it keeps its
+ *  redirects (readRedirects); an exportimport tree beside its content folder,
+ *  as plone.exportimport lays them out. */
+const siblingsDirOf = (mount) => (isMarkdownMount(mount) ? mount.dirPath : path.join(mount.dirPath, '..'));
 const DISTRIBUTION_SIBLINGS = ['discussions.json', 'portlets.json', 'principals.json',
                                'redirects.json', 'relations.json', 'translations.json'];
 // A blob rides in one of these two fields on Image/File content.
@@ -3596,7 +3583,7 @@ function buildDistributionFromMemory(dest, { allowMissingBlobs = false, sitePath
   // Siblings come from any JSON mount that carries them (one level up from its
   // content dir); a pure-markdown deploy falls back to the defaults.
   const siblingsFrom = CONTENT_MOUNTS
-    .map((m) => path.join(m.dirPath, '..'))
+    .map(siblingsDirOf)
     .filter((d) => DISTRIBUTION_SIBLINGS.some((s) => fs.existsSync(path.join(d, s))));
 
   return writeDistribution(dest, items, {
@@ -3638,7 +3625,7 @@ async function exportContent(req, res) {
   const { format = 'json', prototypes = {}, allowMissingBlobs = false, sitePath } = jsonBody(req);
 
   if (format === 'markdown') {
-    const { emitPage, parsePrototypes, withoutDefaultSearchText, withoutSchemaDefaults, withoutRegionSlots } = await getEngine();
+    const { emitPage, parsePrototypes, withoutDefaultSearchText, withoutSchemaDefaults, withoutRegionSlots, statedDefaults, withoutLinkSummaries } = await getEngine();
     const YAML = (await import('yaml')).default;
     const { SERVER_STATE } = await import('./server-state.js');
     const { BLOB_FIELD, blobDefaults } = await import('@inka/blockmd/markdown-mount.mjs');
@@ -3693,11 +3680,37 @@ async function exportContent(req, res) {
     const IMAGE_EXT = new Set(['.png', '.jpg', '.jpeg', '.gif', '.svg', '.webp', '.avif']);
     const typeForFile = (f) => (IMAGE_EXT.has(path.extname(f).toLowerCase()) ? 'Image' : 'File');
     const isBlobItem = (d) => !!(d && BLOB_FIELD[d['@type']] && d[BLOB_FIELD[d['@type']]] && d[BLOB_FIELD[d['@type']]].blob_path);
-    const blobEntry = (d) => {
+    const blobName = (d) => {
       const field = d[BLOB_FIELD[d['@type']]];
-      const file = field.filename || path.basename(field.blob_path);
+      return field.filename || path.basename(field.blob_path);
+    };
+    // Where each blob of a folder is written, relative to the folder: beside its
+    // index.md under its own name, unless another blob there has that name (two
+    // videos both uploaded as `adding.mp4`); then each of those goes in a folder
+    // named for its item's id, keeping its name, so neither overwrites the other.
+    const blobFilesOf = new Map();
+    const blobFilesIn = (parent) => {
+      if (blobFilesOf.has(parent)) return blobFilesOf.get(parent);
+      const blobs = (childrenByParent[parent] || [])
+        .map((k) => [k, loadRawContentFromDisk(k)]).filter(([, d]) => isBlobItem(d));
+      const uses = new Map();
+      for (const [, d] of blobs) uses.set(blobName(d), (uses.get(blobName(d)) || 0) + 1);
+      const files = new Map(blobs.map(([k, d]) => [k,
+        uses.get(blobName(d)) > 1 ? `${d.id.replace(/\.[^.]+$/, '')}/${blobName(d)}` : blobName(d)]));
+      const taken = new Map();
+      for (const [k, f] of files) {
+        if (taken.has(f)) throw new Error(`${parent}: ${taken.get(f)} and ${k} would both be written as ${f}`);
+        taken.set(f, k);
+      }
+      blobFilesOf.set(parent, files);
+      return files;
+    };
+    const parentOf = (k) => k.replace(/\/[^/]+$/, '') || '/';
+    const blobEntry = (k, d) => {
+      const field = d[BLOB_FIELD[d['@type']]];
+      const file = blobFilesIn(parentOf(k)).get(k);
       const entry = { file, uid: d.UID };
-      if (d.id !== file.replace(/\.[^.]+$/, '')) entry.id = d.id;
+      if (d.id !== blobName(d).replace(/\.[^.]+$/, '')) entry.id = d.id;
       if (d['@type'] !== typeForFile(file)) entry.type = d['@type'];
       for (const [k, v] of Object.entries(blobDefaults(d['@type'], field.filename))) {
         if (d[k] !== undefined && JSON.stringify(d[k]) !== JSON.stringify(v)) entry[k] = d[k];
@@ -3715,14 +3728,15 @@ async function exportContent(req, res) {
     // A page authored flat (`X.md`) stays flat even if is_folderish; a folder
     // landing stays a folder even with no child pages. A flat page that GAINED
     // children still needs a folder to hold them. A JSON mount has no `folder`
-    // flag, so it falls back to is_folderish (its historic behaviour).
+    // flag: a folderish item, or one holding children (an image is one), is a
+    // folder. This one set decides both where a page is written and how links
+    // from and to it are made relative, so the two can't disagree.
     const folderish = new Set();
     for (const k of Object.keys(contentDirMap)) {
       const info = contentDirMap[k];
       const d = loadRawContentFromDisk(k) || {};
-      const authored = info && info.markdown
-        ? (info.folder || (childrenByParent[k] || []).length > 0)
-        : d.is_folderish;
+      const hasChildren = (childrenByParent[k] || []).length > 0;
+      const authored = info && info.markdown ? (info.folder || hasChildren) : (d.is_folderish || hasChildren);
       if (authored || d['@type'] === 'Plone Site') folderish.add(k);
     }
 
@@ -3805,7 +3819,8 @@ async function exportContent(req, res) {
       const meta = deepTrim(Object.fromEntries(
         Object.entries(c).filter(([k]) => !SERVER_STATE.has(k)),
       ));
-      const kids = (childrenByParent[p] || []).map((k) => loadRawContentFromDisk(k)).filter(Boolean);
+      const kidPairs = (childrenByParent[p] || []).map((k) => [k, loadRawContentFromDisk(k)]).filter(([, d]) => d);
+      const kids = kidPairs.map(([, d]) => d);
       const childPages = kids.filter((d) => !isBlobItem(d))
         .sort((a, b) => (uidPositionMap[a.UID] ?? 0) - (uidPositionMap[b.UID] ?? 0));
       const blobItems = kids.filter(isBlobItem);
@@ -3815,7 +3830,7 @@ async function exportContent(req, res) {
         // synthesise one from the child scan for a folder that never had it.
         (markdownOrder.get(p) || (childPages.length ? childPages.map((d) => d.id) : null))
           ? YAML.stringify({ order: markdownOrder.get(p) || childPages.map((d) => d.id) }).trim() : '',
-        blobItems.length ? YAML.stringify(deepTrim({ blobs: blobItems.map(blobEntry) })).trim() : '',
+        blobItems.length ? YAML.stringify(deepTrim({ blobs: kidPairs.filter(([, d]) => isBlobItem(d)).map(([k, d]) => blobEntry(k, d)) })).trim() : '',
       ].filter(Boolean).join('\n');
       if (c.blocks && c.blocks_layout?.items?.length) {
         // The page's own directory (relative to the mount), for relative links.
@@ -3829,12 +3844,13 @@ async function exportContent(req, res) {
         });
         // Search text the frontend would give the page anyway stays out of the markdown
         // (loading fills it again); search text set to something else is kept. So
-        // does a value its schema declares as the default, and a template child's
-        // slot the editor names from its region (loading puts each back).
+        // does a value its schema declares as the default, a template child's
+        // slot the editor names from its region, and a link field's summary of
+        // its target (loading puts each back).
         const own = contentSchemas
-          ? withoutRegionSlots(
-            withoutSchemaDefaults(withoutDefaultSearchText(ownBlocks, contentSchemas), contentSchemas, { keep: statedByPrototype(protos) }),
-            contentSchemas)
+          ? withoutLinkSummaries(withoutRegionSlots(
+            withoutSchemaDefaults(withoutDefaultSearchText(ownBlocks, contentSchemas), contentSchemas, { keep: statedDefaults(protos) }),
+            contentSchemas), { schemaFor: (type) => contentSchemas[type]?.blockSchema ?? null, targetOf: (id) => loadRawContentFromDisk(id) })
           : ownBlocks;
         const blocks = structuredClone(own.blocks);
         unresolveBlocks(blocks, baseSegs, m);
@@ -3880,14 +3896,30 @@ async function exportContent(req, res) {
         const rel = relOf(m, p);
         if (isBlobItem(c)) {
           // Copy the blob's bytes next to its parent folder's index.md.
-          const src = markdownBlobs.get(p);
           const field = c[BLOB_FIELD[c['@type']]];
-          const file = field.filename || path.basename(field.blob_path);
           // The blob sits next to its parent folder's index.md; a root-level blob
           // (rel with no slash) has parent '' — not itself.
           const parentDir = rel.includes('/') ? rel.replace(/\/[^/]*$/, '') : '';
-          const dest = path.join(treeRoot, parentDir, file);
-          if (src && fs.existsSync(src)) { fs.mkdirSync(path.dirname(dest), { recursive: true }); fs.copyFileSync(src, dest); }
+          const dest = path.join(treeRoot, parentDir, blobFilesIn(parentOf(p)).get(p));
+          if (contentDirMap[p].markdown) {
+            // A Markdown mount found the bytes as it loaded, and warned then
+            // about any it lacked (generated doc assets are git-ignored).
+            const src = markdownBlobs.get(p);
+            if (src && fs.existsSync(src)) { fs.mkdirSync(path.dirname(dest), { recursive: true }); fs.copyFileSync(src, dest); }
+            continue;
+          }
+          // An exportimport tree keeps them at the item's blob_path, under the
+          // mount's directory, as the JSON export reads them.
+          const src = path.join(m.dirPath, field.blob_path);
+          if (!fs.existsSync(src)) {
+            if (allowMissingBlobs) {
+              console.warn(`${p}: no bytes for blob_path "${field.blob_path}" (looked at ${src}) — skipping (allowMissingBlobs)`);
+              continue;
+            }
+            throw new Error(`${p}: no bytes for blob_path "${field.blob_path}" (looked at ${src})`);
+          }
+          fs.mkdirSync(path.dirname(dest), { recursive: true });
+          fs.copyFileSync(src, dest);
           continue;
         }
         // A page (not an Image/File object) may still carry blob FIELDS — a lead
@@ -3905,11 +3937,7 @@ async function exportContent(req, res) {
           for (const v of Object.values(node)) copyFieldBlobs(v);
         };
         copyFieldBlobs(c);
-        const info = contentDirMap[p];
-        const isFolder = info && info.markdown
-          ? (info.folder || (childrenByParent[p] || []).length > 0)
-          : (c.is_folderish || (childrenByParent[p] || []).length > 0);
-        const dest = path.join(treeRoot, rel === '' ? 'index.md' : (isFolder ? `${rel}/index.md` : `${rel}.md`));
+        const dest = path.join(treeRoot, rel === '' ? 'index.md' : (folderish.has(p) ? `${rel}/index.md` : `${rel}.md`));
         fs.mkdirSync(path.dirname(dest), { recursive: true });
         fs.writeFileSync(dest, emitFile(c, p, m));
       }
@@ -3919,7 +3947,7 @@ async function exportContent(req, res) {
       // COMPLETE distribution, not just content. Sourced from any mount that
       // carries them (one level up from its content dir), else minimal defaults.
       const siblingsFrom = CONTENT_MOUNTS
-        .map((m) => path.join(m.dirPath, '..'))
+        .map(siblingsDirOf)
         .filter((d) => DISTRIBUTION_SIBLINGS.some((s) => fs.existsSync(path.join(d, s))));
       for (const sib of DISTRIBUTION_SIBLINGS) {
         const from = siblingsFrom.map((d) => path.join(d, sib)).find((p) => fs.existsSync(p));

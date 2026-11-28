@@ -1,0 +1,1 @@
+A Markdown export of exportimport (JSON) content carries its images and files. Each one was listed in its folder's `blobs:` but its bytes were silently left out, so the exported tree named files it didn't have. Bytes missing from the source now fail the export, unless `allowMissingBlobs` is set, as in the JSON export.

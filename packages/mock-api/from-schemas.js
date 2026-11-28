@@ -69,31 +69,68 @@ export function resolveSchemaExamples(page, { schemaFor }) {
 // `catalogEntry` gives an item's catalog entry, as a search returns it; the
 // snapshot is the link editor's own (linkItemSnapshot). A link already carrying
 // one keeps it.
+// The summary of a link's target, as Volto snapshots it when the link is picked.
+function linkSummary(id, target) {
+  // Mirror the server serializer's teaser summary. image_field names WHICH
+  // field a teaser pulls its preview from: an Image / a lead `image` field ->
+  // 'image'; a `preview_image` -> 'preview_image'; nothing -> '' (no preview).
+  const leadImage = !!(target.image && (target.image.blob_path || target.image.width));
+  const hasPreview = !!(target.preview_image || target['@type'] === 'Image');
+  const imageField = (target['@type'] === 'Image' || leadImage) ? 'image'
+    : (hasPreview ? 'preview_image' : '');
+  return {
+    '@id': id,
+    '@type': target['@type'],
+    Title: target.title ?? null,
+    Description: target.description ?? '',
+    title: target.title ?? null,
+    head_title: target.head_title ?? null,
+    getRemoteUrl: target.getRemoteUrl ?? null,
+    hasPreviewImage: hasPreview,
+    image_field: imageField,
+  };
+}
+
+// Every object_browser value of a block, at any depth, replaced with fn(value):
+// its own fields, the fields of its object_list items, and the blocks either
+// holds. `visit(block)` is called on each block reached.
+function mapLinkFields(block, schemaFor, fn, visit = () => {}) {
+  if (!block || typeof block !== 'object') return;
+  visit(block);
+  const schema = block['@type'] ? schemaFor(block['@type']) : null;
+  if (schema && schema.properties) {
+    for (const [field, def] of Object.entries(schema.properties)) {
+      const v = block[field];
+      if (v == null) continue;
+      if (def.widget === 'object_browser') {
+        block[field] = fn(v);
+      } else if (def.widget === 'object_list' && Array.isArray(v) && def.schema && def.schema.properties) {
+        // Items are block instances; their object_browser fields, and any
+        // content blocks they hold (a teaser inside a panel).
+        const itemProps = def.schema.properties;
+        for (const item of v) {
+          if (!item || typeof item !== 'object') continue;
+          for (const [f, d] of Object.entries(itemProps)) {
+            if (d.widget === 'object_browser' && item[f] != null) item[f] = fn(item[f]);
+          }
+          if (item.blocks && typeof item.blocks === 'object') {
+            for (const child of Object.values(item.blocks)) mapLinkFields(child, schemaFor, fn, visit);
+          }
+        }
+      }
+    }
+  }
+  // A container block holds its children in a shared `blocks` dict; a link
+  // nested in a column / accordion panel is one too.
+  if (block.blocks && typeof block.blocks === 'object' && !Array.isArray(block.blocks)) {
+    for (const child of Object.values(block.blocks)) mapLinkFields(child, schemaFor, fn, visit);
+  }
+}
+
 export function resolveLinkSummaries(items, { schemaFor, prefix = '', catalogEntry = null }) {
   const localId = (id) => (prefix && id.startsWith(prefix) ? id.slice(prefix.length) : id) || '/';
   const isBareLink = (o) => o && typeof o === 'object' && !Array.isArray(o)
     && typeof o['@id'] === 'string' && Object.keys(o).length === 1;
-
-  const summary = (id, target) => {
-    // Mirror the server serializer's teaser summary. image_field names WHICH
-    // field a teaser pulls its preview from: an Image / a lead `image` field ->
-    // 'image'; a `preview_image` -> 'preview_image'; nothing -> '' (no preview).
-    const leadImage = !!(target.image && (target.image.blob_path || target.image.width));
-    const hasPreview = !!(target.preview_image || target['@type'] === 'Image');
-    const imageField = (target['@type'] === 'Image' || leadImage) ? 'image'
-      : (hasPreview ? 'preview_image' : '');
-    return {
-      '@id': id,
-      '@type': target['@type'],
-      Title: target.title ?? null,
-      Description: target.description ?? '',
-      title: target.title ?? null,
-      head_title: target.head_title ?? null,
-      getRemoteUrl: target.getRemoteUrl ?? null,
-      hasPreviewImage: hasPreview,
-      image_field: imageField,
-    };
-  };
 
   // Fill a single object_browser field value in place. The widget stores the
   // object-list-of-one shape Volto uses, `[{'@id'}]`; a value already carrying a
@@ -104,7 +141,7 @@ export function resolveLinkSummaries(items, { schemaFor, prefix = '', catalogEnt
     return value.map((el) => {
       if (!isBareLink(el)) return el;
       const target = items.get(localId(el['@id']));
-      return target ? summary(el['@id'], target) : el; // unresolvable -> keep bare
+      return target ? linkSummary(el['@id'], target) : el; // unresolvable -> keep bare
     });
   };
 
@@ -119,45 +156,35 @@ export function resolveLinkSummaries(items, { schemaFor, prefix = '', catalogEnt
     if (Array.isArray(value.children)) fillTextLinks(value.children);
   };
 
-  const fillBlock = (block) => {
-    if (!block || typeof block !== 'object') return;
+  const fillTextLinksOf = (block) => {
     for (const v of Object.values(block)) if (Array.isArray(v)) fillTextLinks(v);
-    const schema = block['@type'] ? schemaFor(block['@type']) : null;
-    if (schema && schema.properties) {
-      for (const [field, def] of Object.entries(schema.properties)) {
-        const v = block[field];
-        if (v == null) continue;
-        if (def.widget === 'object_browser') {
-          block[field] = fillField(v);
-        } else if (def.widget === 'object_list' && Array.isArray(v) && def.schema && def.schema.properties) {
-          // Items are block instances; fill THEIR object_browser fields, and
-          // recurse into any content blocks they hold (a teaser inside a panel).
-          const itemProps = def.schema.properties;
-          for (const item of v) {
-            if (!item || typeof item !== 'object') continue;
-            for (const [f, d] of Object.entries(itemProps)) {
-              if (d.widget === 'object_browser' && item[f] != null) item[f] = fillField(item[f]);
-            }
-            if (item.blocks && typeof item.blocks === 'object') {
-              for (const child of Object.values(item.blocks)) fillBlock(child);
-            }
-          }
-        }
-      }
-    }
-    // A container block holds its children in a shared `blocks` dict; recurse so
-    // a link nested in a column / accordion panel is filled too.
-    if (block.blocks && typeof block.blocks === 'object' && !Array.isArray(block.blocks)) {
-      for (const child of Object.values(block.blocks)) fillBlock(child);
-    }
   };
 
   for (const [, page] of items) {
     if (page.blocks && typeof page.blocks === 'object') {
-      for (const block of Object.values(page.blocks)) fillBlock(block);
+      for (const block of Object.values(page.blocks)) mapLinkFields(block, schemaFor, fillField, fillTextLinksOf);
     }
   }
   return items;
+}
+
+/**
+ * The page with each link field's summary left out where loading puts the same
+ * one back (resolveLinkSummaries): what a Markdown export writes, the link
+ * alone, as it writes a text link. A summary that differs from its target's
+ * (a snapshot from before the target changed) is the content's, and stays.
+ * `targetOf(id)`: the item a link's `@id` names, or null.
+ */
+export function withoutLinkSummaries(page, { schemaFor, targetOf }) {
+  if (!page.blocks) return page;
+  const blocks = structuredClone(page.blocks);
+  const strip = (value) => (Array.isArray(value) ? value.map((el) => {
+    if (!el || typeof el !== 'object' || typeof el['@id'] !== 'string' || Object.keys(el).length === 1) return el;
+    const target = targetOf(el['@id']);
+    return target && JSON.stringify(el) === JSON.stringify(linkSummary(el['@id'], target)) ? { '@id': el['@id'] } : el;
+  }) : value);
+  for (const block of Object.values(blocks)) mapLinkFields(block, schemaFor, strip);
+  return { ...page, blocks };
 }
 
 const SEARCH_INTL = { formatMessage: (message) => message?.defaultMessage ?? '' };
@@ -243,9 +270,10 @@ const sameValue = (a, b) => JSON.stringify(a) === JSON.stringify(b);
  * applies a default and saves it, and a frontend renders the stored value, so
  * loading puts each back (withSchemaDefaults).
  */
-// `keep(type, field)`: a default to keep anyway -- one the block's prototype
-// states as a literal, which its bare Markdown implies (an image's `size`), so
-// dropping it would leave the bare form unable to read back.
+// `keep(type, field, value)`: a default to keep anyway -- one the block's
+// prototype states as that literal, which its bare Markdown implies (an
+// image's `size="l"`), so dropping it would leave the bare form unable to read
+// back. See statedDefaults.
 //
 // A default is only left out when loading puts it back: some come from the
 // block itself (a listing in a container defaults its item type to the one it
@@ -260,7 +288,7 @@ export function withoutSchemaDefaults(page, blocksConfig, { keep = () => false }
     const out = eachBlockWithSchema(page, blocksConfig, (block, schema, type, path) => {
       let next = block;
       for (const [field, def] of fixedDefaults(schema)) {
-        if (keep(type, field) || kept.has(`${path}|${field}`)) continue;
+        if (keep(type, field, def.default) || kept.has(`${path}|${field}`)) continue;
         if (field in next && sameValue(next[field], def.default)) {
           if (next === block) next = { ...block };
           delete next[field];
@@ -285,19 +313,72 @@ export function withoutSchemaDefaults(page, blocksConfig, { keep = () => false }
   }
 }
 
-/** The page with each absent field its schema declares a default for set to
- *  it, as the editor saves it. Only ABSENT: a stored null stays null. */
-export function withSchemaDefaults(page, blocksConfig) {
-  return eachBlockWithSchema(page, blocksConfig, (block, schema) => {
-    let out = block;
-    for (const [field, def] of fixedDefaults(schema)) {
-      if (!(field in out)) {
-        if (out === block) out = { ...block };
-        out[field] = structuredClone(def.default);
+/**
+ * `keep` for withoutSchemaDefaults: the values each block type's prototypes
+ * state as literals, at any depth (an image's `size="l"`). A default is kept
+ * only where a prototype states that same value. Another variant stating the
+ * field differently (a table's `headerMode="col"`) is no reason to keep the
+ * default: the bare variant reads it back, and kept, it matches no variant.
+ */
+export function statedDefaults(protos) {
+  const stated = new Map(); // type -> field -> literals
+  const walk = (list) => {
+    for (const p of list ?? []) {
+      for (const [field, value] of Object.entries(p.fields ?? {})) {
+        if (typeof value === 'string' && value.trim().startsWith('${')) continue;
+        if (!stated.has(p.type)) stated.set(p.type, new Map());
+        const fields = stated.get(p.type);
+        if (!fields.has(field)) fields.set(field, []);
+        fields.get(field).push(value);
       }
+      for (const r of p.regions ?? []) walk(r.protos);
     }
-    return out;
-  });
+  };
+  walk(protos);
+  // A literal is written in the Markdown as text (`size="l"`, `:gap="false"`),
+  // so it states a value when it is the value or spells it.
+  const states = (literal, value) => sameValue(literal, value) || (typeof literal === 'string' && literal === String(value));
+  return (type, field, value) => (stated.get(type)?.get(field) ?? []).some((literal) => states(literal, value));
+}
+
+/** The page with each absent field its schema declares a default for set to
+ *  it, as the editor saves it. Only ABSENT: a stored null stays null.
+ *
+ *  A block's schema can depend on its values (a field rule hides a columns
+ *  block's gap at an equal layout), and so on the defaults just filled
+ *  (`layout` defaults to equal). So the schema is worked out again on the
+ *  filled block, a default it no longer offers is taken back, and that is
+ *  repeated until nothing changes. */
+const DEFAULTS_SETTLE = 10;
+export function withSchemaDefaults(page, blocksConfig) {
+  const filled = new Set(); // `${path}|${field}`: a value this put there
+  let out = page;
+  for (let pass = 0; pass < DEFAULTS_SETTLE; pass++) {
+    let changed = false;
+    out = eachBlockWithSchema(out, blocksConfig, (block, schema, type, path) => {
+      const defaults = new Map(fixedDefaults(schema));
+      let next = block;
+      for (const [field, def] of defaults) {
+        if (!(field in next)) {
+          if (next === block) next = { ...block };
+          next[field] = structuredClone(def.default);
+          filled.add(`${path}|${field}`);
+          changed = true;
+        }
+      }
+      for (const field of Object.keys(next)) {
+        if (filled.has(`${path}|${field}`) && !defaults.has(field)) {
+          if (next === block) next = { ...block };
+          delete next[field];
+          filled.delete(`${path}|${field}`);
+          changed = true;
+        }
+      }
+      return next;
+    });
+    if (!changed) return out;
+  }
+  throw new Error(`the schema defaults did not settle in ${DEFAULTS_SETTLE} passes: a field rule that hides a field depends on that field's own default`);
 }
 
 /**
