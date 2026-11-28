@@ -2,11 +2,38 @@ import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'fs';
 import { join } from 'path';
 import { tmpdir } from 'os';
-import { resolveLiteralIncludes, readTree, resolveMarkdownLink, resolveMediaUrl, resolveMarkdownLinksInBlocks, isMarkdownTree, resolveCodeExampleSources, decodeAuto, normalizeNestedUids } from './markdown-mount.mjs';
+import { dimensions, resolveLiteralIncludes, readTree, resolveMarkdownLink, resolveMediaUrl, resolveMarkdownLinksInBlocks, isMarkdownTree, resolveCodeExampleSources, decodeAuto, normalizeNestedUids } from './markdown-mount.mjs';
 
 // The site says which types are folderish; these tests stand in for it as
 // Plone 6 with plone.volto does.
 const isFolderish = (type) => !['Image', 'File', 'Link', 'Collection'].includes(type);
+
+// An image's size is read from its file. An SVG's attributes may be quoted
+// either way: the NSW design system's pictograms write `viewBox='0 0 48 48'`.
+describe('dimensions', () => {
+  let dir;
+  beforeAll(() => { dir = mkdtempSync(join(tmpdir(), 'dims-')); });
+  afterAll(() => rmSync(dir, { recursive: true, force: true }));
+  const svg = (name, attrs) => {
+    writeFileSync(join(dir, name), `<svg xmlns='http://www.w3.org/2000/svg' ${attrs}><g/></svg>`);
+    return join(dir, name);
+  };
+
+  it.each([
+    ['a double-quoted viewBox', 'viewBox="0 0 48 32"'],
+    ['a single-quoted viewBox', "viewBox='0 0 48 32'"],
+    ['double-quoted width and height', 'width="48" height="32"'],
+    ['single-quoted width and height', "width='48' height='32'"],
+  ])('reads an SVG with %s', (_, attrs) => {
+    expect(dimensions(svg(`${attrs.length}-${attrs.charCodeAt(0)}.svg`, attrs))).toEqual({ width: 48, height: 32 });
+  });
+
+  it("takes the root element's size, not a child's stroke-width", () => {
+    const file = join(dir, 'stroke.svg');
+    writeFileSync(file, `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 32"><path stroke-width="2" height="9"/></svg>`);
+    expect(dimensions(file)).toEqual({ width: 48, height: 32 });
+  });
+});
 
 describe('resolveLiteralIncludes', () => {
   let dir;

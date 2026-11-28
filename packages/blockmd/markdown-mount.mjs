@@ -187,10 +187,14 @@ export function dimensions(file) {
     throw new Error(`no SOF marker in ${file}`);
   }
   if (ext === '.svg') {
-    const t = b.toString('utf8', 0, 2000);
-    const w = /\bwidth="([\d.]+)/.exec(t), h = /\bheight="([\d.]+)/.exec(t);
+    // The root element's own attributes, quoted either way: a child's
+    // `stroke-width="2"` is not the image's width.
+    const root = /<svg\b[^>]*>/.exec(b.toString('utf8'));
+    if (!root) throw new Error(`no <svg> element in ${file}`);
+    const attr = (name) => new RegExp(`\\s${name}=["']([\\d.]+)`).exec(root[0]);
+    const w = attr('width'), h = attr('height');
     if (w && h) return { width: Number(w[1]), height: Number(h[1]) };
-    const vb = /viewBox="[\d.]+ [\d.]+ ([\d.]+) ([\d.]+)"/.exec(t);
+    const vb = /\sviewBox=["'][\d.]+ [\d.]+ ([\d.]+) ([\d.]+)["']/.exec(root[0]);
     if (vb) return { width: Number(vb[1]), height: Number(vb[2]) };
     throw new Error(`no dimensions in ${file}`);
   }

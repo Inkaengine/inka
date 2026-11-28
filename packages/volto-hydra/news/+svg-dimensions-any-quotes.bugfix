@@ -1,0 +1,1 @@
+An SVG's size is read from its root element, with attributes quoted either way. A Markdown tree holding an SVG written with single quotes (`viewBox='0 0 48 48'`) failed to load, and a child's `stroke-width` could be taken for the image's width.
