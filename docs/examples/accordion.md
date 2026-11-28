@@ -21,30 +21,30 @@ subjects:
   - containers
 title: Accordion
 blocks-matched: |
-  <block type="slate" value="${p,h*,ul,ol,blockquote,strong,em,a/slate}" />
-  <block type="title" _="${h1}" />
-  <block type="separator" _="${hr}" styles={"align":"full"} />
-  <block type="image" description="${p?/textarea}" url="${img/src}" alt="${img?/alt}" title="${img?/title}" align="center" size="l" />
-  <block type="codeExample">
+  <block is="slate" value="${p,h*,ul,ol,blockquote,strong,em,a/slate}" />
+  <block is="title" _="${h1}" />
+  <block is="separator" _="${hr}" :styles='{"align":"full"}' />
+  <block is="image" description="${p?/textarea}" url="${img/src}" alt="${img?/alt}" title="${img?/title}" align="center" size="l" />
+  <block is="codeExample">
     <region name="tabs" widget="object_list" idField="@id" typeField="@type">
-      <block type="tab" label="${h3/text}" language="${pre/lang}" code="${pre/textarea}" />
+      <block is="tab" label="${h3/text}" language="${pre/lang}" code="${pre/textarea}" />
     </region>
   </block>
 blocks-tagged: |
-  <block type="teaser" title="${h?/text}" head_title="${strong?/text}" href="${h?/link}" description="${p?/textarea}" />
-  <block type="slateTable">
+  <block is="teaser" title="${h?/text}" head_title="${strong?/text}" href="${h?/link}" description="${p?/textarea}" />
+  <block is="slateTable">
     <region name="table.rows" idField="key">
-      <block type="row" _="${tr}">
+      <block is="row" _="${tr}">
         <region name="cells" idField="key" typeField="type">
-          <block type="header" value="${th/slate}" />
-          <block type="data" value="${td/slate}" />
+          <block is="header" value="${th/slate}" />
+          <block is="data" value="${td/slate}" />
         </region>
       </block>
     </region>
   </block>
-  <block type="accordion" right_arrows=true>
+  <block is="accordion" right_arrows>
     <region name="panels" widget="object_list" idField="@id" typeField="@type">
-      <block type="panel" title="${h/text}" />
+      <block is="panel" title="${h/text}" />
     </region>
   </block>
 ---
@@ -53,13 +53,13 @@ blocks-tagged: |
 
 A collapsible panel group. Each panel is an object_list item with a title and a content area that holds child blocks.
 
-<block type="image">
+<block is="image">
 
 ![The accordion example block being edited in Inka](../images/accordion-edit.png)
 
 </block>
 
-<block type="accordion">
+<block is="accordion">
 
 ## What is a block?
 
@@ -71,7 +71,7 @@ Each panel is an object-list item with a title and a content area that holds chi
 
 </block>
 
-<block type="accordion" styles:backgroundColor="grey">
+<block is="accordion" :styles='{"backgroundColor":"grey"}'>
 
 ## Accordion with text
 
@@ -79,7 +79,7 @@ Lorem ipsum dolor sit amet, consetetur sadipscing elitr, sed diam nonumy eirmod 
 
 ## Accordion with image
 
-<block type="image">
+<block is="image">
 
 The Image content type can be used to upload an image in various formats (JPG, GIF, PNG, SVG). The uploaded image should always have a high resolution so that it can be used flexibly, for example as a banner image. Plone automatically delivers the images in the best scaling, so there is no need to scale images down manually.
 
@@ -89,17 +89,17 @@ The Image content type can be used to upload an image in various formats (JPG, G
 
 </block>
 
-<block type="separator">
+<block is="separator">
 
 ---
 
-<fields styles:align="left" />
+<fields :styles='{"align":"left"}' />
 
 </block>
 
 Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincidunt ut laoreet dolore magna aliquam erat volutpat. Ut wisi enim ad minim veniam, quis nostrud exerci tation ullamcorper suscipit lobortis nisl ut aliquip ex ea commodo consequat. Duis autem vel eum iriure dolor in hendrerit in vulputate velit esse molestie consequat, vel illum dolore eu feugiat nulla facilisis at vero eros et accumsan et iusto odio dignissim qui blandit praesent luptatum zzril delenit augue duis dolore te feugait nulla facilisi.
 
-<block type="image">
+<block is="image">
 
 The Image content type can be used to upload an image in various formats (JPG, GIF, PNG, SVG). The uploaded image should always have a high resolution so that it can be used flexibly, for example as a banner image. Plone automatically delivers the images in the best scaling, so there is no need to scale images down manually.
 
@@ -109,7 +109,7 @@ The Image content type can be used to upload an image in various formats (JPG, G
 
 </block>
 
-<block type="slate">
+<block is="slate">
 
 ## Text Heading H3
 
@@ -117,25 +117,25 @@ The Image content type can be used to upload an image in various formats (JPG, G
 
 Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincidunt ut laoreet dolore magna aliquam erat volutpat. Ut wisi enim ad minim veniam, quis nostrud exerci tation ullamcorper suscipit lobortis nisl ut aliquip ex ea commodo consequat. Duis autem iusto odio dignissim qui blandit praesent luptatum zzril delenit auguevel eum iriure dolor in hendrerit in vulputate velit esse molestie consequat, vel illum dolore blandit praesent luptatum zzril qui Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincidunt ut laoreet dolore magna aliquam erat volutpat. Ut wisi enim ad minim veniam, quis nostrud exerci tation ullamcorper suscipit lobortis nisl ut aliquip ex ea commodo consequat. Duis autem vel eum iriure dolor in hendrerit in vulputate velit esse molestie consequat, vel illum dolore eu feugiat nulla facilisis at vero eros et accumsan et iusto odio dignissim qui blandit praesent luptatum zzril delenit augue duis dolore te feugait nulla facilisi.
 
-<block type="separator">
+<block is="separator">
 
 ---
 
-<fields styles:align="left" />
+<fields :styles='{"align":"left"}' />
 
 </block>
 
-<block type="image">
+<block is="image">
 
 The Image content type can be used to upload an image in various formats (JPG, GIF, PNG, SVG). The uploaded image should always have a high resolution so that it can be used flexibly, for example as a banner image. Plone automatically delivers the images in the best scaling, so there is no need to scale images down manually.
 
 ![](./content-types/image-dark "Image")
 
-<fields align="left" size="m" image_field="image" styles:size:noprefix="medium" />
+<fields align="left" size="m" image_field="image" :styles='{"size:noprefix":"medium"}' />
 
 </block>
 
-<block type="slate">
+<block is="slate">
 
 ## Text Heading H3
 
@@ -143,17 +143,17 @@ The Image content type can be used to upload an image in various formats (JPG, G
 
 Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincidunt ut laoreet dolore magna aliquam erat volutpat. Ut wisi enim ad minim veniam, quis nostrud exerci tation ullamcorper suscipit lobortis nisl ut aliquip ex ea commodo consequat. Duis autem iusto odio dignissim qui blandit praesent luptatum zzril delenit auguevel eum iriure dolor in hendrerit in vulputate velit esse molestie consequat, vel illum dolore blandit praesent luptatum zzril qui Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincidunt ut laoreet dolore magna aliquam erat volutpat. Ut wisi enim ad minim veniam, quis nostrud exerci tation ullamcorper suscipit lobortis nisl ut aliquip ex ea commodo consequat. Duis autem vel eum iriure dolor in hendrerit in vulputate velit esse molestie consequat, vel illum dolore eu feugiat nulla facilisis at vero eros et accumsan et iusto odio dignissim qui blandit praesent luptatum zzril delenit augue duis dolore te feugait nulla facilisi.
 
-<block type="image">
+<block is="image">
 
 The Image content type can be used to upload an image in various formats (JPG, GIF, PNG, SVG). The uploaded image should always have a high resolution so that it can be used flexibly, for example as a banner image. Plone automatically delivers the images in the best scaling, so there is no need to scale images down manually.
 
 ![](./content-types/image-light.jpg "Image - Light")
 
-<fields align="right" size="m" image_field="image" styles:size:noprefix="medium" />
+<fields align="right" size="m" image_field="image" :styles='{"size:noprefix":"medium"}' />
 
 </block>
 
-<block type="slate">
+<block is="slate">
 
 ## Text Heading H3
 
@@ -161,25 +161,25 @@ The Image content type can be used to upload an image in various formats (JPG, G
 
 Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincidunt ut laoreet dolore magna aliquam erat volutpat. Ut wisi enim ad minim veniam, quis nostrud exerci tation ullamcorper suscipit lobortis nisl ut aliquip ex ea commodo consequat. Duis autem iusto odio dignissim qui blandit praesent luptatum zzril delenit auguevel eum iriure dolor in hendrerit in vulputate velit esse molestie consequat, vel illum dolore blandit praesent luptatum zzril qui Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincidunt ut laoreet dolore magna aliquam erat volutpat. Ut wisi enim ad minim veniam, quis nostrud exerci tation ullamcorper suscipit lobortis nisl ut aliquip ex ea commodo consequat. Duis autem vel eum iriure dolor in hendrerit in vulputate velit esse molestie consequat, vel illum dolore eu feugiat nulla facilisis at vero eros et accumsan et iusto odio dignissim qui blandit praesent luptatum zzril delenit augue duis dolore te feugait nulla facilisi.
 
-<block type="separator">
+<block is="separator">
 
 ---
 
-<fields styles:align="left" />
+<fields :styles='{"align":"left"}' />
 
 </block>
 
-<block type="image">
+<block is="image">
 
 The Image content type can be used to upload an image in various formats (JPG, GIF, PNG, SVG). The uploaded image should always have a high resolution so that it can be used flexibly, for example as a banner image. Plone automatically delivers the images in the best scaling, so there is no need to scale images down manually.
 
 ![](./content-types/image-dark "Image")
 
-<fields align="left" size="s" image_field="image" styles:size:noprefix="small" />
+<fields align="left" size="s" image_field="image" :styles='{"size:noprefix":"small"}' />
 
 </block>
 
-<block type="slate">
+<block is="slate">
 
 ## Text Heading H3
 
@@ -187,17 +187,17 @@ The Image content type can be used to upload an image in various formats (JPG, G
 
 Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincidunt ut laoreet dolore magna aliquam erat volutpat. Ut wisi enim ad minim veniam, quis nostrud exerci tation ullamcorper suscipit lobortis nisl ut aliquip ex ea commodo consequat. Duis autem iusto odio dignissim qui blandit praesent luptatum zzril delenit auguevel eum iriure dolor in hendrerit in vulputate velit esse molestie consequat, vel illum dolore blandit praesent luptatum zzril qui Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincidunt ut laoreet dolore magna aliquam erat volutpat. Ut wisi enim ad minim veniam, quis nostrud exerci tation ullamcorper suscipit lobortis nisl ut aliquip ex ea commodo consequat. Duis autem vel eum iriure dolor in hendrerit in vulputate velit esse molestie consequat, vel illum dolore eu feugiat nulla facilisis at vero eros et accumsan et iusto odio dignissim qui blandit praesent luptatum zzril delenit augue duis dolore te feugait nulla facilisi.
 
-<block type="image">
+<block is="image">
 
 The Image content type can be used to upload an image in various formats (JPG, GIF, PNG, SVG). The uploaded image should always have a high resolution so that it can be used flexibly, for example as a banner image. Plone automatically delivers the images in the best scaling, so there is no need to scale images down manually.
 
 ![](./content-types/image-dark "Image")
 
-<fields align="right" size="s" image_field="image" styles:size:noprefix="small" />
+<fields align="right" size="s" image_field="image" :styles='{"size:noprefix":"small"}' />
 
 </block>
 
-<block type="slate">
+<block is="slate">
 
 ## Text Heading H3
 
@@ -207,43 +207,43 @@ Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincid
 
 ## Accordion with teaser
 
-<block type="teaser">
+<block is="teaser">
 
 ### [Teaser Title H2](./content-types/page.md)
 
 Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincidunt ut laoreet dolore magna aliquam erat volutpat. Ut wisi enim ad minim veniam, quis nostrud exerci tation ullamcorper suscipit lobortis nisl ut aliquip ex ea commodo
 
-<fields styles:align="center" />
+<fields :styles='{"align":"center"}' />
 
 </block>
 
-<block type="teaser">
+<block is="teaser">
 
 ### [Teaser Title H2](./content-types/image-light.jpg)
 
 Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincidunt ut laoreet dolore magna aliquam erat volutpat. Ut wisi enim ad minim veniam, quis nostrud exerci tation ullamcorper
 
-<fields styles:align="left" />
+<fields :styles='{"align":"left"}' />
 
 </block>
 
-<block type="teaser">
+<block is="teaser">
 
 ### [Teaser Title H2](./content-types/page.md)
 
 Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincidunt ut laoreet dolore magna aliquam erat volutpat. Ut wisi enim ad minim veniam, quis nostrud exerci tation ullamcorper
 
-<fields styles:align="right" />
+<fields :styles='{"align":"right"}' />
 
 </block>
 
 ## Accordion with listing
 
-<block type="listing" data-json='{"headlineTag":"h2","querystring":{"limit":"3","query":[{"i":"Description","o":"plone.app.querystring.operation.string.contains","v":"block"}],"sort_order":"descending","sort_order_boolean":true},"variation":"summary","fieldMapping":{"getURL":{"field":"href","type":"link"},"title":{"field":"title","type":"string"},"description":{"field":"description","type":"textarea"},"image":{"field":"image","type":"image_link"}}}' />
+<block is="listing" headlineTag="h2" :querystring='{"limit":"3","query":[{"i":"Description","o":"plone.app.querystring.operation.string.contains","v":"block"}],"sort_order":"descending","sort_order_boolean":true}' variation="summary" />
 
 ## Accordion with table
 
-<block type="slateTable" styles:backgroundColor="transparent" table.basic=false table.celled table.compact=false table.fixed table.hideHeaders=false table.inverted=false table.striped>
+<block is="slateTable" :styles='{"backgroundColor":"transparent"}' :table.basic="false" table.celled :table.compact="false" table.fixed :table.hideHeaders="false" :table.inverted="false" table.striped>
 
 | Title Tablehead&#x20; | Title Tablehead&#x20; | Title Tablehead&#x20; |
 | --- | --- | --- |
@@ -255,9 +255,9 @@ Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincid
 
 </block>
 
-<fields templateId="/inka-templates/block-reference-layout" templateInstanceId="tpl-inst-accordion" fixed=false readOnly=false>
+<fields templateId="/inka-templates/block-reference-layout" templateInstanceId="tpl-inst-accordion" :fixed="false" :readOnly="false">
 
-<block type="codeExample" slotId="schema">
+<block is="codeExample" slotId="schema">
 
 ### Schema
 
@@ -267,7 +267,7 @@ Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincid
 
 </block>
 
-<block type="codeExample" slotId="json-data">
+<block is="codeExample" slotId="json-data">
 
 ### JSON
 
@@ -278,7 +278,7 @@ Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincid
 
 </block>
 
-<block type="codeExample" slotId="rendering">
+<block is="codeExample" slotId="rendering">
 
 ### React
 

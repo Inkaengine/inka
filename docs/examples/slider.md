@@ -22,17 +22,17 @@ subjects:
   - media
 title: Slider Block
 blocks-matched: |
-  <block type="slate" value="${p,h*,ul,ol,blockquote,strong,em,a/slate}" />
-  <block type="title" _="${h1}" />
-  <block type="codeExample">
+  <block is="slate" value="${p,h*,ul,ol,blockquote,strong,em,a/slate}" />
+  <block is="title" _="${h1}" />
+  <block is="codeExample">
     <region name="tabs" widget="object_list" idField="@id" typeField="@type">
-      <block type="tab" label="${h3/text}" language="${pre/lang}" code="${pre/textarea}" />
+      <block is="tab" label="${h3/text}" language="${pre/lang}" code="${pre/textarea}" />
     </region>
   </block>
 blocks-tagged: |
-  <block type="slider">
+  <block is="slider">
     <region name="slides" widget="object_list" idField="@id" typeField="@type">
-      <block type="slide" title="${h/text}" head_title="${strong?/text}" description="${p/textarea}" buttonText="${a?/text}" href="${a?/link}" preview_image="${img/link}" />
+      <block is="slide" title="${h/text}" head_title="${strong?/text}" description="${p/textarea}" buttonText="${a?/text}" href="${a?/link}" preview_image="${img/link}" />
     </region>
   </block>
 ---
@@ -41,7 +41,7 @@ blocks-tagged: |
 
 A carousel/slider that cycles through slides. Slides are stored as an object_list — each slide has a title, description, image, and optional button.
 
-<block type="slider" autoplayEnabled=false autoplayDelay=5000>
+<block is="slider" :autoplayDelay="5000">
 
 ## Product Launch 2025
 
@@ -63,13 +63,13 @@ Recognized for excellence in UX.
 
 ![](<data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 width=%27800%27 height=%27400%27%3E%3Crect width=%27100%25%27 height=%27100%25%27 fill=%27%23aa5577%27/%3E%3Ctext x=%2750%25%27 y=%2750%25%27 fill=%27white%27 text-anchor=%27middle%27 font-size=%2724%27%3ESlide 2%3C/text%3E%3C/svg%3E>)
 
-<fields hideButton=true />
+<fields :hideButton="true" />
 
 </block>
 
-<fields templateId="/inka-templates/block-reference-layout" templateInstanceId="tpl-inst-slider" fixed=false readOnly=false>
+<fields templateId="/inka-templates/block-reference-layout" templateInstanceId="tpl-inst-slider" :fixed="false" :readOnly="false">
 
-<block type="codeExample" slotId="schema">
+<block is="codeExample" slotId="schema">
 
 ### Schema
 
@@ -79,7 +79,7 @@ Recognized for excellence in UX.
 
 </block>
 
-<block type="codeExample" slotId="json-data">
+<block is="codeExample" slotId="json-data">
 
 ### JSON
 
@@ -90,7 +90,7 @@ Recognized for excellence in UX.
 
 </block>
 
-<block type="codeExample" slotId="rendering">
+<block is="codeExample" slotId="rendering">
 
 ### React
 

@@ -21,11 +21,11 @@ subjects:
   - listings
 title: Related Items Block
 blocks-matched: |
-  <block type="slate" value="${p,h*,ul,ol,blockquote,strong,em,a/slate}" />
-  <block type="title" _="${h1}" />
-  <block type="codeExample">
+  <block is="slate" value="${p,h*,ul,ol,blockquote,strong,em,a/slate}" />
+  <block is="title" _="${h1}" />
+  <block is="codeExample">
     <region name="tabs" widget="object_list" idField="@id" typeField="@type">
-      <block type="tab" label="${h3/text}" language="${pre/lang}" code="${pre/textarea}" />
+      <block is="tab" label="${h3/text}" language="${pre/lang}" code="${pre/textarea}" />
     </region>
   </block>
 ---
@@ -42,11 +42,11 @@ Renders the pages related to the current page by one of its relation fields (def
 
 ## Live example
 
-<block type="relatedItemsListing" data-json='{"relationField":"relatedItems","variation":"summary","fieldMapping":{"getURL":{"field":"href","type":"link"},"title":{"field":"title","type":"string"},"description":{"field":"description","type":"textarea"},"image":{"field":"image","type":"image_link"}}}' />
+<block is="relatedItemsListing" relationField="relatedItems" />
 
-<fields templateId="/inka-templates/block-reference-layout" templateInstanceId="tpl-inst-relatedItemsListing" fixed=false readOnly=false>
+<fields templateId="/inka-templates/block-reference-layout" templateInstanceId="tpl-inst-relatedItemsListing" :fixed="false" :readOnly="false">
 
-<block type="codeExample" slotId="schema">
+<block is="codeExample" slotId="schema">
 
 ### Schema
 
@@ -56,7 +56,7 @@ Renders the pages related to the current page by one of its relation fields (def
 
 </block>
 
-<block type="codeExample" slotId="json-data">
+<block is="codeExample" slotId="json-data">
 
 ### JSON
 
@@ -93,7 +93,7 @@ export function relatedItemsFetcher({ apiUrl, contextPath }) {
 }
 ```
 
-<block type="codeExample">
+<block is="codeExample">
 
 ### Render
 

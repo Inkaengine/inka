@@ -34,6 +34,12 @@ export interface PageIntegrityOptions {
    * to {@link ABSENT_ASSETS}. Every other image must load.
    */
   absentAssets?: string[];
+
+  /**
+   * Links this run's pages may carry that a visitor can't open. Defaults to
+   * {@link DEAD_LINK_EXEMPT}. Every other link must open.
+   */
+  exemptLinks?: string[];
 }
 
 /**
@@ -47,9 +53,10 @@ export const ABSENT_ASSETS: string[] = (process.env.ABSENT_ASSETS ?? '').split(/
 /**
  * A path glob as a RegExp: `**` crosses segments, `*` and `?` stay inside one.
  * It matches the path and anything under it, so a scale of the file
- * (`x.png/@@images/image/large`) is the file too.
+ * (`x.png/@@images/image/large`) is the file too; `under: false`, the path
+ * only.
  */
-const globRegExp = (glob: string): RegExp =>
+const globRegExp = (glob: string, { under = true }: { under?: boolean } = {}): RegExp =>
   new RegExp(
     '^' +
       glob
@@ -59,7 +66,7 @@ const globRegExp = (glob: string): RegExp =>
             : part.replace(/[.+^${}()|[\]\\]/g, '\\$&'),
         )
         .join('') +
-      '(/|$)',
+      (under ? '(/|$)' : '$'),
   );
 
 /** Is `url` (absolute) one of the assets this run was told are missing? */
@@ -67,6 +74,20 @@ export function isAbsentAsset(url: string, globs: string[] = ABSENT_ASSETS): boo
   if (!globs.length) return false;
   const { pathname } = new URL(url);
   return globs.some((glob) => globRegExp(glob).test(pathname));
+}
+
+/**
+ * DEAD_LINK_EXEMPT: space-separated URL path globs for the links a run knows a
+ * visitor can't open: a published page in a private folder has a breadcrumb to
+ * the folder, which answers 401 (#851). A glob names that path only; `/**`
+ * takes in what's under it. Unset, nothing is excused.
+ */
+export const DEAD_LINK_EXEMPT: string[] = (process.env.DEAD_LINK_EXEMPT ?? '').split(/\s+/).filter(Boolean);
+
+/** Is `href` (a path, maybe with a query) one of the links this run was told can't open? */
+export function isExemptLink(href: string, globs: string[] = DEAD_LINK_EXEMPT): boolean {
+  const pathname = href.split('?')[0];
+  return globs.some((glob) => globRegExp(glob, { under: false }).test(pathname));
 }
 
 /**
@@ -216,9 +237,10 @@ export async function verifyNoBackendLinks(
  */
 export async function verifyNoDeadLinks(
   page: Page,
-  options: { apiUrl: string; alreadyChecked?: Set<string>; concurrency?: number },
+  options: { apiUrl: string; alreadyChecked?: Set<string>; concurrency?: number; exemptLinks?: string[] },
 ): Promise<void> {
   const seen = options.alreadyChecked;
+  const exemptLinks = options.exemptLinks ?? DEAD_LINK_EXEMPT;
 
   const hrefs = (await page.evaluate(`(() => {
     const origin = window.location.origin;
@@ -237,7 +259,7 @@ export async function verifyNoDeadLinks(
     return Array.from(out);
   })()`)) as string[];
 
-  const toCheck = hrefs.filter((h) => !seen || !seen.has(h));
+  const toCheck = hrefs.filter((h) => (!seen || !seen.has(h)) && !isExemptLink(h, exemptLinks));
   for (const h of toCheck) seen?.add(h);
 
   const dead = await linkChecker(page, options).check(toCheck);

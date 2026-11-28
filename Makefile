@@ -88,16 +88,16 @@ backend-docker-start:	## Starts a Docker-based backend for development
 	docker run -it --rm --name=backend -p 8080:8080 -e SITE=Plone -e CORS_ALLOW_ORIGIN='*' $(DOCKER_IMAGE)
 
 .PHONY: backend-start
-backend-start: ## Starts the Plone backend with the templates addon mounted (see backend/)
-	@echo "$(GREEN)==> Start Plone backend with the Inka templates addon$(RESET)"
+backend-start: ## Starts a Plone backend with the search expansion add-on (see backend/)
+	@echo "$(GREEN)==> Start Plone backend with collective.restapi.searchexpansion$(RESET)"
 	docker compose -f backend/docker-compose.yml up
 
 .PHONY: backend-stop
-backend-stop: ## Stops the addon backend
+backend-stop: ## Stops that backend
 	docker compose -f backend/docker-compose.yml down
 
 .PHONY: backend-clean
-backend-clean: ## Stops the addon backend and DELETES its database (fresh site next start)
+backend-clean: ## Stops that backend and DELETES its database (fresh site next start)
 	@echo "$(RED)==> Removing the backend database — content will be lost$(RESET)"
 	docker compose -f backend/docker-compose.yml down
 	# Only the database: `down -v` would also drop the pip cache, and the next start would
@@ -105,7 +105,7 @@ backend-clean: ## Stops the addon backend and DELETES its database (fresh site n
 	docker volume rm -f backend_inka-plone-data
 
 .PHONY: backend-seed
-backend-seed: ## Loads the shared template fixtures into the addon backend (run on a fresh site)
+backend-seed: ## Loads the shared template fixtures into that backend (run on a fresh site)
 	@echo "$(GREEN)==> Seed the Plone backend with the shared template fixtures$(RESET)"
 	bash backend/seed.sh
 

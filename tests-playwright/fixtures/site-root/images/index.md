@@ -19,8 +19,8 @@ rights: ""
 subjects: []
 title: Images
 blocks-matched: |
-  <block type="slate" value="${p,h*,ul,ol,blockquote,strong,em/slate}" />
-  <block type="title" _="${h1}" />
+  <block is="slate" value="${p,h*,ul,ol,blockquote,strong,em/slate}" />
+  <block is="title" _="${h1}" />
 blobs:
   - file: penguin2.jpg
     uid: 05bace45294c45d5ab93de883e7ce702
@@ -46,6 +46,6 @@ blobs:
 
 # Images
 
-<block type="listing" data-json='{"headlineTag":"h2","variation":"image","fieldMapping":{"getURL":{"field":"href","type":"link"},"title":{"field":"alt","type":"string"},"image":{"field":"url","type":"image_link"}}}' />
+<block is="listing" data-json='{"headlineTag":"h2","variation":"image","fieldMapping":{"getURL":{"field":"href","type":"link"},"title":{"field":"alt","type":"string"},"image":{"field":"url","type":"image_link"}}}' />
 
-<block type="slate" data-json='{"value":[{"children":[{"text":""}],"type":"p"}]}' />
+<block is="slate" data-json='{"value":[{"children":[{"text":""}],"type":"p"}]}' />

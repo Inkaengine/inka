@@ -15,8 +15,8 @@ subjects:
 translation-group: about
 effective: 2025-01-01T00:00:00
 blocks-matched: |
-  <block type="slate" value="${p,h*/slate}" />
-  <block type="title" _="${h1}" />
+  <block is="slate" value="${p,h*/slate}" />
+  <block is="title" _="${h1}" />
 ---
 
 # About us

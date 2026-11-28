@@ -69,8 +69,8 @@ describe('export idempotency — prototype set is readability only, never struct
       }],
     }];
     const rich = parsePrototypes(
-      '<block type="accordion">\n  <region name="panels" widget="object_list" idField="@id" typeField="@type">\n' +
-      '    <block type="slate" value="${p,h*/slate}" />\n  </region>\n</block>',
+      '<block is="accordion">\n  <region name="panels" widget="object_list" idField="@id" typeField="@type">\n' +
+      '    <block is="slate" value="${p,h*/slate}" />\n  </region>\n</block>',
     );
     // Both prototype sets must read back to the SAME structure as B.
     expect(idempotentUnder(rich, B), 'rich prototypes').toBe(true);

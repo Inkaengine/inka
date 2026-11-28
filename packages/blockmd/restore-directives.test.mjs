@@ -7,14 +7,14 @@ import { findCodeExampleBlocks, restoreDirectives } from './restore-directives.m
 
 describe('findCodeExampleBlocks', () => {
   it('marks a self-closing source= block, reads its slotId', () => {
-    const md = '# Page\n\n<block type="codeExample" slotId="json-data" source="card" format="json" />\n';
+    const md = '# Page\n\n<block is="codeExample" slotId="json-data" source="card" format="json" />\n';
     const [b] = findCodeExampleBlocks(md);
     expect(b.slotId).toBe('json-data');
     expect(b.isSourceDirective).toBe(true);
   });
 
   it('reads slotId from a baked data-json self-close; not a source directive', () => {
-    const md = `<block type="codeExample" data-json='{"slotId":"json-data","tabs":[{"code":"a > b /> c"}]}' />`;
+    const md = `<block is="codeExample" data-json='{"slotId":"json-data","tabs":[{"code":"a > b /> c"}]}' />`;
     const [b] = findCodeExampleBlocks(md);
     expect(b.slotId).toBe('json-data');
     expect(b.isSourceDirective).toBe(false);
@@ -23,7 +23,7 @@ describe('findCodeExampleBlocks', () => {
 
   it('ignores a codeExample that appears only in the frontmatter prototypes', () => {
     const md = [
-      '---', 'title: X', 'blocks-matched: |', '  <block type="codeExample">', '  </block>',
+      '---', 'title: X', 'blocks-matched: |', '  <block is="codeExample">', '  </block>',
       '---', '', '# X', '', 'Prose only.',
     ].join('\n');
     expect(findCodeExampleBlocks(md)).toHaveLength(0);
@@ -59,10 +59,10 @@ describe('restoreDirectives', () => {
   });
 
   it('restores a source= codeExample by its slotId', () => {
-    const source = '# P\n\n<block type="codeExample" slotId="json-data" source="card" format="json" />\n';
-    const baked = `# P\n\n<block type="codeExample" data-json='{"slotId":"json-data","tabs":[{"@type":"tab","label":"JSON","code":"{}"}]}' />\n`;
+    const source = '# P\n\n<block is="codeExample" slotId="json-data" source="card" format="json" />\n';
+    const baked = `# P\n\n<block is="codeExample" data-json='{"slotId":"json-data","tabs":[{"@type":"tab","label":"JSON","code":"{}"}]}' />\n`;
     const out = restoreDirectives(source, baked, dir);
-    expect(out).toContain('<block type="codeExample" slotId="json-data" source="card" format="json" />');
+    expect(out).toContain('<block is="codeExample" slotId="json-data" source="card" format="json" />');
     expect(out).not.toContain('"label":"JSON"');
   });
 
@@ -72,8 +72,8 @@ describe('restoreDirectives', () => {
     // not a verbatim fence. It must restore by slotId (whole block), not by
     // matching the raw expansion text — the bug that broke `--markdown`.
     const directive = '```{literalinclude} Card.jsx\n:language: jsx\n```';
-    const source = `# P\n\n<block type="codeExample" slotId="rendering">\n\n### Card\n\n${directive}\n\n</block>\n`;
-    const baked = `# P\n\n<block type="codeExample" data-json='{"slotId":"rendering","tabs":[{"@type":"tab","label":"Card","language":"jsx","code":"export function Card() {\\n  return null;\\n}"}]}' />\n`;
+    const source = `# P\n\n<block is="codeExample" slotId="rendering">\n\n### Card\n\n${directive}\n\n</block>\n`;
+    const baked = `# P\n\n<block is="codeExample" data-json='{"slotId":"rendering","tabs":[{"@type":"tab","label":"Card","language":"jsx","code":"export function Card() {\\n  return null;\\n}"}]}' />\n`;
     const out = restoreDirectives(source, baked, dir);
     expect(out).toContain(directive);              // directive restored
     expect(out).toContain('slotId="rendering"');   // the whole source block is back

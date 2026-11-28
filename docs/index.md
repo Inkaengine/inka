@@ -30,10 +30,10 @@ order:
   - testing
   - examples
 blocks-matched: |
-  <block type="slate" value="${p,h*,ul,ol,blockquote,strong,em,a/slate}" />
-  <block type="title" _="${h1}" />
+  <block is="slate" value="${p,h*,ul,ol,blockquote,strong,em,a/slate}" />
+  <block is="title" _="${h1}" />
 blocks-tagged: |
-  <block type="video" url="${a/link}" preview_image="${img?/link}" />
+  <block is="video" url="${a/link}" preview_image="${img?/link}" />
 ---
 
 # Docs
@@ -42,17 +42,17 @@ Inka is an open-source, design-system-first page builder for any CMS. It ships a
 
 The docs are a set of guides by audience — build a frontend, deploy it, edit content, test it, connect a content store, and set the rules editors work within.
 
-<block type="video">
+<block is="video">
 
 [](./static/hydra-demo.mp4)
 
-<fields align="full" autoplay=true loop=true muted=true controls=false />
+<fields align="full" :autoplay="true" :loop="true" :muted="true" :controls="false" />
 
 </block>
 
 ## The guides
 
-<block type="listing" data-json='{"headlineTag":"h2","variation":"summary","querystring":{"query":[{"i":"path","o":"plone.app.querystring.operation.string.relativePath","v":".::1"},{"i":"exclude_from_nav","o":"plone.app.querystring.operation.boolean.isFalse","v":""}],"sort_on":"getObjPositionInParent","sort_order":"ascending","depth":1},"fieldMapping":{"getURL":{"field":"href","type":"link"},"title":{"field":"title","type":"string"},"description":{"field":"description","type":"textarea"},"image":{"field":"image","type":"image_link"}}}' />
+<block is="listing" headlineTag="h2" :querystring='{"query":[{"i":"path","o":"plone.app.querystring.operation.string.relativePath","v":".::1"},{"i":"exclude_from_nav","o":"plone.app.querystring.operation.boolean.isFalse","v":""}],"sort_on":"getObjPositionInParent","sort_order":"ascending","depth":1}' />
 
 ## Why Inka?
 

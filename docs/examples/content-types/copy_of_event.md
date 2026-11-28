@@ -35,33 +35,33 @@ sync_uid: null
 title: Another Event
 whole_day: true
 blocks-matched: |
-  <block type="slate" value="${p,h*,ul,ol,blockquote,strong,em,a/slate}" />
-  <block type="title" _="${h1}" />
+  <block is="slate" value="${p,h*,ul,ol,blockquote,strong,em,a/slate}" />
+  <block is="title" _="${h1}" />
 blocks-tagged: |
-  <block type="introduction" value="${p,h*/slate}" />
+  <block is="introduction" value="${p,h*/slate}" />
 ---
 
 <fields templateId="/inka-templates/event-view" templateInstanceId="tpl-ev-def">
 
-<block type="title">
+<block is="title">
 
 # Another Event
 
-<fields slotId="title" fixed=true readOnly=true />
+<fields slotId="title" :fixed="true" :readOnly="true" />
 
 </block>
 
-<fields readOnly=false>
+<fields :readOnly="false">
 
-<fields slotId="default" fixed=false>
+<fields slotId="default" :fixed="false">
 
-<block type="introduction">
+<block is="introduction">
 
 Wings fair wings doppio sit irish americano galão eu variety affogato.
 
 </block>
 
-<block type="slate">
+<block is="slate">
 
 </block>
 
@@ -69,9 +69,9 @@ Percolator and extraction press luwak press aroma foam eu panna spoon espresso i
 
 </fields>
 
-<block type="eventMetadata" slotId="event-metadata" fixed=true required=true />
+<block is="eventMetadata" slotId="event-metadata" :fixed="true" :required="true" />
 
-<block type="slate" slotId="default" fixed=false />
+<block is="slate" slotId="default" :fixed="false" />
 
 </fields>
 

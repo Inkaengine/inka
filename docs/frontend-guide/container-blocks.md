@@ -24,21 +24,21 @@ subjects:
   - frontend
 title: Container Blocks
 blocks-matched: |
-  <block type="slate" value="${p,h*,ul,ol,blockquote,strong,em,a/slate}" />
-  <block type="title" _="${h1}" />
-  <block type="separator" _="${hr}" styles={"align":"full"} />
-  <block type="codeExample">
+  <block is="slate" value="${p,h*,ul,ol,blockquote,strong,em,a/slate}" />
+  <block is="title" _="${h1}" />
+  <block is="separator" _="${hr}" :styles='{"align":"full"}' />
+  <block is="codeExample">
     <region name="tabs" widget="object_list" idField="@id" typeField="@type">
-      <block type="tab" label="${h3/text}" language="${pre/lang}" code="${pre/textarea}" />
+      <block is="tab" label="${h3/text}" language="${pre/lang}" code="${pre/textarea}" />
     </region>
   </block>
 blocks-tagged: |
-  <block type="slateTable">
+  <block is="slateTable">
     <region name="table.rows" idField="key">
-      <block type="row" _="${tr}">
+      <block is="row" _="${tr}">
         <region name="cells" idField="key" typeField="type">
-          <block type="header" value="${th/slate}" />
-          <block type="data" value="${td/slate}" />
+          <block is="header" value="${th/slate}" />
+          <block is="data" value="${td/slate}" />
         </region>
       </block>
     </region>
@@ -56,7 +56,7 @@ You declare regions in your `blockSchema` (or the page schema), and **you choose
 
 Both look and behave the same in the editor — selecting, dragging, nesting — and blocks can be dragged from one to the other; only the JSON storage differs.
 
-<block type="separator" />
+<block is="separator" />
 
 A container's own element needn't wrap its children, or exist at all: a heading of its own can sit beside them, and an accordion of one panel can be drawn as just that panel. See [A container's parts and its children needn't be nested](./visual-editing.md#a-containers-parts-and-its-children-neednt-be-nested).
 
@@ -368,7 +368,7 @@ This replaces `dataPath`: declare the container inside the object rather than ho
 
 A block's schema uses the same format as a [Volto block schema](https://6.docs.plone.org/volto/blocks/editcomponent.html), since Inka's editor builds on Volto (fieldsets, `properties`, widgets, `default`, etc.). Inka reads three container-oriented `widget` values plus a few per-field keys — those are:
 
-<block type="slateTable" table.fixed table.celled>
+<block is="slateTable" table.fixed table.celled>
 
 | `widget` | Storage | Key fields |
 | --- | --- | --- |

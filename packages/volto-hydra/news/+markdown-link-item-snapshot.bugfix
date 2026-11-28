@@ -1,0 +1,1 @@
+A text link read from Markdown gets back the snapshot the link editor keeps of the item it points at (`data.item`: a file's type and size), so a frontend still draws it, and the Markdown writes the link alone. @djay

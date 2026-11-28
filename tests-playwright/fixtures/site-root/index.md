@@ -19,24 +19,24 @@ subjects: []
 table_of_contents: null
 title: Inka
 blocks-matched: |
-  <block type="slate" value="${p,h*,ul,ol,blockquote,strong,em,a/slate}" />
-  <block type="separator" _="${hr}" styles={"align":"full"} />
-  <block type="image" description="${p?/textarea}" url="${img/src}" alt="${img?/alt}" title="${img?/title}" align="center" size="l" />
-  <block type="image" url="${img/src}" alt="${img?/alt}" title="${img?/title}" align="center" size="l" />
-  <block type="codeExample">
+  <block is="slate" value="${p,h*,ul,ol,blockquote,strong,em,a/slate}" />
+  <block is="separator" _="${hr}" :styles='{"align":"full"}' />
+  <block is="image" description="${p?/textarea}" url="${img/src}" alt="${img?/alt}" title="${img?/title}" align="center" size="l" />
+  <block is="image" url="${img/src}" alt="${img?/alt}" title="${img?/title}" align="center" size="l" />
+  <block is="codeExample">
     <region name="tabs" widget="object_list" idField="@id" typeField="@type">
-      <block type="tab" label="${h3/text}" language="${pre/lang}" code="${pre/textarea}" />
+      <block is="tab" label="${h3/text}" language="${pre/lang}" code="${pre/textarea}" />
     </region>
   </block>
 blocks-tagged: |
-  <block type="gridBlock" headline="${h/text}">
+  <block is="gridBlock" headline="${h/text}">
     <region name="items" widget="blocks_layout">
-      <block type="teaser" title="${h/text}" description="${p/textarea}" />
+      <block is="teaser" title="${h/text}" description="${p/textarea}" />
     </region>
   </block>
-  <block type="slider">
+  <block is="slider">
     <region name="slides" widget="object_list" idField="@id" typeField="@type">
-      <block type="slide" title="${h/text}" head_title="${strong?/text}" description="${p/textarea}" buttonText="${a/text}" href="${a/link}" preview_image="${img/link}" />
+      <block is="slide" title="${h/text}" head_title="${strong?/text}" description="${p/textarea}" buttonText="${a/text}" href="${a/link}" preview_image="${img/link}" />
     </region>
   </block>
 order:
@@ -52,7 +52,7 @@ blobs:
     exclude_from_nav: false
 ---
 
-<block type="slate">
+<block is="slate">
 
 # Design-system-first page building
 
@@ -60,7 +60,7 @@ blobs:
 
 Strike the right balance for your site. Make it easy for editors to create engagement — while staying compliant.
 
-<block type="slate">
+<block is="slate">
 
 [Try the demo](https://hydra.pretagov.com/login?return_url=/)  ·  [Source on GitHub](https://github.com/collective/volto-hydra)
 
@@ -72,9 +72,9 @@ Strike the right balance for your site. Make it easy for editors to create engag
 
 Compliance or engagement is a false choice. You decide where the dial sits for each site.
 
-<block type="image" align="center" size="l" url="/images/quadrant.svg/@@download/image/quadrant.svg" />
+<block is="image" align="center" size="l" url="/images/quadrant.svg/@@download/image/quadrant.svg" />
 
-<block type="gridBlock">
+<block is="gridBlock">
 
 **Visual Editing.** True WYSIWYG with drag-and-drop blocks. No special frontend framework required — just HTML attributes.
 
@@ -375,7 +375,7 @@ export const POST = async ({ request }) => {
 }
 ```
 
-<block type="slider" autoplayDelay=4000>
+<block is="slider" :autoplayDelay="4000">
 
 ## You can use this site to test Inka
 

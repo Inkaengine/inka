@@ -23,26 +23,26 @@ subjects:
   - templates
 title: Templates & Layouts
 blocks-matched: |
-  <block type="slate" value="${p,h*,ul,ol,blockquote,strong,em,a/slate}" />
-  <block type="title" _="${h1}" />
-  <block type="separator" _="${hr}" styles={"align":"full"} />
-  <block type="codeExample">
+  <block is="slate" value="${p,h*,ul,ol,blockquote,strong,em,a/slate}" />
+  <block is="title" _="${h1}" />
+  <block is="separator" _="${hr}" :styles='{"align":"full"}' />
+  <block is="codeExample">
     <region name="tabs" widget="object_list" idField="@id" typeField="@type">
-      <block type="tab" label="${h3/text}" language="${pre/lang}" code="${pre/textarea}" />
+      <block is="tab" label="${h3/text}" language="${pre/lang}" code="${pre/textarea}" />
     </region>
   </block>
 blocks-tagged: |
-  <block type="callout">
+  <block is="callout">
     <region name="items" widget="blocks_layout">
-      <block type="slate" value="${p,h*,ul,ol,blockquote,strong,em,a/slate}" />
+      <block is="slate" value="${p,h*,ul,ol,blockquote,strong,em,a/slate}" />
     </region>
   </block>
-  <block type="slateTable">
+  <block is="slateTable">
     <region name="table.rows" idField="key">
-      <block type="row" _="${tr}">
+      <block is="row" _="${tr}">
         <region name="cells" idField="key" typeField="type">
-          <block type="header" value="${th/slate}" />
-          <block type="data" value="${td/slate}" />
+          <block is="header" value="${th/slate}" />
+          <block is="data" value="${td/slate}" />
         </region>
       </block>
     </region>
@@ -53,7 +53,7 @@ blocks-tagged: |
 
 Templates allow editors to centrally control content and reuse content. They allow a developer to not have to hard code layout decisions and instead use rules to apply user layouts in template content stored separately from the page, or give the user a choice on which layout they want.
 
-<block type="separator" />
+<block is="separator" />
 
 ## Template Concepts
 
@@ -88,7 +88,7 @@ The slot a block lives in is identified by its `slotId`. This is the field name 
 }
 ```
 
-<block type="callout" variation="important">
+<block is="callout" variation="important">
 
 **Every block in a template must declare a `slotId`** — not just slot blocks, but **`fixed` and `fixed+readOnly` blocks too, and every block *nested* inside a container.** Locking a template (a new one from Make template included) refuses a template block that names no slot: the refusal opens the block, with the problem on its Slot ID. A page can't be saved with a template unlocked, so the page save, which writes the templates that changed, doesn't check slots again. The content check reports one too. The recursive merge keeps a nested block only when it has a `slotId` (or a `templateId`): `if (nested.slotId || nested.templateId)`. A block without one is **silently dropped** — the container survives but renders empty, with no error. This is the most common reason a template "half renders". The editor keeps this true for blocks an author places: an added, pasted or moved block, and everything nested in it, takes its slot from where it lands — one rule, described in [Template membership](../architecture.md#template-membership-edit-side-slot-assignment).
 
@@ -148,7 +148,7 @@ in either mode. The template's version stays the default for other pages (see Ho
 
 The two configurations below look similar but solve different problems. Pick by **who controls the structure** and **whether it repeats**:
 
-<block type="slateTable" table.fixed table.celled>
+<block is="slateTable" table.fixed table.celled>
 
 | You want… | Use | How it's applied |
 | --- | --- | --- |
@@ -239,9 +239,9 @@ Use `expandTemplates` (async) or `expandTemplatesSync` (sync with pre-fetched te
 - **\`expandTemplatesSync\`** — Use when templates are pre-fetched at page load. Better for Vue computed properties since it's synchronous.
 - **\`expandTemplates\`** — Use when you need to lazy-load templates on demand. Handles on-demand loading of forced layouts not in page data.
 
-<block type="callout" variation="important">
+<block is="callout" variation="important">
 
-**A forced layout (`allowedLayouts`) under `expandTemplatesSync` must be pre-loaded.** It isn't referenced from page data, so `loadTemplates` won't auto-scan it. The async `expandTemplates` fetches it on demand, but the **sync** `expandTemplatesSync` (recommended for SSR / Vue computed) needs it already in `templates` — pass its id explicitly: `loadTemplates(data, loadTemplate, cache, ['/templates/footer-layout'])`. Otherwise you'll hit `Template "…" not found in pre-loaded templates`. With the backend addon, also name it in `expand.templates.extra` so it arrives with the page (see "Fetching templates with the page" below).
+**A forced layout (`allowedLayouts`) under `expandTemplatesSync` must be pre-loaded.** It isn't referenced from page data, so `loadTemplates` won't auto-scan it. The async `expandTemplates` fetches it on demand, but the **sync** `expandTemplatesSync` (recommended for SSR / Vue computed) needs it already in `templates` — pass its id explicitly: `loadTemplates(data, loadTemplate, cache, ['/templates/footer-layout'])`. Otherwise you'll hit `Template "…" not found in pre-loaded templates`. To have it arrive with the page instead, see "Fetching forced layouts with the page" below.
 
 </block>
 
@@ -310,36 +310,9 @@ Options:
 - **\`loadTemplate(id)\`**: (async only) Function to fetch template content
 - **\`allowedLayouts\`**: Force a layout when container has no template applied
 
-## Fetching templates with the page
+## Fetching forced layouts with the page
 
-With the `inkaengine.inka` backend addon installed (`backend/` in the Inka repository), Plone returns every template a page needs in the same response as the page. Add `templates` to `expand`, and name any forced layouts in `expand.templates.extra`: they aren't referenced from the page, so the backend can't find them on its own. Then pass the whole response, `@components` included, to `loadTemplates`. It uses the templates that came back and only fetches what's missing.
-
-### Javascript
-
-```javascript
-const forcedLayouts = ['/inka-templates/site-footer'];
-
-const response = await fetch(
-    `${apiBase}/++api++${path}?expand=templates` +
-    `&expand.templates.extra=${encodeURIComponent(forcedLayouts.join(','))}`,
-    { headers: { Accept: 'application/json' } },
-);
-const pageData = await response.json();
-
-// Reads pageData['@components'].templates: no request per template.
-const { templates, errors } = await loadTemplates(
-    pageData, loadTemplate, {}, forcedLayouts,
-);
-```
-
-- **Name forced layouts in both places:** in `expand.templates.extra`, so the backend returns them, and as `loadTemplates`' fourth argument, so they're still fetched from a backend without the addon.
-- **Without the addon it still works.** Plone ignores `expand=templates`, and `loadTemplates` fetches each template one at a time, as before. It's slower, not broken.
-- **A template the backend couldn't return** (missing, or one the visitor isn't allowed to view) is listed in `errors` and isn't requested again.
-- **Only list the layouts your rules actually force in view mode.** Every template named in `extra` is included in every page response it's added to.
-
-## Forced layouts without the addon
-
-A site without the addon can still have its forced layouts come with the page, through [collective.restapi.searchexpansion](https://github.com/collective/collective.restapi.searchexpansion). It runs one `@search` in the page request and returns the results under `@components.search`. Forced layouts are what it's for: the frontend knows them before it asks for the page. `templateSearchParams(ids)` builds the search, and `loadTemplates` takes the templates from the results, matched by path.
+A Plone site can have its forced layouts come with the page, through [collective.restapi.searchexpansion](https://github.com/collective/collective.restapi.searchexpansion). It runs one `@search` in the page request and returns the results under `@components.search`. Forced layouts are what it's for: the frontend knows them before it asks for the page. `templateSearchParams(ids)` builds the search, and `loadTemplates` takes the templates from the results, matched by path.
 
 ### Javascript
 
@@ -364,8 +337,6 @@ A site that wants templates kept out of search gives them a type of their own, t
 
 - **Leaves the type out of site search.** Add it to the site's "types not searched", so any search made with the site's search settings (`use_site_search_settings`) skips templates. Build your sitemap from such a search and templates stay out of it too.
 - **Marks them noindex in its front end.** A template page can still be opened by its URL. Send `<meta name="robots" content="noindex">` for content of that type.
-
-**Deploying content** (`inkaengine.inka.content_deploy`) treats an item on its type's default view as having no view of its own, whatever the type. So an item whose type a site changes in place doesn't read as an editor's edit.
 
 ## How the Merge Works
 
@@ -396,7 +367,7 @@ A merge puts a template's blocks into a **target** document. Opening a page merg
 
 Applied in each direction, the rules give:
 
-<block type="slateTable" table.fixed table.celled>
+<block is="slateTable" table.fixed table.celled>
 
 | Block | Opening a page | Change on all pages |
 | --- | --- | --- |

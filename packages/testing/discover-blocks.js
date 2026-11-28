@@ -116,6 +116,15 @@ function holdsBlocksIn(blockData, field) {
 }
 
 /**
+ * A template's locked block, which an editor can't empty: the empty-region
+ * sweep passes over it. A block in a template's open slot carries the
+ * template's id but is the page's own, emptied like any other block.
+ */
+function isLockedExample(b) {
+  return !!(b.blockData?.readOnly || /\/templates\//.test(b.pagePath));
+}
+
+/**
  * A case for each region that some container fills and no kept example does.
  *
  * Discovery keeps a rich and a simple example per type, and the empty-region
@@ -128,8 +137,10 @@ function holdsBlocksIn(blockData, field) {
  */
 function regionHolderCases(kept, holders) {
   const added = [];
+  // Only an example the sweep can empty covers a region: a template's locked
+  // instance filling it is passed over there (buildEmptyRegionCases).
   const covered = (type, field) =>
-    [...kept, ...added].some((b) => b.blockType === type && holdsBlocksIn(b.blockData, field));
+    [...kept, ...added].some((b) => b.blockType === type && !isLockedExample(b) && holdsBlocksIn(b.blockData, field));
   for (const [key, example] of holders) {
     const [type, field] = key.split('|');
     if (covered(type, field)) continue;
@@ -149,18 +160,15 @@ function regionHolderCases(kept, holders) {
  * @returns {Array<{parentType: string, field: string, pagePath: string, blockId: string}>}
  */
 function buildEmptyRegionCases(blocksConfig, blocks) {
-  // Prefer an example an editor can empty: a template's locked blocks can't be,
-  // so the case would only be skipped. A block in a template's open slot carries
-  // the template's id but is the page's own, emptied like any other block.
-  const isLocked = (b) => !!(b.blockData?.readOnly || /\/templates\//.test(b.pagePath));
+  // Prefer an example an editor can empty (see isLockedExample).
   // A page holding template content at all, open slots included.
-  const isTemplated = (b) => !!(b.blockData?.templateId || isLocked(b));
+  const isTemplated = (b) => !!(b.blockData?.templateId || isLockedExample(b));
   // Then an example with blocks in THIS region: a container may draw only some
   // of its regions (a layout whose setting picks the left or the right
   // sidebar), and one that has content in a region draws it. Emptying a region
   // its example doesn't draw checks nothing but that setting.
   const holds = (b, field) => holdsBlocksIn(b.blockData, field);
-  const rank = (b, field) => (isLocked(b) ? 0 : 2) + (holds(b, field) ? 1 : 0);
+  const rank = (b, field) => (isLockedExample(b) ? 0 : 2) + (holds(b, field) ? 1 : 0);
   const cases = [];
   for (const { parentType, field } of regionFields(blocksConfig)) {
     let example;
@@ -1636,16 +1644,25 @@ async function discoverBlocks(
   const items = searchData.items || [];
   console.log(`[DISCOVER] Found ${items.length} content items`);
 
-  // Filter to page-like types that have blocks
-  const pageTypes = new Set(['Document', 'Folder', 'Plone Site', 'News Item', 'Event']);
-  const pages = items.filter(item => pageTypes.has(item['@type']));
+  // The pages: every item with blocks, whatever its type, as the catalog has
+  // it. The volto.blocks behavior marks its items with IBlocks (a schema-only
+  // behavior marks with what it provides), indexed as object_provides. A list
+  // of type names here skipped every type a site adds — Inka's Template, which
+  // holds a site's layouts, among them. The search above is still every item:
+  // the integrity pass registers the ones not scanned, so references resolve.
+  const pagesUrl = `${apiUrl}/@search?b_size=9999&object_provides=plone.restapi.behaviors.IBlocks`;
+  const pagesResp = await fetch(pagesUrl, { headers: { Accept: 'application/json' } });
+  if (!pagesResp.ok) {
+    throw new Error(`Failed to fetch ${pagesUrl}: ${pagesResp.status} ${pagesResp.statusText}`);
+  }
+  const pages = (await pagesResp.json()).items;
 
   // Always include site root (/) — @search typically excludes it
   const rootInResults = pages.some(p => new URL(p['@id']).pathname === '/');
   if (!rootInResults) {
     pages.unshift({ '@id': `${apiUrl}/`, '@type': 'Plone Site' });
   }
-  console.log(`[DISCOVER] ${pages.length} page-like items to scan`);
+  console.log(`[DISCOVER] ${pages.length} items with blocks to scan`);
 
   // Step 2: Fetch each page and extract blocks
   let fetched = 0;
