@@ -1,0 +1,1 @@
+CI cancels a branch's run when a newer push to that branch arrives (never on main, where each commit keeps its own run), and splits the two longest integration jobs: admin-mock in three, nuxt-admin in two.

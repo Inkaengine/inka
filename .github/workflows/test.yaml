@@ -3,6 +3,14 @@ name: Build and test
 on:
   push:
 
+# A newer push to the same branch makes a running run's result moot: cancel it,
+# so stale runs stop holding runners the new one is queueing for. Never on main,
+# where every commit's result is kept: there each commit is its own group, as a
+# shared group would also hold a second run pending and cancel a third.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref == 'refs/heads/main' && github.sha || github.ref }}
+  cancel-in-progress: true
+
 # The browser jobs run in a container, where a step's default shell is sh: bash
 # ranges like {1..30} would not expand, and a wait loop would try once.
 defaults:
@@ -495,8 +503,16 @@ jobs:
 
   # ── Admin integration tests (mock frontend) ─────────────────────────────
   test-admin-mock:
+    # Split in 3: one job was the run's longest by far. Safe to split: these
+    # projects hold no block sanity, whose coverage reporter needs every result
+    # in one run (bridge-unit, nuxt-bridge and nextjs-f7 stay whole for it).
+    name: test-admin-mock (${{ matrix.shard }}/3)
     needs: build
     runs-on: 'ubuntu-latest'
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3]
     timeout-minutes: 45
     # Playwright's own image: Node, git, the browsers for this Playwright
     # version and every system package they need, baked in. The jobs used to
@@ -576,7 +592,7 @@ jobs:
           done
           echo "All servers ready"
       - name: Run tests
-        run: pnpm exec playwright test --project=admin-mock
+        run: pnpm exec playwright test --project=admin-mock --shard=${{ matrix.shard }}/3
         env:
           CI: true
           NO_WEBSERVER: true
@@ -590,7 +606,7 @@ jobs:
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: playwright-report-admin-mock
+          name: playwright-report-admin-mock-${{ matrix.shard }}
           path: |
             playwright-report/
             test-results/**/*.png
@@ -602,7 +618,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: playwright-traces-admin-mock
+          name: playwright-traces-admin-mock-${{ matrix.shard }}
           path: test-results/**/trace.zip
           if-no-files-found: ignore
           retention-days: 7
@@ -856,8 +872,16 @@ jobs:
 
   # ── Nuxt integration tests (needs Volto) ────────────────────────────────
   test-nuxt-admin:
+    # Split in 2: one job was the run's longest by far. Safe to split: these
+    # projects hold no block sanity, whose coverage reporter needs every result
+    # in one run (bridge-unit, nuxt-bridge and nextjs-f7 stay whole for it).
+    name: test-nuxt-admin (${{ matrix.shard }}/2)
     needs: build
     runs-on: 'ubuntu-latest'
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2]
     timeout-minutes: 45
     # Playwright's own image: Node, git, the browsers for this Playwright
     # version and every system package they need, baked in. The jobs used to
@@ -945,7 +969,7 @@ jobs:
           done
           echo "All servers ready"
       - name: Run tests
-        run: pnpm exec playwright test --project=admin-nuxt --project=nuxt-specific
+        run: pnpm exec playwright test --project=admin-nuxt --project=nuxt-specific --shard=${{ matrix.shard }}/2
         env:
           CI: true
           NO_WEBSERVER: true
@@ -959,7 +983,7 @@ jobs:
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: playwright-report-nuxt-admin
+          name: playwright-report-nuxt-admin-${{ matrix.shard }}
           path: |
             playwright-report/
             test-results/**/*.png
@@ -971,7 +995,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: playwright-traces-nuxt-admin
+          name: playwright-traces-nuxt-admin-${{ matrix.shard }}
           path: test-results/**/trace.zip
           if-no-files-found: ignore
           retention-days: 7
