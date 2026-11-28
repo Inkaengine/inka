@@ -1,0 +1,1 @@
+Loading a Markdown tree gives a block no default for a field that its other defaults hide. A columns block's gap is hidden at an equal layout, and `layout` defaults to equal, but the gap got its default anyway, so a block loaded from Markdown was exported with `:gap="false"`.

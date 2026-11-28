@@ -239,6 +239,26 @@ describe('a markdown export leaves out a value its schema declares as the defaul
     assert.deepEqual(out.blocks.t, { '@type': 'table', caption: 'Rates' });
   });
 
+  // A field rule can hide a field once another field has its default: a
+  // columns block's gap is hidden at an equal layout, and `layout` defaults to
+  // equal. Filled from the schema the block had before its defaults, the gap
+  // got its default anyway, and the export then found no field to leave it
+  // out by, so a block loaded from Markdown came back with `:gap="false"`.
+  it("gives a field no default that the block's other defaults hide", () => {
+    const config = {
+      columns: {
+        blockSchema: {
+          fieldsets: [{ id: 'default', title: 'Default', fields: ['layout', 'gap'] }],
+          properties: { layout: { type: 'string', default: 'equal' }, gap: { type: 'boolean', default: false } },
+        },
+        schemaEnhancer: { fieldRules: { gap: [{ when: { layout: 'equal' }, set: false }] } },
+      },
+    };
+    const filled = withSchemaDefaults(page({ c: { '@type': 'columns' }, w: { '@type': 'columns', layout: 'wide-left' } }), config);
+    assert.deepEqual(filled.blocks.c, { '@type': 'columns', layout: 'equal' });
+    assert.deepEqual(filled.blocks.w, { '@type': 'columns', layout: 'wide-left', gap: false });
+  });
+
   it("drops a list item's default without giving the item anything else", () => {
     // A form's fields are typed by `field_type`, not `@type`; reading one as a
     // block shows it a type, which must not be written back into the content.

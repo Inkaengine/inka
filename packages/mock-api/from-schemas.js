@@ -342,18 +342,43 @@ export function statedDefaults(protos) {
 }
 
 /** The page with each absent field its schema declares a default for set to
- *  it, as the editor saves it. Only ABSENT: a stored null stays null. */
+ *  it, as the editor saves it. Only ABSENT: a stored null stays null.
+ *
+ *  A block's schema can depend on its values (a field rule hides a columns
+ *  block's gap at an equal layout), and so on the defaults just filled
+ *  (`layout` defaults to equal). So the schema is worked out again on the
+ *  filled block, a default it no longer offers is taken back, and that is
+ *  repeated until nothing changes. */
+const DEFAULTS_SETTLE = 10;
 export function withSchemaDefaults(page, blocksConfig) {
-  return eachBlockWithSchema(page, blocksConfig, (block, schema) => {
-    let out = block;
-    for (const [field, def] of fixedDefaults(schema)) {
-      if (!(field in out)) {
-        if (out === block) out = { ...block };
-        out[field] = structuredClone(def.default);
+  const filled = new Set(); // `${path}|${field}`: a value this put there
+  let out = page;
+  for (let pass = 0; pass < DEFAULTS_SETTLE; pass++) {
+    let changed = false;
+    out = eachBlockWithSchema(out, blocksConfig, (block, schema, type, path) => {
+      const defaults = new Map(fixedDefaults(schema));
+      let next = block;
+      for (const [field, def] of defaults) {
+        if (!(field in next)) {
+          if (next === block) next = { ...block };
+          next[field] = structuredClone(def.default);
+          filled.add(`${path}|${field}`);
+          changed = true;
+        }
       }
-    }
-    return out;
-  });
+      for (const field of Object.keys(next)) {
+        if (filled.has(`${path}|${field}`) && !defaults.has(field)) {
+          if (next === block) next = { ...block };
+          delete next[field];
+          filled.delete(`${path}|${field}`);
+          changed = true;
+        }
+      }
+      return next;
+    });
+    if (!changed) return out;
+  }
+  throw new Error(`the schema defaults did not settle in ${DEFAULTS_SETTLE} passes: a field rule that hides a field depends on that field's own default`);
 }
 
 /**
