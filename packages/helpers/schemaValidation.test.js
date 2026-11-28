@@ -240,3 +240,28 @@ describe("the heading block's level", () => {
     expect(block.tag).toBe('h2');
   });
 });
+
+describe("isValidValue — a choice field's own default", () => {
+  // "Nothing chosen" declared as the default: the editor gives a new block this
+  // value, and puts it back on load, so it can't be a value the editor can't
+  // produce. (A section's spacing: `default: ""`, drawn as Full.)
+  const spacing = {
+    type: 'string',
+    factory: 'Choice',
+    default: '',
+    choices: [['full', 'Full'], ['half', 'Half']],
+  };
+
+  test('is a valid value though no choice holds it', () => {
+    expect(isValidValue('', spacing)).toBe(true);
+  });
+
+  test('is kept on load, not emptied and filled again', () => {
+    const block = { '@type': 'section', spacing: '' };
+    expect(applySchemaDefaultsToBlock(block, { properties: { spacing } })).toBe(block);
+  });
+
+  test('makes no other value valid', () => {
+    expect(isValidValue('double', spacing)).toBe(false);
+  });
+});

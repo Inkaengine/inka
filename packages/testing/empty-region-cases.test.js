@@ -125,4 +125,20 @@ describe('a container example for every region some content fills', () => {
     const holders = new Map([['layout|rightSidebar', layout('other', { rightSidebar: ['x'] })]]);
     expect(regionHolderCases(kept, holders)).toEqual([]);
   });
+
+  test("a template's locked example filling it doesn't count: an editor can't empty it", () => {
+    // A layout definition's own instance can be the simpler example, and it
+    // fills the right sidebar; the sweep passes over it as locked, so without
+    // the editable one it emptied the right sidebar of a left-sidebar example.
+    const locked = {
+      blockType: 'layout', pagePath: '/templates/article', blockId: 'in-template',
+      blockData: { readOnly: true, blocks_layout: { rightSidebar: ['aside'] } },
+    };
+    const kept = [layout('left-one', { leftSidebar: ['nav'] }), locked];
+    const holders = new Map([['layout|rightSidebar', layout('right-one', { rightSidebar: ['aside'] })]]);
+    const added = regionHolderCases(kept, holders);
+    expect(added).toMatchObject([{ blockId: 'right-one', kind: 'holds:rightSidebar' }]);
+    const right = buildEmptyRegionCases(layoutConfig, [...kept, ...added]).find((c) => c.field === 'rightSidebar');
+    expect(right).toMatchObject({ blockId: 'right-one' });
+  });
 });

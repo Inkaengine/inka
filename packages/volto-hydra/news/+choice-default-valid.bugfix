@@ -1,0 +1,1 @@
+A choice field's own default is a valid value. A field declaring "nothing chosen" as `default: ""`, which none of its choices holds, was emptied on every load and filled again, and block sanity reported it as a value the editor can't produce.
