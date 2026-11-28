@@ -653,6 +653,12 @@ export function defineBlockSanityTests(options: SanityOptions): void {
       const fields = drainFieldCoverage();
       const styles = drainStyleCoverage();
       const imageSizes = drainImageSizeCoverage();
+      // A skipped test measured nothing, so it attaches nothing. The spec is
+      // collected by every project that shares its directory, and in one
+      // outside `projects` every case skips: had they attached their empty
+      // measurement, the reporter would take a run of those projects alone for
+      // a block-sanity run that saw no styles, and fail it.
+      if (testInfo.status === 'skipped') return;
       await testInfo.attach('coverage', {
         body: JSON.stringify({ fields, styles, imageSizes }),
         contentType: 'application/json',
