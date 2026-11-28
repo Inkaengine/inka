@@ -67,6 +67,13 @@ export interface SanityOptions extends ContractScope {
   mockParentUrl?: string;
   /** Pages (by path prefix) block-sanity's axe pass skips. */
   axeSkipPages?: string[];
+  /**
+   * Links the site's pages carry on purpose that a visitor can't open: a
+   * published page in a private folder links its breadcrumb to the folder,
+   * which answers 401. URL path globs; a glob names that path only, `/**` takes
+   * in what is under it. Default: DEAD_LINK_EXEMPT (for a one-off run).
+   */
+  exemptLinks?: string[];
 }
 
 /** Where a sanity test loads things from. Read inside a test, so ports resolve at run time. */
@@ -1041,7 +1048,7 @@ function defineListingContainerTests(
  * `document.querySelectorAll`.
  */
 function definePageIntegrityTests(
-  options: Pick<SanityOptions, 'discoveryDir' | 'frontends' | 'apiUrl' | 'mockParentUrl'>,
+  options: Pick<SanityOptions, 'discoveryDir' | 'frontends' | 'apiUrl' | 'mockParentUrl' | 'exemptLinks'>,
 ): void {
   const where = addresses(options);
   const test = playwrightTest;
@@ -1076,7 +1083,7 @@ function definePageIntegrityTests(
 
         await page.goto(`${frontendUrl}${pagePath}`, { timeout: 20000 });
         await page.waitForLoadState('networkidle', { timeout: 10000 }).catch(() => {});
-        await verifyPageIntegrity(page, { apiUrl: where.api() });
+        await verifyPageIntegrity(page, { apiUrl: where.api(), exemptLinks: options.exemptLinks });
       });
     }
   });
