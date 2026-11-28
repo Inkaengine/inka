@@ -29,44 +29,44 @@ subjects:
   - navigation
 title: Table of Contents
 blocks-matched: |
-  <block type="slate" value="${p,h*,ul,ol,blockquote,strong,em,a/slate}" />
-  <block type="title" _="${h1}" />
-  <block type="separator" _="${hr}" styles={"align":"full"} />
-  <block type="image" description="${p?/textarea}" url="${img/src}" alt="${img?/alt}" title="${img?/title}" align="center" size="l" />
-  <block type="codeExample">
+  <block is="slate" value="${p,h*,ul,ol,blockquote,strong,em,a/slate}" />
+  <block is="title" _="${h1}" />
+  <block is="separator" _="${hr}" :styles='{"align":"full"}' />
+  <block is="image" description="${p?/textarea}" url="${img/src}" alt="${img?/alt}" title="${img?/title}" align="center" size="l" />
+  <block is="codeExample">
     <region name="tabs" widget="object_list" idField="@id" typeField="@type">
-      <block type="tab" label="${h3/text}" language="${pre/lang}" code="${pre/textarea}" />
+      <block is="tab" label="${h3/text}" language="${pre/lang}" code="${pre/textarea}" />
     </region>
   </block>
 blocks-tagged: |
-  <block type="introduction" value="${p,h*/slate}" />
+  <block is="introduction" value="${p,h*/slate}" />
 ---
 
 # Table of Contents
 
 Renders a table of contents generated from heading blocks on the current page. It scans sibling blocks for headings and builds a navigation list.
 
-<block type="image">
+<block is="image">
 
 ![The toc example block being edited in Inka](../images/toc-edit.png)
 
 </block>
 
-<block type="toc" title="Inhaltsverzeichnis" variation="default" />
+<block is="toc" title="Inhaltsverzeichnis" variation="default" />
 
 ---
 
-<block type="image">
+<block is="image">
 
 Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincidunt.
 
 ![](./content-types/image-dark "Title Image")
 
-<fields align="wide" copyright_and_sources="Copyright: unsplash.com" styles:size:noprefix="large" />
+<fields align="wide" copyright_and_sources="Copyright: unsplash.com" :styles='{"size:noprefix":"large"}' />
 
 </block>
 
-<block type="introduction">
+<block is="introduction">
 
 Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincidunt ut laoreet dolore magna aliquam erat volutpat. Ut wisi enim ad minim veniam, quis nostrud exerci tation ullamcorper suscipit lobortis nisl ut aliquip ex ea commodo consequat.&#x20;
 
@@ -102,17 +102,17 @@ Text can be **bold** or *italic*.
 
 [Link external](https://www.google.com/)
 
-<block type="separator">
+<block is="separator">
 
 ---
 
-<fields styles:align="left" />
+<fields :styles='{"align":"left"}' />
 
 </block>
 
-<fields templateId="/inka-templates/block-reference-layout" templateInstanceId="tpl-inst-toc" fixed=false readOnly=false>
+<fields templateId="/inka-templates/block-reference-layout" templateInstanceId="tpl-inst-toc" :fixed="false" :readOnly="false">
 
-<block type="codeExample" slotId="schema">
+<block is="codeExample" slotId="schema">
 
 ### Schema
 
@@ -122,7 +122,7 @@ Text can be **bold** or *italic*.
 
 </block>
 
-<block type="codeExample" slotId="json-data">
+<block is="codeExample" slotId="json-data">
 
 ### JSON
 
@@ -133,7 +133,7 @@ Text can be **bold** or *italic*.
 
 </block>
 
-<block type="codeExample" slotId="rendering">
+<block is="codeExample" slotId="rendering">
 
 ### React
 

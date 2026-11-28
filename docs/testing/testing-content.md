@@ -23,11 +23,11 @@ subjects:
   - testing
 title: Previewing and Testing Content
 blocks-matched: |
-  <block type="slate" value="${p,h*,ul,ol,blockquote,strong,em,a/slate}" />
-  <block type="title" _="${h1}" />
-  <block type="codeExample">
+  <block is="slate" value="${p,h*,ul,ol,blockquote,strong,em,a/slate}" />
+  <block is="title" _="${h1}" />
+  <block is="codeExample">
     <region name="tabs" widget="object_list" idField="@id" typeField="@type">
-      <block type="tab" label="${h3/text}" language="${pre/lang}" code="${pre/textarea}" />
+      <block is="tab" label="${h3/text}" language="${pre/lang}" code="${pre/textarea}" />
     </region>
   </block>
 ---
@@ -47,6 +47,8 @@ These commands run from a checkout of the Inka repository, where the mock API se
 - **`/`** — the demo site root.
 
 The mock API itself has no default content: `CONTENT_MOUNTS` is required, in the environment or in a `mock-api.env` file in the directory it's started from (paths relative to that directory; the environment wins). To serve your own content, set it, for example `CONTENT_MOUNTS=/:/path/to/your/content`, or commit a `mock-api.env` of your own.
+
+Mounts at the same path are layers, for a site built on a starter, say: `CONTENT_MOUNTS=/:site,/:starter`. Where both hold a page, the mount listed first serves it, whatever either's format, and the other's page there is not served at all. A folder lists the pages of every layer, and `@export` takes each page from the layer that serves it, so it writes the combined site.
 
 Before it starts, the mock checks the content it will serve, and refuses to start on content with a broken link, a list item without an id, and the like. To have your blocks checked against their schemas too (each field's value against its widget, and every field against what the block declares), set `CONTENT_SCHEMAS` to the file your frontend keeps its block schemas in: a JavaScript module (its default export, plain data your config also imports, so a field set shared by several blocks is written once) or a JSON file, shaped `{ "blockType": { "blockSchema": …, "schemaEnhancer": … } }`. The same schemas are used for every mount, for a code example that shows a block's schema, and to check what `@export` writes. Without it, the content gets only the structural checks. A `CONTENT_SCHEMAS` in `mock-api.env` is only used together with that file's `CONTENT_MOUNTS`: when the environment sets `CONTENT_MOUNTS`, the file is not read at all. `inka-mock-api --check` runs the same check without starting a server.
 

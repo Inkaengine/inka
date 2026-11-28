@@ -1,0 +1,1 @@
+Tests: block discovery scans every item that has blocks, whatever its type. It scanned a fixed list of types, so a site's own types were never looked at: the layouts in Inka's Template items gave no examples, and a block only a layout carries read as having none. It now asks the catalog, `@search?object_provides=plone.restapi.behaviors.IBlocks`, which the mock API answers too.

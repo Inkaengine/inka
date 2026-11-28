@@ -36,7 +36,34 @@ export function htmlRichtext(html) {
 // Grid tables (`+---+` row separators) carry cells whose content is blocks (a
 // list, several paragraphs) -- what a GFM cell, one line of inline content,
 // cannot. They are read into the same table shape a GFM table is.
-export const mdParser = unified().use(remarkParse).use(remarkGfm).use(remarkDefinitionList).use(remarkGridTables);
+const gfmParser = unified().use(remarkParse).use(remarkGfm).use(remarkDefinitionList).use(remarkGridTables);
+
+/**
+ * GFM turns a bare `www.` domain or URL in text into a link (an "autolink
+ * literal"), both while parsing and in a find-and-replace over the finished
+ * text, which catches even an escaped one. Text naming a site ("www.nsw.gov.au")
+ * is text, and the writer writes every real link explicitly, as `[text](url)` or
+ * `<url>`; so a bare one goes back to being its text. It is told apart by its
+ * source: the find-and-replace's links have none, and the parser's are exactly
+ * their visible text, where a written link's source has its brackets.
+ */
+function withoutLiteralAutolinks(node, source) {
+  if (!node.children) return node;
+  node.children = node.children.map((child) => {
+    if (child.type !== 'link') return withoutLiteralAutolinks(child, source);
+    const text = child.children.map((c) => c.value ?? '').join('');
+    const { start, end } = child.position ?? {};
+    const bare = !child.position || source.slice(start.offset, end.offset) === text;
+    return bare ? { type: 'text', value: text } : withoutLiteralAutolinks(child, source);
+  });
+  return node;
+}
+
+/** The Markdown reader: GFM, definition lists and grid tables, with bare
+ *  addresses left as text. */
+export const mdParser = {
+  parse: (markdown) => withoutLiteralAutolinks(gfmParser.parse(markdown), String(markdown)),
+};
 /**
  * mdast-util-to-markdown escapes EVERY `_` in phrasing content, because one can
  * open emphasis. In CommonMark one cannot when it sits between two word
@@ -114,8 +141,90 @@ function applyStyleMarks(node, marks) {
  */
 export const isBrTag = (html) => /^<br\s*\/?>$/i.test((html || '').trim());
 
+/**
+ * An inline element Markdown has no syntax for (`<sup>`, `<sub>`) arrives as
+ * separate open and close `html` nodes around its content; gather each balanced
+ * pair into one element node. `<mark>` (a style mark) and `<br>` keep their own
+ * readings, and a tag with no matching close is left as it is.
+ */
+const ELEMENT_OPEN = /^<([a-z][a-z0-9]*)>$/;
+const elementOpen = (n) => {
+  const m = n.type === 'html' && ELEMENT_OPEN.exec((n.value || '').trim());
+  return m && m[1] !== 'mark' && m[1] !== 'br' ? m[1] : null;
+};
+const isElementClose = (n, tag) => n.type === 'html' && (n.value || '').trim() === `</${tag}>`;
+
+function groupElements(nodes) {
+  const out = [];
+  for (let i = 0; i < nodes.length; i++) {
+    const tag = elementOpen(nodes[i]);
+    if (!tag) { out.push(nodes[i]); continue; }
+    let depth = 1;
+    let j = i + 1;
+    for (; j < nodes.length; j++) {
+      if (elementOpen(nodes[j]) === tag) depth += 1;
+      else if (isElementClose(nodes[j], tag) && --depth === 0) break;
+    }
+    if (j >= nodes.length) { out.push(nodes[i]); continue; }
+    out.push({ type: 'inlineElement', tag, children: groupElements(nodes.slice(i + 1, j)) });
+    i = j;
+  }
+  return out;
+}
+
+/**
+ * A value with every list holding only list items and sub-lists: volto-slate's
+ * own list rule, which its editor applies (Inka's fixed normalizeNode). Content
+ * saved before that may hold a block directly in a list; it is lifted out as
+ * the editor would: the list split there and the block after it. An empty
+ * paragraph lifted out renders nothing and has no Markdown, so it goes.
+ */
+const LIST_CHILD = new Set(['li', 'ul', 'ol']);
+const isEmptyParagraph = (n) => n?.type === 'p' && (n.children ?? []).every((c) => c.text === '' && Object.keys(c).length === 1);
+
+export function withListsOfItems(value) {
+  if (!Array.isArray(value)) return value;
+  return value.flatMap((node) => {
+    if (!node || typeof node !== 'object' || !Array.isArray(node.children)) return [node];
+    const children = withListsOfItems(node.children);
+    if (node.type !== 'ul' && node.type !== 'ol') return [{ ...node, children }];
+    const out = [];
+    let run = [];
+    const flush = () => { if (run.length) out.push({ ...node, children: run }); run = []; };
+    for (const child of children) {
+      if (LIST_CHILD.has(child?.type)) { run.push(child); continue; }
+      flush();
+      if (!isEmptyParagraph(child)) out.push(child);
+    }
+    flush();
+    return out;
+  });
+}
+
+/**
+ * A value without the snapshots its text links keep of what they point at.
+ *
+ * The link editor stores the picked item's catalog metadata beside a link's
+ * address (`data.item`), and Markdown writes the link alone: loading it puts the
+ * snapshot back from the item (the mock API's resolveLinkSummaries). So the
+ * snapshot is derived, as a Text block's plaintext is, and neither written nor
+ * counted as lost.
+ */
+export function withoutLinkSnapshots(value) {
+  if (Array.isArray(value)) return value.map(withoutLinkSnapshots);
+  if (!value || typeof value !== 'object') return value;
+  const out = {};
+  for (const [key, child] of Object.entries(value)) out[key] = withoutLinkSnapshots(child);
+  if (value.type === 'link' && out.data && typeof out.data === 'object' && 'item' in out.data) {
+    const { item: _item, ...data } = out.data;
+    out.data = data;
+  }
+  return out;
+}
+
 /** mdast inline nodes -> slate children. */
 export function inlineToSlate(nodes) {
+  nodes = groupElements(nodes || []);
   const out = [];
   // Active inline marks from `<mark name="X">` … `</mark>` (a balanced stack).
   const marks = [];
@@ -172,6 +281,9 @@ export function inlineToSlate(nodes) {
       case 'break':
         pushBreak();
         break;
+      case 'inlineElement':
+        out.push(stamp({ type: n.tag, children: inlineToSlate(n.children) }));
+        break;
       default:
         if (n.children) out.push(...inlineToSlate(n.children).map(stamp));
         else if (n.value != null) out.push(stamp({ text: String(n.value) }));
@@ -192,19 +304,30 @@ export function inlineToSlate(nodes) {
 }
 
 function listToSlate(node) {
-  const items = (node.children || []).map((li) => {
+  const items = [];
+  for (const li of node.children || []) {
+    // Sub-lists that END an item are Volto's: its editor indents an item by
+    // making the sub-list a sibling inside the parent list (volto-slate's
+    // indentListItems). One with more of the item after it stays inside, the
+    // only shape that can hold that.
+    const all = li.children || [];
+    let end = all.length;
+    while (end > 0 && all[end - 1].type === 'list') end -= 1;
+    const own = all.slice(0, end);
     // A list item's children are usually a single paragraph, stored as its
     // inline text. A paragraph straight after another one stays a paragraph
     // (the writer's `p` child, listItemChildren): read as text too, it would
     // join the one before into a single run, and the break between them, and
     // the space, would be lost.
-    const kids = (li.children || []).flatMap((c, i, all) => {
+    const kids = own.flatMap((c, i) => {
       if (c.type !== 'paragraph') return blockToSlate(c);
-      if (all[i - 1]?.type === 'paragraph') return blockToSlate(c);
+      if (own[i - 1]?.type === 'paragraph') return blockToSlate(c);
       return inlineToSlate(c.children);
     });
-    return { type: 'li', children: kids.length ? kids : [{ text: '' }] };
-  });
+    // An item that is only a sub-list is a sub-list with no item above it.
+    if (kids.length || end === all.length) items.push({ type: 'li', children: kids.length ? kids : [{ text: '' }] });
+    for (const sub of all.slice(end)) items.push(listToSlate(sub));
+  }
   return { type: node.ordered ? 'ol' : 'ul', children: items };
 }
 
@@ -314,7 +437,14 @@ function slateInlineToMdast(nodes) {
         out.push({ type: 'link', url: n.data?.url ?? n.url ?? '',
                    children: slateInlineToMdast(n.children) }); break;
       default:
-        out.push(...slateInlineToMdast(n.children));
+        // An element Markdown has no syntax for (sup, sub) is its HTML tag,
+        // which inline Markdown allows; one carrying more than its type and
+        // children can't be written so, and fails its round trip instead.
+        if (/^[a-z][a-z0-9]*$/.test(n.type || '') && Object.keys(n).every((k) => k === 'type' || k === 'children')) {
+          out.push({ type: 'html', value: `<${n.type}>` }, ...slateInlineToMdast(n.children), { type: 'html', value: `</${n.type}>` });
+        } else {
+          out.push(...slateInlineToMdast(n.children));
+        }
     }
   }
   return out;
@@ -359,19 +489,28 @@ export function slateBlockToMdast(n, shift = 0) {
              children: slateInlineToMdast(n.children) };
   }
   if (t === 'ul' || t === 'ol') {
-    return {
-      type: 'list', ordered: t === 'ol', spread: false,
-      children: (n.children || []).map((li) => {
-        const children = listItemChildren(li.children || [], shift);
-        // Blank lines between an item's parts are needed only for a paragraph
-        // that FOLLOWS a block child: written tight, it would be read back as a
-        // lazy continuation of the sub-list's last item instead of its own
-        // paragraph. An item that is a paragraph followed by sub-lists stays
-        // tight, which is how such items are written throughout the docs.
-        const spread = children.some((c, i) => i > 0 && c.type === 'paragraph');
-        return { type: 'listItem', spread, children };
-      }),
-    };
+    const items = [];
+    for (const child of n.children || []) {
+      // Volto's sub-list sits beside its item in the parent list; Markdown
+      // writes it indented under that item (and under an item of its own when
+      // nothing comes before it).
+      if (child.type === 'ul' || child.type === 'ol') {
+        const sub = slateBlockToMdast(child, shift);
+        const prev = items[items.length - 1];
+        if (prev) prev.children.push(sub);
+        else items.push({ type: 'listItem', spread: false, children: [sub] });
+        continue;
+      }
+      const children = listItemChildren(child.children || [], shift);
+      // Blank lines between an item's parts are needed only for a paragraph
+      // that FOLLOWS a block child: written tight, it would be read back as a
+      // lazy continuation of the sub-list's last item instead of its own
+      // paragraph. An item that is a paragraph followed by sub-lists stays
+      // tight, which is how such items are written throughout the docs.
+      const spread = children.some((c, i) => i > 0 && c.type === 'paragraph');
+      items.push({ type: 'listItem', spread, children });
+    }
+    return { type: 'list', ordered: t === 'ol', spread: false, children: items };
   }
   if (t === 'blockquote') {
     // Slate stores a blockquote's text as INLINE children directly; markdown
@@ -445,38 +584,43 @@ export function tagOf(line) {
 /**
  * Block fields -> HTML attributes.
  *
- * A string becomes an ordinary attribute; anything that is not a string goes
- * into one `data` attribute as JSON. HTML attribute values are string-typed,
- * so `collapsed="false"` could not say whether it meant the boolean or the
- * word -- putting non-strings in JSON removes the question rather than
- * inventing a convention to answer it.
+ * A string becomes an ordinary attribute; anything else is a bound one,
+ * `:name` holding JSON (boundAttr). HTML attribute values are string-typed, so
+ * `collapsed="false"` could not say whether it meant the boolean or the word;
+ * Vue's binding prefix answers that the way its users already read it.
  *
  * Attribute NAMES must be legal HTML. `@type` is not: GitHub escapes the whole
  * tag and renders it as visible text, where an unknown-but-legal tag is
  * stripped cleanly. So `@type` travels as `type` on the tag and stays `@type`
  * inside the JSON.
  */
-// A dict field encodes generically as one `field:key=value` attribute per entry
-// — split on the FIRST colon at decode, so a key that itself contains a colon
-// (`size:noprefix`) rides in the key. Values are typed exactly like any other
-// attribute (quoted string, or bare number/boolean/null). Only a FLAT dict of
-// attr-safe scalar entries can flatten; a nested/array value returns null and
-// the block tier-3s to data-json instead.
-const ATTR_SAFE = /^[\w@.$:-]+$/;
 /** A string a double-quoted attribute can hold: no `"` to end it early, no
  *  newline to break the tag. Length doesn't matter — a long value is no easier
  *  to read as JSON. */
 export const cleanAttrStr = (v) => typeof v === 'string' && !v.includes('"') && !v.includes('\n');
-const scalarAttrValue = (v) => cleanAttrStr(v) || typeof v === 'number' || typeof v === 'boolean' || v === null;
+
+/** A small object of plain values: a block's styles, which a `<fields>` wrapper
+ *  may hoist like any short attribute (a link list or a slate value it can't). */
 export function isFlatDict(v) {
   return !!v && typeof v === 'object' && !Array.isArray(v)
     && Object.keys(v).length > 0
-    && Object.entries(v).every(([k, x]) => ATTR_SAFE.test(`${k}`) && scalarAttrValue(x));
+    && Object.values(v).every((x) => cleanAttrStr(x) || typeof x === 'number' || typeof x === 'boolean' || x === null);
 }
-export function flatDictAttrs(field, obj) {
-  if (!ATTR_SAFE.test(field) || !isFlatDict(obj)) return null;
-  return Object.entries(obj).map(([k, v]) =>
-    cleanAttrStr(v) ? `${field}:${k}="${v}"` : `${field}:${k}=${v}`);
+
+/**
+ * One field as an attribute. As in Vue, `name="…"` is always text and
+ * `:name="…"` is always data: its value is JSON. Markdown decodes without
+ * schemas, so the syntax alone says a value is a number, a list or an object,
+ * and it says so per field — one list no longer sends its block to data-json.
+ * JSON holding `"` is single-quoted, with `&` and `'` escaped (`&` first, or
+ * the escapes escape each other).
+ */
+export function boundAttr(name, value) {
+  if (cleanAttrStr(value)) return `${name}="${value}"`;
+  const json = JSON.stringify(value);
+  return json.includes('"')
+    ? `:${name}='${json.replace(/&/g, '&amp;').replace(/'/g, '&#39;')}'`
+    : `:${name}="${json}"`;
 }
 
 /** A name CommonMark reads as an attribute. A tag with any other (`@id`) is not
@@ -487,21 +631,12 @@ export function fmtTagAttrs(fields) {
   const attrs = [], data = {};
   for (const [k, v] of Object.entries(fields)) {
     if (v === undefined) continue;          // an absent field is not an empty one
-    if (!attrName(k)) {
-      data[k] = v;
-    } else if (cleanAttrStr(v)) {
-      attrs.push(`${k}="${v}"`);
-    } else if (typeof v === 'boolean' || (typeof v === 'number' && Number.isFinite(v))) {
-      attrs.push(`${k}=${v}`);              // unquoted -> read back as JSON (fixed=false, n=3)
-    } else if (isFlatDict(v)) {
-      attrs.push(...flatDictAttrs(k, v));   // a dict field -> `field:key=value` attrs
-    } else data[k] = v;
+    if (attrName(k)) attrs.push(boundAttr(k, v));
+    else data[k] = v;                       // a name no attribute can have (`@id`)
   }
   if (Object.keys(data).length) {
-    // The attribute is single-quoted so the JSON's own double quotes need no
-    // escaping; an apostrophe inside the data would otherwise close it early
-    // (one slateTable's text contains "editor's" and truncated the whole
-    // block). `&` first, or the escapes escape each other.
+    // Single-quoted so the JSON's own double quotes need no escaping; an
+    // apostrophe inside would otherwise close it early.
     const json = JSON.stringify(data).replace(/&/g, '&amp;').replace(/'/g, '&#39;');
     attrs.push(`data-json='${json}'`);
   }

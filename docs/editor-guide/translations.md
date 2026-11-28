@@ -22,9 +22,9 @@ rights: ""
 subjects: []
 title: Translations
 blocks-matched: |
-  <block type="slate" value="${p,h*,ul,ol,blockquote,strong,em,a/slate}" />
-  <block type="title" _="${h1}" />
-  <block type="image" description="${p?/textarea}" url="${img/src}" alt="${img?/alt}" title="${img?/title}" align="center" size="l" />
+  <block is="slate" value="${p,h*,ul,ol,blockquote,strong,em,a/slate}" />
+  <block is="title" _="${h1}" />
+  <block is="image" description="${p?/textarea}" url="${img/src}" alt="${img?/alt}" title="${img?/title}" align="center" size="l" />
 ---
 
 # Translations
@@ -37,7 +37,7 @@ Each language is a tree of its own: the site has a folder per language (for exam
 
 Open **Manage translations** from the toolbar's **More** menu. It lists every language the site has, and for each one either the translation of this page or a way to make one.
 
-<block type="image">
+<block is="image">
 
 ![Manage translations for an English page with no German translation yet. The table lists each language; the Deutsch row offers a link to translate the page, and a Link button to pick an existing page.](../images/translations-manage.png)
 
@@ -58,7 +58,7 @@ Some fields are the same in every language — the page's tags, for example. The
 
 While editing a page that has a translation, the editor offers a button for each of the page's other languages. Choose one and it opens beside the page you are editing, drawn by the same frontend, so you can translate while reading the original.
 
-<block type="image">
+<block is="image">
 
 ![A new German translation being edited, with its English original open beside it. A teaser is selected in the German page, and the same teaser is shown in the English pane.](../images/translations-side-by-side.png)
 
@@ -81,7 +81,7 @@ A translation keeps a record of where each copied block came from, so Inka can t
 
 When you select a block inside a container, the container's row in the sidebar carries a coloured dot if blocks inside it still need work — blue for untranslated, purple for out of date. Hover over the dot to see how many, for example "2 blocks inside are not translated yet". You do not need the other language open to see these markers; they are there as soon as you open the page.
 
-<block type="image">
+<block is="image">
 
 ![The sidebar row for a grid container on a new translation, with a blue dot beside its name: blocks inside it are not translated yet.](../images/translations-markers.png)
 

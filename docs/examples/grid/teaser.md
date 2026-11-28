@@ -21,23 +21,23 @@ rights: ""
 subjects: []
 title: Grid-Teaser block
 blocks-matched: |
-  <block type="title" _="${h1}" />
+  <block is="title" _="${h1}" />
 blocks-tagged: |
-  <block type="teaser" title="${h?/text}" head_title="${strong?/text}" href="${h?/link}" description="${p?/textarea}" />
-  <block type="gridBlock" headline="${h/text}">
+  <block is="teaser" title="${h?/text}" head_title="${strong?/text}" href="${h?/link}" description="${p?/textarea}" />
+  <block is="gridBlock" headline="${h/text}">
     <region name="items" widget="blocks_layout">
-      <block type="teaser" title="${h/text}" head_title="${strong?/text}" href="${h/link}" description="${p?/textarea}" />
+      <block is="teaser" title="${h/text}" head_title="${strong?/text}" href="${h/link}" description="${p?/textarea}" />
     </region>
   </block>
 ---
 
 # Grid-Teaser block
 
-<block type="gridBlock">
+<block is="gridBlock">
 
 ## Block Title
 
-<block type="teaser">
+<block is="teaser">
 
 ### [Teaser Title H2](../content-types/page.md)
 
@@ -45,17 +45,17 @@ blocks-tagged: |
 
 Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincidunt ut laoreet dolore magna aliquam erat volutpat. Ut wisi enim ad minim veniam, quis nostrud exerci tation ullamcorper suscipit lobortis nisl ut aliquip ex ea commodo consequat. Duis autem vel eum iriure dolor in hendrerit in vulputate velit esse molestie consequat, vel illum dolore eu feugiat nulla facilisis at vero eros et accumsan et iusto odio dignissim qui blandit praesent luptatum zzril delenit augue duis dolore te feugait nulla facilisi.
 
-<fields styles:align="left" data-json='{"preview_image":[]}' />
+<fields :styles='{"align":"left"}' :preview_image="[]" />
 
 </block>
 
 </block>
 
-<block type="gridBlock">
+<block is="gridBlock">
 
-<fields styles:align="left">
+<fields :styles='{"align":"left"}'>
 
-<block type="teaser">
+<block is="teaser">
 
 ### [Teaser Title H2](../content-types/page.md)
 
@@ -65,7 +65,7 @@ Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincid
 
 </block>
 
-<block type="teaser">
+<block is="teaser">
 
 ### [Teaser Title H2](../content-types/page.md)
 
@@ -79,21 +79,11 @@ Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincid
 
 </block>
 
-<block type="gridBlock">
+<block is="gridBlock">
 
-<fields styles:align="left">
+<fields :styles='{"align":"left"}'>
 
-<block type="teaser">
-
-### [Teaser Title H2](../content-types/page.md)
-
-**Head title**
-
-Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincidunt ut laoreet dolore magna aliquam erat volutpat. Ut wisi enim ad minim veniam, quis nostrud exerci tation ullamcorper suscipit lobortis nisl ut aliquip ex ea commodo consequat. Duis autem vel eum iriure dolor in hendrerit in vulputate velit esse molestie consequat, vel illum dolore eu.
-
-</block>
-
-<block type="teaser">
+<block is="teaser">
 
 ### [Teaser Title H2](../content-types/page.md)
 
@@ -103,7 +93,17 @@ Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincid
 
 </block>
 
-<block type="teaser">
+<block is="teaser">
+
+### [Teaser Title H2](../content-types/page.md)
+
+**Head title**
+
+Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincidunt ut laoreet dolore magna aliquam erat volutpat. Ut wisi enim ad minim veniam, quis nostrud exerci tation ullamcorper suscipit lobortis nisl ut aliquip ex ea commodo consequat. Duis autem vel eum iriure dolor in hendrerit in vulputate velit esse molestie consequat, vel illum dolore eu.
+
+</block>
+
+<block is="teaser">
 
 ### [Teaser Title H2](../content-types/page.md)
 
@@ -117,21 +117,11 @@ Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincid
 
 </block>
 
-<block type="gridBlock">
+<block is="gridBlock">
 
-<fields styles:align="left">
+<fields :styles='{"align":"left"}'>
 
-<block type="teaser">
-
-### [Teaser Title H2](../content-types/page.md)
-
-**Head title**
-
-Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincidunt ut laoreet dolore magna aliquam erat volutpat. Ut wisi enim ad minim veniam, quis nostrud exerci tation ullamcorper suscipit lobortis nisl.
-
-</block>
-
-<block type="teaser">
+<block is="teaser">
 
 ### [Teaser Title H2](../content-types/page.md)
 
@@ -141,7 +131,7 @@ Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincid
 
 </block>
 
-<block type="teaser">
+<block is="teaser">
 
 ### [Teaser Title H2](../content-types/page.md)
 
@@ -151,7 +141,17 @@ Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincid
 
 </block>
 
-<block type="teaser">
+<block is="teaser">
+
+### [Teaser Title H2](../content-types/page.md)
+
+**Head title**
+
+Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincidunt ut laoreet dolore magna aliquam erat volutpat. Ut wisi enim ad minim veniam, quis nostrud exerci tation ullamcorper suscipit lobortis nisl.
+
+</block>
+
+<block is="teaser">
 
 ### [Teaser Title H2](../content-types/page.md)
 
@@ -165,13 +165,13 @@ Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincid
 
 </block>
 
-<fields styles:backgroundColor="grey">
+<fields :styles='{"backgroundColor":"grey"}'>
 
-<block type="gridBlock">
+<block is="gridBlock">
 
 ## Block Title
 
-<block type="teaser">
+<block is="teaser">
 
 ### [Teaser Title H2](../content-types/page.md)
 
@@ -179,17 +179,17 @@ Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincid
 
 Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincidunt ut laoreet dolore magna aliquam erat volutpat. Ut wisi enim ad minim veniam, quis nostrud exerci tation ullamcorper suscipit lobortis nisl ut aliquip ex ea commodo consequat. Duis autem vel eum iriure dolor in hendrerit in vulputate velit esse molestie consequat, vel illum dolore eu feugiat nulla facilisis at vero eros et accumsan et iusto odio dignissim qui blandit praesent luptatum zzril delenit augue duis dolore te feugait nulla facilisi.
 
-<fields styles:align="left" />
+<fields :styles='{"align":"left"}' />
 
 </block>
 
 </block>
 
-<block type="gridBlock">
+<block is="gridBlock">
 
-<fields styles:align="left">
+<fields :styles='{"align":"left"}'>
 
-<block type="teaser">
+<block is="teaser">
 
 ### [Teaser Title H2](../content-types/page.md)
 
@@ -199,7 +199,7 @@ Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincid
 
 </block>
 
-<block type="teaser">
+<block is="teaser">
 
 ### [Teaser Title H2](../content-types/page.md)
 
@@ -213,21 +213,11 @@ Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincid
 
 </block>
 
-<block type="gridBlock">
+<block is="gridBlock">
 
-<fields styles:align="left">
+<fields :styles='{"align":"left"}'>
 
-<block type="teaser">
-
-### [Teaser Title H2](../content-types/page.md)
-
-**Head title**
-
-Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincidunt ut laoreet dolore magna aliquam erat volutpat. Ut wisi enim ad minim veniam, quis nostrud exerci tation ullamcorper suscipit lobortis nisl ut aliquip ex ea commodo consequat. Duis autem vel eum iriure dolor in hendrerit in vulputate velit esse molestie consequat, vel illum dolore eu.
-
-</block>
-
-<block type="teaser">
+<block is="teaser">
 
 ### [Teaser Title H2](../content-types/page.md)
 
@@ -237,7 +227,17 @@ Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincid
 
 </block>
 
-<block type="teaser">
+<block is="teaser">
+
+### [Teaser Title H2](../content-types/page.md)
+
+**Head title**
+
+Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincidunt ut laoreet dolore magna aliquam erat volutpat. Ut wisi enim ad minim veniam, quis nostrud exerci tation ullamcorper suscipit lobortis nisl ut aliquip ex ea commodo consequat. Duis autem vel eum iriure dolor in hendrerit in vulputate velit esse molestie consequat, vel illum dolore eu.
+
+</block>
+
+<block is="teaser">
 
 ### [Teaser Title H2](../content-types/page.md)
 
@@ -251,21 +251,11 @@ Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincid
 
 </block>
 
-<block type="gridBlock">
+<block is="gridBlock">
 
-<fields styles:align="left">
+<fields :styles='{"align":"left"}'>
 
-<block type="teaser">
-
-### [Teaser Title H2](../content-types/page.md)
-
-**Head title**
-
-Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincidunt ut laoreet dolore magna aliquam erat volutpat. Ut wisi enim ad minim veniam, quis nostrud exerci tation ullamcorper suscipit lobortis nisl.
-
-</block>
-
-<block type="teaser">
+<block is="teaser">
 
 ### [Teaser Title H2](../content-types/page.md)
 
@@ -275,7 +265,7 @@ Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincid
 
 </block>
 
-<block type="teaser">
+<block is="teaser">
 
 ### [Teaser Title H2](../content-types/page.md)
 
@@ -285,7 +275,17 @@ Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincid
 
 </block>
 
-<block type="teaser">
+<block is="teaser">
+
+### [Teaser Title H2](../content-types/page.md)
+
+**Head title**
+
+Lorem ipsum dolor sit amet adipiscing elit, sed diam nonummy nibh euismod tincidunt ut laoreet dolore magna aliquam erat volutpat. Ut wisi enim ad minim veniam, quis nostrud exerci tation ullamcorper suscipit lobortis nisl.
+
+</block>
+
+<block is="teaser">
 
 ### [Teaser Title H2](../content-types/page.md)
 

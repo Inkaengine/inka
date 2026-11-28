@@ -3502,7 +3502,9 @@ export function getAtPath(obj, path) {
 export function ensureMutablePath(obj, path) {
   let cur = obj;
   for (const key of path || []) {
-    cur[key] = { ...(cur[key] || {}) };
+    // Copy each step so the caller can write without touching the original; a
+    // list stays a list (a path may run through one: `table.rows.0`).
+    cur[key] = Array.isArray(cur[key]) ? [...cur[key]] : { ...(cur[key] || {}) };
     cur = cur[key];
   }
   return cur;

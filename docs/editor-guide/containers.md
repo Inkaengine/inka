@@ -21,13 +21,13 @@ rights: ""
 subjects: []
 title: Containers
 blocks-matched: |
-  <block type="slate" value="${p,h*,ul,ol,blockquote,strong,em,a/slate}" />
-  <block type="title" _="${h1}" />
-  <block type="image" description="${p?/textarea}" url="${img/src}" alt="${img?/alt}" title="${img?/title}" align="center" size="l" />
+  <block is="slate" value="${p,h*,ul,ol,blockquote,strong,em,a/slate}" />
+  <block is="title" _="${h1}" />
+  <block is="image" description="${p?/textarea}" url="${img/src}" alt="${img?/alt}" title="${img?/title}" align="center" size="l" />
 blocks-tagged: |
-  <block type="callout">
+  <block is="callout">
     <region name="items" widget="blocks_layout">
-      <block type="slate" value="${p,h*,ul,ol,blockquote,strong,em,a/slate}" />
+      <block is="slate" value="${p,h*,ul,ol,blockquote,strong,em,a/slate}" />
     </region>
   </block>
 ---
@@ -38,7 +38,7 @@ A **container block** holds other blocks inside it — sliders, columns, accordi
 
 This page covers operations that change container structure: wrap a selection, unwrap a container, drag the edge of a container to absorb or expel adjacent blocks, and convert a container's type while keeping the children.
 
-<block type="callout" variation="note">
+<block is="callout">
 
 Which container types are available depends on your design system. A site might offer columns, accordions, sliders, and generic sections; another might only have a single "section" container with style variants. The wrap / unwrap / edge-drag / convert mechanics work the same regardless — the chooser just shows whatever your site registered.
 
@@ -55,7 +55,7 @@ Pick one. The selected blocks are pulled out of their original positions and pla
 
 Some containers hold their content one level down: a columns block only takes columns, and each column holds the content. The column is the container's **default child**, the block it adds when it is filled (its region's `defaultBlockType`, or its only allowed type; see [Empty Blocks](../frontend-guide/container-blocks.md#empty-blocks)). Such a container is offered when its default child takes the selection, and wrapping adds one default child around the blocks: two paragraphs wrapped in columns sit in one new column. Only one level is followed.
 
-<block type="image">
+<block is="image">
 
 ![Two adjacent paragraphs multi-selected, "Wrap in..." chooser open showing container types in Most Used / Common groups.](../images/wrap-chooser.png)
 
@@ -84,7 +84,7 @@ When a container is selected (block mode), thin **edge handles** appear on the c
 
 Multiple blocks can cross in a single drag — keep dragging and a "ghost boundary" line shows where the new edge will land. Release to commit. Until release, the page DOM is unchanged; you can drag back across blocks to restore.
 
-<block type="callout" variation="note">
+<block is="callout">
 
 **Cross-axis neighbours move as a single atom.** If you drag a column's right edge into the next column, that next column's whole vertical stack of children gets absorbed — there's no useful midpoint to land between them on the horizontal drag axis. For vertical-axis containers absorbing loose siblings, blocks are absorbed one at a time as the cursor crosses each midpoint.
 
@@ -92,7 +92,7 @@ Multiple blocks can cross in a single drag — keep dragging and a "ghost bounda
 
 ![Container selected with edge handles visible. The bottom handle is being dragged toward the next sibling.](../images/edge-drag-ghost.png)
 
-<block type="slate">
+<block is="slate">
 
 This makes a container feel like a resizable divider: drag its edge to "grow" it across adjacent content rather than dragging blocks one at a time.
 
@@ -116,7 +116,7 @@ For containers, conversion preserves the children:
 
 ![A grid container selected, "Convert to..." chooser open showing compatible target container types.](../images/container-convert.png)
 
-<block type="slate">
+<block is="slate">
 
 Use this to reshape an existing layout — e.g. a 2-column row into a 3-column grid, or columns into an accordion.
 

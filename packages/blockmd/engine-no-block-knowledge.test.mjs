@@ -29,7 +29,7 @@ const VOCABULARY = new Set([
   // ref parts (accessors)
   'text', 'textarea', 'slate', 'richtext', 'src', 'alt', 'lang', 'link', 'href', 'title', 'meta', 'level',
   // prototype tags and their attributes
-  'block', 'region', 'fields', 'type', 'name', 'widget', 'idField', 'typeField', 'data-json', '_',
+  'block', 'region', 'fields', 'is', 'type', 'name', 'widget', 'idField', 'typeField', 'data-json', '_',
   // widgets, and the storage shape the blocks_layout widget defines
   'blocks_layout', 'object_list', 'blocks', 'items',
   // block identity, and the frontmatter assignments that carry it

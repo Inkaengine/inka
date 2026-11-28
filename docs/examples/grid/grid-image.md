@@ -21,23 +21,23 @@ rights: ""
 subjects: []
 title: Grid-image block
 blocks-matched: |
-  <block type="title" _="${h1}" />
-  <block type="image" description="${p?/textarea}" url="${img/src}" alt="${img?/alt}" title="${img?/title}" align="center" size="l" />
+  <block is="title" _="${h1}" />
+  <block is="image" description="${p?/textarea}" url="${img/src}" alt="${img?/alt}" title="${img?/title}" align="center" size="l" />
 blocks-tagged: |
-  <block type="gridBlock" headline="${h/text}">
+  <block is="gridBlock" headline="${h/text}">
     <region name="items" widget="blocks_layout">
-      <block type="teaser" title="${h/text}" head_title="${strong?/text}" href="${h/link}" description="${p?/textarea}" />
+      <block is="teaser" title="${h/text}" head_title="${strong?/text}" href="${h/link}" description="${p?/textarea}" />
     </region>
   </block>
 ---
 
 # Grid-image block
 
-<block type="gridBlock">
+<block is="gridBlock">
 
 ## Block Title
 
-<block type="image">
+<block is="image">
 
 The Image content type can be used to upload an image in various formats (JPG, GIF, PNG, SVG). The uploaded image should always have a high resolution so that it can be used flexibly, for example as a banner image. Plone automatically delivers the images in the best scaling, so there is no need to scale images down manually.
 
@@ -49,7 +49,7 @@ The Image content type can be used to upload an image in various formats (JPG, G
 
 </block>
 
-<block type="gridBlock">
+<block is="gridBlock">
 
 <fields image_field="image">
 
@@ -65,7 +65,7 @@ The Image content type can be used to upload an image in various formats (JPG, G
 
 </block>
 
-<block type="gridBlock">
+<block is="gridBlock">
 
 <fields image_field="image">
 
@@ -85,7 +85,7 @@ The Image content type can be used to upload an image in various formats (JPG, G
 
 </block>
 
-<block type="gridBlock">
+<block is="gridBlock">
 
 <fields image_field="image">
 
@@ -109,13 +109,13 @@ The Image content type can be used to upload an image in various formats (JPG, G
 
 </block>
 
-<fields styles:backgroundColor="grey">
+<fields :styles='{"backgroundColor":"grey"}'>
 
-<block type="gridBlock">
+<block is="gridBlock">
 
 ## Block Title
 
-<block type="image">
+<block is="image">
 
 The Image content type can be used to upload an image in various formats (JPG, GIF, PNG, SVG). The uploaded image should always have a high resolution so that it can be used flexibly, for example as a banner image. Plone automatically delivers the images in the best scaling, so there is no need to scale images down manually.
 
@@ -127,7 +127,7 @@ The Image content type can be used to upload an image in various formats (JPG, G
 
 </block>
 
-<block type="gridBlock">
+<block is="gridBlock">
 
 <fields image_field="image">
 
@@ -143,7 +143,7 @@ The Image content type can be used to upload an image in various formats (JPG, G
 
 </block>
 
-<block type="gridBlock">
+<block is="gridBlock">
 
 <fields image_field="image">
 
@@ -163,7 +163,7 @@ The Image content type can be used to upload an image in various formats (JPG, G
 
 </block>
 
-<block type="gridBlock">
+<block is="gridBlock">
 
 <fields image_field="image">
 

@@ -21,12 +21,12 @@ subjects:
   - forms
 title: Form
 blocks-matched: |
-  <block type="slate" value="${p,h*,ul,ol,blockquote,strong,em,a/slate}" />
-  <block type="title" _="${h1}" />
-  <block type="image" description="${p?/textarea}" url="${img/src}" alt="${img?/alt}" title="${img?/title}" align="center" size="l" />
-  <block type="codeExample">
+  <block is="slate" value="${p,h*,ul,ol,blockquote,strong,em,a/slate}" />
+  <block is="title" _="${h1}" />
+  <block is="image" description="${p?/textarea}" url="${img/src}" alt="${img?/alt}" title="${img?/title}" align="center" size="l" />
+  <block is="codeExample">
     <region name="tabs" widget="object_list" idField="@id" typeField="@type">
-      <block type="tab" label="${h3/text}" language="${pre/lang}" code="${pre/textarea}" />
+      <block is="tab" label="${h3/text}" language="${pre/lang}" code="${pre/textarea}" />
     </region>
   </block>
 ---
@@ -35,13 +35,13 @@ blocks-matched: |
 
 A multi-field form with configurable field types, validation, and email submission. Fields are stored as a typed object_list — each field has a field_type that maps to a sub-block schema.
 
-<block type="image">
+<block is="image">
 
 ![The form example block being edited in Inka](../images/form-edit.png)
 
 </block>
 
-<block type="form" data-json='{"default_from":"noreply@plone.org","title":"A simple form","default_to":"admin@example.com","default_subject":"New form submission","captcha":"honeypot","lastChange":1710238630312,"remove_data_after_days":-1,"send_email":true,"show_cancel":false,"store":true,"subblocks":[{"field_id":"1709833577467","field_type":"text","label":"Name","required":true},{"field_id":"1709833592544","field_type":"from","label":"Email","required":false,"use_as_bcc":false,"use_as_reply_to":false},{"field_id":"1709833604677","field_type":"textarea","label":"Message","required":false},{"field_id":"1709833616406","field_type":"multiple_choice","input_values":["Red","Green","Blue"],"label":"Select field","required":false}]}' />
+<block is="form" default_from="noreply@plone.org" title="A simple form" default_to="admin@example.com" default_subject="New form submission" captcha="honeypot" :lastChange="1710238630312" :send_email="true" :store="true" :subblocks='[{"field_id":"1709833577467","field_type":"text","label":"Name","required":true},{"field_id":"1709833592544","field_type":"from","label":"Email","@type":"from"},{"field_id":"1709833604677","field_type":"textarea","label":"Message","@type":"textarea"},{"field_id":"1709833616406","field_type":"multiple_choice","input_values":["Red","Green","Blue"],"label":"Select field","@type":"multiple_choice"}]' />
 
 ## Submitting a form
 
@@ -69,9 +69,9 @@ const response = await fetch(`${apiUrl}${pagePath}/@submit-form`, {
 
 If your frontend submits from its server, read the token from the `access_token` cookie the bridge sets instead. Either way, a submission made like this is the editor's, with the editor's permissions: see [How an editor's login reaches the front end](../deploy-and-secure.md#how-an-editors-login-reaches-the-front-end).
 
-<fields templateId="/inka-templates/block-reference-layout" templateInstanceId="tpl-inst-form" fixed=false readOnly=false>
+<fields templateId="/inka-templates/block-reference-layout" templateInstanceId="tpl-inst-form" :fixed="false" :readOnly="false">
 
-<block type="codeExample" slotId="schema">
+<block is="codeExample" slotId="schema">
 
 ### Schema
 
@@ -81,7 +81,7 @@ If your frontend submits from its server, read the token from the `access_token`
 
 </block>
 
-<block type="codeExample" slotId="json-data">
+<block is="codeExample" slotId="json-data">
 
 ### JSON
 
@@ -92,7 +92,7 @@ If your frontend submits from its server, read the token from the `access_token`
 
 </block>
 
-<block type="codeExample" slotId="rendering">
+<block is="codeExample" slotId="rendering">
 
 ### React
 

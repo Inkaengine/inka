@@ -22,21 +22,21 @@ rights: ""
 subjects: []
 title: Editing text
 blocks-matched: |
-  <block type="slate" value="${p,h*,ul,ol,blockquote,strong,em,a/slate}" />
-  <block type="title" _="${h1}" />
-  <block type="image" description="${p?/textarea}" url="${img/src}" alt="${img?/alt}" title="${img?/title}" align="center" size="l" />
+  <block is="slate" value="${p,h*,ul,ol,blockquote,strong,em,a/slate}" />
+  <block is="title" _="${h1}" />
+  <block is="image" description="${p?/textarea}" url="${img/src}" alt="${img?/alt}" title="${img?/title}" align="center" size="l" />
 blocks-tagged: |
-  <block type="callout">
+  <block is="callout">
     <region name="items" widget="blocks_layout">
-      <block type="slate" value="${p,h*,ul,ol,blockquote,strong,em,a/slate}" />
+      <block is="slate" value="${p,h*,ul,ol,blockquote,strong,em,a/slate}" />
     </region>
   </block>
-  <block type="slateTable">
+  <block is="slateTable">
     <region name="table.rows" idField="key">
-      <block type="row" _="${tr}">
+      <block is="row" _="${tr}">
         <region name="cells" idField="key" typeField="type">
-          <block type="header" value="${th/slate}" />
-          <block type="data" value="${td/slate}" />
+          <block is="header" value="${th/slate}" />
+          <block is="data" value="${td/slate}" />
         </region>
       </block>
     </region>
@@ -47,7 +47,7 @@ blocks-tagged: |
 
 Click into any text in the preview that's marked inline-editable and start typing. There are two kinds of text fields: **simple text** (like a title) and **slate** (rich text — the body of a paragraph block, descriptions, etc.).
 
-<block type="callout" variation="note">
+<block is="callout">
 
 Which fields are inline-editable depends on your design system. Some sites mark every visible text field as inline-editable; others only mark the "main" text and route everything else through the sidebar. The toolbar and cursor behaviour below is the same either way — but if a field doesn't enter edit mode on click, that's a design-system choice, not a bug. Use the sidebar.
 
@@ -72,7 +72,7 @@ When you're typing in a slate field, certain markdown patterns are converted aut
 
 ### Block-level (start of a line, then space)
 
-<block type="slateTable" table.fixed table.celled>
+<block is="slateTable" table.fixed table.celled>
 
 | Type | Becomes |
 | --- | --- |
@@ -86,7 +86,7 @@ When you're typing in a slate field, certain markdown patterns are converted aut
 
 ### Inline (around selected/typed text)
 
-<block type="slateTable" table.fixed table.celled>
+<block is="slateTable" table.fixed table.celled>
 
 | Type | Becomes |
 | --- | --- |
@@ -105,7 +105,7 @@ Press `Backspace` at the very start of a heading, list item, or blockquote and i
 
 Type `/` at the start of an empty text block to open a menu of block types you can convert to (heading, image, list, your custom blocks, …). Keep typing to filter (`/he` filters to heading); `Enter` picks the highlighted result; `Escape` dismisses without changing anything.
 
-<block type="image">
+<block is="image">
 
 ![Empty paragraph showing the slash menu listing block types — Accordion, Columns, Description, etc.](../images/slash-menu.png)
 

@@ -77,7 +77,7 @@ describe('resolveLiteralIncludes', () => {
         '---',
         'title: Example',
         'blocks-matched: |',
-        '  <block type="slate" value="${p,h*,ul,ol,blockquote,strong,em/slate}" />',
+        '  <block is="slate" value="${p,h*,ul,ol,blockquote,strong,em/slate}" />',
         '---',
         '',
         '# Heading above',
@@ -109,8 +109,8 @@ describe('resolveLiteralIncludes', () => {
       const docs = join(mdDir, 'docs', 'examples');
       mkdirSync(docs, { recursive: true });
       writeFileSync(join(docs, 'teaser.md'), [
-        '---', 'title: T', 'blocks-tagged: |', '  <block type="teaser" title="${h/text}" href="${h/link}" />', '---', '',
-        '<block type="teaser">', '', '## [Go](./content-types/page.md)', '', '</block>', '',
+        '---', 'title: T', 'blocks-tagged: |', '  <block is="teaser" title="${h/text}" href="${h/link}" />', '---', '',
+        '<block is="teaser">', '', '## [Go](./content-types/page.md)', '', '</block>', '',
       ].join('\n'));
       const directive = '```{literalinclude} ./teaser.md\n:block: teaser\n:as: json\n```';
       const served = parseFence(resolveLiteralIncludes(directive, docs, { root: join(mdDir, 'docs'), prefix: '/docs' }));
@@ -140,12 +140,12 @@ describe('resolveLiteralIncludes', () => {
           '---',
           'title: Sel',
           'blocks-matched: |',
-          '  <block type="slate" value="${p,h*,ul,ol,blockquote,strong,em/slate}" />',
+          '  <block is="slate" value="${p,h*,ul,ol,blockquote,strong,em/slate}" />',
           '---',
           '',
           'A paragraph before.',
           '',
-          `<block type="card" data-json='{"title":"Hi","href":"/x"}' />`,
+          `<block is="card" data-json='{"title":"Hi","href":"/x"}' />`,
           '',
           'A paragraph after.',
         ].join('\n'));

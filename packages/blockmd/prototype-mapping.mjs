@@ -21,7 +21,7 @@ import YAML from 'yaml';
 import { getAtPath, ensureMutablePath } from '@volto-hydra/helpers';
 import { joined } from '@volto-hydra/helpers/blockText.js';
 import { tagOf, mdParser, mdSerializer, blockToSlate, slateToMd, fmtTagAttrs, cleanAttrStr, normaliseTables, tableToMd, gridTableToMd, NoCellForm, NoFit, slateBlockToMdast, isBrTag,
-         mdastToHtml, htmlToMd, htmlRichtext, isFlatDict, flatDictAttrs, attrName } from './slate-md.mjs';
+         mdastToHtml, htmlToMd, htmlRichtext, isFlatDict, boundAttr, attrName, withoutLinkSnapshots, withListsOfItems } from './slate-md.mjs';
 
 // ${node[n]/part} -- node kind, optional match-index, optional accessor part.
 // No `/part` means match-only: consume the node, capture nothing (separator,
@@ -41,6 +41,9 @@ import { tagOf, mdParser, mdSerializer, blockToSlate, slateToMd, fmtTagAttrs, cl
 //   `[Contents][2]` -> the 2nd, within that label's scope
 const REF_RE = /^\$\{([a-z0-9|*,]+)(\?)?((?:\[[^\]]+\])*)(?:\/([a-z]+))?\}$/i;
 
+/** The parts of a definition list a ref can name: a term and its definition. */
+const DEF_PARTS = new Set(['dt', 'dd']);
+
 function parseRef(v) {
   if (typeof v !== 'string') return null;
   const m = REF_RE.exec(v.trim());
@@ -52,38 +55,41 @@ function parseRef(v) {
   return { node: m[1], optional: !!m[2], index, label, part: m[4] ?? null };
 }
 
-// Parse a tag's attributes, typed by syntax: a bare name is `true` (HTML
-// boolean), an unquoted value is coerced (number / true / false / null / JSON),
-// a double-quoted value stays a string (so `${refs}` survive), and a
-// single-quoted value is a data JSON string (entities un-escaped).
-// `:` is in the key charset so a dict field's `field:key=value` attribute (and a
-// key that itself contains a colon, `styles:size:noprefix`) is one token.
-const ATTR_RE = /([\w@.$:-]+)(?:=(?:"([^"]*)"|'([^']*)'|(\S+)))?/g;
+// Parse a tag's attributes, typed by syntax as in Vue: `name="…"` is text,
+// `:name="…"` (either quote) is JSON data, and a bare `name` is `true` (an HTML
+// boolean). A single-quoted value without the prefix is text too (`data-json`
+// holds its JSON as text, read by its own caller). An unquoted value, or an old
+// `field:key` name, says nothing a schema-less reader can trust, so it is an
+// error naming the bound form to write instead.
+const ATTR_RE = /(:?[\w@.$:-]+)(?:=(?:"([^"]*)"|'([^']*)'|(\S+)))?/g;
+const unescapeAttr = (v) => v.replace(/&#39;/g, "'").replace(/&amp;/g, '&');
 function typedAttrs(raw) {
   const inner = raw.replace(/^\s*<\/?[A-Za-z][\w-]*/, '').replace(/\/?>\s*$/, '');
   const out = {};
   for (const [, k, dq, sq, bare] of inner.matchAll(ATTR_RE)) {
-    if (dq !== undefined) out[k] = dq;
-    else if (sq !== undefined) out[k] = sq.replace(/&#39;/g, "'").replace(/&amp;/g, '&');
-    else if (bare === undefined) out[k] = true; // HTML boolean
-    else if (bare === 'true' || bare === 'false') out[k] = bare === 'true';
-    else if (bare === 'null') out[k] = null;
-    else if (/^-?\d+(\.\d+)?$/.test(bare)) out[k] = Number(bare);
-    else if (bare[0] === '{' || bare[0] === '[') out[k] = JSON.parse(bare);
-    else out[k] = bare;
+    if (k.startsWith(':')) {
+      const value = dq ?? sq;
+      if (value === undefined) throw new Error(`blockmd: ${k} needs a JSON value: ${k}="…"`);
+      out[k.slice(1)] = JSON.parse(unescapeAttr(value));
+    } else if (k.includes(':')) {
+      throw new Error(`blockmd: "${k}" is the old object form; write :${k.split(':')[0]}='{…}'`);
+    } else if (bare !== undefined) {
+      throw new Error(`blockmd: ${k}=${bare} is unquoted; write text as ${k}="${bare}" or data as :${k}="${bare}"`);
+    } else if (dq !== undefined) out[k] = dq;
+    else if (sq !== undefined) out[k] = unescapeAttr(sq);
+    else out[k] = true; // HTML boolean
   }
-  // Fold a dict field's `field:key` attributes back into a nested object, split
-  // on the FIRST colon (everything after is the key, colons and all). The mirror
-  // of flatDictAttrs on emit; a bare attribute name never contains a colon, so
-  // only namespaced dict entries fold. The field sits where its first entry was
-  // written, so a re-emit keeps the authored order.
-  const folded = {};
-  for (const [k, v] of Object.entries(out)) {
-    const i = k.indexOf(':');
-    if (i === -1) { folded[k] = v; continue; }
-    (folded[k.slice(0, i)] ??= {})[k.slice(i + 1)] = v;
+  return out;
+}
+
+/** A block tag's type, from its `is` (HTML's attribute for "this element is a
+ *  custom X"). `type` is free for a block field of that name (an alert's
+ *  info/warning), so a tag still naming its type with `type` is old content. */
+function blockTypeOf(attrs) {
+  if (typeof attrs.is !== 'string' || !attrs.is) {
+    throw new Error(`blockmd: a <block> names its type with is="…"${attrs.type ? `, not type="${attrs.type}"` : ''}`);
   }
-  return folded;
+  return attrs.is;
 }
 
 /**
@@ -120,7 +126,7 @@ function settleTypeField(region) {
   if (region.widget === 'blocks_layout' || region.typeField !== undefined) return;
   if (region.protos.length > 1) {
     const types = region.protos.map((p) => p.type).join(', ');
-    throw new Error(`object_list region "${region.name}" of <block type="${region.owner}"> allows ${region.protos.length} item types (${types}), so it must declare typeField`);
+    throw new Error(`object_list region "${region.name}" of <block is="${region.owner}"> allows ${region.protos.length} item types (${types}), so it must declare typeField`);
   }
   region.typeField = null;
 }
@@ -146,24 +152,25 @@ export function parsePrototypes(text, { explicit = false } = {}) {
     if (tag.name === 'block') {
       // `explicit` comes from section membership (the `blocks-tagged:` frontmatter
       // key), not an attribute: an explicit prototype matches ONLY inside its
-      // `<block type>` tag, never bare markdown -- so a pattern that overlaps a
+      // `<block is>` tag, never bare markdown -- so a pattern that overlaps a
       // common one (a heading-link is also a teaser) does not silently grab it.
       // Bare stays the implicit/common (`blocks-matched:`) reading.
-      const { type, ...fields } = attrs;
+      if (tag.kind === 'close') { stack.pop(); continue; }
+      const type = blockTypeOf(attrs);
+      const { is: _is, ...fields } = attrs;
       // Markdown no longer carries a Text block's `plaintext` (save writes its words as
       // its searchableText), so a prototype that made it would match no block.
       if ('plaintext' in fields) {
-        throw new Error(`<block type="${type}"> plaintext is no longer stored (a Text block's words are its searchableText), so a prototype can't make it: drop it`);
+        throw new Error(`<block is="${type}"> plaintext is no longer stored (a Text block's words are its searchableText), so a prototype can't make it: drop it`);
       }
       // A value that starts a ref must BE one: a typo'd ref would otherwise be
       // a literal, silently stamped onto every block this prototype decodes.
       for (const [k, v] of Object.entries(fields)) {
         if (typeof v === 'string' && v.trim().startsWith('${') && !parseRef(v)) {
-          throw new Error(`<block type="${type}"> ${k}="${v}" is not a valid ref`);
+          throw new Error(`<block is="${type}"> ${k}="${v}" is not a valid ref`);
         }
       }
       const proto = { type, explicit, fields, regions: [] };
-      if (tag.kind === 'close') { stack.pop(); continue; }
       place(proto);
       if (tag.kind === 'open') stack.push({ kind: 'block', proto });
     } else if (tag.name === 'region') {
@@ -177,7 +184,7 @@ export function parsePrototypes(text, { explicit = false } = {}) {
       // rendered its last cell. typeField is settled when the region closes
       // (settleTypeField), once its item types are known.
       if (attrs.widget !== 'blocks_layout' && !attrs.idField) {
-        throw new Error(`object_list region "${attrs.name}" of <block type="${t.proto.type}"> must declare idField`);
+        throw new Error(`object_list region "${attrs.name}" of <block is="${t.proto.type}"> must declare idField`);
       }
       // `path` is the field path the region's value lives at: a region may be
       // nested in an object field (slateTable's `table.rows`).
@@ -204,10 +211,14 @@ function slotsOf(proto) {
     if (!r) continue;
     // A NODE is optional only if EVERY ref to it is optional -- `url="${img/src}"`
     // makes the img node required even though `alt="${img?/alt}"` is optional.
-    const cur = need.get(r.node) ?? { count: 0, optional: true };
-    cur.count = Math.max(cur.count, r.index ?? 1);
+    // A term or definition (`${dt[2]}`, `${dd[Phone]}`) is inside the block's
+    // one definition list: every such ref shares that node, and its index is
+    // the entry's position in it, not a count of lists.
+    const key = DEF_PARTS.has(r.node) ? 'dl' : r.node;
+    const cur = need.get(key) ?? { count: 0, optional: true };
+    cur.count = Math.max(cur.count, DEF_PARTS.has(r.node) ? 1 : r.index ?? 1);
     cur.optional = cur.optional && !!r.optional;
-    need.set(r.node, cur);
+    need.set(key, cur);
   }
   const slots = [];
   for (const [nodeSet, { count, optional }] of need) {
@@ -454,6 +465,8 @@ function resolvePart(node, ref) {
       if (u === null) { if (ref.optional) return null; throw new NoFit(`no link url in ${kindOf(node)}`); }
       return u;
     }
+    // A list's items as plain strings (a choice field's options).
+    case 'items': return (node.children ?? []).map((li) => proseText(li));
     case 'title': return findTitle(node); // `![a](u "title")` / `[t](u "title")` -> a caption/tooltip
     case 'meta': return node.meta ?? null; // a code fence's info-string after the lang
     default: throw new Error(`unhandled ref part: ${ref.part}`);
@@ -496,8 +509,26 @@ function runAt(nodes, i, slots, depth) {
   return null;
 }
 
+/** A definition list's term or definition a `${dt…}` / `${dd…}` ref names: by
+ *  its term (`${dd[Phone]}`), or by position (`${dd[2]}`; the first if none). */
+function defEntry(dl, ref) {
+  const kids = dl.children ?? [];
+  if (ref.label) {
+    const t = kids.findIndex((c) => kindOf(c) === 'dt' && nodeText(c) === ref.label);
+    if (t < 0) return null;
+    return ref.node === 'dt' ? kids[t] : kids.slice(t + 1).find((c) => kindOf(c) === 'dd') ?? null;
+  }
+  return kids.filter((c) => kindOf(c) === ref.node)[(ref.index ?? 1) - 1] ?? null;
+}
+
 /** Resolve a ref against a run: the index-th node whose kind is in the ref's set. */
 function resolveRef(run, ref, depth) {
+  if (DEF_PARTS.has(ref.node)) {
+    const dl = run.find((n) => kindOf(n) === 'dl');
+    const entry = dl ? defEntry(dl, ref) : null;
+    if (!entry) throw new NoFit(`ref ${ref.node} not in run`);
+    return resolvePart(entry, ref);
+  }
   const kinds = ref.node.split(/[|,]/);
   const node = run.filter((n) => nodeInSlot(n, kinds, depth))[(ref.index ?? 1) - 1];
   if (!node) throw new NoFit(`ref ${ref.node}[${ref.index ?? 1}] not in run`);
@@ -513,6 +544,15 @@ function resolveRef(run, ref, depth) {
  * instead of being grabbed as a linkless teaser.
  */
 function runResolves(proto, run, depth) {
+  // A definition list holding more entries than the prototype names is not this
+  // block: reading it would drop the rest without a word.
+  const dl = run.find((n) => kindOf(n) === 'dl');
+  if (dl) {
+    const refs = Object.values(proto.fields).map(parseRef).filter((r) => r && DEF_PARTS.has(r.node));
+    const named = Math.max(0, ...refs.filter((r) => !r.label).map((r) => r.index ?? 1))
+      + new Set(refs.filter((r) => r.label).map((r) => r.label)).size;
+    if (refs.length && (dl.children ?? []).filter((c) => kindOf(c) === 'dt').length > named) return false;
+  }
   for (const val of Object.values(proto.fields)) {
     const ref = parseRef(val);
     if (!ref || ref.part === null) continue;
@@ -591,6 +631,13 @@ function splitAt(nodes, delim, depth) {
   return groups;
 }
 
+/** Whether a region's items are written as blocks in their own tags: an
+ *  object_list whose item prototypes have no heading to split them at (a form's
+ *  fields, a definition list each), so each item's tag is its boundary and type. */
+const taggedItems = (region) => region.widget !== 'blocks_layout' && region.protos.length > 0
+  && !isStructural(region)
+  && region.protos.every((p) => !Object.values(p.fields).some((v) => /^h([1-6])?$/.test(parseRef(v)?.node ?? '')));
+
 /** The heading ref an item repeats on (`h` relative, or `h2` absolute). */
 function delimiterOf(item) {
   for (const v of Object.values(item.fields)) {
@@ -668,7 +715,50 @@ function itemRefOf(proto) {
   return Object.values(proto.fields).map(parseRef).find((r) => r && MDAST_OF_KIND[r.node]);
 }
 
+/** The item prototypes of a region whose items are a definition list's
+ *  entries: each names its term (`title="${dt/text}"`), so the region is one
+ *  Markdown definition list, an entry per item, as a table's rows are its
+ *  rows. Null for any other region. */
+function defEntryProtos(region) {
+  if (!region.protos.length) return null;
+  const names = (p) => Object.values(p.fields).some((v) => parseRef(v)?.node === 'dt');
+  return region.protos.every(names) ? region.protos : null;
+}
+
+/** A definition list's entries: each term with the definitions after it. */
+function defEntries(dl) {
+  const entries = [];
+  for (const c of dl.children ?? []) {
+    if (kindOf(c) === 'dt') entries.push({ dt: c, dds: [] });
+    else if (kindOf(c) === 'dd' && entries.length) entries[entries.length - 1].dds.push(c);
+  }
+  return entries;
+}
+
+/** Each entry of a definition list as an item: its term and definition read by
+ *  the item's refs, its definition's content as the item's regions' blocks. */
+function decodeDefEntries(protos, region, dl, depth) {
+  return defEntries(dl).map(({ dt, dds }) => {
+    const proto = region.protos[0];
+    const item = { '@type': proto.type };
+    for (const [field, val] of Object.entries(proto.fields)) {
+      const ref = parseRef(val);
+      if (!ref) { item[field] = val; continue; }
+      if (field === '_' || ref.part === null) continue;
+      const node = ref.node === 'dt' ? dt : ref.node === 'dd' ? dds[0] : null;
+      const v = node ? resolvePart(node, ref) : null;
+      if (v != null && v !== '') item[field] = v;
+    }
+    const content = dds.flatMap((d) => d.children ?? []);
+    for (const r of proto.regions) setAt(item, r.path, decodeContent(protos, r, content, depth));
+    return item;
+  });
+}
+
 function decodeRegion(protos, region, inner, depth) {
+  if (region.widget === 'blocks_layout' && defEntryProtos(region) && inner.length === 1 && kindOf(inner[0]) === 'dl') {
+    return decodeDefEntries(protos, region, inner[0], depth);
+  }
   if (region.widget === 'blocks_layout') { // a plain block sequence one level
     return matchNodes([...protos, ...region.protos], inner, depth + 1); // deeper, with scoped protos
   }
@@ -695,6 +785,10 @@ function decodeRegion(protos, region, inner, depth) {
       if (!proto) throw new NoFit(`region "${region.name}" has no item prototype for ${kindOf(child)} ${nth}`);
       return typed(proto, decodeItemNode(protos, proto, child, depth));
     });
+  }
+  if (taggedItems(region)) {
+    const blocks = matchNodes(contentScope(protos, region), inner, depth + 1);
+    return blocks.map(({ '@type': t, ...rest }) => (typeKey == null ? rest : { [typeKey]: t, ...rest }));
   }
   const delim = delimiterOf(item); // object_list: delimiter at `depth`, content one deeper
   return splitAt(inner, delim, depth).map((group) => typed(item, decodeItem(protos, item, group, depth)));
@@ -775,23 +869,35 @@ function variantKeys(protos, proto) {
   return new Set(Object.entries(proto.fields).filter(([, v]) => !parseRef(v)).map(([k]) => k));
 }
 
-/** Decode an explicit `<block type=X>` tag with body `inner`. A `data-json`
+/** Decode an explicit `<block is=X>` tag with body `inner`. A `data-json`
  *  attr carries object fields (e.g. `{"fixed":false}`), merged like everywhere
  *  else `data-json` is honoured -- self-closing tags and `<fields>` both parse
  *  it, so a block-with-children must too. */
 function decodeTag(protos, attrs, inner, depth) {
-  const { type, 'data-json': data, ...override } = attrs;
+  const type = blockTypeOf(attrs);
+  const { is: _is, 'data-json': data, ...override } = attrs;
   if (data) Object.assign(override, JSON.parse(data));
 
   const container = containerFor(protos, type, override);
   if (container) {
     const block = { '@type': type };
     for (const [k, v] of Object.entries(container.fields)) if (!parseRef(v)) setAt(block, k.split('.'), v);
-    for (const [k, v] of Object.entries(override)) setAt(block, k.split('.'), v); // dotted (table.celled) supported
+    // Dotted (table.celled). A path INTO a region's items (`table.rows.0.cells.1.width`,
+    // a setting a Markdown table can't hold) applies once that region is read.
+    const intoRegion = (path) => container.regions.some((r) => r.path.every((seg, i) => path[i] === seg)
+      && /^\d+$/.test(path[r.path.length] ?? ''));
+    const later = [];
+    for (const [k, v] of Object.entries(override)) {
+      const path = k.split('.');
+      if (intoRegion(path)) later.push([path, v]); else setAt(block, path, v);
+    }
     // Consume the container's own scalar refs from the body front (a grid
     // `headline="${h}"`), optionally -- absent leading heading = no headline --
     // then the region gets the remainder.
     const consumed = new Set();
+    // Refs naming the same node (`${h?/text}` and `${h?/link}`: a heading that is
+    // a title and a link) read that one node, as a leaf's refs do.
+    const picked = new Map();
     // The container's own nodes: one inside a nested `<block>` belongs to that
     // block, so a container ref (a grid's headline) never takes it.
     const nested = nestedFlags(inner);
@@ -799,6 +905,12 @@ function decodeTag(protos, attrs, inner, depth) {
     for (const [field, val] of Object.entries(container.fields)) {
       const ref = parseRef(val);
       if (!ref || ref.part === null || field === '_') continue;
+      const same = `${ref.node}|${ref.label ?? ''}|${ref.index ?? 1}`;
+      if (picked.has(same)) {
+        const v = resolvePart(picked.get(same), ref);
+        if (v !== undefined) block[field] = v;
+        continue;
+      }
       // `${dd[Author]}` reads a def-list term (its `dl` is consumed whole).
       if (ref.label && ref.node === 'dd') {
         const t = termValue(own, ref.label);
@@ -810,7 +922,7 @@ function decodeTag(protos, attrs, inner, depth) {
       const pool = ref.label ? (sect?.body ?? []) : own;
       const cands = pool.filter((n) => !consumed.has(n) && nodeInSlot(n, ref.node.split(/[|,]/), depth));
       const node = cands[(ref.index ?? 1) - 1];
-      if (node) { consumed.add(node); if (sect) consumed.add(sect.heading); block[field] = resolvePart(node, ref); }
+      if (node) { consumed.add(node); picked.set(same, node); if (sect) consumed.add(sect.heading); block[field] = resolvePart(node, ref); }
     }
     const rest = inner.filter((n) => !consumed.has(n));
     // An explicit `<region name=X>` in the instance body overrides which content
@@ -824,6 +936,7 @@ function decodeTag(protos, attrs, inner, depth) {
       const content = region.name in explicit ? explicit[region.name] : bodyRest;
       setAt(block, region.path, decodeRegion(protos, region, content, depth));
     }
+    for (const [path, v] of later) setAt(block, path, v);
     return block;
   }
 
@@ -851,13 +964,14 @@ function decodeTag(protos, attrs, inner, depth) {
       return finish(leafBlock(proto, content, depth));
     }
   }
-  throw new NoFit(`no leaf prototype for <block type="${type}"> matching its body`);
+  throw new NoFit(`no leaf prototype for <block is="${type}"> matching its body`);
 }
 
-/** A tier-3 self-closing data tag -> the raw block it stores. The `uid` is
- *  redundant (assignments carry it) and dropped; `data` merges the JSON fields. */
+/** A tier-3 self-closing data tag -> the raw block it stores; `data` merges the
+ *  JSON fields. Every other attribute is a field, `uid` and `type` included. */
 function decodeRawTag(attrs) {
-  const { type, uid, 'data-json': data, ...rest } = attrs;
+  const type = blockTypeOf(attrs);
+  const { is: _is, 'data-json': data, ...rest } = attrs;
   const block = { '@type': type, ...rest };
   if (data) Object.assign(block, JSON.parse(data));
   return block;
@@ -905,6 +1019,30 @@ function matchNodes(protos, nodes, depth = 2) {
       if (tag && tag.name === 'block' && tag.kind === 'self') { // tier-3 data tag
         blocks.push(decodeRawTag(typedAttrs(n.value)));
         i += 1;
+        continue;
+      }
+      if (tag && tag.name === 'defaults' && tag.kind === 'open') {
+        // An enclosing `<defaults …>` is `<fields …>` reaching further: its values
+        // go onto everything beneath it, however nested -- a container's blocks
+        // and its list items (an accordion's panels, a code example's tabs) --
+        // each one's own value winning. It is how Inka labels a template
+        // instance: inheritTemplateMembershipDeep stamps every child, items too.
+        let nest = 1, j = i + 1;
+        for (; j < nodes.length && nest; j++) {
+          const m = nodes[j].type === 'html' ? tagOf(nodes[j].value) : null;
+          if (m && m.name === 'defaults' && m.kind === 'open') nest += 1;
+          else if (m && m.name === 'defaults' && m.kind === 'close') nest -= 1;
+        }
+        const shared = typedAttrs(n.value);
+        const flat = collectProtos(protos);
+        const give = (block) => {
+          for (const [k, v] of Object.entries(shared)) if (!(k in block)) setAt(block, k.split('.'), structuredClone(v));
+        };
+        for (const block of matchNodes(protos, nodes.slice(i + 1, j - 1), depth)) {
+          eachBlockDeep(flat, block, null, give);
+          blocks.push(block);
+        }
+        i = j;
         continue;
       }
       if (tag && tag.name === 'fields' && tag.kind === 'open') {
@@ -1032,6 +1170,10 @@ function emitNode(block, entry, depth) {
   if (entry.node === 'strong' && txt) return mdOf(para({ type: 'strong', children: text(txt) }));
   if (entry.node === 'em' && txt) return mdOf(para({ type: 'emphasis', children: text(txt) }));
   if ((entry.node === 'p' || entry.node === 'dd') && txt) return mdOf(para(...text(txt))); // a dd: emitFields adds the term
+  if ((entry.node === 'ul' || entry.node === 'ol') && p.items) {
+    return mdOf({ type: 'list', ordered: entry.node === 'ol', spread: false,
+      children: (block[p.items] ?? []).map((item) => ({ type: 'listItem', spread: false, children: [para(...textNodes(item))] })) });
+  }
   throw new NoFit(`cannot emit node ${entry.node}`);
 }
 
@@ -1049,9 +1191,28 @@ function emitFields(proto, obj, depth) {
   // An optional field that's absent (a grid with no headline) emits nothing; a
   // match-only node (no parts) always emits. A labelled entry re-emits its
   // `## Label` heading so the section round-trips.
+  // Unlabelled terms and definitions are one definition list, written where its
+  // first entry is: `Term\n: definition` per position (`Term\n:` when empty).
+  const defs = nodes.filter((e) => DEF_PARTS.has(e.node) && !e.label);
+  const defList = () => {
+    const at = (node, i) => defs.find((e) => e.node === node && (Number(/\[(\d+)\]$/.exec(e.slot)?.[1]) || 1) === i);
+    const count = Math.max(...defs.map((e) => Number(/\[(\d+)\]$/.exec(e.slot)?.[1]) || 1));
+    const textOf = (e) => (e ? obj[e.parts.text ?? e.parts.textarea] : null);
+    const entries = [];
+    for (let i = 1; i <= count; i += 1) {
+      const term = textOf(at('dt', i));
+      if (term == null || term === '') continue;
+      const def = textOf(at('dd', i));
+      const line = mdOf({ type: 'paragraph', children: textNodes(term) });
+      entries.push(def != null && def !== '' ? `${line}\n: ${mdOf({ type: 'paragraph', children: textNodes(def) })}` : `${line}\n:`);
+    }
+    return entries.join('\n\n');
+  };
   return nodes
-    .filter((e) => { const ps = Object.values(e.parts); return ps.length === 0 || ps.some((f) => obj[f] != null && obj[f] !== ''); })
+    .filter((e) => !(DEF_PARTS.has(e.node) && !e.label) || e === defs[0])
+    .filter((e) => e === defs[0] || (() => { const ps = Object.values(e.parts); return ps.length === 0 || ps.some((f) => obj[f] != null && obj[f] !== ''); })())
     .map((e) => {
+      if (e === defs[0]) return defList();
       const md = emitNode(obj, e, depth);
       if (e.label && e.node === 'dd') return `${e.label}\n: ${md}`; // def-list term
       return e.label ? `${'#'.repeat(depth)} ${e.label}\n\n${md}` : md; // heading section
@@ -1069,10 +1230,7 @@ function emitOverrides(proto, block, keep = new Set()) {
     if (def !== undefined && deepEqual(def, v) && !keep.has(k)) return; // matches the prototype's value
     if (TAG_ATTRS.has(k)) { asData[k] = v; return; }
     if (v === true) out.push(k); // HTML boolean
-    else if (v === false || typeof v === 'number') out.push(`${k}=${v}`); // unquoted -> JSON
-    else if (typeof v === 'string') out.push(`${k}="${v}"`);
-    else if (isFlatDict(v)) out.push(...flatDictAttrs(k, v)); // a dict field -> `field:key=value` attrs
-    // a nested/array value still can't be a clean attribute; verify-on-emit tier-3s it
+    else out.push(boundAttr(k, v)); // text, or `:k` holding JSON
   };
   for (const [k, v] of Object.entries(block)) {
     if (k === '@type' || proto.regions.some((r) => r.name === k)) continue;
@@ -1122,7 +1280,7 @@ function emitItemBody(protos, itemProto, blocks, depth) {
     });
   };
   return parts.map((part, i) => (!part.startsWith('<block') && hasDelimHeading(part)
-    ? `<block type="${blocks[i]['@type']}">\n\n${part}\n\n</block>` : part)).join('\n\n');
+    ? `<block is="${blocks[i]['@type']}">\n\n${part}\n\n</block>` : part)).join('\n\n');
 }
 
 /** Emit a greedy container BARE: its region items back to back, no `<block>`
@@ -1159,7 +1317,7 @@ const MDAST_OF_KIND = { tr: 'tableRow', th: 'tableHeaderCell', td: 'tableCell' }
  * field's nodes or its content region's blocks. A field the rule has no place for can't be written, so
  * this throws and verify-on-emit keeps the block's data form.
  */
-function emitItemNode(protos, region, item, at, depth) {
+function emitItemNode(protos, region, item, at, depth, path = null, lifted = null) {
   const proto = structuralProtoOf(region, item, at);
   const kind = itemKind(proto);
   if (!MDAST_OF_KIND[kind]) throw new NoFit(`item "${proto.type}" is not a table row or cell`);
@@ -1170,11 +1328,14 @@ function emitItemNode(protos, region, item, at, depth) {
     const def = proto.fields[k];
     const ref = def === undefined ? null : parseRef(def);
     if (ref?.part === 'slate') node.children = v.map((b) => slateBlockToMdast(b));
+    // A plain setting the node can't hold (a cell's width) rides on the
+    // container's tag by its position, so the table stays a table.
+    else if (!ref && lifted && path && (def === undefined || !deepEqual(def, v))) lifted[`${path}.${k}`] = v;
     else if (ref || def === undefined || !deepEqual(def, v)) throw new NoFit(`a ${kind} has no place for field "${k}"`);
   }
   for (const r of proto.regions) {
     const items = getAtPath(item, r.path) ?? [];
-    if (isStructural(r)) node.children.push(...items.map((it, cellIndex) => emitItemNode(protos, r, it, { rowIndex: at.rowIndex, cellIndex }, depth)));
+    if (isStructural(r)) node.children.push(...items.map((it, cellIndex) => emitItemNode(protos, r, it, { rowIndex: at.rowIndex, cellIndex }, depth, path && `${path}.${r.name}.${cellIndex}`, lifted)));
     else node.children.push(...emitContent(protos, r, items, depth));
   }
   return node;
@@ -1210,7 +1371,35 @@ function structuralProtoOf(region, item, at) {
   return proto;
 }
 
-/** Emit a container block as a `<block type>` tag over its regions. */
+/** A region's items as one definition list: each item's term from its
+ *  `${dt}` field, its definition the Markdown of its regions' blocks. A field
+ *  the entry has no place for can't be written so; verify-on-emit keeps the
+ *  tagged form then. */
+function defListOf(protos, entryProtos, items, depth) {
+  return { type: 'defList', children: items.flatMap((item) => {
+    const proto = entryProtos.find((p) => p.type === item['@type']);
+    const termField = Object.entries(proto.fields).find(([, v]) => parseRef(v)?.node === 'dt')?.[0];
+    const regionRoots = new Set(proto.regions.map((r) => r.path[0]));
+    for (const k of Object.keys(item)) {
+      if (k === '@type' || k === termField || regionRoots.has(k)) continue;
+      if (!(k in proto.fields) || parseRef(proto.fields[k]) || !deepEqual(proto.fields[k], item[k])) {
+        throw new NoFit(`a definition-list entry has no place for field "${k}"`);
+      }
+    }
+    const content = proto.regions.flatMap((r) => {
+      const blocks = getAtPath(item, r.path) ?? [];
+      return blocks.length
+        ? normaliseTables(mdParser.parse(emitBlocks(contentScope(protos, r), blocks, depth + 1))).children
+        : [];
+    });
+    return [
+      { type: 'defListTerm', children: textNodes(item[termField]) },
+      ...(content.length ? [{ type: 'defListDescription', children: content }] : []),
+    ];
+  }) };
+}
+
+/** Emit a container block as a `<block is>` tag over its regions. */
 function emitContainer(protos, proto, block, depth) {
   const head = emitFields(proto, block, depth); // the container's own scalar refs (a grid headline)
   // `wrap`: write each blocks_layout child in its own `<block>` tag. A bare
@@ -1224,7 +1413,9 @@ function emitContainer(protos, proto, block, depth) {
   // `hoist`: fields a run of a region's blocks share (a template's membership on
   // every block in its slot) are written once, in a `<fields>` wrapper, as a page's
   // own blocks are (emitPage).
-  const render = (wrap, tableForm, hoist = false) => proto.regions
+  // Row and cell settings a Markdown table can't hold, by position (emitItemNode).
+  let lifted = {};
+  const render = (wrap, tableForm, hoist = false) => (lifted = {}, proto.regions)
     .filter((region) => getAtPath(block, region.path) !== undefined)
     .map((region) => {
       const body = renderRegion(region, wrap, tableForm, hoist);
@@ -1232,25 +1423,43 @@ function emitContainer(protos, proto, block, depth) {
     }).join('\n\n');
   const renderRegion = (region, wrap, tableForm, hoist) => {
     const val = getAtPath(block, region.path);
+    const entries = defEntryProtos(region);
+    if (region.widget === 'blocks_layout' && entries && val.length
+      && val.every((b) => entries.some((p) => p.type === b['@type']))) {
+      return mdOf(defListOf(protos, entries, val, depth));
+    }
     if (region.widget === 'blocks_layout') {
       const scope = [...protos, ...region.protos];
       if (hoist) return hoistFields(scope, val, depth + 1);
       const parts = emitSegments(scope, val, depth + 1);
       return (wrap ? parts.map((part, i) => (/^<(block|fields)[\s>]/.test(part) ? part
-        : `<block type="${val[i]['@type']}">\n\n${part}\n\n</block>`)) : parts).join('\n\n');
+        : `<block is="${val[i]['@type']}">\n\n${part}\n\n</block>`)) : parts).join('\n\n');
     }
     // Items that are table rows (`${tr}`) are a markdown table.
     if (region.protos.every((p) => itemKind(p) === 'tr')) {
-      const table = { type: 'table', children: val.map((item, rowIndex) => emitItemNode(protos, region, item, { rowIndex, cellIndex: 0 }, depth)) };
+      const table = { type: 'table', children: val.map((item, rowIndex) => emitItemNode(protos, region, item, { rowIndex, cellIndex: 0 }, depth, `${region.name}.${rowIndex}`, lifted)) };
       // `plain`: every cell one line of inline content; `grid`: cells of any
       // blocks; `html`: a pipe table whose cells write their blocks as inline
       // <p>/<hN>. A form a cell can't take throws NoCellForm.
       if (tableForm === 'grid') return gridTableToMd(table);
       return tableToMd(table, { html: tableForm === 'html' });
     }
+    // Only when every item's type names one of the region's item prototypes;
+    // an item that can't be typed keeps the data form, as before.
+    const tk = region.typeField;
+    const typeOf = (it) => (tk == null ? region.protos[0].type : it[tk]);
+    if (taggedItems(region) && val.every((it) => region.protos.some((p) => p.type === typeOf(it)))) {
+      const blocks = val.map((it) => {
+        if (tk == null) return { '@type': region.protos[0].type, ...it };
+        const { [tk]: t, ...rest } = it;
+        return { '@type': t, ...rest };
+      });
+      return emitSegments(contentScope(protos, region), blocks, depth + 1).join('\n\n');
+    }
     return val.map((item) => emitItem(protos, region.protos[0], item, depth)).join('\n\n');
   };
-  const tag = (body) => `<block type="${block['@type']}"${emitOverrides(proto, block, variantKeys(protos, proto))}>\n\n${[head, body].filter(Boolean).join('\n\n')}\n\n</block>`;
+  const liftedAttrs = () => Object.entries(lifted).map(([k, v]) => ` ${boundAttr(k, v)}`).join('');
+  const tag = (body) => `<block is="${block['@type']}"${emitOverrides(proto, block, variantKeys(protos, proto))}${liftedAttrs()}>\n\n${[head, body].filter(Boolean).join('\n\n')}\n\n</block>`;
   // A table is written in the first form that reads back the same: a plain
   // GFM table, else a grid table, else a GFM table with HTML in its cells. A
   // container with no table tries once.
@@ -1288,34 +1497,29 @@ function emitLeaf(protos, block, depth) {
 }
 
 /** Tier-3: an un-prototyped block -> a self-closing data tag (decodeRawTag reads it). */
-/** Attribute names the `<block>` tag itself uses: a block FIELD of the same
- *  name can't be an attribute -- `<block type="alert" type="warning">` reads
- *  back as a block of type "warning" -- so it rides in the tag's data-json. */
-const TAG_ATTRS = new Set(['type', 'data-json']);
+/** Attribute names the `<block>` tag itself uses: `is` (its type) and
+ *  `data-json`. A block FIELD of the same name can't be an attribute, so it
+ *  rides in the tag's data-json. */
+const TAG_ATTRS = new Set(['is', 'data-json']);
 
 function emitRawTag(block) {
   const { '@type': type, ...rest } = block;
   for (const k of Object.keys(rest)) if (isEmptyObject(rest[k])) delete rest[k]; // drop no-op {} defaults (styles: {})
-  // fmtTagAttrs hoists clean scalars to attributes and puts everything else in a
-  // trailing data-json — which reorders the block on decode (attrs come first).
-  // If ANY field must go to data-json, emit ALL of them there in AUTHORED order
-  // so the block round-trips byte-stably; an all-clean block keeps its attrs.
-  // Booleans and numbers are plain unquoted attributes too (read back as JSON).
-  const cleanScalar = (v) => (typeof v === 'string' ? cleanAttrStr(v)
-    : typeof v === 'boolean' || (typeof v === 'number' && Number.isFinite(v)));
-  // A flat dict field flattens to `field:key=value` attrs, so it no longer forces
-  // the whole block to data-json — only a nested/array value does.
-  const mixed = Object.values(rest).some((v) => v !== undefined && !cleanScalar(v) && !isFlatDict(v))
-    || Object.keys(rest).some((k) => TAG_ATTRS.has(k) || !attrName(k));
-  const attrs = mixed
-    ? `data-json='${JSON.stringify(rest).replace(/&/g, '&amp;').replace(/'/g, '&#39;')}'`
-    : fmtTagAttrs(rest);
-  return `<block type="${type}"${attrs ? ` ${attrs}` : ''} />`;
+  // Every value is an attribute (text, or `:name` holding JSON). A field whose
+  // NAME no attribute can carry (`@id`, or one of the tag's own, like `type`)
+  // rides in data-json on its own, as on a prototyped block (emitOverrides).
+  const asAttr = ([k]) => attrName(k) && !TAG_ATTRS.has(k);
+  const attrs = fmtTagAttrs(Object.fromEntries(Object.entries(rest).filter(asAttr)));
+  const tagOwn = Object.fromEntries(Object.entries(rest).filter((e) => !asAttr(e)));
+  const data = Object.keys(tagOwn).length
+    ? ` data-json='${JSON.stringify(tagOwn).replace(/&/g, '&amp;').replace(/'/g, '&#39;')}'`
+    : '';
+  return `<block is="${type}"${attrs ? ` ${attrs}` : ''}${data} />`;
 }
 
 /**
  * Emit one block as markdown. A container (a type with regions) becomes a
- * `<block type>` tag over its regions; a leaf reverses its refs; a type with no
+ * `<block is>` tag over its regions; a leaf reverses its refs; a type with no
  * prototype falls back to a tier-3 data tag.
  */
 function emitBlock(protos, block, depth) {
@@ -1325,10 +1529,10 @@ function emitBlock(protos, block, depth) {
   return emitRawTag(block);
 }
 
-/** Wrap a block's bare markdown in an explicit `<block type>` tag. */
+/** Wrap a block's bare markdown in an explicit `<block is>` tag. */
 function emitTag(protos, block, depth) {
   const body = emitBlock(protos, block, depth);
-  return `<block type="${block['@type']}">\n\n${body ? `${body}\n\n` : ''}</block>`;
+  return `<block is="${block['@type']}">\n\n${body ? `${body}\n\n` : ''}</block>`;
 }
 
 /** Fields a leaf's clean form can't carry: not @type, not a ref (in the body),
@@ -1355,7 +1559,7 @@ function emitFieldsTag(protos, block, depth) {
   const extra = uncoveredFields(proto, block);
   if (!Object.keys(extra).length) return null;
   const body = [emitLeaf(protos, block, depth), `<fields ${fmtTagAttrs(extra)} />`].filter(Boolean).join('\n\n');
-  return `<block type="${block['@type']}">\n\n${body}\n\n</block>`;
+  return `<block is="${block['@type']}">\n\n${body}\n\n</block>`;
 }
 
 /**
@@ -1543,11 +1747,28 @@ function emitSegments(prototypes, blocks, depth = 2) {
  * out what matches it before emit (the mock API's export).
  */
 function withoutDerivedFields(value) {
-  if (Array.isArray(value)) return value.map(withoutDerivedFields);
+  // Also without a text link's item snapshot, which loading puts back
+  // (slate-md's withoutLinkSnapshots), and with lists holding only list items,
+  // as Volto's editor leaves them (slate-md's withListsOfItems).
+  return withoutPlaintext(withRichTextNormalized(withoutLinkSnapshots(value)));
+}
+
+/** Every rich-text value in a block tree, with its lists holding only items. */
+function withRichTextNormalized(value) {
+  if (Array.isArray(value)) {
+    const richText = value.length > 0 && value.every((n) => n && typeof n === 'object' && Array.isArray(n.children) && typeof n.type === 'string');
+    return richText ? withListsOfItems(value) : value.map(withRichTextNormalized);
+  }
+  if (!value || typeof value !== 'object') return value;
+  return Object.fromEntries(Object.entries(value).map(([k, v]) => [k, withRichTextNormalized(v)]));
+}
+
+function withoutPlaintext(value) {
+  if (Array.isArray(value)) return value.map(withoutPlaintext);
   if (!value || typeof value !== 'object') return value;
   const out = {};
   for (const [key, child] of Object.entries(value)) {
-    if (key !== 'plaintext') out[key] = withoutDerivedFields(child);
+    if (key !== 'plaintext') out[key] = withoutPlaintext(child);
   }
   return out;
 }
@@ -1582,6 +1803,32 @@ function collectProtos(protos, out = []) {
  * panel's child blocks, stored as Volto's shared dict + layout -- but a declared
  * one (a table cell's list of blocks) is just a list, keyed per item.
  */
+/** `fn(child)` for a block and everything beneath it, however nested: a
+ *  blocks_layout region's blocks, an object_list region's items, and the blocks
+ *  inside an item (its own regions, or the implicit `blocks`) -- what
+ *  inheritTemplateMembershipDeep labels. `region` is the one the block sits in,
+ *  whose declared item prototype gives the block's regions. */
+function eachBlockDeep(flat, block, region, fn) {
+  fn(block);
+  const regions = region?.protos?.find((p) => p.type === block['@type'])?.regions
+    ?? flat.find((p) => p.type === block['@type'])?.regions ?? [];
+  const inRegions = (holder, list) => {
+    for (const r of list) {
+      const val = getAtPath(holder, r.path);
+      if (!Array.isArray(val)) continue;
+      if (r.widget === 'blocks_layout') { for (const b of val) eachBlockDeep(flat, b, r, fn); continue; }
+      for (const item of val) {
+        if (!item || typeof item !== 'object') continue;
+        fn(item);
+        const { regions: own, declaresBlocks } = itemShape(r, item);
+        if (!declaresBlocks && Array.isArray(item.blocks)) for (const b of item.blocks) eachBlockDeep(flat, b, null, fn);
+        inRegions(item, own);
+      }
+    }
+  };
+  inRegions(block, regions);
+}
+
 function itemShape(region, item) {
   const proto = region.typeField == null ? region.protos[0]
     : region.protos.find((p) => p.type === item[region.typeField]) ?? region.protos[0];
@@ -1592,16 +1839,21 @@ function itemShape(region, item) {
 export function unkeyBlocks(keyed, protos = []) {
   const flat = collectProtos(protos);
   const regionsOf = (type) => flat.find((p) => p.type === type)?.regions ?? [];
+  const itemRegions = (region, block) =>
+    region?.protos?.find((p) => p.type === block['@type'])?.regions ?? regionsOf(block['@type']);
   const assignments = [];
   // A blocks_layout region's children live in the shared `blocks` dict, ORDERED
   // by `blocks_layout[layoutKey]` -- and the region's NAME is that layout key
   // (gridBlock -> `items`, columns -> `columns`), exactly as the schema names its
   // blocks field. The page itself is the `items` region of the top level.
-  const unkeyChildren = ({ blocks, blocks_layout }, layoutKey = 'items') =>
+  // A child's own regions come from the region's declared item prototype when it
+  // declares one of the child's type, as decoding reads them: another block of
+  // the same name elsewhere (a code example's leaf `tab`) is not this one.
+  const unkeyChildren = ({ blocks, blocks_layout }, layoutKey = 'items', region = null) =>
     (blocks_layout?.[layoutKey] ?? []).map((uid) => {
       const block = { ...blocks[uid] };
       assignments.push({ uid });
-      unkeyRegions(block);
+      unkeyRegions(block, itemRegions(region, block));
       return block;
     });
   // `regions` defaults to the block's own prototype regions. An object_list item
@@ -1609,14 +1861,20 @@ export function unkeyBlocks(keyed, protos = []) {
   // from that declaration, and the item may carry no type to look them up by
   // (typeField omitted/null: table rows/cells).
   const unkeyRegions = (block, regions = regionsOf(block['@type'])) => {
-    let liftedBlocksLayout = false;
+    // The object holding a region's `blocks` + `blocks_layout`: the block itself,
+    // or an object field of it (`data.items` -> `data`, as Volto's accordion).
+    const lifted = new Map(); // holder path -> holder
     for (const region of regions) {
       if (region.widget === 'blocks_layout') {
-        if (block.blocks && block.blocks_layout?.[region.name]) {
-          block[region.name] = unkeyChildren(
-            { blocks: block.blocks, blocks_layout: block.blocks_layout }, region.name,
+        const at = region.path.slice(0, -1);
+        const layoutKey = region.path[region.path.length - 1];
+        let holder = at.length ? getAtPath(block, at) : block;
+        if (holder?.blocks && holder.blocks_layout?.[layoutKey]) {
+          if (at.length && !lifted.has(at.join('.'))) { holder = { ...holder }; setAt(block, at, holder); }
+          holder[layoutKey] = unkeyChildren(
+            { blocks: holder.blocks, blocks_layout: holder.blocks_layout }, layoutKey, region,
           );
-          liftedBlocksLayout = true;
+          lifted.set(at.join('.'), holder);
         }
         continue;
       }
@@ -1646,9 +1904,9 @@ export function unkeyBlocks(keyed, protos = []) {
     // them into per-region arrays. A block with NO blocks_layout region (a tier-3
     // block that carries its own `blocks`/`blocks_layout`, e.g. `search`) keeps
     // them so its raw `data-json` round-trips intact.
-    if (liftedBlocksLayout) {
-      delete block.blocks;
-      delete block.blocks_layout;
+    for (const holder of lifted.values()) {
+      delete holder.blocks;
+      delete holder.blocks_layout;
     }
   };
   return { blocks: unkeyChildren(keyed), assignments };
@@ -1715,8 +1973,7 @@ function planHoist(items) {
  * segments -- inserting a `<fields>` tag only ever adds a boundary, so it can
  * never introduce a new over-merge. `emitPage` re-checks the whole result.
  */
-function hoistFields(protos, blocks, depth = 2) {
-  if (!blocks.length) return '';
+function notHoistedFor(protos) {
   // Fields the flat form never writes are never hoisted:
   // - one the block's own prototype writes as a literal (accordion's
   //   right_arrows=true) — decode puts it back, and stripping it would make the
@@ -1735,6 +1992,66 @@ function hoistFields(protos, blocks, depth = 2) {
     const unwritable = Object.keys(block).filter((k) => !plainAttr(block[k]));
     return [...supplied, ...body, ...unwritable];
   };
+  return notHoisted;
+}
+
+/** The fields a block shares with every block beneath it (same value), less
+ *  any that one of them can't have hoisted; `nested` when it has any. */
+function deepSignature(flat, notHoisted, block) {
+  const all = [];
+  eachBlockDeep(flat, block, null, (b) => all.push(b));
+  const sig = stripKeys(block, ['@type', ...all.flatMap(notHoisted)]);
+  for (const k of Object.keys(sig)) {
+    if (isEmptyObject(sig[k]) || !all.every((b) => k in b && fieldEq(b[k], sig[k]))) delete sig[k];
+  }
+  return { sig, nested: all.length > 1 };
+}
+
+/** A copy of the block with `keys` removed from it and every block beneath it. */
+function stripDeep(flat, block, keys) {
+  const copy = structuredClone(block);
+  eachBlockDeep(flat, copy, null, (b) => { for (const k of keys) delete b[k]; });
+  return copy;
+}
+
+/**
+ * `<defaults>` around runs of blocks that share a field at every depth (a
+ * template instance's bookkeeping, on its nested blocks too), then the
+ * `<fields>` hoisting inside. A run becomes `<defaults>` only when one of its
+ * blocks has blocks beneath it: otherwise `<fields>` already says it.
+ */
+function hoistFields(protos, blocks, depth = 2) {
+  if (!blocks.length) return '';
+  const flat = collectProtos(protos);
+  const notHoisted = notHoistedFor(protos);
+  const sigs = blocks.map((b) => deepSignature(flat, notHoisted, b));
+  const reaches = (nodes) => nodes.some((n) => (n.wrap ? reaches(n.children) : sigs[n.idx].nested));
+  // Dissolve a deep wrapper that reaches no nested block (back to leaves).
+  const keep = (nodes) => nodes.flatMap((n) => (!n.wrap ? [n]
+    : reaches(n.children) ? [{ ...n, children: keep(n.children) }] : keep(n.children)));
+  const plan = keep(planHoist(blocks.map((b, idx) => ({ block: sigs[idx].sig, idx }))));
+  if (!plan.some((n) => n.wrap)) return hoistShallow(protos, blocks, depth, notHoisted);
+  const render = (nodes, keys) => {
+    const out = [];
+    let run = [];
+    const flush = () => {
+      if (run.length) out.push(hoistShallow(protos, run.map((idx) => stripDeep(flat, blocks[idx], keys)), depth, notHoisted));
+      run = [];
+    };
+    for (const n of nodes) {
+      if (!n.wrap) { run.push(n.idx); continue; }
+      flush();
+      const inner = keys.concat(Object.keys(n.fields));
+      out.push(`<defaults ${fmtTagAttrs(n.fields)}>\n\n${render(n.children, inner)}\n\n</defaults>`);
+    }
+    flush();
+    return out.join('\n\n');
+  };
+  return render(plan, []);
+}
+
+/** Factor fields shared across runs of one list into nested `<fields>` wrappers. */
+function hoistShallow(protos, blocks, depth, notHoisted) {
   const plan = planHoist(blocks.map((block, idx) => ({ block: stripKeys(block, notHoisted(block)), idx })));
   const hoisted = {}; // idx -> the field keys hoisted into wrappers that contain it
   const collect = (nodes, keys) => nodes.forEach((n) =>
@@ -1775,6 +2092,10 @@ export function emitPage(prototypes, keyed) {
 export function keyBlocks(blocks, assignments, protos = []) {
   const flat = collectProtos(protos);
   const regionsOf = (type) => flat.find((p) => p.type === type)?.regions ?? [];
+  // As in unkeyBlocks: a region's child takes its regions from the region's own
+  // declared item prototype of its type, not any block of the same name.
+  const itemRegions = (region, block) =>
+    region?.protos?.find((p) => p.type === block['@type'])?.regions ?? regionsOf(block['@type']);
   let i = 0;
   const next = () => {
     if (i >= assignments.length) throw new Error('ran out of assignments');
@@ -1794,7 +2115,7 @@ export function keyBlocks(blocks, assignments, protos = []) {
 
   // Key an ordered list of blocks into { dict, uids }, recursing into each block's
   // regions. Used for the page's top-level `items` and for object_list items.
-  const keyChildren = (list) => {
+  const keyChildren = (list, region = null) => {
     const dict = {}, uids = [];
     for (const block of list) {
       const a = mint ? { uid: mintUid(block['@type']) } : next();
@@ -1803,7 +2124,7 @@ export function keyBlocks(blocks, assignments, protos = []) {
       if (a.type !== undefined && a.type !== block['@type']) {
         throw new Error(`assignment ${a.uid} type "${a.type}" does not anchor block type "${block['@type']}"`);
       }
-      keyRegions(block);
+      keyRegions(block, itemRegions(region, block));
       dict[a.uid] = block;
       uids.push(a.uid);
     }
@@ -1815,15 +2136,21 @@ export function keyBlocks(blocks, assignments, protos = []) {
   // Same as unkeyRegions: an item recurses with its container's declared item
   // prototype's regions, not a lookup by the item's (possibly absent) type.
   const keyRegions = (block, regions = regionsOf(block['@type'])) => {
-    const dict = {}, layout = {};
+    // One shared `blocks` dict + `blocks_layout` per holder: the block, or the
+    // object field a region sits in (`data.items` -> `data`).
+    const holders = new Map(); // holder path -> { at, dict, layout }
     for (const region of regions) {
       const val = getAtPath(block, region.path);
       if (region.widget === 'blocks_layout') {
         if (Array.isArray(val)) {
-          const k = keyChildren(val);
-          Object.assign(dict, k.dict);
-          layout[region.name] = k.uids;
-          delete block[region.name];
+          const at = region.path.slice(0, -1);
+          const layoutKey = region.path[region.path.length - 1];
+          if (!holders.has(at.join('.'))) holders.set(at.join('.'), { at, dict: {}, layout: {} });
+          const h = holders.get(at.join('.'));
+          const k = keyChildren(val, region);
+          Object.assign(h.dict, k.dict);
+          h.layout[layoutKey] = k.uids;
+          delete (at.length ? getAtPath(block, at) : block)[layoutKey];
         }
         continue;
       }
@@ -1840,7 +2167,12 @@ export function keyBlocks(blocks, assignments, protos = []) {
         keyRegions(item, own); // the item's own regions (a row's cells, a cell's blocks)
       }
     }
-    if (Object.keys(dict).length) { block.blocks = dict; block.blocks_layout = layout; }
+    for (const { at, dict, layout } of holders.values()) {
+      if (!Object.keys(dict).length) continue;
+      const holder = at.length ? getAtPath(block, at) : block;
+      holder.blocks = dict;
+      holder.blocks_layout = layout;
+    }
   };
 
   const top = keyChildren(blocks);

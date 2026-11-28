@@ -396,7 +396,7 @@ export function resolveLiteralIncludes(text, baseDir, mount) {
 }
 
 /**
- * Resolve `<block type="codeExample" source="<selector>" format="json|schema">`
+ * Resolve `<block is="codeExample" source="<selector>" format="json|schema">`
  * blocks on a decoded page — the single-source example views. Instead of a
  * hand-written copy that drifts, a codeExample POINTS at the real thing:
  *   - format="json"   -> the data of the block on this page whose uid or @type
@@ -472,7 +472,7 @@ export function resolveCodeExampleSources(page) {
     }
     // `source`/`format`/`filter` are mount-time directives, now consumed into
     // `tabs`. Drop them so they never ship as served data — and so a `--markdown`
-    // export re-emits a plain codeExample (no hoisted `<fields source=…>`
+    // export re-emits a plain codeExample (no hoisted `<fields source="…">`
     // wrapper) that the post-export directive restore maps cleanly back.
     delete b.source; delete b.format; delete b.filter;
   }
@@ -595,7 +595,7 @@ export function readTree(root, { decode = decodeAuto, prefix = '', isFolderish }
 }
 
 /**
- * A block placed in a page's `<fields templateId=… templateInstanceId=…>` region
+ * A block placed in a page's `<fields :templateId='"…"' :templateInstanceId='"…"'>` region
  * fills a template slot, and forced-layout expansion (helpers/fillRegionEntries)
  * renders it only if it carries a `slotId` (the slot branch) — the author writes
  * that. But the content model also asks a slot-fill to declare `fixed` and

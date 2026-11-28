@@ -23,26 +23,26 @@ subjects:
   - templates
 title: Templates & Layouts
 blocks-matched: |
-  <block type="slate" value="${p,h*,ul,ol,blockquote,strong,em,a/slate}" />
-  <block type="title" _="${h1}" />
-  <block type="separator" _="${hr}" styles={"align":"full"} />
-  <block type="codeExample">
+  <block is="slate" value="${p,h*,ul,ol,blockquote,strong,em,a/slate}" />
+  <block is="title" _="${h1}" />
+  <block is="separator" _="${hr}" :styles='{"align":"full"}' />
+  <block is="codeExample">
     <region name="tabs" widget="object_list" idField="@id" typeField="@type">
-      <block type="tab" label="${h3/text}" language="${pre/lang}" code="${pre/textarea}" />
+      <block is="tab" label="${h3/text}" language="${pre/lang}" code="${pre/textarea}" />
     </region>
   </block>
 blocks-tagged: |
-  <block type="callout">
+  <block is="callout">
     <region name="items" widget="blocks_layout">
-      <block type="slate" value="${p,h*,ul,ol,blockquote,strong,em,a/slate}" />
+      <block is="slate" value="${p,h*,ul,ol,blockquote,strong,em,a/slate}" />
     </region>
   </block>
-  <block type="slateTable">
+  <block is="slateTable">
     <region name="table.rows" idField="key">
-      <block type="row" _="${tr}">
+      <block is="row" _="${tr}">
         <region name="cells" idField="key" typeField="type">
-          <block type="header" value="${th/slate}" />
-          <block type="data" value="${td/slate}" />
+          <block is="header" value="${th/slate}" />
+          <block is="data" value="${td/slate}" />
         </region>
       </block>
     </region>
@@ -53,7 +53,7 @@ blocks-tagged: |
 
 Templates allow editors to centrally control content and reuse content. They allow a developer to not have to hard code layout decisions and instead use rules to apply user layouts in template content stored separately from the page, or give the user a choice on which layout they want.
 
-<block type="separator" />
+<block is="separator" />
 
 ## Template Concepts
 
@@ -88,7 +88,7 @@ The slot a block lives in is identified by its `slotId`. This is the field name 
 }
 ```
 
-<block type="callout" variation="important">
+<block is="callout" variation="important">
 
 **Every block in a template must declare a `slotId`** — not just slot blocks, but **`fixed` and `fixed+readOnly` blocks too, and every block *nested* inside a container.** Locking a template (a new one from Make template included) refuses a template block that names no slot: the refusal opens the block, with the problem on its Slot ID. A page can't be saved with a template unlocked, so the page save, which writes the templates that changed, doesn't check slots again. The content check reports one too. The recursive merge keeps a nested block only when it has a `slotId` (or a `templateId`): `if (nested.slotId || nested.templateId)`. A block without one is **silently dropped** — the container survives but renders empty, with no error. This is the most common reason a template "half renders". The editor keeps this true for blocks an author places: an added, pasted or moved block, and everything nested in it, takes its slot from where it lands — one rule, described in [Template membership](../architecture.md#template-membership-edit-side-slot-assignment).
 
@@ -148,7 +148,7 @@ in either mode. The template's version stays the default for other pages (see Ho
 
 The two configurations below look similar but solve different problems. Pick by **who controls the structure** and **whether it repeats**:
 
-<block type="slateTable" table.fixed table.celled>
+<block is="slateTable" table.fixed table.celled>
 
 | You want… | Use | How it's applied |
 | --- | --- | --- |
@@ -239,7 +239,7 @@ Use `expandTemplates` (async) or `expandTemplatesSync` (sync with pre-fetched te
 - **\`expandTemplatesSync\`** — Use when templates are pre-fetched at page load. Better for Vue computed properties since it's synchronous.
 - **\`expandTemplates\`** — Use when you need to lazy-load templates on demand. Handles on-demand loading of forced layouts not in page data.
 
-<block type="callout" variation="important">
+<block is="callout" variation="important">
 
 **A forced layout (`allowedLayouts`) under `expandTemplatesSync` must be pre-loaded.** It isn't referenced from page data, so `loadTemplates` won't auto-scan it. The async `expandTemplates` fetches it on demand, but the **sync** `expandTemplatesSync` (recommended for SSR / Vue computed) needs it already in `templates` — pass its id explicitly: `loadTemplates(data, loadTemplate, cache, ['/templates/footer-layout'])`. Otherwise you'll hit `Template "…" not found in pre-loaded templates`. To have it arrive with the page instead, see "Fetching forced layouts with the page" below.
 
@@ -367,7 +367,7 @@ A merge puts a template's blocks into a **target** document. Opening a page merg
 
 Applied in each direction, the rules give:
 
-<block type="slateTable" table.fixed table.celled>
+<block is="slateTable" table.fixed table.celled>
 
 | Block | Opening a page | Change on all pages |
 | --- | --- | --- |
