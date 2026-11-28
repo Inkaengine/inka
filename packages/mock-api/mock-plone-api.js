@@ -3715,14 +3715,15 @@ async function exportContent(req, res) {
     // A page authored flat (`X.md`) stays flat even if is_folderish; a folder
     // landing stays a folder even with no child pages. A flat page that GAINED
     // children still needs a folder to hold them. A JSON mount has no `folder`
-    // flag, so it falls back to is_folderish (its historic behaviour).
+    // flag: a folderish item, or one holding children (an image is one), is a
+    // folder. This one set decides both where a page is written and how links
+    // from and to it are made relative, so the two can't disagree.
     const folderish = new Set();
     for (const k of Object.keys(contentDirMap)) {
       const info = contentDirMap[k];
       const d = loadRawContentFromDisk(k) || {};
-      const authored = info && info.markdown
-        ? (info.folder || (childrenByParent[k] || []).length > 0)
-        : d.is_folderish;
+      const hasChildren = (childrenByParent[k] || []).length > 0;
+      const authored = info && info.markdown ? (info.folder || hasChildren) : (d.is_folderish || hasChildren);
       if (authored || d['@type'] === 'Plone Site') folderish.add(k);
     }
 
@@ -3922,11 +3923,7 @@ async function exportContent(req, res) {
           for (const v of Object.values(node)) copyFieldBlobs(v);
         };
         copyFieldBlobs(c);
-        const info = contentDirMap[p];
-        const isFolder = info && info.markdown
-          ? (info.folder || (childrenByParent[p] || []).length > 0)
-          : (c.is_folderish || (childrenByParent[p] || []).length > 0);
-        const dest = path.join(treeRoot, rel === '' ? 'index.md' : (isFolder ? `${rel}/index.md` : `${rel}.md`));
+        const dest = path.join(treeRoot, rel === '' ? 'index.md' : (folderish.has(p) ? `${rel}/index.md` : `${rel}.md`));
         fs.mkdirSync(path.dirname(dest), { recursive: true });
         fs.writeFileSync(dest, emitFile(c, p, m));
       }

@@ -24,7 +24,20 @@ const item = (rel, data) => {
 };
 const PNG = Buffer.from('89504e470d0a1a0a0000000d49484452000000010000000108060000001f15c4890000000d4944415478da63f8cfc0f01f0005000201a5d8bd7f0000000049454e44ae426082', 'hex');
 
-item('folder', { '@id': '/folder', '@type': 'Document', UID: 'folder-0001', id: 'folder', title: 'Folder', review_state: 'published' });
+const link = (uid, url) => ({
+  [uid]: { '@type': 'slate', value: [{ type: 'p', children: [{ type: 'link', data: { url }, children: [{ text: 'a link' }] }] }] },
+});
+const withBlocks = (blocks) => ({ blocks, blocks_layout: { items: Object.keys(blocks) } });
+
+// Not folderish, but it holds an image, so it is written as a folder.
+item('folder', {
+  '@id': '/folder', '@type': 'Document', UID: 'folder-0001', id: 'folder', title: 'Folder', review_state: 'published',
+  ...withBlocks(link('to-other', '/other')),
+});
+item('other', {
+  '@id': '/other', '@type': 'Document', UID: 'other-0001', id: 'other', title: 'Other', review_state: 'published',
+  ...withBlocks(link('to-folder', '/folder')),
+});
 item('folder/logo.png', {
   '@id': '/folder/logo.png', '@type': 'Image', UID: 'logo-0001', id: 'logo.png', title: 'Logo', review_state: 'published',
   image: { filename: 'logo.png', 'content-type': 'image/png', blob_path: 'folder/logo.png/image/logo.png' },
@@ -32,7 +45,7 @@ item('folder/logo.png', {
 fs.mkdirSync(path.join(content, 'folder/logo.png/image'), { recursive: true });
 fs.writeFileSync(path.join(content, 'folder/logo.png/image/logo.png'), PNG);
 fs.writeFileSync(path.join(content, '__metadata__.json'), JSON.stringify({
-  _data_files_: ['folder/data.json', 'folder/logo.png/data.json'],
+  _data_files_: ['folder/data.json', 'folder/logo.png/data.json', 'other/data.json'],
   _blob_files_: ['folder/logo.png/image/logo.png'],
   ordering: {},
 }));
@@ -79,6 +92,20 @@ describe('a Markdown export of a JSON tree', () => {
       const folder = fs.readFileSync(path.join(out, 'folder/index.md'), 'utf8');
       assert.match(folder, /\nblobs:\n {2}- file: logo\.png\n/);
       assert.deepEqual(fs.readFileSync(path.join(out, 'folder/logo.png')), PNG);
+    } finally {
+      fs.rmSync(out, { recursive: true, force: true });
+    }
+  });
+
+  // A page written as a folder is one for its links too: its own links are
+  // relative to its folder, and links to it point at its index.md. A page not
+  // folderish but holding an image was written as a folder and linked to as a
+  // file, so the docs' Section page linked to ./card/index.md under itself.
+  it('links from and to a page written as a folder because it holds an image', async () => {
+    const out = await exportMarkdown();
+    try {
+      assert.match(fs.readFileSync(path.join(out, 'folder/index.md'), 'utf8'), /"url":"\.\.\/other\.md"/);
+      assert.match(fs.readFileSync(path.join(out, 'other.md'), 'utf8'), /"url":"\.\/folder\/index\.md"/);
     } finally {
       fs.rmSync(out, { recursive: true, force: true });
     }
