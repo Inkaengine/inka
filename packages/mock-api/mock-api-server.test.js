@@ -499,6 +499,28 @@ describe('@search', () => {
     assert.ok(columns.items.some((i) => new URL(i['@id']).pathname === '/_test_data/container-test-page'), 'a column inside columns');
   });
 
+  it('object_provides IBlocks finds the items that have blocks, whatever their type', async () => {
+    // The volto.blocks behavior marks its items with IBlocks (a schema-only
+    // behavior marks with what it provides), and the catalog indexes it as
+    // object_provides: how a visitor asks for every page without naming types.
+    const pages = await search('object_provides=plone.restapi.behaviors.IBlocks&b_size=9999');
+    const everything = await search('b_size=9999');
+    assert.ok(everything.items.some((i) => i['@type'] === 'Image'), 'the fixtures hold an Image to leave out');
+    assert.ok(pages.items.some((i) => new URL(i['@id']).pathname === '/_test_data/accordion-test-page'), 'a page');
+    for (const item of pages.items) {
+      const page = await getContent(new URL(item['@id']).pathname);
+      assert.ok(page.blocks_layout, `${item['@id']} (${item['@type']}) has no blocks`);
+    }
+  });
+
+  it('refuses object_provides for an interface it does not model', async () => {
+    // Answering with nothing would read as "no item provides it".
+    const res = await fetch(`${baseUrl}/@search?object_provides=plone.app.contenttypes.interfaces.IImage`, {
+      headers: { Accept: 'application/json' },
+    });
+    assert.equal(res.status, 400);
+  });
+
   it('pages a listing by b_start / b_size, items_total staying the whole', async () => {
     const all = await search('path.depth=1&path.query=/_test_data');
     const page1 = await search('path.depth=1&path.query=/_test_data&b_size=5');

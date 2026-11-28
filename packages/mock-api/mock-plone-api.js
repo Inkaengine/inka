@@ -72,9 +72,9 @@ if (!process.env.CONTENT_MOUNTS) {
 
 /**
  * The content directories to serve, from CONTENT_MOUNTS (required):
- * "mountPath:dirPath,mountPath2:dirPath2", most specific first, since a path is
- * served by the first mount it falls under ('/' owns everything, so it goes
- * last). Example: "/docs:./docs,/:./site/content".
+ * "mountPath:dirPath,mountPath2:dirPath2". Example: "/docs:./docs,/:./site/content".
+ * Mounts at the same path are layers: where several hold a path, the one listed
+ * first serves it (claimPath).
  */
 function parseContentMounts() {
   const mountsEnv = process.env.CONTENT_MOUNTS;
@@ -2804,7 +2804,8 @@ function addFormValidationSettings(node) {
  * Scan content directory and populate contentDirMap (recursively)
  * Content is loaded from disk on-demand, not cached
  */
-function scanContentDir(contentDirPath, mountPath) {
+function scanContentDir(contentDirPath, mount) {
+  const { mountPath } = mount;
   if (!fs.existsSync(contentDirPath)) {
     console.log(`Content directory not found: ${contentDirPath}`);
     return;
@@ -2847,15 +2848,17 @@ function scanContentDir(contentDirPath, mountPath) {
           : mountPath + contentPath;
 
         // Only store the directory mapping, content loaded on-demand
-        contentDirMap[urlPath] = { dirPath: fullDirPath, dirName: dir.name };
-        // Track UID→path for resolveuid endpoint
-        if (content.UID) {
-          uidToPathMap[content.UID] = urlPath;
+        if (claimPath(urlPath, mount)) {
+          contentDirMap[urlPath] = { dirPath: fullDirPath, dirName: dir.name, mount, uid: content.UID };
+          // Track UID→path for resolveuid endpoint
+          if (content.UID) {
+            uidToPathMap[content.UID] = urlPath;
+          }
+          console.log(`Registered content: ${urlPath}`);
         }
-        console.log(`Registered content: ${urlPath}`);
       }
       // Always recurse into subdirectories to find nested content (e.g., templates/)
-      scanContentDir(fullDirPath, mountPath);
+      scanContentDir(fullDirPath, mount);
     }
   });
 }
@@ -2903,10 +2906,25 @@ function getSiteRoot(expandList = [], sessionId, expandParams = {}) {
  *  plone_site_root/data.json instead. */
 const isMarkdownMount = (mount) => fs.existsSync(path.join(mount.dirPath, 'index.md'));
 
-/** The mount that owns a url path (the ContentSource for it). '/' owns everything. */
-function mountFor(urlPath) {
-  return CONTENT_MOUNTS.find((m) => m.mountPath === '/'
-    || urlPath === m.mountPath || urlPath.startsWith(`${m.mountPath}/`));
+/** The mount that serves a url path (the ContentSource for it), or undefined. */
+const mountFor = (urlPath) => contentDirMap[urlPath]?.mount;
+
+/**
+ * Whether `mount` may serve `urlPath`, which it holds. Mounts at the same path
+ * are layers: a site's own content over a starter it builds on, or a frontend's
+ * fixtures over that starter. Where several hold a path, the one listed first
+ * serves it, whatever their formats. Markdown loads after JSON, so a later
+ * layer may have taken the path already: it gives it up here, uid and all, and
+ * its item there is not served at all.
+ */
+function claimPath(urlPath, mount) {
+  const held = contentDirMap[urlPath];
+  if (!held || held.mount === mount) return true;
+  if (CONTENT_MOUNTS.indexOf(held.mount) < CONTENT_MOUNTS.indexOf(mount)) return false;
+  if (held.uid && uidToPathMap[held.uid] === urlPath) delete uidToPathMap[held.uid];
+  markdownItems.delete(urlPath);
+  markdownBlobs.delete(urlPath);
+  return true;
 }
 
 /** (Re)load ONE markdown mount into the shared caches, then validate the tree.
@@ -2943,20 +2961,23 @@ function loadMarkdownMount(mount) {
   // The authored `order:` is a CURATED list (it may deliberately omit asset
   // folders like images/static). Keep it so a re-export writes it back verbatim
   // instead of regenerating a full order that pulls those folders into the nav.
-  if (order) for (const [p, list] of order) markdownOrder.set(urlFor(p), list);
+  const serves = (p) => contentDirMap[urlFor(p)]?.mount === mount;
   for (const [p, item] of items) {
     const urlPath = urlFor(p);
+    if (!claimPath(urlPath, mount)) continue;
     item['@id'] = urlPath;
     markdownItems.set(urlPath, item);
     // `folder` records the AUTHORED file form (X/index.md vs X.md) so a
     // re-export writes the source back in the same shape.
-    contentDirMap[urlPath] = { dirPath, markdown: true, folder: folderForm && folderForm.has(p) };
+    contentDirMap[urlPath] = { dirPath, markdown: true, folder: folderForm && folderForm.has(p), mount, uid: item.UID };
     if (item.UID) {
       uidToPathMap[item.UID] = urlPath;
       if (item.getObjPositionInParent !== undefined) uidPositionMap[item.UID] = item.getObjPositionInParent;
     }
   }
-  for (const [p, file] of blobFiles) markdownBlobs.set(urlFor(p), file);
+  // A folder another layer serves keeps that layer's order, and its blobs.
+  if (order) for (const [p, list] of order) if (serves(p)) markdownOrder.set(urlFor(p), list);
+  for (const [p, file] of blobFiles) if (serves(p)) markdownBlobs.set(urlFor(p), file);
   console.log(`Registered ${items.size} markdown items from ${dirPath} at ${mountPath}`);
 }
 
@@ -3052,9 +3073,9 @@ async function reportServedContentProblems() {
 function reloadMount(mount) {
   if (isMarkdownMount(mount)) { loadMarkdownMount(mount); return; }
   if (mount.mountPath !== '/' && fs.existsSync(path.join(mount.dirPath, 'data.json'))) {
-    contentDirMap[mount.mountPath] = { dirPath: mount.dirPath, dirName: path.basename(mount.dirPath) };
+    contentDirMap[mount.mountPath] = { dirPath: mount.dirPath, dirName: path.basename(mount.dirPath), mount };
   }
-  scanContentDir(mount.dirPath, mount.mountPath);
+  scanContentDir(mount.dirPath, mount);
 }
 
 /** Import the ESM loaders once, hold them, and load every markdown mount. */
@@ -3120,7 +3141,8 @@ async function initMarkdownMounts() {
 
 // Scan content directories on startup (content loaded on-demand)
 function initContentDirMap() {
-  CONTENT_MOUNTS.forEach(({ mountPath, dirPath }) => {
+  CONTENT_MOUNTS.forEach((mount) => {
+    const { mountPath, dirPath } = mount;
     // A markdown mount is loaded from its index.md tree by initMarkdownMounts and
     // must NOT be JSON-scanned: scanContentDir walks for data.json dirs and would
     // pick up any nested distribution tree (e.g. docs/content/, the generated
@@ -3132,11 +3154,11 @@ function initContentDirMap() {
     if (mountPath !== '/') {
       const rootDataPath = path.join(dirPath, 'data.json');
       if (fs.existsSync(rootDataPath)) {
-        contentDirMap[mountPath] = { dirPath, dirName: path.basename(dirPath) };
+        contentDirMap[mountPath] = { dirPath, dirName: path.basename(dirPath), mount };
         console.log(`Registered content: ${mountPath}`);
       }
     }
-    scanContentDir(dirPath, mountPath);
+    scanContentDir(dirPath, mount);
   });
   console.log(`Registered ${Object.keys(contentDirMap).length} content paths`);
 }
@@ -3693,16 +3715,13 @@ function buildDistributionFromMemory(dest, { allowMissingBlobs = false, sitePath
   // Only genuine content-source mounts are exportable: a plone.exportimport tree
   // (has __metadata__.json) or a markdown tree (has index.md). A loose fixture
   // mount like /_test_data is neither — it holds intentionally-malformed test
-  // pages and must never end up in a deploy tar. Pick each path's MOST-SPECIFIC
-  // mount (longest matching mountPath), since '/' nominally owns everything.
+  // pages and must never end up in a deploy tar. Each path is exported from the
+  // mount that serves it.
   const exportable = (m) => isMarkdownMount(m) || fs.existsSync(path.join(m.dirPath, '__metadata__.json'));
-  const ownerMount = (urlPath) => CONTENT_MOUNTS
-    .filter((m) => m.mountPath === '/' || urlPath === m.mountPath || urlPath.startsWith(`${m.mountPath}/`))
-    .sort((a, b) => b.mountPath.length - a.mountPath.length)[0];
 
   const items = [];
   for (const urlPath of Object.keys(contentDirMap)) {
-    const owner = ownerMount(urlPath);
+    const owner = mountFor(urlPath);
     if (!owner || !exportable(owner)) continue;
     const data = loadRawContentFromDisk(urlPath);
     if (data) items.push({ urlPath, data });
@@ -3971,10 +3990,6 @@ async function exportContent(req, res) {
       return `---\n${front}\n---\n`;
     };
 
-    // The most-specific mount owns a path ('/' nominally owns everything).
-    const ownerMount = (u) => CONTENT_MOUNTS
-      .filter((m) => m.mountPath === '/' || u === m.mountPath || u.startsWith(`${m.mountPath}/`))
-      .sort((a, b) => b.mountPath.length - a.mountPath.length)[0];
     const relOf = (m, u) => (m.mountPath === '/' ? (u === '/' ? '' : u.replace(/^\//, ''))
       : u.replace(m.mountPath, '').replace(/^\//, ''));
 
@@ -3998,7 +4013,8 @@ async function exportContent(req, res) {
       for (const p of Object.keys(contentDirMap)) {
         const c = loadRawContentFromDisk(p);
         if (!c) continue;
-        const m = ownerMount(p);
+        // Each path from the mount that serves it.
+        const m = mountFor(p);
         if (!m) continue;
         const treeRoot = treeRootOf(m);
         const rel = relOf(m, p);
@@ -6087,6 +6103,17 @@ app.post('{/*path}/@querystring-search', (req, res) => {
  * Supports path.depth parameter to get children of a specific path
  * Supports path.query parameter to get a specific content item
  */
+/**
+ * The interfaces the catalog's object_provides index answers for here, each
+ * with how an item shows it provides it. plone.restapi's volto.blocks behavior
+ * registers IBlocks with no marker and no factory, so plone.behavior marks its
+ * items with IBlocks itself; the editable-layout variant's interface extends
+ * it. An item with blocks has `blocks_layout`.
+ */
+const PROVIDED_INTERFACES = {
+  'plone.restapi.behaviors.IBlocks': (content) => content.blocks_layout !== undefined,
+};
+
 app.get('{/*path}/@search', (req, res) => {
   const searchPath = req.path.replace('/@search', '');
 
@@ -6128,7 +6155,18 @@ app.get('{/*path}/@search', (req, res) => {
   // container children included.
   const blockTypes = req.query.block_types === undefined ? null : [req.query.block_types].flat();
   const reviewStates = req.query.review_state === undefined ? null : [req.query.review_state].flat();
-  if (searchableText || titleQuery || blockTypes || reviewStates) {
+  // object_provides: the catalog's index of the interfaces an item provides.
+  // Only those modelled here (PROVIDED_INTERFACES) can be asked for; any other
+  // would match nothing, which reads as "no item provides it".
+  const provides = req.query.object_provides === undefined ? null : [req.query.object_provides].flat();
+  const unmodelled = (provides || []).filter((name) => !PROVIDED_INTERFACES[name]);
+  if (unmodelled.length) {
+    return res.status(400).json({
+      type: 'BadRequest',
+      message: `object_provides: the mock doesn't model ${unmodelled.join(', ')} (it models ${Object.keys(PROVIDED_INTERFACES).join(', ')})`,
+    });
+  }
+  if (searchableText || titleQuery || blockTypes || reviewStates || provides) {
     // The site as this session has it, as Plone's catalog does: its own new
     // and edited pages included, by the text in their blocks too.
     items = allContentPaths(getSessionId(req))
@@ -6136,6 +6174,7 @@ app.get('{/*path}/@search', (req, res) => {
       .map((itemPath) => getContent(itemPath, getSessionId(req)))
       .filter((content) => content != null)
       .filter((content) => !blockTypes || blockTypesOf(content).some((t) => blockTypes.includes(t)))
+      .filter((content) => !provides || provides.some((name) => PROVIDED_INTERFACES[name](content)))
       .filter((content) => !searchableText || matchSearchableText(searchableText, content, blocksSearchableText(content.blocks)))
       .map((content) => formatSearchItem(content, baseUrl));
     if (titleQuery) {
