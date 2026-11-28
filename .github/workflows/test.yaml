@@ -380,8 +380,21 @@ jobs:
             console.log('playwright and @sentry/node resolve');"
 
   test-bridge-unit:
+    # Split by project: mock runs block sanity, whose coverage reporter needs all
+    # its results in one run, so it stays whole; the rest hold none and are sharded.
+    name: test-bridge-unit (${{ matrix.part }})
     needs: build
     runs-on: 'ubuntu-latest'
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - part: mock
+            args: "--project=mock"
+          - part: frameworks-1
+            args: "--project=unit --project=unit-firefox --project=api-contract --project=react --project=svelte --project=vue --project=astro --shard=1/2"
+          - part: frameworks-2
+            args: "--project=unit --project=unit-firefox --project=api-contract --project=react --project=svelte --project=vue --project=astro --shard=2/2"
     timeout-minutes: 30
     # Playwright's own image: Node, git, the browsers for this Playwright
     # version and every system package they need, baked in. The jobs used to
@@ -456,11 +469,13 @@ jobs:
           done
           echo "All servers ready"
       - name: Comparison engine unit tests (node:test)
+        # Once per run, not once per part.
+        if: matrix.part == 'mock'
         # @inka/compare. Here, not with test:api, because recording and
         # replaying a source site needs a browser.
         run: pnpm test:compare
       - name: Run tests
-        run: pnpm exec playwright test --project=unit --project=unit-firefox --project=api-contract --project=mock --project=react --project=svelte --project=vue --project=astro
+        run: pnpm exec playwright test ${{ matrix.args }}
         env:
           CI: true
           NO_WEBSERVER: true
@@ -484,7 +499,7 @@ jobs:
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: playwright-report-bridge-unit
+          name: playwright-report-bridge-unit-${{ matrix.part }}
           path: |
             playwright-report/
             test-results/**/*.png
@@ -496,7 +511,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: playwright-traces-bridge-unit
+          name: playwright-traces-bridge-unit-${{ matrix.part }}
           path: test-results/**/trace.zip
           if-no-files-found: ignore
           retention-days: 7
@@ -1002,8 +1017,19 @@ jobs:
 
   # ── Next.js + F7 bridge tests (no Volto needed) ─────────────────────────
   test-nextjs-f7:
+    # Split by project: nextjs runs block sanity, whose coverage reporter needs
+    # all its results in one run, so it stays whole; the rest go in a second job.
+    name: test-nextjs-f7 (${{ matrix.part }})
     needs: build
     runs-on: 'ubuntu-latest'
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - part: nextjs
+            args: "--project=nextjs"
+          - part: others
+            args: "--project=nextjs-firefox --project=f7 --project=vanilla --project=svelte-qs --project=astro-qs"
     timeout-minutes: 45
     # Playwright's own image: Node, git, the browsers for this Playwright
     # version and every system package they need, baked in. The jobs used to
@@ -1099,7 +1125,7 @@ jobs:
           done
           echo "All servers ready"
       - name: Run tests
-        run: pnpm exec playwright test --project=nextjs --project=nextjs-firefox --project=f7 --project=vanilla --project=svelte-qs --project=astro-qs
+        run: pnpm exec playwright test ${{ matrix.args }}
         env:
           CI: true
           NO_WEBSERVER: true
@@ -1123,7 +1149,7 @@ jobs:
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: playwright-report-nextjs-f7
+          name: playwright-report-nextjs-f7-${{ matrix.part }}
           path: |
             playwright-report/
             test-results/**/*.png
@@ -1135,7 +1161,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: playwright-traces-nextjs-f7
+          name: playwright-traces-nextjs-f7-${{ matrix.part }}
           path: test-results/**/trace.zip
           if-no-files-found: ignore
           retention-days: 7
