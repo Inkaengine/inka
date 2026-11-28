@@ -3880,14 +3880,31 @@ async function exportContent(req, res) {
         const rel = relOf(m, p);
         if (isBlobItem(c)) {
           // Copy the blob's bytes next to its parent folder's index.md.
-          const src = markdownBlobs.get(p);
           const field = c[BLOB_FIELD[c['@type']]];
           const file = field.filename || path.basename(field.blob_path);
           // The blob sits next to its parent folder's index.md; a root-level blob
           // (rel with no slash) has parent '' — not itself.
           const parentDir = rel.includes('/') ? rel.replace(/\/[^/]*$/, '') : '';
           const dest = path.join(treeRoot, parentDir, file);
-          if (src && fs.existsSync(src)) { fs.mkdirSync(path.dirname(dest), { recursive: true }); fs.copyFileSync(src, dest); }
+          if (contentDirMap[p].markdown) {
+            // A Markdown mount found the bytes as it loaded, and warned then
+            // about any it lacked (generated doc assets are git-ignored).
+            const src = markdownBlobs.get(p);
+            if (src && fs.existsSync(src)) { fs.mkdirSync(path.dirname(dest), { recursive: true }); fs.copyFileSync(src, dest); }
+            continue;
+          }
+          // An exportimport tree keeps them at the item's blob_path, under the
+          // mount's directory, as the JSON export reads them.
+          const src = path.join(m.dirPath, field.blob_path);
+          if (!fs.existsSync(src)) {
+            if (allowMissingBlobs) {
+              console.warn(`${p}: no bytes for blob_path "${field.blob_path}" (looked at ${src}) — skipping (allowMissingBlobs)`);
+              continue;
+            }
+            throw new Error(`${p}: no bytes for blob_path "${field.blob_path}" (looked at ${src})`);
+          }
+          fs.mkdirSync(path.dirname(dest), { recursive: true });
+          fs.copyFileSync(src, dest);
           continue;
         }
         // A page (not an Image/File object) may still carry blob FIELDS — a lead
