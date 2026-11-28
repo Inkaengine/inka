@@ -1177,10 +1177,31 @@ export class Bridge {
   /**
    * The block a handle is FOR: the first token names it, whatever the rest of
    * the list is there to reveal (an accordion header carries its panel first,
-   * then its children).
+   * then its children). A field handle (`uid#field`) is for its block: the
+   * field says where it is edited, not which block. Returning the token whole
+   * sent the selector navigation looking for a block uid'd `uid#field`, which
+   * no element has. A direction (`+1`, `uid:next`) names no block.
    */
   static primaryUidOf(source) {
-    return Bridge.selectorTokens(source)[0];
+    return Bridge.uidFromSelectorToken(Bridge.selectorTokens(source)[0]);
+  }
+
+  /**
+   * Whether a click on an element the frontend lets through
+   * (`data-linkable-allow`) may load another page — the case the in-page
+   * navigation marker is for. A link to this page's own fragment loads none (a
+   * "Cookie settings" link, `href="#cookie-consent"`, opens a dialog); a note
+   * written for it would be read by whatever load comes next, and an editor
+   * load taken for paging sends PATH_CHANGE and never INIT. Anything else may:
+   * a facet's control submits its form or the frontend navigates on change,
+   * and nothing on the element says it will not.
+   */
+  static clickMayLoadPage(element) {
+    const link = element?.closest?.('a[href]');
+    if (!link) return true;
+    const here = link.ownerDocument.location;
+    const to = new URL(link.getAttribute('href'), here.href);
+    return !(to.origin === here.origin && to.pathname === here.pathname && to.search === here.search);
   }
 
   static uidFromSelectorToken(token) {
@@ -5454,7 +5475,11 @@ export class Bridge {
         this._allowLinkNavigation = true;
         // Reset flag after short delay if navigation didn't happen
         setTimeout(() => { this._allowLinkNavigation = false; }, 100);
-        // Store timestamp for in-page navigation - checked on reload to skip PATH_CHANGE
+      }
+      if (allowedElement && Bridge.clickMayLoadPage(event.target)) {
+        // Store timestamp for in-page navigation - checked on reload to skip PATH_CHANGE.
+        // Only for a click that may load a page (clickMayLoadPage): any load
+        // in the next few seconds reads this note.
         sessionStorage.setItem('hydra_in_page_nav_time', String(Date.now()));
         // ...and WHAT was selected. Applying a search facet reloads the page by
         // design, and the author's selection should survive it. Relying on the
@@ -10427,6 +10452,14 @@ export class Bridge {
       setTimeout(() => this.waitForBlockVisibleAndSelect(targetUid, retries - 1, 0, null, seq), 50);
     } else {
       log('handleBlockSelector: block not visible after retries', targetUid);
+      // Give up AND hand clicks back. While this flag is set every block click
+      // is ignored, and only selectBlock's safety timeout cleared it — which
+      // never runs when nothing is selected. Restore the selection the
+      // navigation hid (HIDE_BLOCK_UI), as that timeout does.
+      this._blockSelectorNavigating = false;
+      if (this.selectedBlockUid) {
+        this.sendBlockSelected('navigationSettled', null, { blockUid: this.selectedBlockUid });
+      }
     }
   }
 
