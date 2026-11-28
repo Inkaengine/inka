@@ -1285,19 +1285,6 @@ function parseExpand(req) {
 }
 
 /**
- * A comma-separated query value as a list. Express hands back an array when a param is
- * repeated (`?x=a&x=b`), so accept both spellings of "several values".
- */
-function splitList(raw) {
-  if (raw === undefined || raw === null) return [];
-  const parts = Array.isArray(raw) ? raw : [raw];
-  return parts
-    .flatMap((p) => String(p).split(','))
-    .map((s) => s.trim())
-    .filter(Boolean);
-}
-
-/**
  * The `expand.<component>.<param>` options that accompany ?expand=, passed through to the
  * component builders. Plone spells component options this way (`expand.navigation.depth`);
  * keeping the raw keys means a builder reads the same name Plone documents.
@@ -2079,25 +2066,6 @@ function buildTypesComponent() {
 }
 
 /**
- * Collect every templateId referenced anywhere in a value, at any depth.
- * Mirrors the frontend helper's collectTemplateIds: the reference may sit on a block, a
- * nested container's child, or an object_list item, so this walks everything rather than
- * assuming a shape.
- */
-function collectTemplateIds(value, found = new Set(), seen = new Set()) {
-  if (!value || typeof value !== 'object') return found;
-  if (seen.has(value)) return found;
-  seen.add(value);
-  if (Array.isArray(value)) {
-    for (const item of value) collectTemplateIds(item, found, seen);
-    return found;
-  }
-  if (typeof value.templateId === 'string') found.add(value.templateId);
-  for (const v of Object.values(value)) collectTemplateIds(v, found, seen);
-  return found;
-}
-
-/**
  * Normalise a templateId to the path this mock stores content under.
  * A reference may be a `resolveuid/UID`, an absolute URL, or a plain path — all three
  * appear in fixtures. resolveuid is resolved through the same uidToPath index the
@@ -2120,101 +2088,6 @@ function templateIdToPath(templateId) {
   p = p.replace('/++api++', '');
   if (!p.startsWith('/')) p = `/${p}`;
   return p.replace(/\/+$/, '') || '/';
-}
-
-/**
- * Resolve a page's templates: everything referenced via templateId in the page, plus the
- * `extra` ids the caller named, plus everything those reference in turn.
- *
- * `extra` exists because the FRONTEND owns the layout rules (which layout a News Item
- * gets, which footer a section gets). A forced layout is never referenced from page
- * content — that is exactly why the frontend had to pre-load it by hand — so the backend
- * cannot discover it and must be told. The backend answers only the data question:
- * "resolve these and everything they reference". No policy crosses the wire.
- *
- * Returns templates keyed by the SAME string the caller referenced, because that is what
- * expandTemplatesSync looks up: a block carrying `resolveuid/abc` must find an entry at
- * `resolveuid/abc`, not at the path it resolved to. One template reached by two spellings
- * is emitted under both.
- */
-function resolveTemplates(pageContent, extraIds, sessionId, baseUrl) {
-  const templates = {};
-  const errors = [];
-  const visitedPaths = new Set();
-  let pending = [
-    ...collectTemplateIds(pageContent),
-    ...(extraIds || []),
-  ];
-
-  while (pending.length > 0) {
-    const next = [];
-    for (const templateId of pending) {
-      if (templates[templateId] || errors.some((e) => e.templateId === templateId)) continue;
-      // Errors name the id AS REQUESTED — the string the frontend has to match up — and
-      // an unknown uid is just "not found", like any other missing template. Matches the
-      // inkaengine.inka addon, whose tests assert the same messages; this used to report the
-      // resolved path, or "unresolvable template id" for an unknown uid.
-      const notFound = { templateId, error: `not found: ${templateId}` };
-      const tplPath = templateIdToPath(templateId);
-      if (!tplPath) {
-        errors.push(notFound);
-        continue;
-      }
-      // Enriched, like any other read: the template's own blocks get the same
-      // resolveuid/image-scale/relation treatment the page does, so a frontend renders
-      // template content through exactly the same path as page content.
-      const content = getContent(tplPath, sessionId, []);
-      if (!content) {
-        errors.push(notFound);
-        continue;
-      }
-      // Minus its own @components: those are links nobody asked for, and the addon omits
-      // them (on Plone, expanding them re-enters @templates and recurses).
-      const { '@components': _ownComponents, ...entry } = content;
-      templates[templateId] = entry;
-      // A template may reference further templates; follow those too. Guard on the
-      // resolved PATH so two spellings of one template are walked once.
-      if (!visitedPaths.has(tplPath)) {
-        visitedPaths.add(tplPath);
-        for (const nested of collectTemplateIds(content)) {
-          if (!templates[nested]) next.push(nested);
-        }
-      }
-    }
-    pending = next;
-  }
-  return { templates, errors };
-}
-
-/**
- * The @templates component: every template a page needs to render, resolved in one
- * request.
- *
- * Without this a frontend fetches each template itself, discovers nested references only
- * after the parent arrives, and serialises the walk — the N+1 that made the SSG prerender
- * hit the API ~179x for the same forced footer and cold-hang. Here the walk happens
- * server-side, where the content already is.
- *
- * Deliberately NOT included: allowedTemplates / allowedLayouts. Layouts are a design
- * system's artifacts — a second frontend against this same content would use entirely
- * different template paths — so the rules stay frontend-owned and arrive here only as
- * `extra`.
- */
-function buildTemplatesComponent(cleanPath, baseUrl, sessionId, extraIds = []) {
-  const fullUrl = cleanPath === '/' ? baseUrl : `${baseUrl}${cleanPath}`;
-  // Read RAW: rawContentForComponents is the reader a @components builder may use
-  // (getContent attaches @components, so calling it here is a cycle). Only templateId
-  // references are needed from the page, and those are in the stored blocks.
-  const page = rawContentForComponents(cleanPath, sessionId);
-  const { templates, errors } = resolveTemplates(page, extraIds, sessionId, baseUrl);
-  return {
-    '@id': `${fullUrl}/@templates`,
-    templates,
-    // Named rather than thrown: one missing template must not fail the page read. The
-    // frontend decides whether a missing template is fatal — ploneApi already has
-    // `ignoreTemplateErrors` for exactly that call.
-    ...(errors.length > 0 ? { errors } : {}),
-  };
 }
 
 /**
@@ -2269,21 +2142,9 @@ function buildSearchComponent(cleanPath, baseUrl, sessionId, params) {
 function generateComponents(urlPath, baseUrl, sessionId, params = {}) {
   const cleanPath = urlPath.replace(/\/$/, '') || '/';
   return {
-    // Lazy, unlike its siblings: resolving templates walks the page's references and
-    // reads each template from disk, so building it for every GET would make unexpanded
-    // reads pay for a component nobody asked for. expandComponents calls the thunk only
-    // for a component actually named in ?expand=.
-    templates: () =>
-      buildTemplatesComponent(
-        cleanPath,
-        baseUrl,
-        sessionId,
-        // Plone spells component options `expand.<component>.<param>` — the same shape
-        // as `expand.navigation.depth`. Comma-separated, since a frontend forces several
-        // layouts (a page layout and a footer layout).
-        splitList(params['expand.templates.extra']),
-      ),
-    // Lazy for the same reason: it reads each item it finds.
+    // Lazy, unlike its siblings: it reads each item it finds, so building it for
+    // every GET would make unexpanded reads pay for a component nobody asked for.
+    // expandComponents calls the thunk only for a component named in ?expand=.
     search: () => buildSearchComponent(cleanPath, baseUrl, sessionId, params),
     // @actions has no session here on purpose: the adapter reads @actions
     // directly, and that route IS session-aware, so a working copy still
@@ -2641,7 +2502,7 @@ function getFolderChildItems(folderPath, baseUrl) {
  * middleware to add ?expand= which the request handler then expands.
  */
 function stubComponents(fullUrl) {
-  const ids = ['actions', 'aliases', 'breadcrumbs', 'contextnavigation', 'navigation', 'navroot', 'templates', 'translations', 'types', 'workflow'];
+  const ids = ['actions', 'aliases', 'breadcrumbs', 'contextnavigation', 'navigation', 'navroot', 'translations', 'types', 'workflow'];
   const stubs = {};
   for (const k of ids) {
     stubs[k] = { '@id': `${fullUrl}/@${k}` };
@@ -2865,9 +2726,8 @@ function scanContentDir(contentDirPath, mountPath) {
  *
  * Expand-aware like every other read (enrichContent): named components expanded, the
  * rest @id stubs. It used to serialise generateComponents() whole, and that map holds
- * `templates` as a lazy thunk, which JSON.stringify silently drops — so the synthesised
- * root was the one page `?expand=templates` never answered, and a frontend fell back to
- * fetching its forced layouts one by one without anything saying so.
+ * lazy thunks, which JSON.stringify silently drops — so the synthesised root was the one
+ * page an expansion never answered, without anything saying so.
  */
 function getSiteRoot(expandList = [], sessionId, expandParams = {}) {
   const baseUrl = `http://localhost:${PORT}`;
@@ -5576,31 +5436,6 @@ app.get(/.*\/@navigation$/, (req, res) => {
 app.get(/.*\/@navroot$/, (req, res) => {
   const cleanPath = (req.path.replace('/++api++', '').replace(/\/?@navroot$/, '') || '/').replace(/\/+$/, '') || '/';
   res.json(buildNavrootComponent(cleanPath, `http://localhost:${PORT}`, getSessionId(req)));
-});
-
-/**
- * GET /<path>/@templates — the templates a page needs to render, resolved in one request.
- *
- * Reachable both here and inline via `?expand=templates`; a frontend fetching the page
- * anyway should prefer the expansion, since that costs no extra round trip. Forced
- * layouts are named with `?expand.templates.extra=/a,/b` on EITHER path — the same
- * option spelling Plone uses for `expand.navigation.depth`, so the two paths take the
- * same query and can't drift.
- */
-// `.*` rather than `.*\/` so this also matches the SITE ROOT (`/++api++/@templates`),
-// which has templates like any other page. The sibling component routes above use the
-// stricter form and 404 at the root; that is pre-existing, and not worth repeating here.
-app.get(/.*@templates$/, (req, res) => {
-  const cleanPath = (req.path.replace('/++api++', '').replace(/\/?@templates$/, '') || '/').replace(/\/+$/, '') || '/';
-  const baseUrl = `http://localhost:${PORT}`;
-  res.json(
-    buildTemplatesComponent(
-      cleanPath,
-      baseUrl,
-      getSessionId(req),
-      splitList(req.query['expand.templates.extra']),
-    ),
-  );
 });
 
 /**

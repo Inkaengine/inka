@@ -114,39 +114,13 @@ Inka keeps no content, no database and no files. Content, users and history stay
 
 A Plone site whose content ships with its code, as a plone.exportimport layout, is often deployed by deleting the site and importing the layout again. While that import runs there is no site: every page is a 404 to visitors, on every machine that shares the database.
 
-`inkaengine.inka.content_deploy` applies only what the layout changed, in one transaction, so visitors see the old content until the new content is complete:
+[collective.ploneexportimportdelta](https://github.com/collective/collective.ploneexportimportdelta) applies only what the layout changed, in one transaction, so visitors see the old content until the new content is complete:
 
-- **Creates and updates** go through plone.exportimport's own importer, for just the changed items.
-- **A change of review state alone** is a workflow transition. The item is not imported again, so its text, a PDF's included, is not indexed again.
-- **Moves** keep the item's UID, history and place in its folder, and leave a redirect from the old path. **Deletes** remove the item, and its address answers 404. To send a deleted page's visitors somewhere else, add the redirect to `redirects.json`.
-- **Ordering, default pages, relations, workflow states and redirects** from the layout are applied too.
+- **Plan the change where the code is.** `plone-delta-plan` compares the layout the site was last deployed from with the new one, and writes a partial export: the items that changed, plus the deletes, review-state changes and redirects.
+- **Apply it on the site.** `@import-delta` (or `import_delta` from a release script) imports just those items through plone.exportimport's own importer. A change of review state alone is a workflow transition, so the item's text, a PDF's included, is not indexed again. Moves keep the item's UID and leave a redirect from the old path; a deleted item's address answers 404.
+- **Refuse if the site has moved on.** Send the site's catalog counter from when the layout was exported. If an editor changed anything since, the counter differs and the delta is refused: export the site, bring the change into the layout, and plan again.
 
-The site keeps its own base: the layout it was last deployed from, saved in the same transaction as the content. The release step needs nothing else, so it can run on a throwaway machine. A dry run, a failure or a refused deploy leaves both the content and the base as they were.
-
-Run it from a script that `zconsole` runs in your release step. On RelStorage the running instances keep serving while it works.
-
-### Python
-
-```python
-from inkaengine.inka.content_deploy.stored_base import deploy_content
-from inkaengine.inka.content_deploy.stored_base import has_base
-from inkaengine.inka.content_deploy.stored_base import record_base
-
-if has_base(site):
-    report = deploy_content(site, request, layout, commit=True)
-else:
-    # First deploy: import the layout in full, as you do now, then
-    record_base(site, layout)
-    transaction.commit()
-```
-
-A site that already holds its content, and that nobody edits, can skip that full import: `deploy_content(site, request, layout, commit=True, seed_from_live=True)` starts from what the site holds. The layout then wins everywhere, as a full import would, so an editor's change is overwritten and content the layout lacks is deleted. A site that has a base keeps it.
-
-`layout` is the folder that holds `content/`, and `redirects.json`, `relations.json`, `principals.json` or `site-settings.json` if the layout has them.
-
-A deploy refuses to overwrite a page an editor changed on the site since the base was recorded, and lists it under `must_merge` in the report. Bring that change into the layout and deploy again. A field your site's schema cannot hold looks like an edit on every page that has it, because no export can carry it back; name such fields in `ignored_fields`.
-
-A site that is only a copy of its layout (one being tried out before it goes live, say) can have the layout win everywhere on every deploy instead: `run_delta(..., reset=True)`. Pages made on the site are deleted, pages deleted on the site are made again, and every page changed on the site since the last committed deploy is taken back from the layout. Each committed deploy records when it was classified, and a reset counts changes from then. A site with no deploy on record needs `changed_since`, the time to count from. The report lists what a reset undid under `reset`, and the change-set a caller's `review_changeset` sees names the deletions as `site_only`.
+Its README covers the options.
 
 ## Self-hosted or managed
 

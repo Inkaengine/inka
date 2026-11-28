@@ -1,5 +1,5 @@
 import { getAccessToken } from '@hydra-js/hydra.js';
-import { loadTemplates } from '@hydra-js/helpers';
+import { loadTemplates, templateSearchParams } from '@hydra-js/helpers';
 
 export default async function ploneApi({
   path,
@@ -34,17 +34,17 @@ export default async function ploneApi({
     api = `${runtimeConfig.public.backendBaseUrl}/++api++/${api}`;
   }
   if (!query) {
-    // Ask for every template the page needs in the same response: `templates` is the
-    // @templates component (the inkaengine.inka addon), which resolves the page's template
-    // references — and theirs, recursively — on the server. loadTemplates (below) uses
-    // what comes back and only fetches what is missing, so a backend without the addon,
-    // which ignores this expansion, still works: templates are then fetched one by one.
-    const extra = preloadTemplates.filter(Boolean);
-    api =
-      `${api}?expand=breadcrumbs,navroot,navigation,translations,templates&expand.navigation.depth=2` +
-      (extra.length
-        ? `&expand.templates.extra=${encodeURIComponent([...new Set(extra)].join(','))}`
-        : '');
+    // Ask for the forced layouts in the same response: `search` is
+    // collective.restapi.searchexpansion, and templateSearchParams spells a search for
+    // their paths. loadTemplates (below) takes them from there and fetches the rest, so a
+    // backend without the expansion still works: templates are then fetched one by one.
+    const extra = [...new Set(preloadTemplates.filter(Boolean))];
+    const params = new URLSearchParams([
+      ['expand', `breadcrumbs,navroot,navigation,translations${extra.length ? ',search' : ''}`],
+      ['expand.navigation.depth', '2'],
+      ...(extra.length ? templateSearchParams(extra) : []),
+    ]);
+    api = `${api}?${params}`;
   } else {
     headers['Content-Type'] = 'application/json';
   }

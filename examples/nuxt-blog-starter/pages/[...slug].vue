@@ -371,7 +371,7 @@ const mainBlocksAllowedLayouts = computed(() => {
     return [null, '/_test_data/templates/test-layout', '/_test_data/templates/header-footer-layout', '/_test_data/templates/header-only-layout', '/_test_data/templates/editable-fixed-layout', '/_test_data/templates/aside-layout'];
 });
 
-// Forced layouts, resolved by the backend alongside the page (expand.templates.extra).
+// Forced layouts, brought with the page by a search expansion (templateSearchParams).
 // They never appear in page data, so the backend can't discover them — these rules stay
 // here, in the frontend, and the backend only resolves what they name.
 const preloadTemplates = [
