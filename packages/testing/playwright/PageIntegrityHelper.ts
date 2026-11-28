@@ -16,6 +16,8 @@
  */
 import { Page, expect } from '@playwright/test';
 
+import { createLinkChecker } from '../dead-links';
+
 export interface PageIntegrityOptions {
   /**
    * Origins considered "the backend" — any rendered `<a href>` pointing here
@@ -198,27 +200,25 @@ export async function verifyNoBackendLinks(
  * Plone admin's own `./add?type=Document` (which resolved to
  * /./add?type=Document), and a set of "related pages" lists.
  *
- * Asking the browser is what makes this simple. The alternative — matching paths
- * against the content manifest offline — cannot tell a typo from a link that is
- * fine: content served under a mount prefix, a frontend route with no content
- * object behind it (/dev/blocks/*), a relative href, a static asset in public/.
- * Each needed its own special case and the result still misjudged links. The
- * browser resolves all of that natively, because it is the thing doing the
- * resolving.
+ * The browser resolves a link as a visitor's would: a relative href, content
+ * under a mount prefix. Matching paths against the content manifest offline
+ * could not tell a typo from a link that is fine (a frontend route with no
+ * content object behind it, /dev/blocks/*, or a static asset in public/), so
+ * the hrefs are read from the rendered page.
  *
- * `alreadyChecked` lets a per-page walker share one set across pages, so the
- * site chrome's links (nav, footer) are fetched once rather than once per page.
+ * Whether each one leads anywhere is asked of the API first, without rendering
+ * it, and of the frontend only when the API holds no such content (see
+ * dead-links.ts). Each target is asked once per worker.
+ *
+ * `alreadyChecked` lets a per-page walker skip, on later pages, the links an
+ * earlier page already had; a dead link is then reported on the first page
+ * only. Without it, every page reports its own dead links.
  */
 export async function verifyNoDeadLinks(
   page: Page,
-  options: { alreadyChecked?: Set<string>; concurrency?: number } = {},
+  options: { apiUrl: string; alreadyChecked?: Set<string>; concurrency?: number },
 ): Promise<void> {
   const seen = options.alreadyChecked;
-  // Gentle by default. A local server shrugs off 8 at once; the deployed single
-  // machine returns 500 for ALL of them — verified: the same URLs answer 200
-  // sequentially. A checker that manufactures its own failures is worse than no
-  // checker, so callers hitting a real host should lower this further.
-  const concurrency = options.concurrency ?? 4;
 
   const hrefs = (await page.evaluate(`(() => {
     const origin = window.location.origin;
@@ -240,49 +240,79 @@ export async function verifyNoDeadLinks(
   const toCheck = hrefs.filter((h) => !seen || !seen.has(h));
   for (const h of toCheck) seen?.add(h);
 
-  // Fetched from INSIDE the page, concurrently.
-  //
-  // Not page.request (Playwright's APIRequestContext): against the deployed
-  // site every one of those timed out at 15s while curl answered the same HEAD
-  // in 0.5s — a harness problem masquerading as dead links. The page's own
-  // fetch() is the same mechanism the browser uses for the links being checked,
-  // has the page's cookies and origin, and is what the video/audio check
-  // already uses successfully.
-  //
-  // Serially this is fine on localhost and hopeless remotely (~25 chrome links
-  // × network latency), so it runs with a small concurrency cap.
-  const dead = await page.evaluate(
-    async ({ hrefs, concurrency }: { hrefs: string[]; concurrency: number }) => {
-      const out: string[] = [];
-      const queue = [...hrefs];
-      const worker = async () => {
-        for (;;) {
-          const href = queue.shift();
-          if (href === undefined) return;
-          try {
-            // HEAD first (cheap); some routes only answer GET, so fall back
-            // rather than report a 405 as a dead link.
-            let resp = await fetch(href, { method: 'HEAD', redirect: 'follow' });
-            if (resp.status === 405 || resp.status === 501) {
-              resp = await fetch(href, { method: 'GET', redirect: 'follow' });
-            }
-            if (resp.status >= 400) out.push(`${href} -> HTTP ${resp.status}`);
-          } catch (e) {
-            // A request that cannot complete is a defect worth seeing, not a
-            // silent pass.
-            out.push(`${href} -> ${(e as Error).message}`);
-          }
-        }
-      };
-      await Promise.all(
-        Array.from({ length: Math.min(concurrency, queue.length) }, worker),
-      );
-      return out.sort();
-    },
-    { hrefs: toCheck, concurrency },
-  );
-
+  const dead = await linkChecker(page, options).check(toCheck);
   expect(dead, `Dead links on ${page.url()}:\n${dead.join('\n')}`).toEqual([]);
+}
+
+/**
+ * One checker per API and frontend for the worker, so a target is asked once
+ * however many pages link to it (see dead-links.ts). The frontend half asks
+ * through whichever page is current: the page's own fetch(), not
+ * page.request (Playwright's APIRequestContext), because against the deployed
+ * site every page.request timed out at 15s while curl answered the same HEAD in
+ * 0.5s. The API half asks from Node: it is a JSON read on another origin.
+ */
+const checkers = new Map<string, { check: (hrefs: string[]) => Promise<string[]>; page: Page }>();
+
+function linkChecker(page: Page, options: { apiUrl: string; concurrency?: number }) {
+  const key = `${options.apiUrl} ${new URL(page.url()).origin}`;
+  let entry = checkers.get(key);
+  if (!entry) {
+    // Gentle by default. A local server shrugs off 8 at once; the deployed
+    // single machine returns 500 for ALL of them -- verified: the same URLs
+    // answer 200 sequentially. A checker that manufactures its own failures is
+    // worse than no checker, so callers hitting a real host should lower this
+    // further.
+    const limit = limiter(options.concurrency ?? 4);
+    const apiUrl = options.apiUrl.replace(/\/$/, '');
+    const current = { check: (_: string[]) => Promise.resolve([] as string[]), page };
+    current.check = createLinkChecker({
+      // Anonymous on purpose: the question is whether a VISITOR can follow the
+      // link. With an editor's auth a private folder answers 200 and every
+      // visitor-facing 401 would pass; the links a run knows are private are
+      // exempted by name, not by asking as someone who can see them.
+      askApi: (path) =>
+        limit(async () => {
+          const resp = await fetch(`${apiUrl}${path === '/' ? '' : path}`, {
+            headers: { Accept: 'application/json' },
+          });
+          await resp.body?.cancel();
+          return resp.status;
+        }),
+      askFrontend: (href) =>
+        limit(() =>
+          current.page.evaluate(async (target: string) => {
+            // HEAD first (cheap); some routes only answer GET, so ask again
+            // with GET rather than report a 405 as a dead link.
+            let resp = await fetch(target, { method: 'HEAD', redirect: 'follow' });
+            if (resp.status === 405 || resp.status === 501) {
+              resp = await fetch(target, { method: 'GET', redirect: 'follow' });
+            }
+            return resp.status;
+          }, href),
+        ),
+    });
+    entry = current;
+    checkers.set(key, entry);
+  }
+  entry.page = page;
+  return entry;
+}
+
+/** Runs at most `n` of the given tasks at once. */
+function limiter(n: number) {
+  let running = 0;
+  const waiting: Array<() => void> = [];
+  return async <T>(task: () => Promise<T>): Promise<T> => {
+    if (running >= n) await new Promise<void>((go) => waiting.push(go));
+    running += 1;
+    try {
+      return await task();
+    } finally {
+      running -= 1;
+      waiting.shift()?.();
+    }
+  };
 }
 
 /**
@@ -291,7 +321,7 @@ export async function verifyNoDeadLinks(
  */
 export async function verifyPageIntegrity(
   page: Page,
-  options: PageIntegrityOptions & { alreadyChecked?: Set<string> } = {},
+  options: PageIntegrityOptions & { apiUrl: string; alreadyChecked?: Set<string> },
 ): Promise<void> {
   await verifyNoBrokenImages(page, { absentAssets: options.absentAssets });
   await verifyNoBackendLinks(page, options);

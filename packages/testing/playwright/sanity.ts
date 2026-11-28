@@ -1038,7 +1038,7 @@ function defineListingContainerTests(
  * `document.querySelectorAll`.
  */
 function definePageIntegrityTests(
-  options: Pick<SanityOptions, 'discoveryDir' | 'frontends'>,
+  options: Pick<SanityOptions, 'discoveryDir' | 'frontends' | 'apiUrl' | 'mockParentUrl'>,
 ): void {
   const where = addresses(options);
   const test = playwrightTest;
@@ -1073,7 +1073,7 @@ function definePageIntegrityTests(
 
         await page.goto(`${frontendUrl}${pagePath}`, { timeout: 20000 });
         await page.waitForLoadState('networkidle', { timeout: 10000 }).catch(() => {});
-        await verifyPageIntegrity(page);
+        await verifyPageIntegrity(page, { apiUrl: where.api() });
       });
     }
   });

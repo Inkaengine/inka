@@ -1,0 +1,1 @@
+Block sanity is cheaper to run. The dead-link check asks the API whether each link's content exists, anonymously and once per target, and asks the frontend only about links the API doesn't hold, instead of rendering every linked page from every page. Block rendering checks read a container's children in one pass and make fewer round trips per child.
