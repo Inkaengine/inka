@@ -21,17 +21,17 @@ subjects:
   - frontend
 title: Build a frontend
 blocks-matched: |
-  <block type="slate" value="${p,h*,ul,ol,blockquote,strong,em,a/slate}" />
-  <block type="title" _="${h1}" />
-  <block type="codeExample">
+  <block is="slate" value="${p,h*,ul,ol,blockquote,strong,em,a/slate}" />
+  <block is="title" _="${h1}" />
+  <block is="codeExample">
     <region name="tabs" widget="object_list" idField="@id" typeField="@type">
-      <block type="tab" label="${h3/text}" language="${pre/lang}" code="${pre/textarea}" />
+      <block is="tab" label="${h3/text}" language="${pre/lang}" code="${pre/textarea}" />
     </region>
   </block>
 blocks-tagged: |
-  <block type="callout">
+  <block is="callout">
     <region name="items" widget="blocks_layout">
-      <block type="slate" value="${p,h*,ul,ol,blockquote,strong,em,a/slate}" />
+      <block is="slate" value="${p,h*,ul,ol,blockquote,strong,em,a/slate}" />
     </region>
   </block>
 ---
@@ -44,7 +44,7 @@ The actual code you write will depend on the framework you choose. You can look 
 - [Next.js](https://github.com/Inkaengine/inka/tree/main/examples/hydra-nextjs)
 - [F7-Vue](https://github.com/Inkaengine/inka/tree/main/examples/hydra-vue-f7)
 
-<block type="callout" variation="note">
+<block is="callout">
 
 This guide describes the integration pattern for frameworks with client-side reactivity (React, Vue, Svelte, Solid, Next, Nuxt, etc.) — your component tree consumes `formData` and re-renders, the framework's virtual DOM diff handles the per-block update.
 
@@ -125,7 +125,7 @@ Page data ends up shaped like this — one shared `blocks` dict, and a region pe
 }
 ```
 
-<block type="callout" variation="note">
+<block is="callout">
 
 Regions are sub-keys of `blocks_layout` — **not** separate top-level fields — because that is what makes them persist. `blocks_layout` is a registered backend field (a Plone behavior field), so the whole dict, including every region, is saved verbatim. A separate top-level field such as `footer_blocks` would be **silently dropped** by the backend on save, because it isn't a registered field. See [Container blocks](./container-blocks.md) for the data model in full.
 
@@ -148,7 +148,7 @@ Then you augment the rendered HTML with `data-` attributes (or `<!-- hydra ... -
 </div>
 ```
 
-<block type="callout" variation="tip">
+<block is="callout" variation="tip">
 
 You can embed the Inka tags directly if you want: `<p data-edit-text="title">A caption</p>`
 

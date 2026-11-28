@@ -21,18 +21,18 @@ subjects:
   - content
 title: Another Page
 blocks-matched: |
-  <block type="slate" value="${p,h*,ul,ol,blockquote,strong,em,a/slate}" />
-  <block type="title" _="${h1}" />
-  <block type="image" description="${p?/textarea}" url="${img/src}" alt="${img?/alt}" title="${img?/title}" align="center" size="l" />
+  <block is="slate" value="${p,h*,ul,ol,blockquote,strong,em,a/slate}" />
+  <block is="title" _="${h1}" />
+  <block is="image" description="${p?/textarea}" url="${img/src}" alt="${img?/alt}" title="${img?/title}" align="center" size="l" />
 ---
 
 # Another Page
 
-<block type="description" />
+<block is="description" />
 
 And carajillo aromatic affogato instant cream grinder kopi panna. Qui robusta milk and dripper variety caffeine grinder mazagran irish chicory grounds. Filter cream con so robust steamed wings coffee. Spoon panna lungo skinny brewed qui aroma aged id grinder. Spoon aromatic so decaffeinated at dark acerbic siphon and redeye at mug.
 
-<block type="image">
+<block is="image">
 
 ![](./image-dark "Title Image")
 

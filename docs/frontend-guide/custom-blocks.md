@@ -23,20 +23,20 @@ subjects:
   - frontend
 title: Custom Blocks
 blocks-matched: |
-  <block type="slate" value="${p,h*,ul,ol,blockquote,strong,em,a/slate}" />
-  <block type="title" _="${h1}" />
-  <block type="codeExample">
+  <block is="slate" value="${p,h*,ul,ol,blockquote,strong,em,a/slate}" />
+  <block is="title" _="${h1}" />
+  <block is="codeExample">
     <region name="tabs" widget="object_list" idField="@id" typeField="@type">
-      <block type="tab" label="${h3/text}" language="${pre/lang}" code="${pre/textarea}" />
+      <block is="tab" label="${h3/text}" language="${pre/lang}" code="${pre/textarea}" />
     </region>
   </block>
 blocks-tagged: |
-  <block type="slateTable">
+  <block is="slateTable">
     <region name="table.rows" idField="key">
-      <block type="row" _="${tr}">
+      <block is="row" _="${tr}">
         <region name="cells" idField="key" typeField="type">
-          <block type="header" value="${th/slate}" />
-          <block type="data" value="${td/slate}" />
+          <block is="header" value="${th/slate}" />
+          <block is="data" value="${td/slate}" />
         </region>
       </block>
     </region>
@@ -375,7 +375,7 @@ It asks the same question of the fields that never reach the canvas. A sidebar O
 
 A schema names a widget by string, so anything in `config.widgets.widget` is available — Volto's own included (`select_querystring_field`, `query_sort_on`, `object_browser`, …). These are the ones Inka adds:
 
-<block type="slateTable" table.fixed table.celled>
+<block is="slateTable" table.fixed table.celled>
 
 | widget | picks | documented |
 | --- | --- | --- |
@@ -472,7 +472,7 @@ That is the same function the sidebar's child list uses, deliberately: a questio
 
 ### Not the same as `schemaFieldSelect`
 
-<block type="slateTable" table.fixed table.celled>
+<block is="slateTable" table.fixed table.celled>
 
 |  | `schemaFieldSelect` | `blockPicker` |
 | --- | --- | --- |
@@ -494,7 +494,7 @@ One widget covers both shapes: `multiple: false` (the default) stores one index 
 
 **Volto's own widgets, for comparison.** Both are registered and pass straight through an Inka schema:
 
-<block type="slateTable" table.fixed table.celled>
+<block is="slateTable" table.fixed table.celled>
 
 | widget | for |
 | --- | --- |
@@ -521,7 +521,7 @@ Volto has no declarative answer at all for the `multiple` case: its search block
 }
 ```
 
-<block type="slateTable" table.fixed table.celled>
+<block is="slateTable" table.fixed table.celled>
 
 | option | meaning |
 | --- | --- |
@@ -580,7 +580,7 @@ Condition operators: `is`, `isNot`, `isSet`, `isNotSet`, `oneOf`, `notOneOf`, `c
 
 Each operator is driven by the field's **declared type**, never the value shape. A field reduces to one of four **surfaces**, and an operator used off its surface raises an error (a mis-authored rule fails loudly rather than silently mismatching):
 
-<block type="slateTable" table.fixed table.celled>
+<block is="slateTable" table.fixed table.celled>
 
 | surface | fields | operators |
 | --- | --- | --- |
@@ -1060,7 +1060,7 @@ One rule decides which source can fill which field, and with which conversion (`
 
 A field's conversion is derived from its widget (`widgetToTargetType`: the one derivation converting a block, pulling from a linked page and storing a listing's mapping all use). Where that wouldn't give what the field holds, the source decides:
 
-<block type="slateTable" table.fixed table.celled>
+<block is="slateTable" table.fixed table.celled>
 
 | Source | Can fill | Conversion |
 | --- | --- | --- |
@@ -1094,7 +1094,7 @@ A value in a block config's `fieldMappings` is a field name, or `{ field, type }
 
 A listing's stored `fieldMapping` is different: it is expanded where there is no schema, so **every entry is `{ field, type }`**, and `expandListingBlocks` refuses one without a type rather than passing its value through. The editor stores every entry that way.
 
-<block type="slateTable" table.fixed table.celled>
+<block is="slateTable" table.fixed table.celled>
 
 | Type | Conversion |
 | --- | --- |

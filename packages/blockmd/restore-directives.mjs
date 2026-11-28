@@ -16,18 +16,18 @@
  *  - `{literalinclude}`: the value is a code fence (recomputed by re-running the
  *    include). An exact fence, found and replaced wherever it sits — inside a
  *    codeExample or standalone — with no wrapper or field needed.
- *  - codeExample `source=`: the value is the baked `<block type="codeExample">`,
+ *  - codeExample `source=`: the value is the baked `<block is="codeExample">`,
  *    found by its `slotId` (every `source=` block already has one).
  */
 import { resolveLiteralIncludes } from './markdown-mount.mjs';
 
-const OPEN_CE = /^<block\s+type="codeExample"/;
+const OPEN_CE = /^<block\s+is="codeExample"/;
 const ANY_OPEN_BLOCK = /^<block\b/;
 const CLOSE_BLOCK = /^<\/block>/;
 const FENCE_LITERALINCLUDE = /```\{literalinclude\}[ \t]+\S+[ \t]*\n[\s\S]*?\n?```/g;
 
 /** Strip a leading YAML frontmatter block so a scan never sees prototype
- *  definitions (which mention `<block type="codeExample">`) as body content. */
+ *  definitions (which mention `<block is="codeExample">`) as body content. */
 function bodyOffset(md) {
   const m = /^---\n[\s\S]*?\n---\n?/.exec(md);
   return m ? m[0].length : 0;
@@ -43,7 +43,7 @@ function slotIdOf(openLine) {
 }
 
 /**
- * Every body `<block type="codeExample">` span, in order, as
+ * Every body `<block is="codeExample">` span, in order, as
  * `{ start, end, text, slotId, isSourceDirective }` (offsets into `md`).
  * Block tags here are line-anchored at column 0, one opening tag per line, so a
  * line scan is reliable even when `data-json` holds a `>`.

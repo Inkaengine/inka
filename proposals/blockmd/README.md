@@ -157,6 +157,7 @@ rewritten.
 | `<block type="X" … />` | tier-3 escape hatch: a raw block from its attributes (`data='{…}'` carries object fields) |
 | `<region name="X" widget="blocks_layout\|object_list">` | an explicit region inside a container |
 | `<fields … />` / `<fields …> … </fields>` | attach field values — see below |
+| `<defaults …> … </defaults>` | like enclosing `<fields>`, but reaches everything nested (blocks and list items) |
 | ` ```{literalinclude} path ` | reference a renderer file; the loader inlines its code, Sphinx renders it (one source, three consumers) |
 
 ## `<fields>` — attach field values to a scope

@@ -72,9 +72,9 @@ if (!process.env.CONTENT_MOUNTS) {
 
 /**
  * The content directories to serve, from CONTENT_MOUNTS (required):
- * "mountPath:dirPath,mountPath2:dirPath2", most specific first, since a path is
- * served by the first mount it falls under ('/' owns everything, so it goes
- * last). Example: "/docs:./docs,/:./site/content".
+ * "mountPath:dirPath,mountPath2:dirPath2". Example: "/docs:./docs,/:./site/content".
+ * Mounts at the same path are layers: where several hold a path, the one listed
+ * first serves it (claimPath).
  */
 function parseContentMounts() {
   const mountsEnv = process.env.CONTENT_MOUNTS;
@@ -1285,19 +1285,6 @@ function parseExpand(req) {
 }
 
 /**
- * A comma-separated query value as a list. Express hands back an array when a param is
- * repeated (`?x=a&x=b`), so accept both spellings of "several values".
- */
-function splitList(raw) {
-  if (raw === undefined || raw === null) return [];
-  const parts = Array.isArray(raw) ? raw : [raw];
-  return parts
-    .flatMap((p) => String(p).split(','))
-    .map((s) => s.trim())
-    .filter(Boolean);
-}
-
-/**
  * The `expand.<component>.<param>` options that accompany ?expand=, passed through to the
  * component builders. Plone spells component options this way (`expand.navigation.depth`);
  * keeping the raw keys means a builder reads the same name Plone documents.
@@ -2079,25 +2066,6 @@ function buildTypesComponent() {
 }
 
 /**
- * Collect every templateId referenced anywhere in a value, at any depth.
- * Mirrors the frontend helper's collectTemplateIds: the reference may sit on a block, a
- * nested container's child, or an object_list item, so this walks everything rather than
- * assuming a shape.
- */
-function collectTemplateIds(value, found = new Set(), seen = new Set()) {
-  if (!value || typeof value !== 'object') return found;
-  if (seen.has(value)) return found;
-  seen.add(value);
-  if (Array.isArray(value)) {
-    for (const item of value) collectTemplateIds(item, found, seen);
-    return found;
-  }
-  if (typeof value.templateId === 'string') found.add(value.templateId);
-  for (const v of Object.values(value)) collectTemplateIds(v, found, seen);
-  return found;
-}
-
-/**
  * Normalise a templateId to the path this mock stores content under.
  * A reference may be a `resolveuid/UID`, an absolute URL, or a plain path — all three
  * appear in fixtures. resolveuid is resolved through the same uidToPath index the
@@ -2120,101 +2088,6 @@ function templateIdToPath(templateId) {
   p = p.replace('/++api++', '');
   if (!p.startsWith('/')) p = `/${p}`;
   return p.replace(/\/+$/, '') || '/';
-}
-
-/**
- * Resolve a page's templates: everything referenced via templateId in the page, plus the
- * `extra` ids the caller named, plus everything those reference in turn.
- *
- * `extra` exists because the FRONTEND owns the layout rules (which layout a News Item
- * gets, which footer a section gets). A forced layout is never referenced from page
- * content — that is exactly why the frontend had to pre-load it by hand — so the backend
- * cannot discover it and must be told. The backend answers only the data question:
- * "resolve these and everything they reference". No policy crosses the wire.
- *
- * Returns templates keyed by the SAME string the caller referenced, because that is what
- * expandTemplatesSync looks up: a block carrying `resolveuid/abc` must find an entry at
- * `resolveuid/abc`, not at the path it resolved to. One template reached by two spellings
- * is emitted under both.
- */
-function resolveTemplates(pageContent, extraIds, sessionId, baseUrl) {
-  const templates = {};
-  const errors = [];
-  const visitedPaths = new Set();
-  let pending = [
-    ...collectTemplateIds(pageContent),
-    ...(extraIds || []),
-  ];
-
-  while (pending.length > 0) {
-    const next = [];
-    for (const templateId of pending) {
-      if (templates[templateId] || errors.some((e) => e.templateId === templateId)) continue;
-      // Errors name the id AS REQUESTED — the string the frontend has to match up — and
-      // an unknown uid is just "not found", like any other missing template. Matches the
-      // inkaengine.inka addon, whose tests assert the same messages; this used to report the
-      // resolved path, or "unresolvable template id" for an unknown uid.
-      const notFound = { templateId, error: `not found: ${templateId}` };
-      const tplPath = templateIdToPath(templateId);
-      if (!tplPath) {
-        errors.push(notFound);
-        continue;
-      }
-      // Enriched, like any other read: the template's own blocks get the same
-      // resolveuid/image-scale/relation treatment the page does, so a frontend renders
-      // template content through exactly the same path as page content.
-      const content = getContent(tplPath, sessionId, []);
-      if (!content) {
-        errors.push(notFound);
-        continue;
-      }
-      // Minus its own @components: those are links nobody asked for, and the addon omits
-      // them (on Plone, expanding them re-enters @templates and recurses).
-      const { '@components': _ownComponents, ...entry } = content;
-      templates[templateId] = entry;
-      // A template may reference further templates; follow those too. Guard on the
-      // resolved PATH so two spellings of one template are walked once.
-      if (!visitedPaths.has(tplPath)) {
-        visitedPaths.add(tplPath);
-        for (const nested of collectTemplateIds(content)) {
-          if (!templates[nested]) next.push(nested);
-        }
-      }
-    }
-    pending = next;
-  }
-  return { templates, errors };
-}
-
-/**
- * The @templates component: every template a page needs to render, resolved in one
- * request.
- *
- * Without this a frontend fetches each template itself, discovers nested references only
- * after the parent arrives, and serialises the walk — the N+1 that made the SSG prerender
- * hit the API ~179x for the same forced footer and cold-hang. Here the walk happens
- * server-side, where the content already is.
- *
- * Deliberately NOT included: allowedTemplates / allowedLayouts. Layouts are a design
- * system's artifacts — a second frontend against this same content would use entirely
- * different template paths — so the rules stay frontend-owned and arrive here only as
- * `extra`.
- */
-function buildTemplatesComponent(cleanPath, baseUrl, sessionId, extraIds = []) {
-  const fullUrl = cleanPath === '/' ? baseUrl : `${baseUrl}${cleanPath}`;
-  // Read RAW: rawContentForComponents is the reader a @components builder may use
-  // (getContent attaches @components, so calling it here is a cycle). Only templateId
-  // references are needed from the page, and those are in the stored blocks.
-  const page = rawContentForComponents(cleanPath, sessionId);
-  const { templates, errors } = resolveTemplates(page, extraIds, sessionId, baseUrl);
-  return {
-    '@id': `${fullUrl}/@templates`,
-    templates,
-    // Named rather than thrown: one missing template must not fail the page read. The
-    // frontend decides whether a missing template is fatal — ploneApi already has
-    // `ignoreTemplateErrors` for exactly that call.
-    ...(errors.length > 0 ? { errors } : {}),
-  };
 }
 
 /**
@@ -2269,21 +2142,9 @@ function buildSearchComponent(cleanPath, baseUrl, sessionId, params) {
 function generateComponents(urlPath, baseUrl, sessionId, params = {}) {
   const cleanPath = urlPath.replace(/\/$/, '') || '/';
   return {
-    // Lazy, unlike its siblings: resolving templates walks the page's references and
-    // reads each template from disk, so building it for every GET would make unexpanded
-    // reads pay for a component nobody asked for. expandComponents calls the thunk only
-    // for a component actually named in ?expand=.
-    templates: () =>
-      buildTemplatesComponent(
-        cleanPath,
-        baseUrl,
-        sessionId,
-        // Plone spells component options `expand.<component>.<param>` — the same shape
-        // as `expand.navigation.depth`. Comma-separated, since a frontend forces several
-        // layouts (a page layout and a footer layout).
-        splitList(params['expand.templates.extra']),
-      ),
-    // Lazy for the same reason: it reads each item it finds.
+    // Lazy, unlike its siblings: it reads each item it finds, so building it for
+    // every GET would make unexpanded reads pay for a component nobody asked for.
+    // expandComponents calls the thunk only for a component named in ?expand=.
     search: () => buildSearchComponent(cleanPath, baseUrl, sessionId, params),
     // @actions has no session here on purpose: the adapter reads @actions
     // directly, and that route IS session-aware, so a working copy still
@@ -2641,7 +2502,7 @@ function getFolderChildItems(folderPath, baseUrl) {
  * middleware to add ?expand= which the request handler then expands.
  */
 function stubComponents(fullUrl) {
-  const ids = ['actions', 'aliases', 'breadcrumbs', 'contextnavigation', 'navigation', 'navroot', 'templates', 'translations', 'types', 'workflow'];
+  const ids = ['actions', 'aliases', 'breadcrumbs', 'contextnavigation', 'navigation', 'navroot', 'translations', 'types', 'workflow'];
   const stubs = {};
   for (const k of ids) {
     stubs[k] = { '@id': `${fullUrl}/@${k}` };
@@ -2804,7 +2665,8 @@ function addFormValidationSettings(node) {
  * Scan content directory and populate contentDirMap (recursively)
  * Content is loaded from disk on-demand, not cached
  */
-function scanContentDir(contentDirPath, mountPath) {
+function scanContentDir(contentDirPath, mount) {
+  const { mountPath } = mount;
   if (!fs.existsSync(contentDirPath)) {
     console.log(`Content directory not found: ${contentDirPath}`);
     return;
@@ -2847,15 +2709,17 @@ function scanContentDir(contentDirPath, mountPath) {
           : mountPath + contentPath;
 
         // Only store the directory mapping, content loaded on-demand
-        contentDirMap[urlPath] = { dirPath: fullDirPath, dirName: dir.name };
-        // Track UID→path for resolveuid endpoint
-        if (content.UID) {
-          uidToPathMap[content.UID] = urlPath;
+        if (claimPath(urlPath, mount)) {
+          contentDirMap[urlPath] = { dirPath: fullDirPath, dirName: dir.name, mount, uid: content.UID };
+          // Track UID→path for resolveuid endpoint
+          if (content.UID) {
+            uidToPathMap[content.UID] = urlPath;
+          }
+          console.log(`Registered content: ${urlPath}`);
         }
-        console.log(`Registered content: ${urlPath}`);
       }
       // Always recurse into subdirectories to find nested content (e.g., templates/)
-      scanContentDir(fullDirPath, mountPath);
+      scanContentDir(fullDirPath, mount);
     }
   });
 }
@@ -2865,9 +2729,8 @@ function scanContentDir(contentDirPath, mountPath) {
  *
  * Expand-aware like every other read (enrichContent): named components expanded, the
  * rest @id stubs. It used to serialise generateComponents() whole, and that map holds
- * `templates` as a lazy thunk, which JSON.stringify silently drops — so the synthesised
- * root was the one page `?expand=templates` never answered, and a frontend fell back to
- * fetching its forced layouts one by one without anything saying so.
+ * lazy thunks, which JSON.stringify silently drops — so the synthesised root was the one
+ * page an expansion never answered, without anything saying so.
  */
 function getSiteRoot(expandList = [], sessionId, expandParams = {}) {
   const baseUrl = `http://localhost:${PORT}`;
@@ -2903,10 +2766,25 @@ function getSiteRoot(expandList = [], sessionId, expandParams = {}) {
  *  plone_site_root/data.json instead. */
 const isMarkdownMount = (mount) => fs.existsSync(path.join(mount.dirPath, 'index.md'));
 
-/** The mount that owns a url path (the ContentSource for it). '/' owns everything. */
-function mountFor(urlPath) {
-  return CONTENT_MOUNTS.find((m) => m.mountPath === '/'
-    || urlPath === m.mountPath || urlPath.startsWith(`${m.mountPath}/`));
+/** The mount that serves a url path (the ContentSource for it), or undefined. */
+const mountFor = (urlPath) => contentDirMap[urlPath]?.mount;
+
+/**
+ * Whether `mount` may serve `urlPath`, which it holds. Mounts at the same path
+ * are layers: a site's own content over a starter it builds on, or a frontend's
+ * fixtures over that starter. Where several hold a path, the one listed first
+ * serves it, whatever their formats. Markdown loads after JSON, so a later
+ * layer may have taken the path already: it gives it up here, uid and all, and
+ * its item there is not served at all.
+ */
+function claimPath(urlPath, mount) {
+  const held = contentDirMap[urlPath];
+  if (!held || held.mount === mount) return true;
+  if (CONTENT_MOUNTS.indexOf(held.mount) < CONTENT_MOUNTS.indexOf(mount)) return false;
+  if (held.uid && uidToPathMap[held.uid] === urlPath) delete uidToPathMap[held.uid];
+  markdownItems.delete(urlPath);
+  markdownBlobs.delete(urlPath);
+  return true;
 }
 
 /** (Re)load ONE markdown mount into the shared caches, then validate the tree.
@@ -2924,30 +2802,42 @@ function loadMarkdownMount(mount) {
   const { items, blobFiles, folderForm, order } = readTree(dirPath, { prefix, isFolderish: isFolderishType });
   const { resolveSchemaExamples, resolveLinkSummaries } = mdRuntime.fromSchemas;
   for (const page of items.values()) resolveSchemaExamples(page, { schemaFor: mdRuntime.schemaFor });
-  resolveLinkSummaries(items, { schemaFor: mdRuntime.schemaFor, prefix });
+  // A text link's item snapshot (data.item) is put back from the item it points
+  // at, as a search returns it: the link editor's snapshot, which Markdown omits.
+  resolveLinkSummaries(items, { schemaFor: mdRuntime.schemaFor, prefix, catalogEntry: (item) => formatSearchItem(item, '') });
   // The text search finds each block by, where the markdown stores none: the
   // editor's save writes it, and a tree read from disk was never saved.
   if (contentSchemas) {
-    for (const [p, page] of items) items.set(p, mdRuntime.fromSchemas.withMissingSearchText(page, contentSchemas));
+    for (const [p, page] of items) {
+      // A value the export left out for being its schema's default, and a
+      // template child's slot named from its region, put back as the editor
+      // saves them; then the search text, which reads the full block.
+      const full = mdRuntime.fromSchemas.withRegionSlots(
+        mdRuntime.fromSchemas.withSchemaDefaults(page, contentSchemas), contentSchemas);
+      items.set(p, mdRuntime.fromSchemas.withMissingSearchText(full, contentSchemas));
+    }
   }
   const urlFor = (p) => (mountPath === '/' ? p : mountPath + (p === '/' ? '' : p));
   // The authored `order:` is a CURATED list (it may deliberately omit asset
   // folders like images/static). Keep it so a re-export writes it back verbatim
   // instead of regenerating a full order that pulls those folders into the nav.
-  if (order) for (const [p, list] of order) markdownOrder.set(urlFor(p), list);
+  const serves = (p) => contentDirMap[urlFor(p)]?.mount === mount;
   for (const [p, item] of items) {
     const urlPath = urlFor(p);
+    if (!claimPath(urlPath, mount)) continue;
     item['@id'] = urlPath;
     markdownItems.set(urlPath, item);
     // `folder` records the AUTHORED file form (X/index.md vs X.md) so a
     // re-export writes the source back in the same shape.
-    contentDirMap[urlPath] = { dirPath, markdown: true, folder: folderForm && folderForm.has(p) };
+    contentDirMap[urlPath] = { dirPath, markdown: true, folder: folderForm && folderForm.has(p), mount, uid: item.UID };
     if (item.UID) {
       uidToPathMap[item.UID] = urlPath;
       if (item.getObjPositionInParent !== undefined) uidPositionMap[item.UID] = item.getObjPositionInParent;
     }
   }
-  for (const [p, file] of blobFiles) markdownBlobs.set(urlFor(p), file);
+  // A folder another layer serves keeps that layer's order, and its blobs.
+  if (order) for (const [p, list] of order) if (serves(p)) markdownOrder.set(urlFor(p), list);
+  for (const [p, file] of blobFiles) if (serves(p)) markdownBlobs.set(urlFor(p), file);
   console.log(`Registered ${items.size} markdown items from ${dirPath} at ${mountPath}`);
 }
 
@@ -3043,9 +2933,9 @@ async function reportServedContentProblems() {
 function reloadMount(mount) {
   if (isMarkdownMount(mount)) { loadMarkdownMount(mount); return; }
   if (mount.mountPath !== '/' && fs.existsSync(path.join(mount.dirPath, 'data.json'))) {
-    contentDirMap[mount.mountPath] = { dirPath: mount.dirPath, dirName: path.basename(mount.dirPath) };
+    contentDirMap[mount.mountPath] = { dirPath: mount.dirPath, dirName: path.basename(mount.dirPath), mount };
   }
-  scanContentDir(mount.dirPath, mount.mountPath);
+  scanContentDir(mount.dirPath, mount);
 }
 
 /** Import the ESM loaders once, hold them, and load every markdown mount. */
@@ -3063,8 +2953,8 @@ function reloadMount(mount) {
 async function getEngine() {
   if (!engine) {
     const { emitPage, parsePrototypes } = await import('@inka/blockmd/prototype-mapping.mjs');
-    const { withoutDefaultSearchText } = await import('./from-schemas.js');
-    engine = { emitPage, parsePrototypes, withoutDefaultSearchText };
+    const { withoutDefaultSearchText, withoutSchemaDefaults, withoutRegionSlots } = await import('./from-schemas.js');
+    engine = { emitPage, parsePrototypes, withoutDefaultSearchText, withoutSchemaDefaults, withoutRegionSlots };
   }
   return engine;
 }
@@ -3078,6 +2968,24 @@ async function getEngine() {
  */
 const NOT_FOLDERISH_TYPES = new Set(['Image', 'File', 'Link', 'Collection']);
 const isFolderishType = (type) => !NOT_FOLDERISH_TYPES.has(type);
+
+/** The fields each block type's prototypes state as literals (`size="l"` on an
+ *  image), at any depth: a value its bare Markdown implies. */
+function statedByPrototype(protos) {
+  const stated = new Map();
+  const walk = (list) => {
+    for (const p of list ?? []) {
+      for (const [field, value] of Object.entries(p.fields ?? {})) {
+        if (typeof value === 'string' && value.trim().startsWith('${')) continue;
+        if (!stated.has(p.type)) stated.set(p.type, new Set());
+        stated.get(p.type).add(field);
+      }
+      for (const r of p.regions ?? []) walk(r.protos);
+    }
+  };
+  walk(protos);
+  return (type, field) => stated.get(type)?.has(field) ?? false;
+}
 
 async function initMarkdownMounts() {
   const mounts = CONTENT_MOUNTS.filter(isMarkdownMount);
@@ -3093,7 +3001,8 @@ async function initMarkdownMounts() {
 
 // Scan content directories on startup (content loaded on-demand)
 function initContentDirMap() {
-  CONTENT_MOUNTS.forEach(({ mountPath, dirPath }) => {
+  CONTENT_MOUNTS.forEach((mount) => {
+    const { mountPath, dirPath } = mount;
     // A markdown mount is loaded from its index.md tree by initMarkdownMounts and
     // must NOT be JSON-scanned: scanContentDir walks for data.json dirs and would
     // pick up any nested distribution tree (e.g. docs/content/, the generated
@@ -3105,11 +3014,11 @@ function initContentDirMap() {
     if (mountPath !== '/') {
       const rootDataPath = path.join(dirPath, 'data.json');
       if (fs.existsSync(rootDataPath)) {
-        contentDirMap[mountPath] = { dirPath, dirName: path.basename(dirPath) };
+        contentDirMap[mountPath] = { dirPath, dirName: path.basename(dirPath), mount };
         console.log(`Registered content: ${mountPath}`);
       }
     }
-    scanContentDir(dirPath, mountPath);
+    scanContentDir(dirPath, mount);
   });
   console.log(`Registered ${Object.keys(contentDirMap).length} content paths`);
 }
@@ -3666,16 +3575,13 @@ function buildDistributionFromMemory(dest, { allowMissingBlobs = false, sitePath
   // Only genuine content-source mounts are exportable: a plone.exportimport tree
   // (has __metadata__.json) or a markdown tree (has index.md). A loose fixture
   // mount like /_test_data is neither — it holds intentionally-malformed test
-  // pages and must never end up in a deploy tar. Pick each path's MOST-SPECIFIC
-  // mount (longest matching mountPath), since '/' nominally owns everything.
+  // pages and must never end up in a deploy tar. Each path is exported from the
+  // mount that serves it.
   const exportable = (m) => isMarkdownMount(m) || fs.existsSync(path.join(m.dirPath, '__metadata__.json'));
-  const ownerMount = (urlPath) => CONTENT_MOUNTS
-    .filter((m) => m.mountPath === '/' || urlPath === m.mountPath || urlPath.startsWith(`${m.mountPath}/`))
-    .sort((a, b) => b.mountPath.length - a.mountPath.length)[0];
 
   const items = [];
   for (const urlPath of Object.keys(contentDirMap)) {
-    const owner = ownerMount(urlPath);
+    const owner = mountFor(urlPath);
     if (!owner || !exportable(owner)) continue;
     const data = loadRawContentFromDisk(urlPath);
     if (data) items.push({ urlPath, data });
@@ -3732,7 +3638,7 @@ async function exportContent(req, res) {
   const { format = 'json', prototypes = {}, allowMissingBlobs = false, sitePath } = jsonBody(req);
 
   if (format === 'markdown') {
-    const { emitPage, parsePrototypes, withoutDefaultSearchText } = await getEngine();
+    const { emitPage, parsePrototypes, withoutDefaultSearchText, withoutSchemaDefaults, withoutRegionSlots } = await getEngine();
     const YAML = (await import('yaml')).default;
     const { SERVER_STATE } = await import('./server-state.js');
     const { BLOB_FIELD, blobDefaults } = await import('@inka/blockmd/markdown-mount.mjs');
@@ -3751,7 +3657,7 @@ async function exportContent(req, res) {
         const closes = (line.match(/<\/block>/g) || []).length;
         const net = (opens - selfs) - closes;
         if (!cur) {
-          const m = /<block\s+type="([^"]+)"/.exec(line);
+          const m = /<block\s+is="([^"]+)"/.exec(line);
           if (!m) continue;
           cur = { type: m[1], lines: [line] }; depth = net;
         } else { cur.lines.push(line); depth += net; }
@@ -3922,8 +3828,14 @@ async function exportContent(req, res) {
           load: (path) => loadRawContentFromDisk(path),
         });
         // Search text the frontend would give the page anyway stays out of the markdown
-        // (loading fills it again); search text set to something else is kept.
-        const own = contentSchemas ? withoutDefaultSearchText(ownBlocks, contentSchemas) : ownBlocks;
+        // (loading fills it again); search text set to something else is kept. So
+        // does a value its schema declares as the default, and a template child's
+        // slot the editor names from its region (loading puts each back).
+        const own = contentSchemas
+          ? withoutRegionSlots(
+            withoutSchemaDefaults(withoutDefaultSearchText(ownBlocks, contentSchemas), contentSchemas, { keep: statedByPrototype(protos) }),
+            contentSchemas)
+          : ownBlocks;
         const blocks = structuredClone(own.blocks);
         unresolveBlocks(blocks, baseSegs, m);
         const { markdown } = emitPage(protos, { blocks, blocks_layout: own.blocks_layout });
@@ -3938,10 +3850,6 @@ async function exportContent(req, res) {
       return `---\n${front}\n---\n`;
     };
 
-    // The most-specific mount owns a path ('/' nominally owns everything).
-    const ownerMount = (u) => CONTENT_MOUNTS
-      .filter((m) => m.mountPath === '/' || u === m.mountPath || u.startsWith(`${m.mountPath}/`))
-      .sort((a, b) => b.mountPath.length - a.mountPath.length)[0];
     const relOf = (m, u) => (m.mountPath === '/' ? (u === '/' ? '' : u.replace(/^\//, ''))
       : u.replace(m.mountPath, '').replace(/^\//, ''));
 
@@ -3965,7 +3873,8 @@ async function exportContent(req, res) {
       for (const p of Object.keys(contentDirMap)) {
         const c = loadRawContentFromDisk(p);
         if (!c) continue;
-        const m = ownerMount(p);
+        // Each path from the mount that serves it.
+        const m = mountFor(p);
         if (!m) continue;
         const treeRoot = treeRootOf(m);
         const rel = relOf(m, p);
@@ -5579,31 +5488,6 @@ app.get(/.*\/@navroot$/, (req, res) => {
 });
 
 /**
- * GET /<path>/@templates — the templates a page needs to render, resolved in one request.
- *
- * Reachable both here and inline via `?expand=templates`; a frontend fetching the page
- * anyway should prefer the expansion, since that costs no extra round trip. Forced
- * layouts are named with `?expand.templates.extra=/a,/b` on EITHER path — the same
- * option spelling Plone uses for `expand.navigation.depth`, so the two paths take the
- * same query and can't drift.
- */
-// `.*` rather than `.*\/` so this also matches the SITE ROOT (`/++api++/@templates`),
-// which has templates like any other page. The sibling component routes above use the
-// stricter form and 404 at the root; that is pre-existing, and not worth repeating here.
-app.get(/.*@templates$/, (req, res) => {
-  const cleanPath = (req.path.replace('/++api++', '').replace(/\/?@templates$/, '') || '/').replace(/\/+$/, '') || '/';
-  const baseUrl = `http://localhost:${PORT}`;
-  res.json(
-    buildTemplatesComponent(
-      cleanPath,
-      baseUrl,
-      getSessionId(req),
-      splitList(req.query['expand.templates.extra']),
-    ),
-  );
-});
-
-/**
  * GET /@aliases or /:path/@aliases
  * plone.app.redirector aliases (manual redirects). On the site root the
  * response lists every alias; on a context it filters to aliases that
@@ -6054,6 +5938,17 @@ app.post('{/*path}/@querystring-search', (req, res) => {
  * Supports path.depth parameter to get children of a specific path
  * Supports path.query parameter to get a specific content item
  */
+/**
+ * The interfaces the catalog's object_provides index answers for here, each
+ * with how an item shows it provides it. plone.restapi's volto.blocks behavior
+ * registers IBlocks with no marker and no factory, so plone.behavior marks its
+ * items with IBlocks itself; the editable-layout variant's interface extends
+ * it. An item with blocks has `blocks_layout`.
+ */
+const PROVIDED_INTERFACES = {
+  'plone.restapi.behaviors.IBlocks': (content) => content.blocks_layout !== undefined,
+};
+
 app.get('{/*path}/@search', (req, res) => {
   const searchPath = req.path.replace('/@search', '');
 
@@ -6095,7 +5990,18 @@ app.get('{/*path}/@search', (req, res) => {
   // container children included.
   const blockTypes = req.query.block_types === undefined ? null : [req.query.block_types].flat();
   const reviewStates = req.query.review_state === undefined ? null : [req.query.review_state].flat();
-  if (searchableText || titleQuery || blockTypes || reviewStates) {
+  // object_provides: the catalog's index of the interfaces an item provides.
+  // Only those modelled here (PROVIDED_INTERFACES) can be asked for; any other
+  // would match nothing, which reads as "no item provides it".
+  const provides = req.query.object_provides === undefined ? null : [req.query.object_provides].flat();
+  const unmodelled = (provides || []).filter((name) => !PROVIDED_INTERFACES[name]);
+  if (unmodelled.length) {
+    return res.status(400).json({
+      type: 'BadRequest',
+      message: `object_provides: the mock doesn't model ${unmodelled.join(', ')} (it models ${Object.keys(PROVIDED_INTERFACES).join(', ')})`,
+    });
+  }
+  if (searchableText || titleQuery || blockTypes || reviewStates || provides) {
     // The site as this session has it, as Plone's catalog does: its own new
     // and edited pages included, by the text in their blocks too.
     items = allContentPaths(getSessionId(req))
@@ -6103,6 +6009,7 @@ app.get('{/*path}/@search', (req, res) => {
       .map((itemPath) => getContent(itemPath, getSessionId(req)))
       .filter((content) => content != null)
       .filter((content) => !blockTypes || blockTypesOf(content).some((t) => blockTypes.includes(t)))
+      .filter((content) => !provides || provides.some((name) => PROVIDED_INTERFACES[name](content)))
       .filter((content) => !searchableText || matchSearchableText(searchableText, content, blocksSearchableText(content.blocks)))
       .map((content) => formatSearchItem(content, baseUrl));
     if (titleQuery) {

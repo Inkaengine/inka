@@ -24,21 +24,21 @@ subjects:
   - frontend
 title: Listings & Dynamic Blocks
 blocks-matched: |
-  <block type="slate" value="${p,h*,ul,ol,blockquote,strong,em,a/slate}" />
-  <block type="title" _="${h1}" />
-  <block type="separator" _="${hr}" styles={"align":"full"} />
-  <block type="codeExample">
+  <block is="slate" value="${p,h*,ul,ol,blockquote,strong,em,a/slate}" />
+  <block is="title" _="${h1}" />
+  <block is="separator" _="${hr}" :styles='{"align":"full"}' />
+  <block is="codeExample">
     <region name="tabs" widget="object_list" idField="@id" typeField="@type">
-      <block type="tab" label="${h3/text}" language="${pre/lang}" code="${pre/textarea}" />
+      <block is="tab" label="${h3/text}" language="${pre/lang}" code="${pre/textarea}" />
     </region>
   </block>
 blocks-tagged: |
-  <block type="slateTable">
+  <block is="slateTable">
     <region name="table.rows" idField="key">
-      <block type="row" _="${tr}">
+      <block is="row" _="${tr}">
         <region name="cells" idField="key" typeField="type">
-          <block type="header" value="${th/slate}" />
-          <block type="data" value="${td/slate}" />
+          <block is="header" value="${th/slate}" />
+          <block is="data" value="${td/slate}" />
         </region>
       </block>
     </region>
@@ -69,7 +69,7 @@ const { items, paging } = await expandListingBlocks(layout, {
 // paging = { totalPages, totalItems, currentPage, prev, next, pages, seen }
 ```
 
-<block type="separator" />
+<block is="separator" />
 
 ## Example: Mixing Listings, Blocks and Paging
 
@@ -138,7 +138,7 @@ The editor saves the item type, the mapping and the item defaults into the listi
 
 `ploneFetchItems({ apiUrl, contextPath, extraCriteria, mappingField })` creates a fetcher function for Plone's `@querystring-search` endpoint, suitable as a value in the `fetchItems` map.
 
-<block type="slateTable" table.fixed table.celled>
+<block is="slateTable" table.fixed table.celled>
 
 | Option | Default | Description |
 | --- | --- | --- |
@@ -157,7 +157,7 @@ A search is sorted by the `sort_on` in `extraCriteria`, else by the listing's ow
 
 A search block usually sorts the way Volto's does (plone/volto#4000): a keyword is ranked by relevance unless the reader chose a sort; with no keyword the listing's own sort applies; and a sort the reader chose is dropped when the keyword starts or ends, but kept while one keyword changes to another. Three helpers answer those rules, wherever the frontend keeps the keyword and the chosen sort (the URL, component state):
 
-<block type="slateTable" table.fixed table.celled>
+<block is="slateTable" table.fixed table.celled>
 
 | Helper | Answers |
 | --- | --- |
@@ -189,7 +189,7 @@ For non-Plone backends (RSS feeds, external APIs, etc.), write your own fetcher:
 
 A path criterion's value (Absolute path or Relative path) says where to look, and its last character says whether the folder there is a result:
 
-<block type="slateTable" table.fixed table.celled>
+<block is="slateTable" table.fixed table.celled>
 
 | Value | Lists |
 | --- | --- |
@@ -209,7 +209,7 @@ A breadcrumb step (`*` before a `/`, in a Relative path starting with `/`) count
 
 Plone can't say all of this in one search. Whether its folder is a result depends on the depth: in with no depth, `::0` (the folder alone) and `::2` or more; out only at `::1`. So `ploneFetchItems` sends the searches that give the location:
 
-<block type="slateTable" table.fixed table.celled>
+<block is="slateTable" table.fixed table.celled>
 
 | Location | Sent to Plone |
 | --- | --- |
@@ -244,7 +244,7 @@ Plone's `@querystring-search` leaves out the page it is asked from (every page b
 
 The same `fetchItems` seam powers other "collection" blocks — each is just a fetcher that returns raw result objects (`expandListingBlocks` maps each result's address, `getURL`, to `href` etc. and repeats an item block per result, so they need **no bespoke renderer**; they render via the standard item types on every frontend). `@hydra-js/helpers` ships three reference fetchers:
 
-<block type="slateTable" table.fixed table.celled>
+<block is="slateTable" table.fixed table.celled>
 
 | Fetcher | Block | What it returns |
 | --- | --- | --- |
@@ -280,7 +280,7 @@ A result's address is mapped from `getURL`, the catalog's name for it, never `@i
 
 The example item types and the fields they expose:
 
-<block type="slateTable" table.fixed table.celled>
+<block is="slateTable" table.fixed table.celled>
 
 | Type | Fields |
 | --- | --- |
@@ -365,7 +365,7 @@ The type picker's options go on the type field, never on the recipe: the picker 
 
 `fieldMappings` (plural, on a **block config**) and `fieldMapping` (singular, on **block data**) are different things, and only the singular one is read at render:
 
-<block type="slateTable" table.fixed table.celled>
+<block is="slateTable" table.fixed table.celled>
 
 |  | `fieldMappings['@default']` | `fieldMapping` |
 | --- | --- | --- |

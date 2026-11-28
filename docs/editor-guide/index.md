@@ -32,21 +32,21 @@ order:
   - translations
   - ai-agents
 blocks-matched: |
-  <block type="slate" value="${p,h*,ul,ol,blockquote,strong,em,a/slate}" />
-  <block type="title" _="${h1}" />
-  <block type="image" description="${p?/textarea}" url="${img/src}" alt="${img?/alt}" title="${img?/title}" align="center" size="l" />
-  <block type="codeExample">
+  <block is="slate" value="${p,h*,ul,ol,blockquote,strong,em,a/slate}" />
+  <block is="title" _="${h1}" />
+  <block is="image" description="${p?/textarea}" url="${img/src}" alt="${img?/alt}" title="${img?/title}" align="center" size="l" />
+  <block is="codeExample">
     <region name="tabs" widget="object_list" idField="@id" typeField="@type">
-      <block type="tab" label="${h3/text}" language="${pre/lang}" code="${pre/textarea}" />
+      <block is="tab" label="${h3/text}" language="${pre/lang}" code="${pre/textarea}" />
     </region>
   </block>
 blocks-tagged: |
-  <block type="slateTable">
+  <block is="slateTable">
     <region name="table.rows" idField="key">
-      <block type="row" _="${tr}">
+      <block is="row" _="${tr}">
         <region name="cells" idField="key" typeField="type">
-          <block type="header" value="${th/slate}" />
-          <block type="data" value="${td/slate}" />
+          <block is="header" value="${th/slate}" />
+          <block is="data" value="${td/slate}" />
         </region>
       </block>
     </region>
@@ -97,7 +97,7 @@ A toolbar button opens the **Frontend switcher** panel with two sections:
 
 A **Settings** button at the bottom of the panel manages the saved URLs (add, remove, rename). The currently active frontend is highlighted in the list.
 
-<block type="image">
+<block is="image">
 
 ![Frontend switcher panel — Viewport section with Mobile/Tablet/Desktop, Frontend section listing four saved frontends, Settings button at the bottom.](../images/frontend-switcher.png)
 
@@ -132,7 +132,7 @@ So `Escape` repeatedly takes you up one level at a time. See [Selecting blocks](
 
 On narrow screens (≤767 px) the editor reshapes into a two-bar layout: the **block toolbar** pins to the top of the viewport — always visible, never fades — and the **main toolbar** (Save, Cancel, Frontend switcher, Settings shortcut) sits as a compact bar at the bottom. The iframe canvas fills the space in between. There is no side panel: the sidebar opens as a full-screen sheet, popups slide up from the bottom, and the link editor takes over the top bar.
 
-<block type="image">
+<block is="image">
 
 ![Mobile editing — Block toolbar pinned at the top with chevrons and format buttons, a slate block selected mid-screen with its selection outline, and the compact main toolbar at the bottom.](../images/mobile-block-selected.png)
 
@@ -142,7 +142,7 @@ On narrow screens (≤767 px) the editor reshapes into a two-bar layout: the **b
 
 The `⋯` menu — and every other contextual chooser (block-type picker, frontend switcher, convert chooser) — slides up from the bottom of the screen with the canvas dimmed behind. Tap the back arrow at the bottom-left of the sheet to dismiss; the canvas underneath comes back unchanged.
 
-<block type="image">
+<block is="image">
 
 ![Mobile ⋯ menu as a slide-up bottom sheet showing Settings, Make Template, Copy, Cut, Remove with a back arrow at the bottom-left and the canvas dimmed behind it.](../images/mobile-dropdown-menu.png)
 
@@ -152,7 +152,7 @@ The `⋯` menu — and every other contextual chooser (block-type picker, fronte
 
 A side panel is impossible on a 375 px screen. Instead, opening the sidebar (via the **Settings** shortcut in the main toolbar, or by choosing **Settings** in the `⋯` menu) covers the entire viewport. The `X` button in the top-right closes it and brings you back to the canvas. While the sidebar is open, the iframe is hidden behind it — same source of truth, just a different surface.
 
-<block type="image">
+<block is="image">
 
 ![Mobile sidebar as a full-screen sheet showing the Page header with an X close button, the DEFAULT section open with Title and Summary fields, and the DATES section below.](../images/mobile-sidebar-fullscreen.png)
 
@@ -162,7 +162,7 @@ A side panel is impossible on a 375 px screen. Instead, opening the sidebar (via
 
 Phones don't have an `Escape` key. To walk back up out of a nested block (a teaser inside a grid, a paragraph inside a column), the block toolbar shows an extra **\`⬆\` button** to the left of `⋯` whenever the selected block has a parent. One tap selects the parent container; tap again to keep walking up.
 
-<block type="image">
+<block is="image">
 
 ![Mobile block toolbar with a nested teaser selected — the ⬆ select-parent button is visible to the left of ⋯, and the teaser's grid parent is highlighted with a dashed selection outline.](../images/mobile-select-parent.png)
 
@@ -170,7 +170,7 @@ Phones don't have an `Escape` key. To walk back up out of a nested block (a teas
 
 ### Differences from desktop in one place
 
-<block type="slateTable" table.fixed table.celled>
+<block is="slateTable" table.fixed table.celled>
 
 | Desktop / tablet | Mobile (≤767 px) |
 | --- | --- |

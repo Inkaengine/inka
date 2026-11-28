@@ -25,7 +25,7 @@ blobs:
     description: Homepage hero loop showing live editing, formatting, drag-and-drop,
       container selection, and the frontend switcher.
 blocks-matched: |
-  <block type="title" _="${h1}" />
+  <block is="title" _="${h1}" />
 ---
 
 # Static

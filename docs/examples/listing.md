@@ -23,23 +23,23 @@ subjects:
   - listings
 title: Listing
 blocks-matched: |
-  <block type="slate" value="${p,h*,ul,ol,blockquote,strong,em,a/slate}" />
-  <block type="title" _="${h1}" />
-  <block type="image" description="${p?/textarea}" url="${img/src}" alt="${img?/alt}" title="${img?/title}" align="center" size="l" />
-  <block type="codeExample">
+  <block is="slate" value="${p,h*,ul,ol,blockquote,strong,em,a/slate}" />
+  <block is="title" _="${h1}" />
+  <block is="image" description="${p?/textarea}" url="${img/src}" alt="${img?/alt}" title="${img?/title}" align="center" size="l" />
+  <block is="codeExample">
     <region name="tabs" widget="object_list" idField="@id" typeField="@type">
-      <block type="tab" label="${h3/text}" language="${pre/lang}" code="${pre/textarea}" />
+      <block is="tab" label="${h3/text}" language="${pre/lang}" code="${pre/textarea}" />
     </region>
   </block>
 blocks-tagged: |
-  <block type="gridBlock" headline="${h/text}">
+  <block is="gridBlock" headline="${h/text}">
     <region name="items" widget="blocks_layout">
-      <block type="teaser" title="${h/text}" head_title="${strong?/text}" href="${h/link}" description="${p?/textarea}" />
+      <block is="teaser" title="${h/text}" head_title="${strong?/text}" href="${h/link}" description="${p?/textarea}" />
     </region>
   </block>
-  <block type="slider">
+  <block is="slider">
     <region name="slides" widget="object_list" idField="@id" typeField="@type">
-      <block type="slide" title="${h/text}" head_title="${strong?/text}" description="${p/textarea}" buttonText="${a?/text}" href="${a?/link}" preview_image="${img/link}" />
+      <block is="slide" title="${h/text}" head_title="${strong?/text}" description="${p/textarea}" buttonText="${a?/text}" href="${a?/link}" preview_image="${img/link}" />
     </region>
   </block>
 ---
@@ -48,7 +48,7 @@ blocks-tagged: |
 
 Displays a list of content items from a query. The listing block fetches items from the Plone catalog based on a querystring and renders each item using a configurable item type (variation). Built-in item types are default (title + description) and summary (title + description + image).
 
-<block type="image">
+<block is="image">
 
 ![The listing example block being edited in Inka](../images/listing-edit.png)
 
@@ -58,27 +58,27 @@ Displays a list of content items from a query. The listing block fetches items f
 
 <fields block="24280e07-e962-4414-8ee5-cdaf58ca5f35">
 
-<block type="listing" data-json='{"headline":"Listing: Default","variation":"default","styles":{"backgroundColor":"transparent"},"querystring":{"b_size":"4","limit":"10","query":[{"i":"portal_type","o":"plone.app.querystring.operation.selection.any","v":["Document"]},{"i":"Subject","o":"plone.app.querystring.operation.selection.none","v":["main folder"]}],"sort_on":"getId","sort_order":"ascending"},"query":[],"fieldMapping":{"getURL":{"field":"href","type":"link"},"title":{"field":"title","type":"string"},"description":{"field":"description","type":"textarea"}}}' />
+<block is="listing" headline="Listing: Default" variation="default" :styles='{"backgroundColor":"transparent"}' :querystring='{"b_size":"4","limit":"10","query":[{"i":"portal_type","o":"plone.app.querystring.operation.selection.any","v":["Document"]},{"i":"Subject","o":"plone.app.querystring.operation.selection.none","v":["main folder"]}],"sort_on":"getId","sort_order":"ascending"}' :query="[]" />
 
-<block type="listing" data-json='{"headline":"Listing: Summary","variation":"summary","styles":{"backgroundColor":"grey"},"querystring":{"limit":"5","query":[{"i":"portal_type","o":"plone.app.querystring.operation.selection.any","v":["Document"]},{"i":"Subject","o":"plone.app.querystring.operation.selection.none","v":["main folder"]}],"sort_on":"getId","sort_order":"ascending"},"query":[],"fieldMapping":{"getURL":{"field":"href","type":"link"},"title":{"field":"title","type":"string"},"description":{"field":"description","type":"textarea"},"image":{"field":"image","type":"image_link"}}}' />
+<block is="listing" headline="Listing: Summary" :styles='{"backgroundColor":"grey"}' :querystring='{"limit":"5","query":[{"i":"portal_type","o":"plone.app.querystring.operation.selection.any","v":["Document"]},{"i":"Subject","o":"plone.app.querystring.operation.selection.none","v":["main folder"]}],"sort_on":"getId","sort_order":"ascending"}' :query="[]" />
 
 </fields>
 
-<block type="gridBlock" styles:backgroundColor="transparent">
+<block is="gridBlock" :styles='{"backgroundColor":"transparent"}'>
 
 ## Listing: Grid (Teaser)
 
-<block type="listing" data-json='{"querystring":{"limit":"6","query":[{"i":"portal_type","o":"plone.app.querystring.operation.selection.any","v":["Document"]},{"i":"Subject","o":"plone.app.querystring.operation.selection.none","v":["main folder"]}],"sort_on":"getId","sort_order":"ascending"},"variation":"teaser","fieldMapping":{"getURL":{"field":"href","type":"link"},"title":{"field":"title","type":"string"},"description":{"field":"description","type":"textarea"},"image":{"field":"preview_image","type":"image_link"}}}' />
+<block is="listing" :querystring='{"limit":"6","query":[{"i":"portal_type","o":"plone.app.querystring.operation.selection.any","v":["Document"]},{"i":"Subject","o":"plone.app.querystring.operation.selection.none","v":["main folder"]}],"sort_on":"getId","sort_order":"ascending"}' variation="teaser" />
 
 </block>
 
-<block type="slider" data-json='{"headline":"Listing: Image Slider","autoplayDelay":4000,"autoplayEnabled":false,"autoplayJump":false,"slides":[{"@type":"listing","fieldMapping":{"getURL":{"field":"href","type":"link"},"title":{"field":"alt","type":"string"},"image":{"field":"url","type":"image_link"}},"querystring":{"query":[{"i":"portal_type","o":"plone.app.querystring.operation.selection.any","v":["Image"]}],"sort_order":"ascending"},"variation":"image"}]}' />
+<block is="slider" headline="Listing: Image Slider" :slides='[{"@type":"listing","querystring":{"query":[{"i":"portal_type","o":"plone.app.querystring.operation.selection.any","v":["Image"]}],"sort_order":"ascending"},"variation":"image"}]' />
 
 </fields>
 
-<fields templateId="/inka-templates/block-reference-layout" templateInstanceId="tpl-inst-listing" fixed=false readOnly=false>
+<fields templateId="/inka-templates/block-reference-layout" templateInstanceId="tpl-inst-listing" :fixed="false" :readOnly="false">
 
-<block type="codeExample" slotId="schema">
+<block is="codeExample" slotId="schema">
 
 ### Schema
 
@@ -88,7 +88,7 @@ Displays a list of content items from a query. The listing block fetches items f
 
 </block>
 
-<block type="codeExample" slotId="json-data">
+<block is="codeExample" slotId="json-data">
 
 ### JSON
 
@@ -99,7 +99,7 @@ Displays a list of content items from a query. The listing block fetches items f
 
 </block>
 
-<block type="codeExample" slotId="rendering">
+<block is="codeExample" slotId="rendering">
 
 ### React
 

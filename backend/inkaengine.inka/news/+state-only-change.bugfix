@@ -1,1 +1,0 @@
-A content deploy changes an item whose review state alone changed by a workflow transition, without importing it again. Importing reindexed its whole text, a PDF file's included, so a layout that newly declared its files' states took over 45 minutes on a few hundred files. @djay

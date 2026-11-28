@@ -13,8 +13,8 @@ layout: document_view
 title: CMS adapter guide
 id: adapters
 blocks-matched: |
-  <block type="slate" value="${p,h*,ul,ol,blockquote,strong,em,a/slate}" />
-  <block type="title" _="${h1}" />
+  <block is="slate" value="${p,h*,ul,ol,blockquote,strong,em,a/slate}" />
+  <block is="title" _="${h1}" />
 ---
 
 # CMS adapter guide

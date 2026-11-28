@@ -1,0 +1,1 @@
+Tests: a run names the links it knows a visitor can't open with DEAD_LINK_EXEMPT (URL path globs, the path only unless it ends `/**`); every other link must open. A published page in a private folder links to that folder in its breadcrumbs, which answers 401 (#851).

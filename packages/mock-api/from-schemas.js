@@ -6,6 +6,12 @@
  * what a block's search text is.
  */
 import { searchTextOptions, withSearchableText } from '@volto-hydra/helpers/searchableText.js';
+import { linkItemSnapshot } from '@volto-hydra/helpers/linkItem.js';
+import { buildBlockPathMap } from '@volto-hydra/helpers/buildBlockPathMap.js';
+import { getBlockByPath, updateBlockById, regionSlotId } from '@volto-hydra/helpers/blockPath.js';
+import { buildIdFieldMap } from '@volto-hydra/helpers/buildBlockPathMap.js';
+import { getChildFields, getChildBlockEntries, setChildBlockEntries } from '@volto-hydra/helpers';
+import { resolveEffectiveBlockSchema } from '@volto-hydra/helpers/blockSync.js';
 
 /** Build a `schemaFor(type) -> blockSchema` lookup from a block-schema registry.
  *  Handles both shapes the project uses:
@@ -26,7 +32,7 @@ export function schemaRegistryFromBlockDefinitions(registry) {
 }
 
 /**
- * Fill a page's `<block type="codeExample" source="<type>" format="schema">` with
+ * Fill a page's `<block is="codeExample" source="<type>" format="schema">` with
  * that block type's schema, from the registry the frontends register from: the
  * schema a doc page shows is the one that validates. blockmd's decode fills the
  * `format="json"` ones, which show a block from the same page. A type with no
@@ -56,7 +62,14 @@ export function resolveSchemaExamples(page, { schemaFor }) {
 // plain url string on a card, so only the schema knows which is a link. A
 // `url`-widget field is an external string and is left alone; an `@id` that
 // resolves to no local object (external / not in this tree) stays bare.
-export function resolveLinkSummaries(items, { schemaFor, prefix = '' }) {
+//
+// A TEXT link's snapshot is the same story: the link editor keeps the picked
+// item's catalog metadata beside the link's address (`data.item`, a file's type
+// and size a frontend draws after the link), and Markdown writes the link alone.
+// `catalogEntry` gives an item's catalog entry, as a search returns it; the
+// snapshot is the link editor's own (linkItemSnapshot). A link already carrying
+// one keeps it.
+export function resolveLinkSummaries(items, { schemaFor, prefix = '', catalogEntry = null }) {
   const localId = (id) => (prefix && id.startsWith(prefix) ? id.slice(prefix.length) : id) || '/';
   const isBareLink = (o) => o && typeof o === 'object' && !Array.isArray(o)
     && typeof o['@id'] === 'string' && Object.keys(o).length === 1;
@@ -95,8 +108,20 @@ export function resolveLinkSummaries(items, { schemaFor, prefix = '' }) {
     });
   };
 
+  // Every text link in a value: a slate node `{ type: 'link', data: { url } }`.
+  const fillTextLinks = (value) => {
+    if (!catalogEntry || !value || typeof value !== 'object') return;
+    if (Array.isArray(value)) { value.forEach(fillTextLinks); return; }
+    if (value.type === 'link' && typeof value.data?.url === 'string' && !value.data.item) {
+      const target = items.get(localId(value.data.url.split('#')[0]));
+      if (target) value.data = { ...value.data, item: linkItemSnapshot(catalogEntry(target)) };
+    }
+    if (Array.isArray(value.children)) fillTextLinks(value.children);
+  };
+
   const fillBlock = (block) => {
     if (!block || typeof block !== 'object') return;
+    for (const v of Object.values(block)) if (Array.isArray(v)) fillTextLinks(v);
     const schema = block['@type'] ? schemaFor(block['@type']) : null;
     if (schema && schema.properties) {
       for (const [field, def] of Object.entries(schema.properties)) {
@@ -180,4 +205,145 @@ function dropDerived(stored, derived) {
 export function withoutDefaultSearchText(page, blocksConfig) {
   if (!page.blocks) return page;
   return dropDerived(page, withSearchableText(page, searchTextOptions(blocksConfig, SEARCH_INTL, page)));
+}
+
+// A field's declared, fixed default (not a function of where the block sits).
+// Not a region's: a blocks_layout region keeps its children in the block's
+// `blocks` and `blocks_layout`, never under its own name, and its default lists
+// the blocks a new one starts with.
+const fixedDefaults = (schema) => Object.entries(schema?.properties ?? {})
+  .filter(([, def]) => def && def.default !== undefined && typeof def.default !== 'function'
+    && def.widget !== 'object' && def.widget !== 'blocks_layout');
+
+/** Every block of a page, nested ones too, rewritten by `fn(block, schema, type)`
+ *  against the block's effective schema (its variation's, enhanced). The block is
+ *  as stored: a list item typed by its own field (a form's `field_type`) is not
+ *  given the `@type` that reading it as a block shows (getBlockById). */
+function eachBlockWithSchema(page, blocksConfig, fn) {
+  if (!page.blocks) return page;
+  const pathMap = buildBlockPathMap(page, blocksConfig, SEARCH_INTL);
+  let out = page;
+  for (const [id, info] of Object.entries(pathMap)) {
+    if (!info?.path) continue; // a virtual block (a template's), not in the page
+    const block = getBlockByPath(out, info.path);
+    if (!block) continue;
+    const schema = resolveEffectiveBlockSchema(id, out, pathMap, blocksConfig, SEARCH_INTL);
+    if (!schema) continue;
+    const next = fn(block, schema, info.blockType ?? block['@type'], info.path.join('/'));
+    if (next !== block) out = updateBlockById(out, pathMap, id, next);
+  }
+  return out;
+}
+
+const sameValue = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+
+/**
+ * The page without the values its schemas declare as defaults: what a markdown
+ * export leaves out, so a question reads without `required="false"`. The editor
+ * applies a default and saves it, and a frontend renders the stored value, so
+ * loading puts each back (withSchemaDefaults).
+ */
+// `keep(type, field)`: a default to keep anyway -- one the block's prototype
+// states as a literal, which its bare Markdown implies (an image's `size`), so
+// dropping it would leave the bare form unable to read back.
+//
+// A default is only left out when loading puts it back: some come from the
+// block itself (a listing in a container defaults its item type to the one it
+// holds), and without the value there is no default to fill. So the page is
+// filled again and any value that did not come back is kept, until none is lost.
+export function withoutSchemaDefaults(page, blocksConfig, { keep = () => false } = {}) {
+  if (!page.blocks) return page;
+  const paths = Object.entries(buildBlockPathMap(page, blocksConfig, SEARCH_INTL))
+    .filter(([, info]) => info?.path).map(([id, info]) => [id, info.path]);
+  const kept = new Set(); // `${path}|${field}` that loading could not restore
+  for (;;) {
+    const out = eachBlockWithSchema(page, blocksConfig, (block, schema, type, path) => {
+      let next = block;
+      for (const [field, def] of fixedDefaults(schema)) {
+        if (keep(type, field) || kept.has(`${path}|${field}`)) continue;
+        if (field in next && sameValue(next[field], def.default)) {
+          if (next === block) next = { ...block };
+          delete next[field];
+        }
+      }
+      return next;
+    });
+    const back = withSchemaDefaults(out, blocksConfig);
+    let lost = false;
+    for (const [, path] of paths) {
+      const was = getBlockByPath(page, path);
+      const now = getBlockByPath(back, path);
+      if (!was || !now) continue;
+      for (const field of Object.keys(was)) {
+        if (!sameValue(was[field], now[field]) && !kept.has(`${path.join('/')}|${field}`)) {
+          kept.add(`${path.join('/')}|${field}`);
+          lost = true;
+        }
+      }
+    }
+    if (!lost) return out;
+  }
+}
+
+/** The page with each absent field its schema declares a default for set to
+ *  it, as the editor saves it. Only ABSENT: a stored null stays null. */
+export function withSchemaDefaults(page, blocksConfig) {
+  return eachBlockWithSchema(page, blocksConfig, (block, schema) => {
+    let out = block;
+    for (const [field, def] of fixedDefaults(schema)) {
+      if (!(field in out)) {
+        if (out === block) out = { ...block };
+        out[field] = structuredClone(def.default);
+      }
+    }
+    return out;
+  });
+}
+
+/**
+ * Each block of the page rewritten, at every depth, with `fn(child, slot)` for a
+ * child of the same template instance as its block, `slot` being the name the
+ * editor gives it (regionSlotId: the block's slot and the region). `outward`:
+ * rewrite a child after what is inside it (its slot names its own children's),
+ * else before.
+ */
+function mapInstanceChildren(page, blocksConfig, fn, outward) {
+  if (!page.blocks) return page;
+  const idFieldMap = buildIdFieldMap(blocksConfig, SEARCH_INTL);
+  const visit = (block) => {
+    if (!block || typeof block !== 'object') return block;
+    let out = block;
+    for (const field of getChildFields(block, idFieldMap, { allObjectLists: true })) {
+      let changed = false;
+      const entries = getChildBlockEntries(out, field).map(({ id, block: child }) => {
+        const ours = child && block.templateInstanceId && block.slotId && child.templateInstanceId === block.templateInstanceId;
+        const slot = ours ? regionSlotId(block.slotId, field.region) : null;
+        const next = !ours ? visit(child) : outward ? fn(visit(child), slot) : visit(fn(child, slot));
+        if (next !== child) changed = true;
+        return { id, block: next };
+      });
+      if (changed) {
+        if (out === block) out = { ...block };
+        setChildBlockEntries(out, field, entries);
+      }
+    }
+    return out;
+  };
+  return { ...page, blocks: Object.fromEntries(Object.entries(page.blocks).map(([id, b]) => [id, visit(b)])) };
+}
+
+/** The page without each template child's slot named from its region: what a
+ *  markdown export leaves out (withRegionSlots names it again). */
+export function withoutRegionSlots(page, blocksConfig) {
+  return mapInstanceChildren(page, blocksConfig, (child, slot) => {
+    if (child.slotId !== slot) return child;
+    const { slotId, ...rest } = child;
+    return rest;
+  }, true);
+}
+
+/** The page with each template child that has no slot given the one the editor
+ *  names from its region, as inheritTemplateMembershipDeep does. */
+export function withRegionSlots(page, blocksConfig) {
+  return mapInstanceChildren(page, blocksConfig, (child, slot) => (child.slotId ? child : { ...child, slotId: slot }), false);
 }

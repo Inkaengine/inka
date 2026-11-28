@@ -23,13 +23,13 @@ rights: ""
 subjects: []
 title: Links and media
 blocks-matched: |
-  <block type="slate" value="${p,h*,ul,ol,blockquote,strong,em,a/slate}" />
-  <block type="title" _="${h1}" />
-  <block type="image" description="${p?/textarea}" url="${img/src}" alt="${img?/alt}" title="${img?/title}" align="center" size="l" />
+  <block is="slate" value="${p,h*,ul,ol,blockquote,strong,em,a/slate}" />
+  <block is="title" _="${h1}" />
+  <block is="image" description="${p?/textarea}" url="${img/src}" alt="${img?/alt}" title="${img?/title}" align="center" size="l" />
 blocks-tagged: |
-  <block type="callout">
+  <block is="callout">
     <region name="items" widget="blocks_layout">
-      <block type="slate" value="${p,h*,ul,ol,blockquote,strong,em,a/slate}" />
+      <block is="slate" value="${p,h*,ul,ol,blockquote,strong,em,a/slate}" />
     </region>
   </block>
 ---
@@ -49,7 +49,7 @@ When the frontend has wired up a link field as inline-editable, clicking the lin
 
 ![Link picker on a slate link — URL field with /another-page, browse / clear / open-new-tab / submit icons.](../images/link-picker.png)
 
-<block type="callout" variation="tip">
+<block is="callout" variation="tip">
 
 The frontend can also mark certain links as **always navigable during edit mode** (paging buttons, facet controls, "next slide" arrows). Those still navigate when you click them, even in edit mode — the picker only opens for editorial links, not UI controls.
 
@@ -63,7 +63,7 @@ Sometimes you don't want to link to the top of a page — you want to land the r
 
 The two buttons at the top right switch between **Sub items** (pages inside this one) and **Fragments**, so you can always get back to either.
 
-<block type="image">
+<block is="image">
 
 ![Object browser opened on Deep Link Page with the top-right switch set to Fragments, listing the page's headings — Intro and Details — as link targets.](../images/link-fragments.png)
 

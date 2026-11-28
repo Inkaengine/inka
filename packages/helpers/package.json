@@ -21,6 +21,7 @@
     "./blockText.js": "./blockText.js",
     "./buildBlockPathMap.js": "./buildBlockPathMap.js",
     "./catalogAddress.js": "./catalogAddress.js",
+    "./linkItem.js": "./linkItem.js",
     "./mappingConversions.js": "./mappingConversions.js",
     "./conversionValidation.js": "./conversionValidation.js",
     "./copyFromTargetMapping.js": "./copyFromTargetMapping.js",

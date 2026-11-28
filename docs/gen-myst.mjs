@@ -11,9 +11,9 @@
  *   node docs/gen-myst.mjs <src> <out>
  *
  * Transforms:
- *  - `<block type="callout" variation="X">…</block>`  -> ```{X} …``` admonition
- *  - self-closing `<block type="image" url alt>`       -> `![alt](url)`
- *  - `<block type="separator" .../>`                   -> `---`
+ *  - `<block is="callout" variation="X">…</block>`  -> ```{X} …``` admonition
+ *  - self-closing `<block is="image" url alt>`       -> `![alt](url)`
+ *  - `<block is="separator" .../>`                   -> `---`
  *  - other self-closing `<block …/>` (video, listing…) -> dropped (inert in Sphinx)
  *  - remaining `<block>|</block>|<region>|</region>|<fields>|</fields>` -> stripped,
  *    keeping the markdown body (codeExample renders as its ### tabs + fences)
@@ -66,7 +66,7 @@ const walk = (d, acc = []) => {
 // A callout block -> a myst admonition. The body is already markdown.
 function calloutToAdmonition(md) {
   return md.replace(
-    /<block type="callout" variation="(\w+)"[^>]*>\n([\s\S]*?)\n<\/block>/g,
+    /<block is="callout" variation="(\w+)"[^>]*>\n([\s\S]*?)\n<\/block>/g,
     (_m, variation, body) => '```{' + variation + '}\n' + body.trim() + '\n```',
   );
 }
@@ -80,7 +80,7 @@ function transformBody(body, sourceMap = new Map()) {
   // static Sphinx page shows the SAME real data/schema the mount serves (single
   // source), not an empty self-closing tag. Must run before the generic
   // self-closing drop below.
-  out = out.replace(/<block type="codeExample"([^>]*?)\/>/g, (m, rest) => {
+  out = out.replace(/<block is="codeExample"([^>]*?)\/>/g, (m, rest) => {
     const a = attrs('x' + rest);
     if (!a.source) return m;
     const hit = sourceMap.get(`${a.source}|${a.format}`);
@@ -88,12 +88,12 @@ function transformBody(body, sourceMap = new Map()) {
     return `### ${hit.label}\n\n\`\`\`json\n${hit.code}\n\`\`\`\n`;
   });
   // self-closing image blocks -> markdown image
-  out = out.replace(/<block type="image"([^>]*?)\/>/g, (m, rest) => {
+  out = out.replace(/<block is="image"([^>]*?)\/>/g, (m, rest) => {
     const a = attrs('x' + rest); // prefix so the leading space parses
     return a.url ? `![${a.alt || a.description || ''}](${a.url})` : '';
   });
   // separator -> thematic break
-  out = out.replace(/<block type="separator"[^>]*\/>/g, '---');
+  out = out.replace(/<block is="separator"[^>]*\/>/g, '---');
   // any other self-closing block -> drop (inert in Sphinx: video, listing, teaser, …)
   out = out.replace(/<block [^>]*\/>/g, '');
   // strip wrapper tags, keep their bodies

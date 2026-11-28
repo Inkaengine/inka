@@ -14,17 +14,17 @@ preview_image:
   size: 703
   width: 36
 blocks-matched: |
-  <block type="slate" value="${p,h*,ul,ol,blockquote,strong,em/slate}" />
-  <block type="title" _="${h1}" />
+  <block is="slate" value="${p,h*,ul,ol,blockquote,strong,em/slate}" />
+  <block is="title" _="${h1}" />
 ---
 
 <fields templateId="/inka-templates/newsitem-view" templateInstanceId="tpl-ni-def">
 
 <fields data-json='{"fixed":true,"readOnly":false}'>
 
-<block type="dateField" dateField="effective" slotId="date" data-json='{"showTime":false}' />
+<block is="dateField" dateField="effective" slotId="date" data-json='{"showTime":false}' />
 
-<block type="title">
+<block is="title">
 
 # News Item View
 
@@ -32,10 +32,10 @@ blocks-matched: |
 
 </block>
 
-<block type="leadimage" slotId="lead-image" />
+<block is="leadimage" slotId="lead-image" />
 
 </fields>
 
-<block type="slate" slotId="default" data-json='{"value":[{"type":"p","children":[{"text":""}]}],"fixed":false}' />
+<block is="slate" slotId="default" data-json='{"value":[{"type":"p","children":[{"text":""}]}],"fixed":false}' />
 
 </fields>

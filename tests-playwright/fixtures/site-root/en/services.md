@@ -11,12 +11,12 @@ subjects:
   - build
 effective: 2025-01-01T00:00:00
 blocks-matched: |
-  <block type="slate" value="${p,h*/slate}" />
-  <block type="title" _="${h1}" />
+  <block is="slate" value="${p,h*/slate}" />
+  <block is="title" _="${h1}" />
 blocks-tagged: |
-  <block type="gridBlock" headline="${h/text}">
+  <block is="gridBlock" headline="${h/text}">
     <region name="items" widget="blocks_layout">
-      <block type="teaser" title="${h/text}" href="${h/link}" description="${p/textarea}" overwrite=true />
+      <block is="teaser" title="${h/text}" href="${h/link}" description="${p/textarea}" overwrite />
     </region>
   </block>
 ---
@@ -25,13 +25,13 @@ blocks-tagged: |
 
 What we do, in English.
 
-<block type="gridBlock">
+<block is="gridBlock">
 
 ### What we do
 
 <region name="items" widget="blocks_layout">
 
-<block type="teaser">
+<block is="teaser">
 
 ### [Design](/en/about)
 
@@ -39,7 +39,7 @@ We design in English.
 
 </block>
 
-<block type="teaser">
+<block is="teaser">
 
 ### [Build](/en/about)
 

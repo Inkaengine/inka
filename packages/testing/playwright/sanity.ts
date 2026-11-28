@@ -25,6 +25,9 @@
  *                          sit outside its container's allowedBlocks on purpose
  *                          (e.g. a docs site's component showcase slot). See
  *                          readContainmentRules in discover-blocks.js.
+ *   DEAD_LINK_EXEMPT     - space-separated URL path globs for links a visitor
+ *                          can't open on purpose, which page integrity doesn't
+ *                          follow. See DEAD_LINK_EXEMPT in PageIntegrityHelper.
  *
  * Works against any Plone API — mock or remote.
  */

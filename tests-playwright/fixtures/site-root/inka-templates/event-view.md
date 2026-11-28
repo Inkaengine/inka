@@ -12,15 +12,15 @@ location: Musterhausener Landstrasse 134 Standort E123 67111 Musterhausen
 contact_name: Max Mustermann
 contact_phone: +49 1234 567-890
 blocks-matched: |
-  <block type="slate" value="${p,h*,ul,ol,blockquote,strong,em/slate}" />
-  <block type="title" _="${h1}" />
+  <block is="slate" value="${p,h*,ul,ol,blockquote,strong,em/slate}" />
+  <block is="title" _="${h1}" />
 ---
 
 <fields templateId="/inka-templates/event-view" templateInstanceId="tpl-ev-def">
 
 <fields data-json='{"fixed":true,"readOnly":false}'>
 
-<block type="title">
+<block is="title">
 
 # Event View
 
@@ -28,10 +28,10 @@ blocks-matched: |
 
 </block>
 
-<block type="eventMetadata" slotId="event-metadata" />
+<block is="eventMetadata" slotId="event-metadata" />
 
 </fields>
 
-<block type="slate" slotId="default" data-json='{"value":[{"type":"p","children":[{"text":""}]}],"fixed":false}' />
+<block is="slate" slotId="default" data-json='{"value":[{"type":"p","children":[{"text":""}]}],"fixed":false}' />
 
 </fields>

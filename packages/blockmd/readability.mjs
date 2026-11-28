@@ -36,12 +36,13 @@ function jsonWords(value) {
   return 0;
 }
 
-// Words in a tag's attribute values, `data-json` read as the JSON it holds.
+// Words in a tag's attribute values: `data-json` and a bound `:name` read as
+// the JSON they hold, so a key is not a word and only its text values count.
 function tagWords(html) {
   let n = 0;
   for (const m of html.matchAll(ATTR)) {
     const value = unescape(m[3] ?? m[4]);
-    n += m[1] === 'data-json' ? jsonWords(JSON.parse(value)) : proseWords(value);
+    n += m[1] === 'data-json' || m[1].startsWith(':') ? jsonWords(JSON.parse(value)) : proseWords(value);
   }
   return n;
 }
@@ -68,7 +69,7 @@ export function pageReadability(md) {
       words.tags += tagWords(node.value);
       for (const tag of node.value.matchAll(/<(block|fields)\b[^>]*>/g)) {
         if (tag[1] === 'fields') { blocks.fields += 1; continue; }
-        const type = /\btype="([^"]+)"/.exec(tag[0])?.[1] ?? '?';
+        const type = /\bis="([^"]+)"/.exec(tag[0])?.[1] ?? '?';
         const form = /\bdata-json=/.test(tag[0]) ? 'raw' : 'light';
         blocks[form] += 1;
         byType[type] ??= { light: 0, fields: 0, raw: 0 };

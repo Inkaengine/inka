@@ -22,17 +22,17 @@ subjects:
   - text
 title: Callout
 blocks-matched: |
-  <block type="slate" value="${p,h*,ul,ol,blockquote,strong,em,a/slate}" />
-  <block type="title" _="${h1}" />
-  <block type="codeExample">
+  <block is="slate" value="${p,h*,ul,ol,blockquote,strong,em,a/slate}" />
+  <block is="title" _="${h1}" />
+  <block is="codeExample">
     <region name="tabs" widget="object_list" idField="@id" typeField="@type">
-      <block type="tab" label="${h3/text}" language="${pre/lang}" code="${pre/textarea}" />
+      <block is="tab" label="${h3/text}" language="${pre/lang}" code="${pre/textarea}" />
     </region>
   </block>
 blocks-tagged: |
-  <block type="callout">
+  <block is="callout">
     <region name="items" widget="blocks_layout">
-      <block type="slate" value="${p,h*,ul,ol,blockquote,strong,em,a/slate}" />
+      <block is="slate" value="${p,h*,ul,ol,blockquote,strong,em,a/slate}" />
     </region>
   </block>
 ---
@@ -43,33 +43,33 @@ A labelled admonition box — **note**, **tip**, **warning**, or **important** �
 
 This is a **custom** block — register it via `initBridge`. The level is the block's `variation`; the body is a region of child blocks, so it holds real markdown — multiple paragraphs, lists, code.
 
-<block type="callout" variation="note">
+<block is="callout">
 
 This is a **note** — the default level. The body takes normal markdown: `code`, [links](../frontend-guide/live-preview.md), and multiple paragraphs.
 
 </block>
 
-<block type="callout" variation="tip">
+<block is="callout" variation="tip">
 
 This is a **tip** — for a helpful aside.
 
 </block>
 
-<block type="callout" variation="warning">
+<block is="callout" variation="warning">
 
 This is a **warning** — for something that can bite.
 
 </block>
 
-<block type="callout" variation="important">
+<block is="callout" variation="important">
 
 This is an **important** — for a must-know gotcha.
 
 </block>
 
-<fields templateId="/inka-templates/block-reference-layout" templateInstanceId="tpl-inst-callout" fixed=false readOnly=false>
+<fields templateId="/inka-templates/block-reference-layout" templateInstanceId="tpl-inst-callout" :fixed="false" :readOnly="false">
 
-<block type="codeExample" slotId="schema">
+<block is="codeExample" slotId="schema">
 
 ### Schema
 
@@ -79,7 +79,7 @@ This is an **important** — for a must-know gotcha.
 
 </block>
 
-<block type="codeExample" slotId="json-data">
+<block is="codeExample" slotId="json-data">
 
 ### JSON
 
@@ -90,7 +90,7 @@ This is an **important** — for a must-know gotcha.
 
 </block>
 
-<block type="codeExample" slotId="rendering">
+<block is="codeExample" slotId="rendering">
 
 ### React
 
