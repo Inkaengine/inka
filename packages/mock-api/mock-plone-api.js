@@ -3403,6 +3403,11 @@ app.delete('/{*path}', (req, res, next) => {
  * Used by ImageWidget for file uploads
  */
 // The plone.exportimport siblings that ride alongside a content tree.
+/** Where a mount keeps its site's own files (principals.json, portlets.json,
+ *  …): a Markdown tree in its own folder, beside its index.md, as it keeps its
+ *  redirects (readRedirects); an exportimport tree beside its content folder,
+ *  as plone.exportimport lays them out. */
+const siblingsDirOf = (mount) => (isMarkdownMount(mount) ? mount.dirPath : path.join(mount.dirPath, '..'));
 const DISTRIBUTION_SIBLINGS = ['discussions.json', 'portlets.json', 'principals.json',
                                'redirects.json', 'relations.json', 'translations.json'];
 // A blob rides in one of these two fields on Image/File content.
@@ -3578,7 +3583,7 @@ function buildDistributionFromMemory(dest, { allowMissingBlobs = false, sitePath
   // Siblings come from any JSON mount that carries them (one level up from its
   // content dir); a pure-markdown deploy falls back to the defaults.
   const siblingsFrom = CONTENT_MOUNTS
-    .map((m) => path.join(m.dirPath, '..'))
+    .map(siblingsDirOf)
     .filter((d) => DISTRIBUTION_SIBLINGS.some((s) => fs.existsSync(path.join(d, s))));
 
   return writeDistribution(dest, items, {
@@ -3941,7 +3946,7 @@ async function exportContent(req, res) {
       // COMPLETE distribution, not just content. Sourced from any mount that
       // carries them (one level up from its content dir), else minimal defaults.
       const siblingsFrom = CONTENT_MOUNTS
-        .map((m) => path.join(m.dirPath, '..'))
+        .map(siblingsDirOf)
         .filter((d) => DISTRIBUTION_SIBLINGS.some((s) => fs.existsSync(path.join(d, s))));
       for (const sib of DISTRIBUTION_SIBLINGS) {
         const from = siblingsFrom.map((d) => path.join(d, sib)).find((p) => fs.existsSync(p));
