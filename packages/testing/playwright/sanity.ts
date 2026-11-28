@@ -67,6 +67,13 @@ export interface SanityOptions extends ContractScope {
   mockParentUrl?: string;
   /** Pages (by path prefix) block-sanity's axe pass skips. */
   axeSkipPages?: string[];
+  /**
+   * Links the site's pages carry on purpose that a visitor can't open: a
+   * published page in a private folder links its breadcrumb to the folder,
+   * which answers 401. URL path globs; a glob names that path only, `/**` takes
+   * in what is under it. Default: DEAD_LINK_EXEMPT (for a one-off run).
+   */
+  exemptLinks?: string[];
 }
 
 /** Where a sanity test loads things from. Read inside a test, so ports resolve at run time. */
@@ -163,6 +170,13 @@ export function defineBlockSanityTests(options: SanityOptions): void {
   const discoveredBlocks: DiscoveredBlock[] = (readDiscovery<DiscoveredBlock>(options.discoveryDir, 'blocks') ?? [])
     .filter((b) => inContract(b.blockType, options));
   const seenShapeTitles = new Map();
+  const renderPages = new Map<string, {
+    pagePath: string;
+    src: string;
+    belongsHere: (project: string) => boolean;
+    frontend?: string;
+    blocks: Array<{ block: DiscoveredBlock; label: string }>;
+  }>();
 
   // The render test that also checks every OTHER block on its page: the first
   // render sample on each page, per frontend. One per page, so a page's blocks
@@ -428,212 +442,255 @@ export function defineBlockSanityTests(options: SanityOptions): void {
         });
       }
 
-      test(`${label} block renders and has edit annotations${src}`, async ({ page, helper }, testInfo) => {
-        test.skip(!belongsHere(testInfo.project.name), `discovered via ${block.frontend}`);
-        const frontendUrl = where.frontend(testInfo.project.name);
-        const frontend = frontendUrl ? `&frontend=${encodeURIComponent(frontendUrl)}` : '';
+      // Rendered per PAGE, not per block: see the render tests after this loop.
+      const pageKey = `${block.frontend ?? ''} ${block.pagePath}`;
+      if (!renderPages.has(pageKey)) renderPages.set(pageKey, { pagePath: block.pagePath, src, belongsHere, frontend: block.frontend, blocks: [] });
+      renderPages.get(pageKey)!.blocks.push({ block, label });
+    }
 
-        // Use api_path to load the full page content from the API
-        // The mock-parent fetches the page JSON and sends it via the bridge protocol
-        const apiOrigin = where.api();
-        const mockParentUrl = where.mockParent();
-        const apiPath = `${apiOrigin}${block.pagePath}`;
-        await page.goto(
-          `${mockParentUrl}?api_path=${encodeURIComponent(apiPath)}${frontend}`,
-        );
-        await helper.waitForIframeReady();
-        // waitForIframeReady only confirms the DOM mounted; verifyBlockRendering
-        // reads __hydraBridge.blockPathMap, which is only populated once the
-        // bridge has received INITIAL_DATA. Without this wait the render check
-        // races bridge init and flakily throws "blockPathMap not available".
-        await helper.waitForBridgeConnected();
+    // ONE TEST PER PAGE, each of its blocks a step. A page holding twenty blocks
+    // was loaded twenty times -- the mock parent, the frontend's page, the
+    // bridge's handshake, a fresh browser context -- and that load was most of
+    // what a small block's check cost. Now a page loads once and its blocks are
+    // checked in turn, each as its own step named for the block, so a failure
+    // still says which block; one block's failure does not stop the others, and
+    // the test fails at the end listing every block that failed.
+    //
+    // A block's check can leave the page changed for the next: unlocking a
+    // template instance (TEMPLATE_EDIT_MODE) changes what is editable, and a
+    // failed check leaves the page in whatever state it failed in. After either
+    // the page is loaded again before the next block. Reveals, selection and
+    // edit-text clicks are what an author does moving between blocks, and each
+    // block's own check reveals what it needs, so they don't force a reload.
+    for (const { pagePath, src, belongsHere, frontend, blocks } of renderPages.values()) {
+      test(`blocks on ${pagePath} render and have edit annotations${src}`, async ({ page, helper }, testInfo) => {
+        test.skip(!belongsHere(testInfo.project.name), `discovered via ${frontend}`);
+        // The consumer's timeout is set for one block; a page's test checks each.
+        test.setTimeout(testInfo.timeout * blocks.length);
+        const loadPage = async () => {
+          const frontendUrl = where.frontend(testInfo.project.name);
+          const frontend = frontendUrl ? `&frontend=${encodeURIComponent(frontendUrl)}` : '';
 
-        // Site chrome (a footer, a global announcement) is authored on its
-        // template's own document, where its blocks are locked until the template
-        // is unlocked — the gesture that says "this changes everywhere", and the
-        // one an author makes before editing it anywhere. Unlocking is a single
-        // message; the admin's toggle sends the same one.
-        //
-        // The instance id comes from the BRIDGE, not from discovery. It identifies
-        // one application of a template and the merge mints it
-        // (`const instanceId = uuidGenerator()`), so stored content cannot say what
-        // it will be; deriving it offline worked only for the deterministic cases
-        // and failed as "stayed locked" for the rest. Reading it here also makes
-        // "locked with nothing able to unlock it" a legible failure instead of a
-        // silent mismatch.
-        if (block.needsUnlock) {
-          const frame = page.frames().find((f) => f !== page.mainFrame())!;
+          // Use api_path to load the full page content from the API
+          // The mock-parent fetches the page JSON and sends it via the bridge protocol
+          const apiOrigin = where.api();
+          const mockParentUrl = where.mockParent();
+          const apiPath = `${apiOrigin}${pagePath}`;
+          await page.goto(
+            `${mockParentUrl}?api_path=${encodeURIComponent(apiPath)}${frontend}`,
+          );
+          await helper.waitForIframeReady();
+          // waitForIframeReady only confirms the DOM mounted; verifyBlockRendering
+          // reads __hydraBridge.blockPathMap, which is only populated once the
+          // bridge has received INITIAL_DATA. Without this wait the render check
+          // races bridge init and flakily throws "blockPathMap not available".
+          await helper.waitForBridgeConnected();
+        };
+        const checkBlock = async (block: DiscoveredBlock, label: string) => {
 
-          // A block whose CONTENTS are generated is not authored inline, and
-          // unlocking its template instance must not make them editable: the
-          // expanded items of a listing reuse the block's own uid, so anything
-          // that unlocks the block unlocks the generated items with it. hydra
-          // therefore force-locks such blocks (expandListingBlocks registers
-          // every type that has a fetcher), and that lock outranks template edit
-          // mode by design.
+          // Site chrome (a footer, a global announcement) is authored on its
+          // template's own document, where its blocks are locked until the template
+          // is unlocked — the gesture that says "this changes everywhere", and the
+          // one an author makes before editing it anywhere. Unlocking is a single
+          // message; the admin's toggle sends the same one.
           //
-          // The frontend PUBLISHES that fact by registering the block readonly on
-          // the bridge — the same opt-in shape as data-block-selector for reveal.
-          // Reading it keeps this check free of "listing means X" knowledge: any
-          // block a frontend declares generated is authored through the sidebar,
-          // so "still locked" is the correct outcome, not a failure.
-          const generatedContents = await frame.evaluate((uid) => {
-            const registry = (window as any).__hydraBridge?._readonlyBlocks;
-            return registry ? [...registry].includes(uid) : false;
-          }, block.blockId);
-          if (generatedContents) {
+          // The instance id comes from the BRIDGE, not from discovery. It identifies
+          // one application of a template and the merge mints it
+          // (`const instanceId = uuidGenerator()`), so stored content cannot say what
+          // it will be; deriving it offline worked only for the deterministic cases
+          // and failed as "stayed locked" for the rest. Reading it here also makes
+          // "locked with nothing able to unlock it" a legible failure instead of a
+          // silent mismatch.
+          if (block.needsUnlock) {
+            const frame = page.frames().find((f) => f !== page.mainFrame())!;
+
+            // A block whose CONTENTS are generated is not authored inline, and
+            // unlocking its template instance must not make them editable: the
+            // expanded items of a listing reuse the block's own uid, so anything
+            // that unlocks the block unlocks the generated items with it. hydra
+            // therefore force-locks such blocks (expandListingBlocks registers
+            // every type that has a fetcher), and that lock outranks template edit
+            // mode by design.
+            //
+            // The frontend PUBLISHES that fact by registering the block readonly on
+            // the bridge — the same opt-in shape as data-block-selector for reveal.
+            // Reading it keeps this check free of "listing means X" knowledge: any
+            // block a frontend declares generated is authored through the sidebar,
+            // so "still locked" is the correct outcome, not a failure.
+            const generatedContents = await frame.evaluate((uid) => {
+              const registry = (window as any).__hydraBridge?._readonlyBlocks;
+              return registry ? [...registry].includes(uid) : false;
+            }, block.blockId);
+            if (generatedContents) {
+              test.info().annotations.push({
+                type: 'generated-contents',
+                description:
+                  `${block.blockType} [${block.blockId}] is registered readonly by the frontend — ` +
+                  `its items share the block uid, so it is authored in the sidebar, not inline.`,
+              });
+            }
+            // Ask the bridge, don't walk the data. getBlockData resolves a uid
+            // through blockPathMap, which already covers nested blocks AND
+            // object_list items (a slide, an accordion panel) — the cases a
+            // hand-rolled walk over `blocks` dicts silently misses, reporting a
+            // template-bound item as having no templateInstanceId when it has one.
+            const instanceId = await frame.evaluate(
+              (uid) => (window as any).__hydraBridge?.getBlockData(uid)?.templateInstanceId ?? null,
+              block.blockId,
+            );
+
+            expect(
+              instanceId,
+              `${block.blockType} block "${block.blockId}" is readOnly with no templateInstanceId — ` +
+                `nothing can unlock it, so it is uneditable everywhere`,
+            ).toBeTruthy();
+
+            await page.evaluate((id) => {
+              (document.getElementById('previewIframe') as HTMLIFrameElement)
+                .contentWindow!.postMessage(
+                  { type: 'TEMPLATE_EDIT_MODE', instanceIds: [id] },
+                  '*',
+                );
+            }, instanceId);
+
+            await expect
+              .poll(
+                () =>
+                  generatedContents ||
+                  frame.evaluate(
+                    (uid) => !(window as any).__hydraBridge?.isBlockReadonly(uid),
+                    block.blockId,
+                  ),
+                { message: `${block.blockType} stayed locked after unlocking instance ${instanceId}` },
+              )
+              .toBe(true);
+          }
+
+          const iframe = helper.getIframe();
+
+          // This test's cost is COUNTED IN BLOCKS, and a consumer's timeout is
+          // set for one ("a block renders in ~1-2s or it's broken" -- true of
+          // the blocks it was written for, and those tests take 2-3s). A
+          // container on a dense page is a different animal: timed, a table's
+          // test spent ~2s rendering and ~25s checking, and tipped over a 20s
+          // budget whenever the machine was slower.
+          //
+          // So the budget is taken from what this test will actually check,
+          // BEFORE it checks any of it -- a grant made later is made after the
+          // time has been spent, which is how the first version of this failed.
+          // The alternative, every consumer setting a timeout loose enough for
+          // its densest page, gives up fast failure for every other block.
+          const toCheck = await blocksToCheck(iframe, block.blockId);
+          const checksPage = checksItsPage.has(block);
+          const page_ = checksPage ? toCheck.page : 0;
+          if (toCheck.own + page_ > 0) {
+            // The two halves cost DIFFERENTLY, so they are budgeted
+            // differently. Timed on a docs page of table variants:
+            //
+            //   its own 81 descendants   ~19s   (every field, and an edit-text
+            //                                    click per field)
+            //   the page's other 291     ~6s    (a few reads each)
+            //
+            // Those were measured on a loaded machine, so read the RATIO, not
+            // the seconds: its own descendants cost roughly ten times what the
+            // rest of the page costs, which is what these two rates are for.
+            // The rates are ~2x the measurements because the same test wanted
+            // between 59s and 76s across runs on that machine while a quiet
+            // sample of its phases totalled ~28s -- a budget fitted to the
+            // quiet sample is a budget that flakes. A grant is not a target:
+            // the test takes what it takes, and this only says when to stop
+            // waiting.
+            //
+            // Ordinary blocks are unaffected -- a block with no descendants
+            // gets no grant and keeps the consumer's fast failure -- and the
+            // cap bounds the worst case.
+            const grant = Math.min(toCheck.own * 500 + page_ * 100, 150_000);
+            test.setTimeout(testInfo.timeout + grant);
             test.info().annotations.push({
-              type: 'generated-contents',
+              type: 'blocks-checked',
               description:
-                `${block.blockType} [${block.blockId}] is registered readonly by the frontend — ` +
-                `its items share the block uid, so it is authored in the sidebar, not inline.`,
+                `${toCheck.own} of its own + ${page_} on ${block.pagePath}; budget +${grant}ms`,
             });
           }
-          // Ask the bridge, don't walk the data. getBlockData resolves a uid
-          // through blockPathMap, which already covers nested blocks AND
-          // object_list items (a slide, an accordion panel) — the cases a
-          // hand-rolled walk over `blocks` dicts silently misses, reporting a
-          // template-bound item as having no templateInstanceId when it has one.
-          const instanceId = await frame.evaluate(
-            (uid) => (window as any).__hydraBridge?.getBlockData(uid)?.templateInstanceId ?? null,
-            block.blockId,
-          );
 
-          expect(
-            instanceId,
-            `${block.blockType} block "${block.blockId}" is readOnly with no templateInstanceId — ` +
-              `nothing can unlock it, so it is uneditable everywhere`,
-          ).toBeTruthy();
-
-          await page.evaluate((id) => {
-            (document.getElementById('previewIframe') as HTMLIFrameElement)
-              .contentWindow!.postMessage(
-                { type: 'TEMPLATE_EDIT_MODE', instanceIds: [id] },
-                '*',
-              );
-          }, instanceId);
-
-          await expect
-            .poll(
-              () =>
-                generatedContents ||
-                frame.evaluate(
-                  (uid) => !(window as any).__hydraBridge?.isBlockReadonly(uid),
-                  block.blockId,
-                ),
-              { message: `${block.blockType} stayed locked after unlocking instance ${instanceId}` },
-            )
-            .toBe(true);
-        }
-
-        const iframe = helper.getIframe();
-
-        // This test's cost is COUNTED IN BLOCKS, and a consumer's timeout is
-        // set for one ("a block renders in ~1-2s or it's broken" -- true of
-        // the blocks it was written for, and those tests take 2-3s). A
-        // container on a dense page is a different animal: timed, a table's
-        // test spent ~2s rendering and ~25s checking, and tipped over a 20s
-        // budget whenever the machine was slower.
-        //
-        // So the budget is taken from what this test will actually check,
-        // BEFORE it checks any of it -- a grant made later is made after the
-        // time has been spent, which is how the first version of this failed.
-        // The alternative, every consumer setting a timeout loose enough for
-        // its densest page, gives up fast failure for every other block.
-        const toCheck = await blocksToCheck(iframe, block.blockId);
-        const checksPage = checksItsPage.has(block);
-        const page_ = checksPage ? toCheck.page : 0;
-        if (toCheck.own + page_ > 0) {
-          // The two halves cost DIFFERENTLY, so they are budgeted
-          // differently. Timed on a docs page of table variants:
-          //
-          //   its own 81 descendants   ~19s   (every field, and an edit-text
-          //                                    click per field)
-          //   the page's other 291     ~6s    (a few reads each)
-          //
-          // Those were measured on a loaded machine, so read the RATIO, not
-          // the seconds: its own descendants cost roughly ten times what the
-          // rest of the page costs, which is what these two rates are for.
-          // The rates are ~2x the measurements because the same test wanted
-          // between 59s and 76s across runs on that machine while a quiet
-          // sample of its phases totalled ~28s -- a budget fitted to the
-          // quiet sample is a budget that flakes. A grant is not a target:
-          // the test takes what it takes, and this only says when to stop
-          // waiting.
-          //
-          // Ordinary blocks are unaffected -- a block with no descendants
-          // gets no grant and keeps the consumer's fast failure -- and the
-          // cap bounds the worst case.
-          const grant = Math.min(toCheck.own * 500 + page_ * 100, 150_000);
-          test.setTimeout(testInfo.timeout + grant);
-          test.info().annotations.push({
-            type: 'blocks-checked',
-            description:
-              `${toCheck.own} of its own + ${page_} on ${block.pagePath}; budget +${grant}ms`,
+          await verifyBlockRendering(page, iframe, block.blockId, block.blockData, {
+            isListing: block.isListing,
+            // Sub-block iteration uses the bridge's blockPathMap (canonical,
+            // schema-resolved) rather than a shape heuristic on blockData.
+            checkSubBlocks: true,
+            // Click the block's first editable field and require that it actually
+            // becomes editable. Annotation presence alone is not the contract an
+            // author experiences: a component whose own JS reveals or rebuilds its
+            // DOM can carry every annotation and still be impossible to type into.
+            checkEditTextClicks: true,
           });
-        }
 
-        await verifyBlockRendering(page, iframe, block.blockId, block.blockData, {
-          isListing: block.isListing,
-          // Sub-block iteration uses the bridge's blockPathMap (canonical,
-          // schema-resolved) rather than a shape heuristic on blockData.
-          checkSubBlocks: true,
-          // Click the block's first editable field and require that it actually
-          // becomes editable. Annotation presence alone is not the contract an
-          // author experiences: a component whose own JS reveals or rebuilds its
-          // DOM can carry every annotation and still be impossible to type into.
-          checkEditTextClicks: true,
-        });
-
-        // No block on the page drew its raw data instead of itself: a uid, an
-        // internal key, never reaches a reader's eye (blockUidsShownAsText).
-        expect(
-          await blockUidsShownAsText(iframe),
-          `blocks on ${block.pagePath} drew as their raw data (their uid shows as text)`,
-        ).toEqual([]);
-
-        // The page is drawn: check every other block on it too (see
-        // checkEveryBlockOnPage). Before the text-style and a11y passes, which
-        // judge the sample alone.
-        if (checksItsPage.has(block)) {
-          const others = await checkEveryBlockOnPage(iframe, block.blockId, (type) => !inContract(type, options));
-          expect(others, `other blocks on ${block.pagePath} fail the per-block checks`).toEqual([]);
-        }
-
-        await measureBlockStyles(iframe, block);
-
-        // Accessibility pass (axe-core) over the WHOLE rendered fixture page —
-        // not scoped to this one block — so document-outline rules (heading-order)
-        // are judged in context. serious/critical WCAG A/AA violations (incl.
-        // heading-order) BLOCK; advisory (moderate/minor, best-practice-only, or
-        // page-SHELL rules a minimal fixture can't be judged on) is logged only.
-        // OPT-IN: off by default (test fixtures are rarely a11y-clean, and their
-        // cosmetics aren't what block-sanity guards). Run the a11y pass with
-        // SANITY_AXE=1.
-        //
-        // `axeSkipPages` is for pages that deliberately render MULTIPLE instances
-        // of a layout-chrome component (header/masthead/main-nav), such as
-        // structural-parity examples on a documentation site. That
-        // duplication trips axe's duplicate-id / one-landmark rules — but the
-        // chrome's a11y is already proven by the SINGLE live instance on every
-        // other page (the layout renders it everywhere), so axe is skipped on the
-        // example page rather than exempting a pile of rules there.
-        const AXE_SKIP_PAGES = options.axeSkipPages ?? [];
-        const axeSkipped = AXE_SKIP_PAGES.some((p) =>
-          (block.pagePath || '').startsWith(p),
-        );
-        if (process.env.SANITY_AXE && !axeSkipped) {
-          const { blocking, advisory } = await axeCheckPage(iframe);
-          if (advisory.length > 0) {
-            console.log(
-              `[axe] ${label}: ${advisory.length} advisory finding(s)\n${formatViolations(advisory)}`,
-            );
-          }
+          // No block on the page drew its raw data instead of itself: a uid, an
+          // internal key, never reaches a reader's eye (blockUidsShownAsText).
           expect(
-            blocking,
-            `${label} has ${blocking.length} serious/critical a11y violation(s):\n${formatViolations(blocking)}`,
+            await blockUidsShownAsText(iframe),
+            `blocks on ${block.pagePath} drew as their raw data (their uid shows as text)`,
           ).toEqual([]);
+
+          // The page is drawn: check every other block on it too (see
+          // checkEveryBlockOnPage). Before the text-style and a11y passes, which
+          // judge the sample alone.
+          if (checksItsPage.has(block)) {
+            const others = await checkEveryBlockOnPage(iframe, block.blockId, (type) => !inContract(type, options));
+            expect(others, `other blocks on ${block.pagePath} fail the per-block checks`).toEqual([]);
+          }
+
+          await measureBlockStyles(iframe, block);
+
+          // Accessibility pass (axe-core) over the WHOLE rendered fixture page —
+          // not scoped to this one block — so document-outline rules (heading-order)
+          // are judged in context. serious/critical WCAG A/AA violations (incl.
+          // heading-order) BLOCK; advisory (moderate/minor, best-practice-only, or
+          // page-SHELL rules a minimal fixture can't be judged on) is logged only.
+          // OPT-IN: off by default (test fixtures are rarely a11y-clean, and their
+          // cosmetics aren't what block-sanity guards). Run the a11y pass with
+          // SANITY_AXE=1.
+          //
+          // `axeSkipPages` is for pages that deliberately render MULTIPLE instances
+          // of a layout-chrome component (header/masthead/main-nav), such as
+          // structural-parity examples on a documentation site. That
+          // duplication trips axe's duplicate-id / one-landmark rules — but the
+          // chrome's a11y is already proven by the SINGLE live instance on every
+          // other page (the layout renders it everywhere), so axe is skipped on the
+          // example page rather than exempting a pile of rules there.
+          const AXE_SKIP_PAGES = options.axeSkipPages ?? [];
+          const axeSkipped = AXE_SKIP_PAGES.some((p) =>
+            (block.pagePath || '').startsWith(p),
+          );
+          if (process.env.SANITY_AXE && !axeSkipped) {
+            const { blocking, advisory } = await axeCheckPage(iframe);
+            if (advisory.length > 0) {
+              console.log(
+                `[axe] ${label}: ${advisory.length} advisory finding(s)\n${formatViolations(advisory)}`,
+              );
+            }
+            expect(
+              blocking,
+              `${label} has ${blocking.length} serious/critical a11y violation(s):\n${formatViolations(blocking)}`,
+            ).toEqual([]);
+          }
+        };
+        const failed: string[] = [];
+        let fresh = false;
+        for (const { block, label } of blocks) {
+          if (!fresh) {
+            await loadPage();
+            fresh = true;
+          }
+          try {
+            await test.step(`${label} [${block.blockId}] renders and has edit annotations`, () => checkBlock(block, label));
+            if (block.needsUnlock) fresh = false;
+          } catch (e) {
+            failed.push(`${label} [${block.blockId}]: ${(e as Error).message}`);
+            fresh = false;
+          }
         }
+        expect(failed, `blocks on ${pagePath} failed their render checks:\n\n${failed.join('\n\n')}`).toEqual([]);
       });
     }
 
@@ -653,6 +710,12 @@ export function defineBlockSanityTests(options: SanityOptions): void {
       const fields = drainFieldCoverage();
       const styles = drainStyleCoverage();
       const imageSizes = drainImageSizeCoverage();
+      // A skipped test measured nothing, so it attaches nothing. The spec is
+      // collected by every project that shares its directory, and in one
+      // outside `projects` every case skips: had they attached their empty
+      // measurement, the reporter would take a run of those projects alone for
+      // a block-sanity run that saw no styles, and fail it.
+      if (testInfo.status === 'skipped') return;
       await testInfo.attach('coverage', {
         body: JSON.stringify({ fields, styles, imageSizes }),
         contentType: 'application/json',
@@ -1041,7 +1104,7 @@ function defineListingContainerTests(
  * `document.querySelectorAll`.
  */
 function definePageIntegrityTests(
-  options: Pick<SanityOptions, 'discoveryDir' | 'frontends'>,
+  options: Pick<SanityOptions, 'discoveryDir' | 'frontends' | 'apiUrl' | 'mockParentUrl' | 'exemptLinks'>,
 ): void {
   const where = addresses(options);
   const test = playwrightTest;
@@ -1076,7 +1139,7 @@ function definePageIntegrityTests(
 
         await page.goto(`${frontendUrl}${pagePath}`, { timeout: 20000 });
         await page.waitForLoadState('networkidle', { timeout: 10000 }).catch(() => {});
-        await verifyPageIntegrity(page);
+        await verifyPageIntegrity(page, { apiUrl: where.api(), exemptLinks: options.exemptLinks });
       });
     }
   });

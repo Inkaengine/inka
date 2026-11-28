@@ -3,6 +3,14 @@ name: Build and test
 on:
   push:
 
+# A newer push to the same branch makes a running run's result moot: cancel it,
+# so stale runs stop holding runners the new one is queueing for. Never on main,
+# where every commit's result is kept: there each commit is its own group, as a
+# shared group would also hold a second run pending and cancel a third.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref == 'refs/heads/main' && github.sha || github.ref }}
+  cancel-in-progress: true
+
 # The browser jobs run in a container, where a step's default shell is sh: bash
 # ranges like {1..30} would not expand, and a wait loop would try once.
 defaults:
@@ -372,8 +380,21 @@ jobs:
             console.log('playwright and @sentry/node resolve');"
 
   test-bridge-unit:
+    # Split by project: mock runs block sanity, whose coverage reporter needs all
+    # its results in one run, so it stays whole; the rest hold none and are sharded.
+    name: test-bridge-unit (${{ matrix.part }})
     needs: build
     runs-on: 'ubuntu-latest'
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - part: mock
+            args: "--project=mock"
+          - part: frameworks-1
+            args: "--project=unit --project=unit-firefox --project=api-contract --project=react --project=svelte --project=vue --project=astro --shard=1/2"
+          - part: frameworks-2
+            args: "--project=unit --project=unit-firefox --project=api-contract --project=react --project=svelte --project=vue --project=astro --shard=2/2"
     timeout-minutes: 30
     # Playwright's own image: Node, git, the browsers for this Playwright
     # version and every system package they need, baked in. The jobs used to
@@ -448,11 +469,13 @@ jobs:
           done
           echo "All servers ready"
       - name: Comparison engine unit tests (node:test)
+        # Once per run, not once per part.
+        if: matrix.part == 'mock'
         # @inka/compare. Here, not with test:api, because recording and
         # replaying a source site needs a browser.
         run: pnpm test:compare
       - name: Run tests
-        run: pnpm exec playwright test --project=unit --project=unit-firefox --project=api-contract --project=mock --project=react --project=svelte --project=vue --project=astro
+        run: pnpm exec playwright test ${{ matrix.args }}
         env:
           CI: true
           NO_WEBSERVER: true
@@ -476,7 +499,7 @@ jobs:
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: playwright-report-bridge-unit
+          name: playwright-report-bridge-unit-${{ matrix.part }}
           path: |
             playwright-report/
             test-results/**/*.png
@@ -488,15 +511,23 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: playwright-traces-bridge-unit
+          name: playwright-traces-bridge-unit-${{ matrix.part }}
           path: test-results/**/trace.zip
           if-no-files-found: ignore
           retention-days: 7
 
   # ── Admin integration tests (mock frontend) ─────────────────────────────
   test-admin-mock:
+    # Split in 3: one job was the run's longest by far. Safe to split: these
+    # projects hold no block sanity, whose coverage reporter needs every result
+    # in one run (bridge-unit, nuxt-bridge and nextjs-f7 stay whole for it).
+    name: test-admin-mock (${{ matrix.shard }}/3)
     needs: build
     runs-on: 'ubuntu-latest'
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3]
     timeout-minutes: 45
     # Playwright's own image: Node, git, the browsers for this Playwright
     # version and every system package they need, baked in. The jobs used to
@@ -576,7 +607,7 @@ jobs:
           done
           echo "All servers ready"
       - name: Run tests
-        run: pnpm exec playwright test --project=admin-mock
+        run: pnpm exec playwright test --project=admin-mock --shard=${{ matrix.shard }}/3
         env:
           CI: true
           NO_WEBSERVER: true
@@ -590,7 +621,7 @@ jobs:
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: playwright-report-admin-mock
+          name: playwright-report-admin-mock-${{ matrix.shard }}
           path: |
             playwright-report/
             test-results/**/*.png
@@ -602,7 +633,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: playwright-traces-admin-mock
+          name: playwright-traces-admin-mock-${{ matrix.shard }}
           path: test-results/**/trace.zip
           if-no-files-found: ignore
           retention-days: 7
@@ -856,8 +887,16 @@ jobs:
 
   # ── Nuxt integration tests (needs Volto) ────────────────────────────────
   test-nuxt-admin:
+    # Split in 2: one job was the run's longest by far. Safe to split: these
+    # projects hold no block sanity, whose coverage reporter needs every result
+    # in one run (bridge-unit, nuxt-bridge and nextjs-f7 stay whole for it).
+    name: test-nuxt-admin (${{ matrix.shard }}/2)
     needs: build
     runs-on: 'ubuntu-latest'
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2]
     timeout-minutes: 45
     # Playwright's own image: Node, git, the browsers for this Playwright
     # version and every system package they need, baked in. The jobs used to
@@ -945,7 +984,7 @@ jobs:
           done
           echo "All servers ready"
       - name: Run tests
-        run: pnpm exec playwright test --project=admin-nuxt --project=nuxt-specific
+        run: pnpm exec playwright test --project=admin-nuxt --project=nuxt-specific --shard=${{ matrix.shard }}/2
         env:
           CI: true
           NO_WEBSERVER: true
@@ -959,7 +998,7 @@ jobs:
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: playwright-report-nuxt-admin
+          name: playwright-report-nuxt-admin-${{ matrix.shard }}
           path: |
             playwright-report/
             test-results/**/*.png
@@ -971,15 +1010,26 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: playwright-traces-nuxt-admin
+          name: playwright-traces-nuxt-admin-${{ matrix.shard }}
           path: test-results/**/trace.zip
           if-no-files-found: ignore
           retention-days: 7
 
   # ── Next.js + F7 bridge tests (no Volto needed) ─────────────────────────
   test-nextjs-f7:
+    # Split by project: nextjs runs block sanity, whose coverage reporter needs
+    # all its results in one run, so it stays whole; the rest go in a second job.
+    name: test-nextjs-f7 (${{ matrix.part }})
     needs: build
     runs-on: 'ubuntu-latest'
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - part: nextjs
+            args: "--project=nextjs"
+          - part: others
+            args: "--project=nextjs-firefox --project=f7 --project=vanilla --project=svelte-qs --project=astro-qs"
     timeout-minutes: 45
     # Playwright's own image: Node, git, the browsers for this Playwright
     # version and every system package they need, baked in. The jobs used to
@@ -1075,7 +1125,7 @@ jobs:
           done
           echo "All servers ready"
       - name: Run tests
-        run: pnpm exec playwright test --project=nextjs --project=nextjs-firefox --project=f7 --project=vanilla --project=svelte-qs --project=astro-qs
+        run: pnpm exec playwright test ${{ matrix.args }}
         env:
           CI: true
           NO_WEBSERVER: true
@@ -1099,7 +1149,7 @@ jobs:
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: playwright-report-nextjs-f7
+          name: playwright-report-nextjs-f7-${{ matrix.part }}
           path: |
             playwright-report/
             test-results/**/*.png
@@ -1111,7 +1161,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: playwright-traces-nextjs-f7
+          name: playwright-traces-nextjs-f7-${{ matrix.part }}
           path: test-results/**/trace.zip
           if-no-files-found: ignore
           retention-days: 7
