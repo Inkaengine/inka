@@ -1,0 +1,1 @@
+Block sanity loads each page once: a page's blocks are checked as steps of one test, each step named for its block, every failing block listed at the end. The page is loaded again only after a block's check unlocked a template instance or failed.
