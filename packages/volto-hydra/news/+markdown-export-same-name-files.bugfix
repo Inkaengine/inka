@@ -1,0 +1,1 @@
+A Markdown export keeps two files of the same name in one folder apart. Each is written in a folder named for its item's id (`file: accordion-adding/adding.mp4`) and keeps its name. Before, they were all written beside the folder's index.md under that one name, so only the last one's bytes survived.

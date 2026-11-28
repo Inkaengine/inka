@@ -42,11 +42,24 @@ item('folder/logo.png', {
   '@id': '/folder/logo.png', '@type': 'Image', UID: 'logo-0001', id: 'logo.png', title: 'Logo', review_state: 'published',
   image: { filename: 'logo.png', 'content-type': 'image/png', blob_path: 'folder/logo.png/image/logo.png' },
 });
+// Two videos in one folder, each uploaded as `adding.mp4`: Plone names the
+// items apart (their ids), but not their files.
+const MP4 = { a: Buffer.from('first video'), b: Buffer.from('second video') };
+for (const [key, name] of [['a', 'accordion-adding.mp4'], ['b', 'tabs-adding.mp4']]) {
+  item(`folder/${name}`, {
+    '@id': `/folder/${name}`, '@type': 'File', UID: `video-${key}-0001`, id: name, title: name, review_state: 'published',
+    file: { filename: 'adding.mp4', 'content-type': 'video/mp4', blob_path: `folder/${name}/file/adding.mp4` },
+  });
+  fs.mkdirSync(path.join(content, `folder/${name}/file`), { recursive: true });
+  fs.writeFileSync(path.join(content, `folder/${name}/file/adding.mp4`), MP4[key]);
+}
 fs.mkdirSync(path.join(content, 'folder/logo.png/image'), { recursive: true });
 fs.writeFileSync(path.join(content, 'folder/logo.png/image/logo.png'), PNG);
 fs.writeFileSync(path.join(content, '__metadata__.json'), JSON.stringify({
-  _data_files_: ['folder/data.json', 'folder/logo.png/data.json', 'other/data.json'],
-  _blob_files_: ['folder/logo.png/image/logo.png'],
+  _data_files_: ['folder/data.json', 'folder/logo.png/data.json', 'other/data.json',
+    'folder/accordion-adding.mp4/data.json', 'folder/tabs-adding.mp4/data.json'],
+  _blob_files_: ['folder/logo.png/image/logo.png',
+    'folder/accordion-adding.mp4/file/adding.mp4', 'folder/tabs-adding.mp4/file/adding.mp4'],
   ordering: {},
 }));
 for (const sibling of ['discussions', 'portlets', 'principals', 'redirects']) {
@@ -90,7 +103,7 @@ describe('a Markdown export of a JSON tree', () => {
     const out = await exportMarkdown();
     try {
       const folder = fs.readFileSync(path.join(out, 'folder/index.md'), 'utf8');
-      assert.match(folder, /\nblobs:\n {2}- file: logo\.png\n/);
+      assert.match(folder, /\n {2}- file: logo\.png\n/);
       assert.deepEqual(fs.readFileSync(path.join(out, 'folder/logo.png')), PNG);
     } finally {
       fs.rmSync(out, { recursive: true, force: true });
@@ -106,6 +119,23 @@ describe('a Markdown export of a JSON tree', () => {
     try {
       assert.match(fs.readFileSync(path.join(out, 'folder/index.md'), 'utf8'), /"url":"\.\.\/other\.md"/);
       assert.match(fs.readFileSync(path.join(out, 'other.md'), 'utf8'), /"url":"\.\/folder\/index\.md"/);
+    } finally {
+      fs.rmSync(out, { recursive: true, force: true });
+    }
+  });
+
+  // A folder's files sit beside its index.md under their own names, unless two
+  // share one: then each goes in a folder of its item's id, so neither
+  // overwrites the other, and each keeps its name.
+  it('keeps two files of the same name in one folder apart', async () => {
+    const out = await exportMarkdown();
+    try {
+      const folder = fs.readFileSync(path.join(out, 'folder/index.md'), 'utf8');
+      assert.match(folder, /\n {2}- file: accordion-adding\/adding\.mp4\n {4}uid: video-a-0001\n/);
+      assert.match(folder, /\n {2}- file: tabs-adding\/adding\.mp4\n {4}uid: video-b-0001\n/);
+      assert.deepEqual(fs.readFileSync(path.join(out, 'folder/accordion-adding/adding.mp4')), MP4.a);
+      assert.deepEqual(fs.readFileSync(path.join(out, 'folder/tabs-adding/adding.mp4')), MP4.b);
+      assert.ok(!fs.existsSync(path.join(out, 'folder/adding.mp4')), 'neither lands on the shared name');
     } finally {
       fs.rmSync(out, { recursive: true, force: true });
     }

@@ -3693,11 +3693,37 @@ async function exportContent(req, res) {
     const IMAGE_EXT = new Set(['.png', '.jpg', '.jpeg', '.gif', '.svg', '.webp', '.avif']);
     const typeForFile = (f) => (IMAGE_EXT.has(path.extname(f).toLowerCase()) ? 'Image' : 'File');
     const isBlobItem = (d) => !!(d && BLOB_FIELD[d['@type']] && d[BLOB_FIELD[d['@type']]] && d[BLOB_FIELD[d['@type']]].blob_path);
-    const blobEntry = (d) => {
+    const blobName = (d) => {
       const field = d[BLOB_FIELD[d['@type']]];
-      const file = field.filename || path.basename(field.blob_path);
+      return field.filename || path.basename(field.blob_path);
+    };
+    // Where each blob of a folder is written, relative to the folder: beside its
+    // index.md under its own name, unless another blob there has that name (two
+    // videos both uploaded as `adding.mp4`); then each of those goes in a folder
+    // named for its item's id, keeping its name, so neither overwrites the other.
+    const blobFilesOf = new Map();
+    const blobFilesIn = (parent) => {
+      if (blobFilesOf.has(parent)) return blobFilesOf.get(parent);
+      const blobs = (childrenByParent[parent] || [])
+        .map((k) => [k, loadRawContentFromDisk(k)]).filter(([, d]) => isBlobItem(d));
+      const uses = new Map();
+      for (const [, d] of blobs) uses.set(blobName(d), (uses.get(blobName(d)) || 0) + 1);
+      const files = new Map(blobs.map(([k, d]) => [k,
+        uses.get(blobName(d)) > 1 ? `${d.id.replace(/\.[^.]+$/, '')}/${blobName(d)}` : blobName(d)]));
+      const taken = new Map();
+      for (const [k, f] of files) {
+        if (taken.has(f)) throw new Error(`${parent}: ${taken.get(f)} and ${k} would both be written as ${f}`);
+        taken.set(f, k);
+      }
+      blobFilesOf.set(parent, files);
+      return files;
+    };
+    const parentOf = (k) => k.replace(/\/[^/]+$/, '') || '/';
+    const blobEntry = (k, d) => {
+      const field = d[BLOB_FIELD[d['@type']]];
+      const file = blobFilesIn(parentOf(k)).get(k);
       const entry = { file, uid: d.UID };
-      if (d.id !== file.replace(/\.[^.]+$/, '')) entry.id = d.id;
+      if (d.id !== blobName(d).replace(/\.[^.]+$/, '')) entry.id = d.id;
       if (d['@type'] !== typeForFile(file)) entry.type = d['@type'];
       for (const [k, v] of Object.entries(blobDefaults(d['@type'], field.filename))) {
         if (d[k] !== undefined && JSON.stringify(d[k]) !== JSON.stringify(v)) entry[k] = d[k];
@@ -3806,7 +3832,8 @@ async function exportContent(req, res) {
       const meta = deepTrim(Object.fromEntries(
         Object.entries(c).filter(([k]) => !SERVER_STATE.has(k)),
       ));
-      const kids = (childrenByParent[p] || []).map((k) => loadRawContentFromDisk(k)).filter(Boolean);
+      const kidPairs = (childrenByParent[p] || []).map((k) => [k, loadRawContentFromDisk(k)]).filter(([, d]) => d);
+      const kids = kidPairs.map(([, d]) => d);
       const childPages = kids.filter((d) => !isBlobItem(d))
         .sort((a, b) => (uidPositionMap[a.UID] ?? 0) - (uidPositionMap[b.UID] ?? 0));
       const blobItems = kids.filter(isBlobItem);
@@ -3816,7 +3843,7 @@ async function exportContent(req, res) {
         // synthesise one from the child scan for a folder that never had it.
         (markdownOrder.get(p) || (childPages.length ? childPages.map((d) => d.id) : null))
           ? YAML.stringify({ order: markdownOrder.get(p) || childPages.map((d) => d.id) }).trim() : '',
-        blobItems.length ? YAML.stringify(deepTrim({ blobs: blobItems.map(blobEntry) })).trim() : '',
+        blobItems.length ? YAML.stringify(deepTrim({ blobs: kidPairs.filter(([, d]) => isBlobItem(d)).map(([k, d]) => blobEntry(k, d)) })).trim() : '',
       ].filter(Boolean).join('\n');
       if (c.blocks && c.blocks_layout?.items?.length) {
         // The page's own directory (relative to the mount), for relative links.
@@ -3882,11 +3909,10 @@ async function exportContent(req, res) {
         if (isBlobItem(c)) {
           // Copy the blob's bytes next to its parent folder's index.md.
           const field = c[BLOB_FIELD[c['@type']]];
-          const file = field.filename || path.basename(field.blob_path);
           // The blob sits next to its parent folder's index.md; a root-level blob
           // (rel with no slash) has parent '' — not itself.
           const parentDir = rel.includes('/') ? rel.replace(/\/[^/]*$/, '') : '';
-          const dest = path.join(treeRoot, parentDir, file);
+          const dest = path.join(treeRoot, parentDir, blobFilesIn(parentOf(p)).get(p));
           if (contentDirMap[p].markdown) {
             // A Markdown mount found the bytes as it loaded, and warned then
             // about any it lacked (generated doc assets are git-ignored).
