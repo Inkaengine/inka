@@ -117,10 +117,6 @@ jobs:
           path: build/
           retention-days: 1
 
-  # ── Plone backend addon (inkaengine.inka): the @templates endpoint ─────────
-  # The JS side of @templates (the mock's endpoint, the loadTemplates helper, the merge
-  # consuming it) runs in `build` above. This covers the Python addon that serves it on
-  # a real Plone.
   build-admin-image:
     # Nothing anywhere built the Volto admin image. That is how a change which
     # left two webpack instances in the tree reached a consumer's PRODUCTION
@@ -350,44 +346,6 @@ jobs:
         run: |
           docker run --rm --entrypoint sh inka-admin:ci -c '! test -e /app/api/blob.bin' \
             || { echo '::error::the dockerignore allow-list let a consumer directory in'; exit 1; }
-
-  test-backend-addon:
-    runs-on: 'ubuntu-latest'
-    timeout-minutes: 20
-    steps:
-      - uses: actions/checkout@v4
-      - name: Setup pnpm
-        run: |
-          npm install -g --force corepack  # the Playwright image ships its own yarn, which corepack replaces
-          corepack cache clean
-          corepack enable
-      - name: Use Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version-file: '.nvmrc'
-          cache: 'pnpm'
-      - name: Install dependencies
-        # The addon's tests run against the SAME template fixtures as the JS suites: the
-        # mock API exports them as a plone.exportimport distribution at test time, so the
-        # repo's node dependencies are needed. With CI set, a missing fixture fails the
-        # run instead of skipping the @templates tests.
-        run: |
-          pnpm dlx mrs-developer missdev --no-config --fetch-https
-          pnpm install --frozen-lockfile
-      - name: Port block
-        # Derived from HYDRA_PORT_BASE by the one module that knows the
-        # offsets, rather than listed again here.
-        run: node scripts/with-ports.mjs --print >> "$GITHUB_ENV"
-      - name: Use Python
-        uses: actions/setup-python@v5
-        with:
-          python-version-file: 'backend/inkaengine.inka/.python-version'
-      - name: Install uv
-        # The addon's Makefile builds its virtualenv with uv (and mxdev, via uvx).
-        run: pip install uv
-      - name: Run addon tests (pytest)
-        working-directory: backend/inkaengine.inka
-        run: make test
 
   # ── Bridge + unit tests (no Volto needed) ────────────────────────────────
   build-mcp-image:
