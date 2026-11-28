@@ -1,0 +1,1 @@
+A Markdown export writes a link field (an `object_browser` field, such as a card's link) as the link alone, as it writes a text link. Loading gives a link its target's summary, and the export wrote that summary out again, so a card loaded from Markdown came back with its target's title, description and type copied into the link.

@@ -342,3 +342,32 @@ describe("a markdown export leaves out a template child's slot named from its re
     assert.deepEqual(withRegionSlots(withoutRegionSlots(stored(), blocksConfig), blocksConfig), stored());
   });
 });
+
+describe('a markdown export writes a link field as the link alone', () => {
+  // Loading a Markdown tree gives each link field its target's summary, as
+  // Volto snapshots it when the link is picked (resolveLinkSummaries). The
+  // export leaves that summary out again, where loading would put back the
+  // same one; it wrote the summary out on every card loaded from Markdown.
+  const schemaFor = (type) => (type === 'card'
+    ? { properties: { title: { type: 'string' }, url: { widget: 'object_browser' } } } : null);
+  const target = { '@id': '/about', '@type': 'Document', title: 'About us', description: 'Who we are' };
+  const page = (url) => ({ blocks: { c: { '@type': 'card', title: 'Card', url } }, blocks_layout: { items: ['c'] } });
+
+  it('leaves out the summary loading puts back', async () => {
+    const { resolveLinkSummaries, withoutLinkSummaries } = await import('./from-schemas.js');
+    const items = new Map([['/about', target], ['/', page([{ '@id': '/about' }])]]);
+    resolveLinkSummaries(items, { schemaFor });
+    const loaded = items.get('/');
+    assert.equal(loaded.blocks.c.url[0].Title, 'About us', 'loading gave the link its summary');
+    const out = withoutLinkSummaries(loaded, { schemaFor, targetOf: (id) => items.get(id) ?? null });
+    assert.deepEqual(out.blocks.c.url, [{ '@id': '/about' }]);
+    assert.equal(loaded.blocks.c.url[0].Title, 'About us', 'the loaded page is not changed');
+  });
+
+  it("keeps a summary that isn't its target's: the content's own snapshot", async () => {
+    const { withoutLinkSummaries } = await import('./from-schemas.js');
+    const stale = [{ '@id': '/about', '@type': 'Document', Title: 'About', Description: '', title: 'About', head_title: null, getRemoteUrl: null, hasPreviewImage: false, image_field: '' }];
+    const out = withoutLinkSummaries(page(stale), { schemaFor, targetOf: () => target });
+    assert.deepEqual(out.blocks.c.url, stale);
+  });
+});

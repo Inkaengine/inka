@@ -2953,8 +2953,8 @@ function reloadMount(mount) {
 async function getEngine() {
   if (!engine) {
     const { emitPage, parsePrototypes } = await import('@inka/blockmd/prototype-mapping.mjs');
-    const { withoutDefaultSearchText, withoutSchemaDefaults, withoutRegionSlots, statedDefaults } = await import('./from-schemas.js');
-    engine = { emitPage, parsePrototypes, withoutDefaultSearchText, withoutSchemaDefaults, withoutRegionSlots, statedDefaults };
+    const { withoutDefaultSearchText, withoutSchemaDefaults, withoutRegionSlots, statedDefaults, withoutLinkSummaries } = await import('./from-schemas.js');
+    engine = { emitPage, parsePrototypes, withoutDefaultSearchText, withoutSchemaDefaults, withoutRegionSlots, statedDefaults, withoutLinkSummaries };
   }
   return engine;
 }
@@ -3625,7 +3625,7 @@ async function exportContent(req, res) {
   const { format = 'json', prototypes = {}, allowMissingBlobs = false, sitePath } = jsonBody(req);
 
   if (format === 'markdown') {
-    const { emitPage, parsePrototypes, withoutDefaultSearchText, withoutSchemaDefaults, withoutRegionSlots, statedDefaults } = await getEngine();
+    const { emitPage, parsePrototypes, withoutDefaultSearchText, withoutSchemaDefaults, withoutRegionSlots, statedDefaults, withoutLinkSummaries } = await getEngine();
     const YAML = (await import('yaml')).default;
     const { SERVER_STATE } = await import('./server-state.js');
     const { BLOB_FIELD, blobDefaults } = await import('@inka/blockmd/markdown-mount.mjs');
@@ -3844,12 +3844,13 @@ async function exportContent(req, res) {
         });
         // Search text the frontend would give the page anyway stays out of the markdown
         // (loading fills it again); search text set to something else is kept. So
-        // does a value its schema declares as the default, and a template child's
-        // slot the editor names from its region (loading puts each back).
+        // does a value its schema declares as the default, a template child's
+        // slot the editor names from its region, and a link field's summary of
+        // its target (loading puts each back).
         const own = contentSchemas
-          ? withoutRegionSlots(
+          ? withoutLinkSummaries(withoutRegionSlots(
             withoutSchemaDefaults(withoutDefaultSearchText(ownBlocks, contentSchemas), contentSchemas, { keep: statedDefaults(protos) }),
-            contentSchemas)
+            contentSchemas), { schemaFor: (type) => contentSchemas[type]?.blockSchema ?? null, targetOf: (id) => loadRawContentFromDisk(id) })
           : ownBlocks;
         const blocks = structuredClone(own.blocks);
         unresolveBlocks(blocks, baseSegs, m);
